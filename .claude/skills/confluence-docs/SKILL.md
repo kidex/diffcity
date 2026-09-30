@@ -5,7 +5,7 @@ description: Structure of diffcity's Confluence space DI and the templates for A
 
 # Confluence docs
 
-Through the Atlassian MCP. Get the cloudId with `getAccessibleAtlassianResources`. Space key `DI`. Pages are written in Romanian, like the existing ones. Use `contentFormat: "markdown"`.
+Through the Atlassian MCP. Get the cloudId with `getAccessibleAtlassianResources`. Space key `DI`. Pages are written in English. Use `contentFormat: "markdown"`.
 
 ## Before creating a page
 
@@ -17,10 +17,10 @@ Always list the space first (`getPagesInConfluenceSpace` with a `title` filter).
 diffcity Home
 ├── Overview                 team lead: spec summary, links, phases, verdicts
 ├── Architecture             architect: components, base rule, ADR template
-│   └── ADR-NNN: <decizie>   one per decision
+│   └── ADR-NNN: <decision>  one per decision
 ├── Agent team and workflow  team lead: team, task flow, guardrails, skills
 ├── Phase reports            team lead: report template
-│   └── Faza N: <nume>       one per phase, written at the tag
+│   └── Phase N: <name>      one per phase, written at the tag
 ├── Runbook                  dev-core: install, shell hook, collection, data, troubleshooting
 └── Findings format          dev-core: own format and SARIF mapping
 ```
@@ -29,29 +29,29 @@ Updating a page replaces its whole body: read it first, change what you need, wr
 
 ## ADR
 
-Child of `Architecture`, title `ADR-NNN: <decizie>`, numbered after the highest existing one.
+Child of `Architecture`, title `ADR-NNN: <decision>`, numbered after the highest existing one.
 
 ```
-Stare: propusă | acceptată | înlocuită de ADR-MMM
-Data: YYYY-MM-DD
-Task Jira: DC-N
-Secțiuni SPEC.md: ...
+Status: proposed | accepted | superseded by ADR-MMM
+Date: YYYY-MM-DD
+Jira task: DC-N
+SPEC.md sections: ...
 
 ## Context
-## Opțiuni
-## Decizie
-## Consecințe
+## Options
+## Decision
+## Consequences
 ```
 
-A deviation from SPEC.md sections 5 or 3a stays `propusă` until the PO approves it. When an ADR changes SPEC.md, update SPEC.md in the same step and comment on the affected epics.
+A deviation from SPEC.md sections 5 or 3a stays `proposed` until the PO approves it. When an ADR changes SPEC.md, update SPEC.md in the same step and comment on the affected epics.
 
 ## Phase report
 
-Child of `Phase reports`, title `Faza N: <nume>`, following the template on the parent page: tag, epic, period, delivered, left or moved, ADRs, metrics (tests, tasks closed, bugs opened, review findings by severity), lessons.
+Child of `Phase reports`, title `Phase N: <name>`, following the template on the parent page: tag, epic, period, delivered, left or moved, ADRs, metrics (tests, tasks closed, bugs opened, review findings by severity), lessons.
 
 ## Runbook entry
 
-Each command or behaviour gets: what it does, how to run it, where its data lives, the symptoms it can produce and how to check them. Keep the fixed sections: Instalare, Shell hook, Colectare, Integrare Claude Code, Date, Troubleshooting.
+Each command or behaviour gets: what it does, how to run it, where its data lives, the symptoms it can produce and how to check them. Keep the fixed sections: Install, Shell hook, Collection, Claude Code integration, Data, Troubleshooting.
 
 ## Scope decision
 

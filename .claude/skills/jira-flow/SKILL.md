@@ -5,18 +5,18 @@ description: How diffcity work is tracked in Jira project DC - epics per phase, 
 
 # Jira flow
 
-Through the Atlassian MCP. Get the cloudId with `getAccessibleAtlassianResources`. Project key `DC`. Content is written in Romanian, like the existing issues.
+Through the Atlassian MCP. Get the cloudId with `getAccessibleAtlassianResources`. Project key `DC`. Content is written in English.
 
 ## Epics
 
 | Key | Epic |
 |---|---|
-| DC-1 | Faza 0: Setup |
-| DC-2 | Faza 1: Diff semantic |
-| DC-3 | Faza 2: Daemon și colectare |
-| DC-4 | Faza 3: Ecranul de schimbare (oraș 3D) |
-| DC-5 | Faza 4: Citire în ordinea execuției și findings |
-| DC-6 | Faza 5: Audit și export |
+| DC-1 | Phase 0: Setup |
+| DC-2 | Phase 1: Semantic diff |
+| DC-3 | Phase 2: Daemon and collection |
+| DC-4 | Phase 3: Change screen (3D city) |
+| DC-5 | Phase 4: Execution-order reading and findings |
+| DC-6 | Phase 5: Audit and export |
 | DC-7 | Release |
 
 ## Issue types
@@ -25,7 +25,7 @@ Through the Atlassian MCP. Get the cloudId with `getAccessibleAtlassianResources
 
 ## Task format
 
-- **Summary:** imperative, one line, e.g. `Status pe simbol: detectare sig`.
+- **Summary:** imperative, one line, e.g. `Symbol status: detect sig`.
 - **Description:**
   - context in two or three lines;
   - `Spec: SPEC.md §5.1` (the section it implements);
@@ -43,12 +43,12 @@ The workflow has three states. Transition ids: `11` To Do, `21` In Progress, `31
 
 | Moment | State | Comment on the issue |
 |---|---|---|
-| Dispatched to a dev agent | In Progress | `Început: <agent>, branch DC-<nr>-<slug>` |
-| Reviewer verdict | In Progress | `Review: aprobat` or `Review: de refăcut` + findings |
-| Tester verdict | In Progress | `Test: trecut (N teste)` or `Test: picat, vezi DC-<bug>` |
+| Dispatched to a dev agent | In Progress | `Started: <agent>, branch DC-<nr>-<slug>` |
+| Reviewer verdict | In Progress | `Review: approved` or `Review: rework` + findings |
+| Tester verdict | In Progress | `Test: passed (N tests)` or `Test: failed, see DC-<bug>` |
 | Merged by the team lead | Done | summary: what changed, commits, tests, anything left out |
 
-A task goes to Done only after `Review: aprobat` and `Test: trecut`. An epic is closed at the phase tag, after the phase report exists in Confluence.
+A task goes to Done only after `Review: approved` and `Test: passed`. An epic is closed at the phase tag, after the phase report exists in Confluence.
 
 ## Git naming
 

@@ -37,7 +37,7 @@ Task flow: Jira task → architect (only if a decision is needed) → dev-core o
 ## Atlassian
 
 - Jira project `DC`, Confluence space `DI`, through the Atlassian MCP. The `jira-flow` and `confluence-docs` skills describe formats and states.
-- Jira and Confluence content is written in Romanian, matching the existing pages.
+- Jira and Confluence content is written in English, like everything else in the project.
 
 ## Commands
 

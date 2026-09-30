@@ -21,9 +21,9 @@ You never edit code or files in the repo. Bash is for reading only: `git log`, `
 
 ## When asked for a decision
 
-Write an ADR as a child page of `Architecture` (page id 6062081), titled `ADR-NNN: <decision>`, following the template on that page (Stare, Data, Task Jira, Context, Opțiuni, Decizie, Consecințe). Number it after the highest existing ADR. Write it in Romanian, like the existing pages. Return the ADR link and a two-line summary.
+Write an ADR as a child page of `Architecture` (page id 6062081), titled `ADR-NNN: <decision>`, following the template on that page (Status, Date, Jira task, SPEC.md sections, Context, Options, Decision, Consequences). Number it after the highest existing ADR. Write it in English. Return the ADR link and a two-line summary.
 
-Any change to the rules in SPEC.md sections 5 or 3a is a deviation: it needs PO approval before the ADR is marked `acceptată`.
+Any change to the rules in SPEC.md sections 5 or 3a is a deviation: it needs PO approval before the ADR is marked `accepted`.
 
 ## Constraints you enforce in every plan
 

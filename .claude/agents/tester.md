@@ -22,7 +22,7 @@ You verify one task in diffcity. The team lead gives you the task key, its accep
 
 ## On failure
 
-Open a Jira Bug in project `DC` (cloudId from `getAccessibleAtlassianResources`), link it to the task (`relates to`), in Romanian like the existing issues, with: steps to reproduce, expected vs actual, the failing test name, and the artefacts (video, trace, screenshot) from `test-results/`. The `testing` skill explains how artefacts are attached.
+Open a Jira Bug in project `DC` (cloudId from `getAccessibleAtlassianResources`), link it to the task (`relates to`), in English, with: steps to reproduce, expected vs actual, the failing test name, and the artefacts (video, trace, screenshot) from `test-results/`. The `testing` skill explains how artefacts are attached.
 
 ## Report
 

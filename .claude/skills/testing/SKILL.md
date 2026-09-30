@@ -63,7 +63,7 @@ The `playwright` MCP server (`.mcp.json`) drives a browser interactively: naviga
 
 ## Reporting a failure in Jira
 
-1. Create a `Bug` in project `DC` (Romanian, like existing issues): summary, steps to reproduce, expected vs actual, failing test name, commit hash, and the artefact paths.
+1. Create a `Bug` in project `DC` (in English): summary, steps to reproduce, expected vs actual, failing test name, commit hash, and the artefact paths.
 2. Link it to the task with `createIssueLink`, type `Relates`.
 3. Attach the artefacts. The Atlassian MCP has no attachment upload, so use the Jira REST API with credentials from the environment (never written to a file):
 
