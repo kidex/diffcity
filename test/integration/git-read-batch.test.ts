@@ -19,6 +19,7 @@ const files = {
   'media/clip.ts': 'G\u0000\u0011\u0010 not text\n',
   'src/empty.ts': '',
   'src/line\nbreak.ts': 'export const odd = 3;\n',
+  'src/carriage.ts\r': 'export const cr = 4;\n',
 };
 const paths = [...Object.keys(files), 'src/not-there.ts', 'src/oven.ts'];
 
@@ -42,6 +43,8 @@ describe('readAfterBatch', () => {
     expect(batch).toEqual(single);
     expect(batch[paths.indexOf('src/not-there.ts')]).toBeNull();
     expect(batch[paths.indexOf('src/empty.ts')]?.length).toBe(0);
+    expect(batch[paths.indexOf('src/carriage.ts\r')]?.toString('utf8')).toBe('export const cr = 4;\n');
+    expect(batch[paths.indexOf('src/line\nbreak.ts')]?.toString('utf8')).toBe('export const odd = 3;\n');
     expect(batch[paths.indexOf('media/clip.ts')]?.includes(0)).toBe(true);
   });
 
