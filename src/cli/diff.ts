@@ -1,0 +1,67 @@
+// `diffcity diff [--json] [--base <ref>] [--head <ref>]` (SPEC.md section 3, ADR-011).
+// Builds the Report in-process through src/core; never starts or contacts the daemon.
+
+import { buildReport, type BuildReportOptions } from '../core/report/index.js';
+import type { Report, Status, Verdict } from '../core/report/types.js';
+
+export interface DiffCommandOptions {
+  json?: boolean;
+  base?: string;
+  head?: string;
+}
+
+export interface DiffDeps {
+  /** Directory the command runs in; the repo is found from it. */
+  cwd: string;
+  io: { stdout: (text: string) => void; stderr: (text: string) => void };
+  /** Injected in tests; defaults to buildReport. */
+  build?: (options: BuildReportOptions) => Promise<Report>;
+}
+
+const STATUS_ORDER: readonly Status[] = ['add', 'mod', 'sig', 'del', 'same'];
+const VERDICT_ORDER: readonly Verdict[] = ['eyes', 'risky', 'spec', 'ok', 'same'];
+
+function counts<K extends string>(order: readonly K[], values: Record<K, number>): string {
+  return order.map((key) => `${key} ${String(values[key])}`).join(', ');
+}
+
+/** Short human summary of a report: counts by status and verdict, touched tier 1 files. */
+export function formatSummary(report: Report): string {
+  const { meta, summary } = report;
+  const touched = report.packages.reduce(
+    (total, pkg) => total + pkg.files.filter((file) => file.status !== 'same').length,
+    0,
+  );
+  const commits = `${String(meta.commits)} commit${meta.commits === 1 ? '' : 's'}`;
+  const lines = [
+    `${meta.repo}: ${meta.base}...${meta.head} (${commits})`,
+    `files: ${String(summary.files)} (${String(touched)} touched)`,
+    `symbols by status: ${counts(STATUS_ORDER, summary.byStatus)}`,
+    `files by verdict: ${counts(VERDICT_ORDER, summary.byVerdict)}`,
+  ];
+  if (summary.tier1Files.length === 0) lines.push('tier 1 files: none');
+  else {
+    lines.push(`tier 1 files (${String(summary.tier1Files.length)}):`);
+    for (const path of summary.tier1Files) lines.push(`  ${path}`);
+  }
+  return `${lines.join('\n')}\n`;
+}
+
+function oneLine(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error);
+  return message.replace(/\s*\n\s*/g, ' ').trim();
+}
+
+/** Runs the command; resolves with the process exit code (0 on success, 1 on any error). */
+export async function runDiff(options: DiffCommandOptions, deps: DiffDeps): Promise<number> {
+  const build = deps.build ?? buildReport;
+  let report: Report;
+  try {
+    report = await build({ repoDir: deps.cwd, base: options.base, head: options.head });
+  } catch (error) {
+    deps.io.stderr(`diffcity diff: ${oneLine(error)}\n`);
+    return 1;
+  }
+  deps.io.stdout(options.json === true ? `${JSON.stringify(report, null, 2)}\n` : formatSummary(report));
+  return 0;
+}

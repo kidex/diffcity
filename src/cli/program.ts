@@ -1,9 +1,12 @@
 import { Command } from 'commander';
+import { runDiff, type DiffCommandOptions } from './diff.js';
 import { readVersion } from './version.js';
 
 export interface CliIo {
   stdout: (text: string) => void;
   stderr: (text: string) => void;
+  /** Working directory the commands act on; defaults to process.cwd(). */
+  cwd?: () => string;
 }
 
 const defaultIo: CliIo = {
@@ -58,7 +61,10 @@ export function buildProgram(io: CliIo = defaultIo): Command {
     .option('--json', 'print the report as JSON')
     .option('--base <ref>', 'base ref')
     .option('--head <ref>', 'head ref')
-    .action(notImplemented(io, 'diff'));
+    .action(async (options: DiffCommandOptions) => {
+      const cwd = io.cwd?.() ?? process.cwd();
+      process.exitCode = await runDiff(options, { cwd, io });
+    });
 
   program
     .command('import')
