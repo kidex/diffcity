@@ -41,6 +41,12 @@ export const defaultRunner: CommandRunner = (file, args, options) =>
     );
   });
 
+/**
+ * Prepended to every git call. A collected repo's own .git/config could point
+ * core.fsmonitor at a command; reading a repo must never run it.
+ */
+const SAFE_CONFIG = ['-c', 'core.fsmonitor=false'];
+
 /** Big enough for any single source file or file list we read. */
 const GIT_MAX_BUFFER = 512 * 1024 * 1024;
 
@@ -87,7 +93,7 @@ export function gitRaw(cwd: string, args: readonly string[], options: GitCallOpt
   return new Promise((resolve, reject) => {
     const child = execFile(
       'git',
-      [...args],
+      [...SAFE_CONFIG, ...args],
       {
         cwd,
         env: { ...gitEnv(), ...options.env },

@@ -361,6 +361,23 @@ describe('resolveChange and changedFiles (ADR-012)', { timeout: 30_000 }, () => 
     await expect(readAfter(committed, '.git/config')).rejects.toMatchObject({ code: 'bad-path' });
   });
 
+  it('never runs a core.fsmonitor command from the collected repo', async () => {
+    const hookDir = await mkdtemp(join(tmpdir(), 'diffcity-hook-'));
+    dirs.push(hookDir);
+    const marker = join(hookDir, 'ran');
+    const hook = join(hookDir, 'monitor.sh');
+    await writeFile(hook, `#!/bin/sh\necho ran > "${marker}"\n`, { encoding: 'utf8', mode: 0o755 });
+    const repo = await repoOn({ files: { 'a.ts': 'x\n' } });
+    await repo.git('config', 'core.fsmonitor', hook);
+    await repo.write({ 'a.ts': 'y\n', 'b.ts': 'z\n' });
+
+    const change = await resolveChange(repo.dir, noGh);
+    await changedFiles(change);
+    await listHeadFiles(change);
+    await computeMeta(change);
+    await expect(stat(marker)).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
   it('refuses paths that escape the repo', async () => {
     const repo = await repoOn({ files: { 'a.ts': 'x\n' } });
     const change = await resolveChange(repo.dir, noGh);
