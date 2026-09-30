@@ -299,6 +299,74 @@ export async function readAfterBytes(change: ResolvedChange, path: string): Prom
   }
 }
 
+/** Working tree files read at the same time by readAfterBatch. */
+const WORKTREE_READ_CONCURRENCY = 8;
+
+/**
+ * Parses `git cat-file --batch` output for `count` requests, in request order.
+ * Each answer is `<sha> <type> <size>\n<content>\n`, or `<name> missing\n` /
+ * `<name> ambiguous\n`. Only blobs are returned; anything else is null.
+ */
+function parseCatFileBatch(output: Buffer, count: number): (Buffer | null)[] {
+  const results: (Buffer | null)[] = [];
+  let offset = 0;
+  for (let i = 0; i < count; i++) {
+    const eol = output.indexOf(0x0a, offset);
+    if (eol < 0) throw new GitError('git-failed', 'unexpected end of git cat-file --batch output');
+    const header = output.toString('utf8', offset, eol);
+    offset = eol + 1;
+    if (header.endsWith(' missing') || header.endsWith(' ambiguous')) {
+      results.push(null);
+      continue;
+    }
+    const [, type, sizeText = ''] = header.split(' ');
+    const size = Number.parseInt(sizeText, 10);
+    if (!Number.isInteger(size) || size < 0 || offset + size > output.length) {
+      throw new GitError('git-failed', `unexpected git cat-file --batch header: ${header}`);
+    }
+    results.push(type === 'blob' ? output.subarray(offset, offset + size) : null);
+    offset += size + 1;
+  }
+  return results;
+}
+
+/**
+ * readAfterBytes for many paths, in input order. For a commit, one
+ * `git cat-file --batch` call reads every blob (paths containing a line break,
+ * which the batch protocol cannot carry, are read one by one). For the working
+ * tree, files are read from disk a few at a time. Callers bound `paths` so the
+ * answer fits comfortably in memory.
+ */
+export async function readAfterBatch(change: ResolvedChange, paths: readonly string[]): Promise<(Buffer | null)[]> {
+  if (change.worktree) {
+    const results: (Buffer | null)[] = [];
+    for (let i = 0; i < paths.length; i += WORKTREE_READ_CONCURRENCY) {
+      const group = paths.slice(i, i + WORKTREE_READ_CONCURRENCY);
+      results.push(...(await Promise.all(group.map((path) => readAfterBytes(change, path)))));
+    }
+    return results;
+  }
+
+  const batched: { index: number; path: string }[] = [];
+  const results = new Array<Buffer | null>(paths.length).fill(null);
+  await Promise.all(
+    paths.map(async (path, index) => {
+      if (/[\r\n]/.test(path)) results[index] = await readBlob(change.root, change.headCommit, path);
+      else batched.push({ index, path: checkRepoPath(path) });
+    }),
+  );
+  if (batched.length === 0) return results;
+
+  const input = batched.map(({ path }) => `${change.headCommit}:${path}\n`).join('');
+  const result = await gitRaw(change.root, ['cat-file', '--batch'], { input });
+  if (result.exitCode !== 0) throw new GitError('git-failed', `git cat-file --batch failed: ${result.stderr.trim()}`);
+  parseCatFileBatch(result.stdout, batched.length).forEach((bytes, i) => {
+    const entry = batched[i];
+    if (entry !== undefined) results[entry.index] = bytes;
+  });
+  return results;
+}
+
 /**
  * Every file in the after state, sorted, repo-relative. For a commit: the blobs of its tree.
  * For the working tree: tracked files still on disk plus non-ignored untracked files.

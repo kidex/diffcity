@@ -10,6 +10,7 @@ export {
   looksBinary,
   parseDiffOutput,
   readAfter,
+  readAfterBatch,
   readAfterBytes,
   readBefore,
 } from './files.js';

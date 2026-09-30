@@ -1,5 +1,6 @@
 export {
   PARSE_CONCURRENCY,
+  READ_BATCH_SIZE,
   UNSUPPORTED_LANGUAGE,
   assembleReport,
   buildReport,

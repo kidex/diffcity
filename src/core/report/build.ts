@@ -11,7 +11,7 @@ import {
   listHeadFiles,
   looksBinary,
   readAfter,
-  readAfterBytes,
+  readAfterBatch,
   readBefore,
   resolveChange,
   type ChangedFile,
@@ -46,6 +46,9 @@ export interface ReportFileInput {
 
 /** Files read and parsed at the same time. Parsing moves to worker threads with the collector (phase 2). */
 export const PARSE_CONCURRENCY = 8;
+
+/** Untouched files read per batch (one `git cat-file --batch` call for a commit). */
+export const READ_BATCH_SIZE = 256;
 
 /** `File.language` for files diffcity does not parse. */
 export const UNSUPPORTED_LANGUAGE = 'other';
@@ -149,8 +152,7 @@ async function describeChanged(change: ResolvedChange, file: ChangedFile): Promi
   return { path: file.path, language: languageOf(file.path), status, symbols };
 }
 
-async function describeUnchanged(change: ResolvedChange, path: string): Promise<ReportFileInput | null> {
-  const bytes = await readAfterBytes(change, path);
+async function describeUnchanged(path: string, bytes: Buffer | null): Promise<ReportFileInput | null> {
   // Gone between listing and reading: not part of this state any more.
   if (bytes === null) return null;
   const file: ReportFileInput = { path, language: languageOf(path), status: 'same', symbols: [] };
@@ -185,7 +187,14 @@ export async function buildReport(options: BuildReportOptions): Promise<Report> 
   const untouched = headFiles.filter((path) => !touched.has(path) && languageForPath(path) !== null);
 
   const touchedInputs = await mapLimit(changed, PARSE_CONCURRENCY, (file) => describeChanged(change, file));
-  const untouchedInputs = await mapLimit(untouched, PARSE_CONCURRENCY, (path) => describeUnchanged(change, path));
+  const untouchedInputs: (ReportFileInput | null)[] = [];
+  for (let i = 0; i < untouched.length; i += READ_BATCH_SIZE) {
+    const paths = untouched.slice(i, i + READ_BATCH_SIZE);
+    const contents = await readAfterBatch(change, paths);
+    untouchedInputs.push(
+      ...(await mapLimit(paths, PARSE_CONCURRENCY, (path, j) => describeUnchanged(path, contents[j] ?? null))),
+    );
+  }
 
   return assembleReport(
     meta,
