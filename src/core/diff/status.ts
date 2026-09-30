@@ -1,4 +1,3 @@
-import { withDuplicateSuffixes } from '../parse/dedupe.js';
 import { parseFile } from '../parse/file.js';
 import type { ParsedFile } from '../parse/file.js';
 import { languageForPath } from '../parse/language.js';
@@ -74,53 +73,71 @@ function fileStatus(file: FileChange, before: ParsedFile | null, after: ParsedFi
   return gitStatus(file.change);
 }
 
-/** Symbols match on qualified name and kind. */
-function matchKey(symbol: ParsedSymbol): string {
-  return `${symbol.kind}\u0000${symbol.qualifiedName}`;
-}
-
 function symbolStatus(before: ParsedSymbol, after: ParsedSymbol): Status {
   if (before.signature !== after.signature) return 'sig';
   if (before.body !== after.body) return 'mod';
   return 'same';
 }
 
+/**
+ * Match keys for one version: kind, unsuffixed qualified name and the
+ * occurrence among symbols with that kind and name. Duplicate suffixes are
+ * numbered across kinds, so they cannot be used to match (an added
+ * `export { parse }` above `function parse` would shift them).
+ */
+function matchKeys(symbols: readonly ParsedSymbol[]): string[] {
+  const seen = new Map<string, number>();
+  return symbols.map((symbol) => {
+    const group = `${symbol.kind}\u0000${symbol.baseQualifiedName}`;
+    const occurrence = seen.get(group) ?? 0;
+    seen.set(group, occurrence + 1);
+    return `${group}\u0000${String(occurrence)}`;
+  });
+}
+
 interface Entry {
   symbol: ParsedSymbol;
+  id: string;
   status: Status;
   before?: ParsedSymbol;
 }
 
 function compareSymbols(path: string, before: ParsedSymbol[], after: ParsedSymbol[]): Symbol[] {
-  const beforeByKey = new Map(before.map((s) => [matchKey(s), s]));
-  const afterKeys = new Set(after.map(matchKey));
+  const beforeKeys = matchKeys(before);
+  const afterKeys = matchKeys(after);
+  const beforeByKey = new Map(before.map((symbol, i) => [beforeKeys[i], symbol]));
+  const matched = new Set(afterKeys);
 
-  const entries: Entry[] = [
-    ...after.map((symbol): Entry => {
-      const previous = beforeByKey.get(matchKey(symbol));
-      return previous === undefined
-        ? { symbol, status: 'add' }
-        : { symbol, status: symbolStatus(previous, symbol), before: previous };
-    }),
-    ...before.filter((s) => !afterKeys.has(matchKey(s))).map((symbol): Entry => ({ symbol, status: 'del' })),
-  ];
+  // After-version symbols keep their qualified name as the id (ADR-011).
+  const entries: Entry[] = after.map((symbol, i): Entry => {
+    const previous = beforeByKey.get(afterKeys[i]);
+    return previous === undefined
+      ? { symbol, id: symbol.qualifiedName, status: 'add' }
+      : { symbol, id: symbol.qualifiedName, status: symbolStatus(previous, symbol), before: previous };
+  });
 
-  // Qualified names are unique within one version; a name whose kind changed
-  // yields an `add` and a `del` with the same name, so the `del` gets `~N` (ADR-011).
-  const ids = withDuplicateSuffixes(entries.map((e) => e.symbol.qualifiedName));
+  // Deleted symbols get the first free id among `base`, `base~2`, `base~3`, ...
+  const used = new Set(entries.map((e) => e.id));
+  before.forEach((symbol, i) => {
+    if (matched.has(beforeKeys[i] ?? '')) return;
+    const base = symbol.baseQualifiedName;
+    let id = base;
+    for (let n = 2; used.has(id); n++) id = `${base}~${String(n)}`;
+    used.add(id);
+    entries.push({ symbol, id, status: 'del' });
+  });
 
   return entries
-    .map((entry, i): Symbol => {
-      const { symbol, status } = entry;
+    .map(({ symbol, id, status, before: previous }): Symbol => {
       const out: Symbol = {
-        id: `${path}#${ids[i] ?? symbol.qualifiedName}`,
-        name: displayName(symbol),
+        id: `${path}#${id}`,
+        name: symbol.baseQualifiedName,
         kind: symbol.kind,
         status,
         range: { ...symbol.range },
       };
-      if (status === 'sig' && entry.before !== undefined) {
-        out.signatureBefore = entry.before.signatureText;
+      if (status === 'sig' && previous !== undefined) {
+        out.signatureBefore = previous.signatureText;
         out.signatureAfter = symbol.signatureText;
       }
       return out;
@@ -130,21 +147,4 @@ function compareSymbols(path: string, before: ParsedSymbol[], after: ParsedSymbo
 
 function compare(a: string, b: string): number {
   return a < b ? -1 : a > b ? 1 : 0;
-}
-
-/**
- * The name shown to the reviewer: the qualified name without duplicate
- * suffixes (`Class.method`, `Class.get x`, ADR-013). Suffixes live in the id only.
- */
-function displayName(symbol: ParsedSymbol): string {
-  const { name, qualifiedName } = symbol;
-  if (qualifiedName === name) return name;
-  const member = new RegExp(`^(.*)\\.${escapeRegExp(name)}(?:~\\d+)?$`).exec(qualifiedName);
-  // Class names are identifiers, so a `~N` at the end of the owner is always a suffix.
-  if (member?.[1] !== undefined) return `${member[1].replace(/~\d+$/, '')}.${name}`;
-  return name;
-}
-
-function escapeRegExp(text: string): string {
-  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }

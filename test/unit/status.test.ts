@@ -58,6 +58,7 @@ describe('5.1 symbol status', () => {
 
   it.each([
     ['sig-param-added', 'knead', 'export function knead(dough: string): string', 'export function knead(dough: string, minutes: number): string'],
+    ['sig-param-removed', 'decant', 'export function decant(jar: string, spoon: number): string', 'export function decant(jar: string): string'],
     ['sig-param-retyped', 'proof', 'export function proof(minutes: number): boolean', 'export function proof(minutes: string): boolean'],
     ['sig-return-changed', 'ovenTemp', 'export function ovenTemp(level: number): number', 'export function ovenTemp(level: number): string'],
     ['sig-param-renamed', 'slice', 'export function slice(loaf: string): string[]', 'export function slice(bread: string): string[]'],
@@ -375,6 +376,64 @@ describe('5.1 matching', () => {
       ['src/tart.ts#Tart~2', 'Tart', 'function', 'del'],
     ]);
     expect(result.status).toBe('add');
+  });
+
+  it('export-added-above-function: the unchanged function stays same, only the export is add', async () => {
+    const result = await compare({ fixture: 'export-added-above-function', path: 'src/parse.ts', change: 'mod' });
+    expect(result.symbols.map((s) => [s.id, s.name, s.kind, s.status])).toEqual([
+      ['src/parse.ts#parse', 'parse', 'export', 'add'],
+      ['src/parse.ts#parse~2', 'parse', 'function', 'same'],
+    ]);
+    expect(result.status).toBe('add');
+  });
+
+  it('reorder-function-and-export: symbols same, file mod', async () => {
+    const result = await compare({ fixture: 'reorder-function-and-export', path: 'src/knead.ts', change: 'mod' });
+    expect(result.symbols.map((s) => [s.id, s.kind, s.status])).toEqual([
+      ['src/knead.ts#knead', 'export', 'same'],
+      ['src/knead.ts#knead~2', 'function', 'same'],
+    ]);
+    expect(result.status).toBe('mod');
+  });
+
+  it('function-added-above-reexport: the re-export stays same, only the function is add', async () => {
+    const result = await compare({ fixture: 'function-added-above-reexport', path: 'src/helper.ts', change: 'mod' });
+    expect(result.symbols.map((s) => [s.id, s.kind, s.status])).toEqual([
+      ['src/helper.ts#helper', 'function', 'add'],
+      ['src/helper.ts#helper~2', 'export', 'same'],
+    ]);
+    expect(result.status).toBe('add');
+  });
+
+  it('duplicates of the same kind match by occurrence', async () => {
+    const result = await compareFile({
+      path: 'db/q.sql',
+      change: 'mod',
+      binary: false,
+      before: 'SELECT 1;\nSELECT 2;\n',
+      after: 'SELECT 1;\nSELECT 3;\n',
+    });
+    expect(result.symbols.map((s) => [s.id, s.status])).toEqual([
+      ['db/q.sql#SELECT', 'same'],
+      ['db/q.sql#SELECT~2', 'mod'],
+    ]);
+  });
+
+  it('a deleted symbol gets one non-colliding suffix on its base name, never a second one', async () => {
+    const result = await compareFile({
+      path: 'src/foo.ts',
+      change: 'mod',
+      binary: false,
+      before: 'function foo() {}\nexport { foo };\nexport class foo2 {}\n',
+      after: 'export { foo };\nexport class foo {}\n',
+    });
+    expect(result.symbols.map((s) => [s.id, s.name, s.kind, s.status])).toEqual([
+      ['src/foo.ts#foo', 'foo', 'export', 'same'],
+      ['src/foo.ts#foo~3', 'foo', 'function', 'del'],
+      ['src/foo.ts#foo~2', 'foo', 'class', 'add'],
+      ['src/foo.ts#foo2', 'foo2', 'class', 'del'],
+    ]);
+    expect(result.symbols.every((s) => !/~\d+~/.test(s.id))).toBe(true);
   });
 
   it('duplicates keep their ~N suffix in the id but not in the name', async () => {
