@@ -76,7 +76,7 @@ Decide with the PO before implementing: case sensitivity and whether `authorized
 |---|---|---|
 | F1 | Own format: array of `Finding` without `symbolId` | `findings/own-format.json` |
 | F2 | SARIF 2.1: `ruleId → title`, `level → severity`, `physicalLocation → file/line`, `tool.driver.name → source` | `findings/semgrep.sarif.json`, `findings/eslint.sarif.json` |
-| F3 | SARIF `level` mapping: `error → high`, `warning → med`, `note`/`none` → `low` (confirm with PO) | same fixtures |
+| F3 | SARIF `level` mapping: `error → high`, `warning → med`, `note`/`none`/missing → `low`; `properties.category` → category, default `correctness` (full mapping in `docs/findings.md`) | same fixtures |
 | F4 | Line anchored to the symbol whose `range` contains it, in the `after` version | `findings/anchor-inside` |
 | F5 | Line outside every symbol → file-level finding, `symbolId` absent | `findings/anchor-file-level` |
 | F6 | Dedup: same `symbolId` + `category` + normalized title → one entry listing all sources | `findings/dedup-two-sources` |

@@ -9,7 +9,7 @@ A JSON array of findings. `symbolId` is never written by hand: diffcity resolves
 ```ts
 interface FindingInput {
   id?: string;                 // optional; generated when missing
-  source: string;              // who found it: "claude", "semgrep", "eslint", ...
+  source: string;              // who found it: "claude", "semgrep", "eslint", "gitleaks", "human"
   severity: 'high' | 'med' | 'low';
   category: 'security' | 'correctness' | 'scope' | 'style' | 'tests';
   file: string;                // repo-relative path, forward slashes
@@ -54,13 +54,13 @@ Each entry of `runs[].results[]` becomes one finding.
 | SARIF | Finding |
 |---|---|
 | `runs[].tool.driver.name` | `source` |
-| `results[].ruleId` | `title` (the rule's `shortDescription.text` when present, otherwise the id) |
+| `results[].ruleId` | `title` (`message.text` when `ruleId` is missing) |
 | `results[].message.text` | `message` |
 | `results[].level` | `severity`: `error` → `high`, `warning` → `med`, `note` / `none` / missing → `low` |
 | `results[].locations[0].physicalLocation.artifactLocation.uri` | `file` (made repo-relative) |
 | `results[].locations[0].physicalLocation.region.startLine` | `line` |
+| `results[].properties.category` | `category` (default `correctness`) |
 | `results[].fixes[0].description.text` | `fix` |
-| rule `properties.tags` containing `security` | `category: "security"`; otherwise `correctness` |
 
 Results without a physical location are skipped with a warning.
 
@@ -80,4 +80,4 @@ Findings with the same `symbolId`, the same `category` and the same normalized t
 |---|---|---|
 | `open` | default | a high open finding makes the file `risky` |
 | `intended` | set by "Mark as intended" | ignored by the verdict |
-| `fixed` | the finding no longer applies at the current head | ignored by the verdict |
+| `fixed` | set automatically when the symbol changed and a later import no longer reports the finding | ignored by the verdict |
