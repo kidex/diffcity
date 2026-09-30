@@ -341,6 +341,16 @@ function lineOf(starts: number[], offset: number): number {
   return lo + 1;
 }
 
+/**
+ * ADR-005 normal form of a whole .sql file: its tokens joined by a single
+ * space, so comments and whitespace outside literals never change it.
+ */
+export function normalizeSql(source: string): string {
+  return tokenize(source)
+    .map((t) => t.text)
+    .join(' ');
+}
+
 export function extractSqlSymbols(source: string): ParsedSymbol[] {
   const starts = lineStarts(source);
   const statements = splitStatements(tokenize(source));

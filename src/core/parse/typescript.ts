@@ -45,11 +45,23 @@ const TEST_FUNCTIONS = new Set(['describe', 'it', 'test']);
  * inside ERROR regions are skipped. Duplicate qualified names get `~2`, `~3`.
  */
 export async function extractSymbols(source: string, language: TreeSitterLanguage): Promise<ParsedSymbol[]> {
+  return (await parseSource(source, language)).symbols;
+}
+
+/**
+ * Symbols plus the ADR-005 normal form of the whole file (every leaf token,
+ * comments dropped except directives), from a single parse. Two versions with
+ * equal normal forms differ only in whitespace and comments (ADR-008).
+ */
+export async function parseSource(
+  source: string,
+  language: TreeSitterLanguage,
+): Promise<{ symbols: ParsedSymbol[]; normalized: string }> {
   const parser = await parserFor(language);
   const tree = parser.parse(source);
-  if (tree === null) return [];
+  if (tree === null) return { symbols: [], normalized: '' };
   try {
-    return new Extractor(source).run(tree.rootNode);
+    return { symbols: new Extractor(source).run(tree.rootNode), normalized: normalize([tree.rootNode]) };
   } finally {
     tree.delete();
   }
