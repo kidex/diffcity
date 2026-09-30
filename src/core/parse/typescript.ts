@@ -277,20 +277,22 @@ class Extractor {
       const value = declarator.childForFieldName('value');
       const type = declarator.childForFieldName('type');
       const rangeNode = single ? outer : declarator;
-      const body = normalize([...directives, single ? declaration : declarator]);
+      // Bodies never include the `const`/`let` keyword or sibling declarators,
+      // so neither changes the status of a symbol declared in the statement.
       if (value !== null && FUNCTION_VALUES.has(value.type)) {
         out.push(
           this.candidate('function', nameNode.text, rangeNode, rangeNode, {
             signature: functionSignature(value, [], type),
-            body,
+            body: normalize([...directives, declarator]),
             signatureText: this.head(rangeNode, value.childForFieldName('body'), value),
           }),
         );
       } else if (exported) {
         out.push(
           this.candidate('export', nameNode.text, rangeNode, rangeNode, {
+            // ADR-006: the type annotation is the signature, the initializer is the body.
             signature: normalize([type]),
-            body,
+            body: normalize([...directives, value]),
             signatureText: this.source.slice(declarator.startIndex, (type ?? nameNode).endIndex),
           }),
         );

@@ -174,6 +174,34 @@ describe('ADR-006 signature', () => {
     expect(revalued.body).not.toBe(before.body);
   });
 
+  it('value export: adding a sibling declarator does not change the body', async () => {
+    const alone = await symbol('export const LIMIT = 5;', 'LIMIT');
+    const withSibling = await symbol('export const LIMIT = 5, FLOOR = 1;', 'LIMIT');
+    expect(withSibling.signature).toBe(alone.signature);
+    expect(withSibling.body).toBe(alone.body);
+    expect(alone.body).toBe('5');
+  });
+
+  it('value export: let -> const does not change the body', async () => {
+    const before = await symbol('export let LIMIT = 5;', 'LIMIT');
+    const after = await symbol('export const LIMIT = 5;', 'LIMIT');
+    expect(after.signature).toBe(before.signature);
+    expect(after.body).toBe(before.body);
+  });
+
+  it('value export: a directive comment above it changes the body', async () => {
+    const before = await symbol('export const LIMIT = 5;', 'LIMIT');
+    const after = await symbol('// @ts-expect-error\nexport const LIMIT = 5;', 'LIMIT');
+    expect(after.body).not.toBe(before.body);
+  });
+
+  it('arrow function const: adding a sibling declarator does not change the body', async () => {
+    const alone = await symbol('const double = (n: number) => n * 2;', 'double');
+    const withSibling = await symbol('const double = (n: number) => n * 2, half = (n: number) => n / 2;', 'double');
+    expect(withSibling.signature).toBe(alone.signature);
+    expect(withSibling.body).toBe(alone.body);
+  });
+
   it('exported interface: type parameters are the signature, a new property changes only the body', async () => {
     const before = await symbol('export interface Row<T> {\n  id: T;\n}\n', 'Row');
     const added = await symbol('export interface Row<T> {\n  id: T;\n  label: string;\n}\n', 'Row');
