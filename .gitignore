@@ -1,0 +1,13 @@
+node_modules/
+dist/
+coverage/
+test-results/
+playwright-report/
+.tmp/
+.worktrees/
+.diffcity/
+.env
+.env.*
+.DS_Store
+*.log
+.claude/settings.local.json
