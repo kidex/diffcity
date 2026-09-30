@@ -201,6 +201,21 @@ describe('extractSymbols', () => {
     const ids = symbols.map((s) => s.qualifiedName);
     expect(new Set(ids).size).toBe(ids.length);
     expect(find(symbols, 'setup~2').name).toBe('setup');
+    expect(symbols.map((s) => s.baseQualifiedName)).toEqual([
+      'setup',
+      'setup',
+      'setup',
+      'Menu',
+      'Menu.render',
+      'Menu.render',
+      'Menu',
+      'Menu.render',
+      'menu',
+      'menu',
+      'Cart',
+      'Cart.total',
+      'Cart.total',
+    ]);
   });
 
   it('nested-not-symbol: nested functions, local classes, object literal methods and blocks are ignored', async () => {

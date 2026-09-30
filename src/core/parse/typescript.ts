@@ -45,11 +45,23 @@ const TEST_FUNCTIONS = new Set(['describe', 'it', 'test']);
  * inside ERROR regions are skipped. Duplicate qualified names get `~2`, `~3`.
  */
 export async function extractSymbols(source: string, language: TreeSitterLanguage): Promise<ParsedSymbol[]> {
+  return (await parseSource(source, language)).symbols;
+}
+
+/**
+ * Symbols plus the ADR-005 normal form of the whole file (every leaf token,
+ * comments dropped except directives), from a single parse. Two versions with
+ * equal normal forms differ only in whitespace and comments (ADR-008).
+ */
+export async function parseSource(
+  source: string,
+  language: TreeSitterLanguage,
+): Promise<{ symbols: ParsedSymbol[]; normalized: string }> {
   const parser = await parserFor(language);
   const tree = parser.parse(source);
-  if (tree === null) return [];
+  if (tree === null) return { symbols: [], normalized: '' };
   try {
-    return new Extractor(source).run(tree.rootNode);
+    return { symbols: new Extractor(source).run(tree.rootNode), normalized: normalize([tree.rootNode]) };
   } finally {
     tree.delete();
   }
@@ -64,15 +76,19 @@ class Extractor {
     // prefix (`Menu~2.render`). The final pass over the flattened list catches a
     // member colliding with a top-level name (`Cart.total` vs a test titled so).
     const topLevel = withDuplicateSuffixes(candidates.map((c) => c.name));
-    const flat: [Candidate, string][] = candidates.flatMap((candidate, i) => {
+    const flat: [Candidate, string, string][] = candidates.flatMap((candidate, i) => {
       const qualifiedName = topLevel[i] ?? candidate.name;
       return [
-        [candidate, qualifiedName] as [Candidate, string],
-        ...candidate.members.map((member): [Candidate, string] => [member, `${qualifiedName}.${member.name}`]),
+        [candidate, qualifiedName, candidate.name] as [Candidate, string, string],
+        ...candidate.members.map((member): [Candidate, string, string] => [
+          member,
+          `${qualifiedName}.${member.name}`,
+          `${candidate.name}.${member.name}`,
+        ]),
       ];
     });
     const unique = withDuplicateSuffixes(flat.map(([, name]) => name));
-    return flat.map(([candidate, name], i) => toSymbol(candidate, unique[i] ?? name));
+    return flat.map(([candidate, name, base], i) => toSymbol(candidate, unique[i] ?? name, base));
   }
 
   private statement(statement: Node): Candidate[] {
@@ -355,10 +371,11 @@ class Extractor {
   }
 }
 
-function toSymbol(candidate: Candidate, qualifiedName: string): ParsedSymbol {
+function toSymbol(candidate: Candidate, qualifiedName: string, baseQualifiedName: string): ParsedSymbol {
   return {
     name: candidate.name,
     qualifiedName,
+    baseQualifiedName,
     kind: candidate.kind,
     range: { start: candidate.start, end: candidate.end },
     signature: candidate.signature,

@@ -1,3 +1,4 @@
+import { withDuplicateSuffixes } from './dedupe.js';
 import type { ParsedSymbol } from './types.js';
 
 /**
@@ -340,30 +341,36 @@ function lineOf(starts: number[], offset: number): number {
   return lo + 1;
 }
 
+/**
+ * ADR-005 normal form of a whole .sql file: its tokens joined by a single
+ * space, so comments and whitespace outside literals never change it.
+ */
+export function normalizeSql(source: string): string {
+  return tokenize(source)
+    .map((t) => t.text)
+    .join(' ');
+}
+
 export function extractSqlSymbols(source: string): ParsedSymbol[] {
   const starts = lineStarts(source);
-  const seen = new Map<string, number>();
-  const symbols: ParsedSymbol[] = [];
+  const statements = splitStatements(tokenize(source));
+  const names = statements.map(statementName);
+  // Duplicates are suffixed on qualifiedName only, like the TS extractor (ADR-011).
+  const qualifiedNames = withDuplicateSuffixes(names);
 
-  for (const statement of splitStatements(tokenize(source))) {
+  return statements.map((statement, i): ParsedSymbol => {
     const first = statement[0];
     const last = statement[statement.length - 1];
-    if (first === undefined || last === undefined) continue;
-
-    const base = statementName(statement);
-    const count = (seen.get(base) ?? 0) + 1;
-    seen.set(base, count);
-    const name = count === 1 ? base : `${base}~${String(count)}`;
-
-    symbols.push({
+    const name = names[i] ?? '';
+    return {
       name,
-      qualifiedName: name,
+      qualifiedName: qualifiedNames[i] ?? name,
+      baseQualifiedName: name,
       kind: 'sql',
-      range: { start: lineOf(starts, first.start), end: lineOf(starts, last.end - 1) },
+      range: { start: lineOf(starts, first?.start ?? 0), end: lineOf(starts, (last?.end ?? 1) - 1) },
       signature: '',
       body: statement.map((t) => t.text).join(' '),
       signatureText: '',
-    });
-  }
-  return symbols;
+    };
+  });
 }

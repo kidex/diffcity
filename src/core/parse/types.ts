@@ -10,6 +10,11 @@ export interface ParsedSymbol {
   name: string;
   /** Dotted name including enclosing classes/namespaces, e.g. `InvoiceBook.total`. */
   qualifiedName: string;
+  /**
+   * `qualifiedName` without the duplicate suffixes, e.g. `Menu.render` for
+   * `Menu~2.render`. Status matches symbols on it (plus kind and occurrence).
+   */
+  baseQualifiedName: string;
   kind: Symbol['kind'];
   /** 1-based inclusive line range in the parsed version. */
   range: Symbol['range'];
