@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { extractSqlSymbols } from '../../src/core/parse/sql.js';
 
-const names = (source: string): string[] => extractSqlSymbols(source).map((s) => s.name);
+const names = (source: string): string[] => extractSqlSymbols(source).map((s) => s.qualifiedName);
 const bodies = (source: string): string[] => extractSqlSymbols(source).map((s) => s.body);
 
 describe('extractSqlSymbols: statement splitting (PostgreSQL)', () => {
@@ -78,6 +78,17 @@ describe('extractSqlSymbols: names and duplicates', () => {
       'ALTER TABLE pie_crusts',
       'ALTER TABLE pie_orders~3',
     ]);
+  });
+
+  it('the ~N suffix goes on qualifiedName only; name stays as written', () => {
+    const symbols = extractSqlSymbols('SELECT 1; SELECT 2; SELECT 3;');
+    expect(symbols.map((s) => s.name)).toEqual(['SELECT', 'SELECT', 'SELECT']);
+    expect(symbols.map((s) => s.qualifiedName)).toEqual(['SELECT', 'SELECT~2', 'SELECT~3']);
+  });
+
+  it('a suffix already taken by a literal name is skipped', () => {
+    const symbols = extractSqlSymbols('SELECT 1; SELECT 2; CREATE TABLE "SELECT~2" (id int);');
+    expect(symbols.map((s) => s.qualifiedName)).toEqual(['SELECT', 'SELECT~2', 'CREATE TABLE "SELECT~2"']);
   });
 
   it('the verb is uppercased whatever the source case', () => {

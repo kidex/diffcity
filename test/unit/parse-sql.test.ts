@@ -7,7 +7,7 @@ function fixture(name: string, file = 'input.sql'): string {
 }
 
 function outline(source: string): Array<[string, number, number]> {
-  return extractSqlSymbols(source).map((s) => [s.name, s.range.start, s.range.end]);
+  return extractSqlSymbols(source).map((s) => [s.qualifiedName, s.range.start, s.range.end]);
 }
 
 describe('extractSqlSymbols', () => {
@@ -59,6 +59,12 @@ describe('extractSqlSymbols', () => {
       'INSERT INTO muffin_flavors',
       'INSERT INTO muffin_flavors~2',
       'INSERT INTO muffin_flavors~3',
+      'CREATE TABLE muffin_trays',
+    ]);
+    expect(extractSqlSymbols(fixture('duplicate-statement')).map((s) => s.name)).toEqual([
+      'INSERT INTO muffin_flavors',
+      'INSERT INTO muffin_flavors',
+      'INSERT INTO muffin_flavors',
       'CREATE TABLE muffin_trays',
     ]);
   });
