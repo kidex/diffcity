@@ -3,9 +3,11 @@
 // touches this file: a regenerated expected.json that disagrees with it fails.
 //
 // `files` lists every file of the Report with its status and verdict, in
-// report order. `symbols` lists, for every touched file, each symbol id (the
-// part after `#`) with its status, in range order. Untouched files are checked
-// generically: every one of their symbols must be `same`.
+// report order. `symbols` lists, for every file (touched or not), each symbol
+// id (the part after `#`) with its status, in report order. The summary
+// counts are not written here: the test derives files, byStatus, byVerdict
+// and checks them against the Report, so a golden that breaks a rule cannot
+// pass through a regenerated expected.json.
 
 import type { Status, Verdict } from '../../src/core/report/types.js';
 
@@ -50,6 +52,7 @@ export const reviewed: Record<string, ReviewedScenario> = {
       ['src/shared/money.ts', 'same', 'same'],
     ],
     symbols: {
+      'db/migrations/20260811_orders.sql': [['CREATE TABLE orders', 'same']],
       'db/migrations/20260921_order_discounts.sql': [
         ['ALTER TABLE orders', 'add'],
         ['CREATE INDEX orders_discount_idx', 'add'],
@@ -79,12 +82,19 @@ export const reviewed: Record<string, ReviewedScenario> = {
         ['OrderGuard.canRead', 'same'],
         ['OrderGuard.canPlace', 'sig'],
       ],
+      'src/auth/roles.ts': [['Role', 'same']],
       'src/repo/orders.repo.ts': [
         ['OrdersRepo', 'same'],
         ['OrdersRepo.constructor', 'same'],
         ['OrdersRepo.findById', 'same'],
         ['OrdersRepo.insert', 'mod'],
         ['OrdersRepo.markCancelled', 'add'],
+      ],
+      'src/repo/users.repo.ts': [
+        ['UsersRepo', 'same'],
+        ['UsersRepo.constructor', 'same'],
+        ['UsersRepo.findById', 'same'],
+        ['UsersRepo.byEmail', 'same'],
       ],
       'src/services/orders/discount.rules.ts': [
         ['DiscountRule', 'add'],
@@ -108,6 +118,21 @@ export const reviewed: Record<string, ReviewedScenario> = {
         ['basePrice', 'same'],
         ['vat', 'same'],
         ['roundMoney', 'del'],
+      ],
+      'src/shared/errors.ts': [
+        ['AppError', 'same'],
+        ['NotFound', 'same'],
+        ['Forbidden', 'same'],
+      ],
+      'src/shared/logger.ts': [['log', 'same']],
+      'src/shared/money.ts': [
+        ['Money', 'same'],
+        ['Money.constructor', 'same'],
+        ['Money.of', 'same'],
+        ['Money.zero', 'same'],
+        ['Money.plus', 'same'],
+        ['Money.times', 'same'],
+        ['round', 'same'],
       ],
     },
     packages: [
@@ -143,6 +168,9 @@ export const reviewed: Record<string, ReviewedScenario> = {
       ['src/ui/ReportTable.tsx', 'add', 'ok'],
     ],
     symbols: {
+      'diffcity.config.js': [['default', 'same']],
+      'src/cli.ts': [['main', 'same']],
+      'src/program.ts': [['Program', 'same']],
       'src/commands/index.ts': [
         ['registerList', 'same'],
         ['registerHealth', 'same'],
@@ -157,6 +185,7 @@ export const reviewed: Record<string, ReviewedScenario> = {
         ['runReport', 'add'],
         ['registerReport', 'add'],
       ],
+      'src/commands/status.ts': [['registerStatus', 'same']],
       'src/config/schema.ts': [
         ['configSchema', 'mod'],
         ['ConfigKey', 'same'],
@@ -212,6 +241,17 @@ export const reviewed: Record<string, ReviewedScenario> = {
         ['seedAccounts', 'same'],
         ['seedJournal', 'add'],
       ],
+      'src/ledger/accounts.ts': [
+        ['AccountBook', 'same'],
+        ['AccountBook.open', 'same'],
+        ['AccountBook.has', 'same'],
+      ],
+      // Same symbols as before the reformat.
+      'src/ledger/format.ts': [
+        ['formatAmount', 'same'],
+        ['formatAccount', 'same'],
+        ['DEFAULT_CURRENCY', 'same'],
+      ],
       'src/ledger/journal.ts': [
         ['Entry', 'same'],
         ['debit', 'same'],
@@ -223,6 +263,11 @@ export const reviewed: Record<string, ReviewedScenario> = {
       'src/session/cookie.ts': [
         ['readCookie', 'del'],
         ['writeCookie', 'del'],
+      ],
+      'src/session/index.ts': [
+        ['SESSION_TTL_MS', 'same'],
+        ['isExpired', 'same'],
+        ['refreshSession', 'same'],
       ],
       'src/session/refresh.test.ts': [['refreshSession', 'add']],
       'src/session/refresh.ts': [

@@ -7,8 +7,9 @@
 //
 // Regenerate the goldens with `UPDATE_GOLDEN=1 npm test`, then review every
 // changed expected.json against SPEC.md 5.1-5.3 and ADR-005..009 before
-// committing. The per-file tables in ./golden-review.ts are written by hand
-// and are never regenerated: they catch a golden that was accepted blindly.
+// committing. The tables in ./golden-review.ts (every file, every symbol,
+// packages, tier 1 files; summary counts derived from them) are written by
+// hand and never regenerated: they catch a golden that was accepted blindly.
 
 import { execFile } from 'node:child_process';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
@@ -17,7 +18,7 @@ import { devNull, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import type { File, Report, Status } from '../../src/core/report/types.js';
+import type { File, Report, Status, Verdict } from '../../src/core/report/types.js';
 import { buildScenario, listScenarios, type BuiltScenario } from '../helpers/scenario.js';
 import { reviewed, type ReviewedScenario } from './golden-review.js';
 
@@ -118,13 +119,20 @@ describe.each(scenarios)('scenario $name', (scenario) => {
     if (table === undefined) throw new Error(`no hand-reviewed table for ${scenario.name}`);
     const files = report.packages.flatMap((pkg) => pkg.files);
     expect(files.map((file) => [file.path, file.status, file.verdict])).toEqual(table.files);
-    const touched = files.filter((file) => file.status !== 'same');
-    expect(Object.fromEntries(touched.map((file) => [file.path, symbolRows(file)]))).toEqual(table.symbols);
-    for (const file of files.filter((f) => f.status === 'same')) {
-      expect(file.symbols.filter((symbol) => symbol.status !== 'same'), file.path).toEqual([]);
-    }
+    expect(Object.fromEntries(files.map((file) => [file.path, symbolRows(file)]))).toEqual(table.symbols);
+    expect(Object.keys(table.symbols).sort()).toEqual(table.files.map(([path]) => path).sort());
     expect(report.packages.map((pkg) => [pkg.path, pkg.tier1])).toEqual(table.packages);
     expect(report.summary.tier1Files).toEqual(table.tier1Files);
+  });
+
+  it('summary counts match the ones derived from the hand-reviewed table', () => {
+    const table: ReviewedScenario | undefined = reviewed[scenario.name];
+    if (table === undefined) throw new Error(`no hand-reviewed table for ${scenario.name}`);
+    const byStatus: Record<Status, number> = { add: 0, mod: 0, sig: 0, del: 0, same: 0 };
+    for (const rows of Object.values(table.symbols)) for (const [, status] of rows) byStatus[status] += 1;
+    const byVerdict: Record<Verdict, number> = { eyes: 0, risky: 0, spec: 0, ok: 0, same: 0 };
+    for (const [, , verdict] of table.files) byVerdict[verdict] += 1;
+    expect(report.summary).toEqual({ files: table.files.length, byStatus, byVerdict, tier1Files: table.tier1Files });
   });
 
   it('leaves the repo as it found it and writes nothing to DIFFCITY_HOME', async () => {
