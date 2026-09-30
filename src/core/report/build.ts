@@ -9,7 +9,9 @@ import {
   computeMeta,
   findRepoRoot,
   listHeadFiles,
+  looksBinary,
   readAfter,
+  readAfterBytes,
   readBefore,
   resolveChange,
   type ChangedFile,
@@ -148,10 +150,14 @@ async function describeChanged(change: ResolvedChange, file: ChangedFile): Promi
 }
 
 async function describeUnchanged(change: ResolvedChange, path: string): Promise<ReportFileInput | null> {
-  const source = await readAfter(change, path);
+  const bytes = await readAfterBytes(change, path);
   // Gone between listing and reading: not part of this state any more.
-  if (source === null) return null;
-  return { path, language: languageOf(path), status: 'same', symbols: await unchangedSymbols(path, source) };
+  if (bytes === null) return null;
+  const file: ReportFileInput = { path, language: languageOf(path), status: 'same', symbols: [] };
+  // A code extension on binary content (an MPEG-TS `.ts`, say) has no symbols; git's rule decides.
+  if (looksBinary(bytes)) return file;
+  file.symbols = await unchangedSymbols(path, bytes.toString('utf8'));
+  return file;
 }
 
 /**

@@ -287,3 +287,17 @@ describe('config', () => {
     expect(report.meta.base).toBe('trunk');
   });
 });
+
+describe('report/untouched-binary-skipped', () => {
+  it.each([
+    ['committed', true],
+    ['working tree', false],
+  ])('%s: an untouched binary file with a code extension is same with no symbols', async (_mode, commit) => {
+    const { repo } = await fixtureRepo('report/untouched-binary-skipped', { commit });
+    const report = await build(repo.dir);
+    expect(allFiles(report).map((f) => [f.path, f.language, f.status, f.verdict, f.symbols.length])).toEqual([
+      ['media/clip.ts', 'typescript', 'same', 'same', 0],
+      ['src/player/play.ts', 'typescript', 'mod', 'ok', 1],
+    ]);
+  });
+});
