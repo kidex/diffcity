@@ -6,3 +6,4 @@ export { findRepoRoot, resolveChange } from './change.js';
 export type { ResolveChangeOptions, ResolvedChange } from './change.js';
 export { changedFiles, listHeadFiles, parseDiffOutput, readAfter, readBefore } from './files.js';
 export type { ChangeType, ChangedFile } from './files.js';
+export { computeMeta, countCommits } from './meta.js';
