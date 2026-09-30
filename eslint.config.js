@@ -23,6 +23,25 @@ export default tseslint.config(
     },
   },
   {
+    // All computation lives in src/core; it never depends on the layers that call it.
+    files: ['src/core/**/*.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              // A relative import that walks into a cli/, daemon/ or ui/ directory,
+              // or any specifier that goes through src/cli, src/daemon or src/ui.
+              regex: '^(?:\\.{1,2}/(?:.*/)?|(?:.*/)?src/)(?:cli|daemon|ui)(?:/|$)',
+              message: 'src/core must not import from src/cli, src/daemon or src/ui.',
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
     files: ['**/*.js'],
     extends: [tseslint.configs.disableTypeChecked],
   },
