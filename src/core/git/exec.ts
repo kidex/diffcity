@@ -114,6 +114,12 @@ export function gitRaw(cwd: string, args: readonly string[], options: GitCallOpt
         reject(new GitError('git-failed', `git ${args.join(' ')} failed: ${error.message}`, { cause: error }));
       },
     );
+    // git may exit before reading all of its input (e.g. it fails at startup);
+    // the write then fails with EPIPE, which the exit code already reports.
+    child.stdin?.on('error', (error: NodeJS.ErrnoException) => {
+      if (error.code === 'EPIPE') return;
+      reject(new GitError('git-failed', `git ${args.join(' ')} failed writing stdin: ${error.message}`, { cause: error }));
+    });
     child.stdin?.end(options.input ?? '');
   });
 }
