@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatSummary, runDiff, type DiffDeps } from '../../src/cli/diff.js';
+import { NOW_ENV, formatSummary, runDiff, type DiffDeps } from '../../src/cli/diff.js';
 import { ConfigError } from '../../src/core/config/index.js';
 import { GitError } from '../../src/core/git/index.js';
 import { assembleReport, type BuildReportOptions } from '../../src/core/report/index.js';
@@ -84,6 +84,40 @@ describe('diffcity diff', () => {
     expect(out.stdout).toBe('');
     expect(out.stderr).toBe(`diffcity diff: ${error.message}\n`);
   });
+
+  it('DIFFCITY_NOW (deps.now) fixes meta.generatedAt through the build options', async () => {
+    const { deps, out } = harness(() => Promise.resolve(sampleReport));
+    deps.now = '2026-09-21T10:00:00.000Z';
+    expect(await runDiff({ json: true }, deps)).toBe(0);
+    expect(out.calls[0]?.now?.toISOString()).toBe('2026-09-21T10:00:00.000Z');
+  });
+
+  it('DIFFCITY_NOW with a UTC offset is accepted', async () => {
+    const { deps, out } = harness(() => Promise.resolve(sampleReport));
+    deps.now = '2026-09-21T12:00:00+02:00';
+    expect(await runDiff({ json: true }, deps)).toBe(0);
+    expect(out.calls[0]?.now?.toISOString()).toBe('2026-09-21T10:00:00.000Z');
+  });
+
+  it('without DIFFCITY_NOW the build gets no fixed time', async () => {
+    const { deps, out } = harness(() => Promise.resolve(sampleReport));
+    expect(await runDiff({ json: true }, deps)).toBe(0);
+    expect(out.calls[0]?.now).toBeUndefined();
+  });
+
+  it.each(['yesterday', '2026-09-21', '2026-13-40T99:00:00Z', ''])(
+    'DIFFCITY_NOW=%j is refused with exit 1 before building',
+    async (value) => {
+      const { deps, out } = harness(() => Promise.resolve(sampleReport));
+      deps.now = value;
+      expect(await runDiff({ json: true }, deps)).toBe(1);
+      expect(out.calls).toEqual([]);
+      expect(out.stdout).toBe('');
+      expect(out.stderr).toBe(
+        `diffcity diff: ${NOW_ENV} must be an ISO 8601 date-time such as 2026-01-01T00:00:00Z, got ${JSON.stringify(value)}\n`,
+      );
+    },
+  );
 
   it('squashes a multi-line error message into one line', async () => {
     const { deps, out } = harness(() => Promise.reject(new GitError('git-failed', 'git diff failed: fatal: bad\n  object\n')));
