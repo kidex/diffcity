@@ -202,6 +202,24 @@ describe('ADR-006 signature', () => {
     expect(withSibling.body).toBe(alone.body);
   });
 
+  it('arrow function const: removing the semicolon changes the body', async () => {
+    const before = await symbol('const double = (n: number) => n * 2;', 'double');
+    const after = await symbol('const double = (n: number) => n * 2', 'double');
+    expect(after.body).not.toBe(before.body);
+  });
+
+  it('arrow function const: let -> const changes the body', async () => {
+    const before = await symbol('let double = (n: number) => n * 2;', 'double');
+    const after = await symbol('const double = (n: number) => n * 2;', 'double');
+    expect(after.signature).toBe(before.signature);
+    expect(after.body).not.toBe(before.body);
+  });
+
+  it('arrow function const: the body is keyword, own declarator and closing semicolon', async () => {
+    const second = await symbol('var shout = (t: string) => t, whisper = (t: string) => t;', 'whisper', 'typescript');
+    expect(second.body).toBe('var whisper = ( t : string ) => t ;');
+  });
+
   it('exported interface: type parameters are the signature, a new property changes only the body', async () => {
     const before = await symbol('export interface Row<T> {\n  id: T;\n}\n', 'Row');
     const added = await symbol('export interface Row<T> {\n  id: T;\n  label: string;\n}\n', 'Row');
@@ -222,6 +240,13 @@ describe('ADR-006 signature', () => {
 describe('withDuplicateSuffixes', () => {
   it('suffixes repeated names with ~2, ~3 in order', () => {
     expect(withDuplicateSuffixes(['a', 'b', 'a', 'a', 'b', 'c'])).toEqual(['a', 'b', 'a~2', 'a~3', 'b~2', 'c']);
+  });
+
+  it('skips suffixes already taken by a literal name', () => {
+    expect(withDuplicateSuffixes(['x', 'x', 'x~2'])).toEqual(['x', 'x~3', 'x~2']);
+    expect(withDuplicateSuffixes(['x~2', 'x', 'x'])).toEqual(['x~2', 'x', 'x~3']);
+    const names = withDuplicateSuffixes(['a', 'a~2', 'a', 'a~3', 'a']);
+    expect(new Set(names).size).toBe(names.length);
   });
 
   it('returns an empty list for no names', () => {

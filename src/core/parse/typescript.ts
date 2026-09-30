@@ -271,6 +271,9 @@ class Extractor {
     const declarators = declaration.namedChildren.filter((child) => child.type === 'variable_declarator');
     const single = declarators.length === 1;
     const directives = leadingDirectives(outer);
+    // `const` / `let` / `var` and the statement's closing `;`, when present.
+    const keyword = declaration.children[0] ?? null;
+    const semicolon = declaration.children.find((child) => child.type === ';') ?? null;
     const out: Candidate[] = [];
     for (const declarator of declarators) {
       const nameNode = declarator.childForFieldName('name');
@@ -279,13 +282,13 @@ class Extractor {
       const value = declarator.childForFieldName('value');
       const type = declarator.childForFieldName('type');
       const rangeNode = single ? outer : declarator;
-      // Bodies never include the `const`/`let` keyword or sibling declarators,
-      // so neither changes the status of a symbol declared in the statement.
       if (value !== null && FUNCTION_VALUES.has(value.type)) {
         out.push(
           this.candidate('function', nameNode.text, rangeNode, rangeNode, {
             signature: functionSignature(value, [], type),
-            body: normalize([...directives, declarator]),
+            // Keyword, own declarator and closing `;` (ADR-005: they are tokens);
+            // sibling declarators and the commas between them stay out.
+            body: normalize([...directives, keyword, declarator, semicolon]),
             signatureText: this.head(rangeNode, value.childForFieldName('body'), value),
           }),
         );
