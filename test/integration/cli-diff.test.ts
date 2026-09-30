@@ -1,7 +1,7 @@
 // `diffcity diff` through the built CLI (dist/, built by test/global-setup.ts)
 // against temp repos from test/fixtures/report/cli-json-stdout.
 
-import { execFile } from 'node:child_process';
+import { execFile, spawn } from 'node:child_process';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { devNull, tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -11,6 +11,7 @@ import { buildReport } from '../../src/core/report/index.js';
 import type { File, Report } from '../../src/core/report/types.js';
 import { ghForbidden, isolateGitConfig } from '../helpers/git-env.js';
 import { repoFromFixture, type FixtureRepo } from '../helpers/fixture-repo.js';
+import { createRepo } from '../helpers/repo.js';
 
 isolateGitConfig();
 
@@ -22,8 +23,10 @@ interface CliResult {
   stderr: string;
 }
 
+const cliEnv = { ...process.env, GIT_CONFIG_GLOBAL: devNull, GIT_CONFIG_NOSYSTEM: '1', GIT_TERMINAL_PROMPT: '0' };
+
 function runCli(cwd: string, args: string[]): Promise<CliResult> {
-  const env = { ...process.env, GIT_CONFIG_GLOBAL: devNull, GIT_CONFIG_NOSYSTEM: '1', GIT_TERMINAL_PROMPT: '0' };
+  const env = cliEnv;
   return new Promise((resolve, reject) => {
     execFile(process.execPath, [cliEntry, ...args], { cwd, env, encoding: 'utf8' }, (error, stdout, stderr) => {
       if (error !== null && typeof error.code !== 'number') {
@@ -148,6 +151,31 @@ describe('diffcity diff errors: one line on stderr, exit code 1', () => {
       expectOneLineError(await runCli(other.repo.dir, ['diff', '--json']), /^diffcity diff: diffcity\.config\.js: field "base"/);
     } finally {
       await other.repo.cleanup();
+    }
+  });
+});
+
+describe('diffcity diff --json into a pipe closed early (e.g. `| head`)', () => {
+  it('exits quietly with code 0 instead of crashing on EPIPE', async () => {
+    const body = Array.from({ length: 40 }, (_, i) => `export function step${String(i)}(n: number): number {\n  return n + ${String(i)};\n}\n`).join('\n');
+    const tree = Object.fromEntries(Array.from({ length: 150 }, (_, i) => [`src/line${String(i)}/station.ts`, body]));
+    const repo = await createRepo({ files: tree });
+    try {
+      await repo.branch('feature/big');
+      const result = await new Promise<{ code: number | null; stderr: string }>((resolve, reject) => {
+        const child = spawn(process.execPath, [cliEntry, 'diff', '--json'], { cwd: repo.dir, env: cliEnv });
+        let stderr = '';
+        child.stderr.setEncoding('utf8').on('data', (chunk: string) => (stderr += chunk));
+        child.stdout.once('data', () => child.stdout.destroy());
+        child.on('error', reject);
+        child.on('close', (code) => {
+          resolve({ code, stderr });
+        });
+      });
+      expect(result.stderr).toBe('');
+      expect(result.code).toBe(0);
+    } finally {
+      await repo.cleanup();
     }
   });
 });
