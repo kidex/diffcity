@@ -90,6 +90,14 @@ describe('loadConfig (ADR-012 config, ADR-007 tier1 shape)', () => {
       expect((await loadError(`export default { tier1: ['auth', 7] };\n`)).field).toBe('tier1');
     });
 
+    it('names tier1 when an array entry is an empty string', async () => {
+      for (const token of ["''", "'   '"]) {
+        const error = await loadError(`export default { tier1: ['auth', ${token}] };\n`);
+        expect(error.field).toBe('tier1');
+        expect(error.message).toContain('"tier1"');
+      }
+    });
+
     it('rejects a default export that is not an object', async () => {
       const error = await loadError(`export default ['auth'];\n`);
       expect(error.field).toBeUndefined();

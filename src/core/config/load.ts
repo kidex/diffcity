@@ -62,6 +62,10 @@ export function validateConfig(value: unknown): DiffcityConfig {
       if (!tokens.every((token): token is string => typeof token === 'string')) {
         throw fieldError('tier1', 'must be an array of strings or a function');
       }
+      // An empty token is a substring of every path and would make the whole repo tier 1.
+      if (tokens.some((token) => token.trim() === '')) {
+        throw fieldError('tier1', 'must not contain empty strings');
+      }
       config.tier1 = [...tokens];
     } else if (typeof tier1 === 'function') {
       // The shape of a user function cannot be checked before it is called.
