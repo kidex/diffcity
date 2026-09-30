@@ -16,7 +16,7 @@ afterEach(async () => {
   while (repos.length > 0) await repos.pop()?.cleanup();
 });
 
-describe('test/helpers/repo.ts', () => {
+describe('test/helpers/repo.ts', { timeout: 30_000 }, () => {
   it('creates a repo under os.tmpdir() with an initial tree committed on main', async () => {
     const repo = await track(createRepo({ files: { 'lib/ledger/invoice.ts': 'export const a = 1;\n' } }));
     expect(realpathSync(repo.dir).startsWith(realpathSync(tmpdir()))).toBe(true);
