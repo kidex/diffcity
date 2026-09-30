@@ -60,17 +60,19 @@ class Extractor {
 
   run(program: Node): ParsedSymbol[] {
     const candidates = mergeOverloads(program.namedChildren.flatMap((statement) => this.statement(statement)));
-    const out: ParsedSymbol[] = [];
-    const qualified = withDuplicateSuffixes(candidates.map((c) => c.name));
-    candidates.forEach((candidate, i) => {
-      const qualifiedName = qualified[i] ?? candidate.name;
-      out.push(toSymbol(candidate, qualifiedName));
-      const memberNames = withDuplicateSuffixes(candidate.members.map((m) => m.name));
-      candidate.members.forEach((member, j) => {
-        out.push(toSymbol(member, `${qualifiedName}.${memberNames[j] ?? member.name}`));
-      });
+    // Top-level names are made unique first so each duplicate class gets its own
+    // prefix (`Menu~2.render`). The final pass over the flattened list catches a
+    // member colliding with a top-level name (`Cart.total` vs a test titled so).
+    const topLevel = withDuplicateSuffixes(candidates.map((c) => c.name));
+    const flat: [Candidate, string][] = candidates.flatMap((candidate, i) => {
+      const qualifiedName = topLevel[i] ?? candidate.name;
+      return [
+        [candidate, qualifiedName] as [Candidate, string],
+        ...candidate.members.map((member): [Candidate, string] => [member, `${qualifiedName}.${member.name}`]),
+      ];
     });
-    return out;
+    const unique = withDuplicateSuffixes(flat.map(([, name]) => name));
+    return flat.map(([candidate, name], i) => toSymbol(candidate, unique[i] ?? name));
   }
 
   private statement(statement: Node): Candidate[] {

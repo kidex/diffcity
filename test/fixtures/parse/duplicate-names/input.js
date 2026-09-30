@@ -16,3 +16,7 @@ class Menu {
 }
 describe('menu', () => {});
 describe('menu', () => {});
+class Cart {
+  total() {}
+}
+describe('Cart.total', () => {});

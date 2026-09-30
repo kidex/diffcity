@@ -194,7 +194,12 @@ describe('extractSymbols', () => {
       ['Menu~2.render', 'method', 15, 15],
       ['menu', 'function', 17, 17],
       ['menu~2', 'function', 18, 18],
+      ['Cart', 'class', 19, 21],
+      ['Cart.total', 'method', 20, 20],
+      ['Cart.total~2', 'function', 22, 22],
     ]);
+    const ids = symbols.map((s) => s.qualifiedName);
+    expect(new Set(ids).size).toBe(ids.length);
     expect(find(symbols, 'setup~2').name).toBe('setup');
   });
 
