@@ -26,19 +26,16 @@ export const DEFAULT_TIER1_TOKENS: readonly string[] = Object.freeze([
 
 /**
  * The `tier1` field of `diffcity.config.js`: an array replaces the default
- * list, a function receives the defaults and returns the list to use,
- * `undefined` keeps the defaults.
+ * list, a function receives a mutable copy of the defaults and returns the
+ * list to use, `undefined` keeps the defaults.
  */
-export type Tier1Config =
-  | readonly string[]
-  | ((defaults: readonly string[]) => string[])
-  | undefined;
+export type Tier1Config = readonly string[] | ((defaults: string[]) => string[]) | undefined;
 
 /** Resolves the configured token list. Throws when a function returns something other than `string[]`. */
 export function resolveTier1Tokens(config: Tier1Config): readonly string[] {
   if (config === undefined) return DEFAULT_TIER1_TOKENS;
   if (typeof config !== 'function') return [...config];
-  const result: unknown = config(DEFAULT_TIER1_TOKENS);
+  const result: unknown = config([...DEFAULT_TIER1_TOKENS]);
   if (!Array.isArray(result) || !result.every((token): token is string => typeof token === 'string')) {
     throw new TypeError('diffcity.config.js: the tier1 function must return an array of strings');
   }

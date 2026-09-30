@@ -168,20 +168,21 @@ describe('tier1/config-override-function (T3)', () => {
     expect(match('src/session/store.ts')).toBe(true);
   });
 
-  it('cannot mutate the shared default list', () => {
-    expect(() =>
-      resolveTier1Tokens((defaults: readonly string[]) => {
-        (defaults as string[]).push('vault');
-        return [...defaults];
-      }),
-    ).toThrow();
+  it('can mutate and return the defaults it receives without touching the shared list', () => {
+    const match = tier1Matcher((defaults) => {
+      defaults.push('vault');
+      return defaults;
+    });
+    expect(match('src/vault/keys.ts')).toBe(true);
+    expect(match('src/auth/login.ts')).toBe(true);
     expect(DEFAULT_TIER1_TOKENS).toHaveLength(14);
+    expect(DEFAULT_TIER1_TOKENS).not.toContain('vault');
   });
 
   it('rejects a function that does not return an array of strings', () => {
-    const notArray = (() => 'vault') as unknown as (defaults: readonly string[]) => string[];
+    const notArray = (() => 'vault') as unknown as (defaults: string[]) => string[];
     expect(() => resolveTier1Tokens(notArray)).toThrow(/tier1/);
-    const mixed = (() => ['vault', 3]) as unknown as (defaults: readonly string[]) => string[];
+    const mixed = (() => ['vault', 3]) as unknown as (defaults: string[]) => string[];
     expect(() => resolveTier1Tokens(mixed)).toThrow(/tier1/);
   });
 });
