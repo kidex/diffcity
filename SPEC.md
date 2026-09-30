@@ -147,6 +147,10 @@ A change's report (`Report` from 4.1) keeps the same structure; it is computed i
 
 A file's status = the "heaviest" status among its symbols, in the order sig > add > del > mod > same. A new file has all symbols add.
 
+- The signature is the declared text: parameter names, types, defaults, explicit return type and `async`. Inferred types are ignored, so renaming a parameter gives `sig` and a change to an inferred return type alone gives `mod` (ADR-006).
+- Changes to whitespace or comments only, including a reformat, give `same`. Directive comments (`@ts-ignore`, `@ts-expect-error`, `eslint-disable`) count as body changes and give `mod` (ADR-005).
+- A touched file with no changed symbol (a non-code file, a binary, a TS file with only import changes, a pure rename) takes its status from git: `add`, `del` or `mod` (ADR-008).
+
 ### 5.2 File verdict
 
 | Verdict | Rule | UI label |
@@ -157,11 +161,13 @@ A file's status = the "heaviest" status among its symbols, in the order sig > ad
 | ok | touched, zero open high findings | Reviewed, fine |
 | same | zero changes | Untouched |
 
-Evaluation follows the table order; the first matching rule wins.
+Evaluation follows the table order; the first matching rule wins, except that an untouched file is always `same`, checked first, even inside a tier 1 zone (ADR-009, as in the mockup).
 
 ### 5.3 Tier 1 zones (default, overridable in `diffcity.config.js`)
 
 Paths containing: `auth`, `guard`, `security`, `session`, `payment`, `billing`, `migration`, `schema`, `infra`, `k8s`, `terraform`, `Dockerfile`, `.env`, `secrets`.
+
+Matching is a case-insensitive substring of the path relative to the repo root, with `/` separators, so `OAuthButton.tsx` is tier 1; false positives are removed in `diffcity.config.js` (ADR-007).
 
 ### 5.4 Execution path
 
@@ -173,7 +179,7 @@ Paths containing: `auth`, `guard`, `security`, `session`, `payment`, `billing`, 
 
 ### 5.5 Spec and "Outside the spec"
 
-If `.diffcity/spec.md` exists (or the `--spec` argument is given), touched files with no link to the symbols on paths starting from the spec get `inSpec: false`. Without a spec, `inSpec` stays `null` and the `spec` verdict is disabled.
+If `.diffcity/spec.md` exists (or the `--spec` argument is given), touched files with no link to the symbols on paths starting from the spec get `inSpec: false`. Without a spec, `inSpec` stays `null` and the `spec` verdict is disabled. This rule ships in phase 4 with the execution path; until then `inSpec` is always `null` (ADR-010).
 
 ### 5.6 Findings import
 
