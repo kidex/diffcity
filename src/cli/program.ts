@@ -1,4 +1,5 @@
 import { Command } from 'commander';
+import { readVersion } from './version.js';
 
 export interface CliIo {
   stdout: (text: string) => void;
@@ -23,6 +24,7 @@ export function buildProgram(io: CliIo = defaultIo): Command {
   program
     .name('diffcity')
     .description('Local visual code review for code written by AI agents.')
+    .version(readVersion(), '-V, --version', 'print the diffcity version')
     .configureOutput({ writeOut: io.stdout, writeErr: io.stderr });
 
   program
