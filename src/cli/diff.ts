@@ -27,12 +27,30 @@ export interface DiffDeps {
 export const NOW_ENV = 'DIFFCITY_NOW';
 
 /** Full ISO 8601 date-time with seconds and an explicit zone (`Z` or `+hh:mm`). */
-const ISO_DATE_TIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/;
+const ISO_DATE_TIME = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/;
+
+/**
+ * Whether the written calendar components exist as written: `Date` silently
+ * rolls over impossible values (Feb 30 becomes Mar 2, 24:00 the next day).
+ */
+function componentsExist(parts: readonly number[]): boolean {
+  const [year = 0, month = 0, day = 0, hour = 0, minute = 0, second = 0] = parts;
+  const probe = new Date(Date.UTC(year, month - 1, day, hour, minute, second));
+  return (
+    probe.getUTCFullYear() === year &&
+    probe.getUTCMonth() === month - 1 &&
+    probe.getUTCDate() === day &&
+    probe.getUTCHours() === hour &&
+    probe.getUTCMinutes() === minute &&
+    probe.getUTCSeconds() === second
+  );
+}
 
 /** Parses DIFFCITY_NOW; throws on anything but a valid ISO 8601 date-time. */
 export function parseNow(value: string): Date {
+  const match = ISO_DATE_TIME.exec(value);
   const date = new Date(value);
-  if (!ISO_DATE_TIME.test(value) || Number.isNaN(date.getTime())) {
+  if (match === null || !componentsExist(match.slice(1, 7).map(Number)) || Number.isNaN(date.getTime())) {
     throw new Error(
       `${NOW_ENV} must be an ISO 8601 date-time such as 2026-01-01T00:00:00Z, got ${JSON.stringify(value)}`,
     );

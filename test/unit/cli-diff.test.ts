@@ -105,7 +105,7 @@ describe('diffcity diff', () => {
     expect(out.calls[0]?.now).toBeUndefined();
   });
 
-  it.each(['yesterday', '2026-09-21', '2026-13-40T99:00:00Z', ''])(
+  it.each(['yesterday', '2026-09-21', '2026-13-40T99:00:00Z', '', '2026-02-30T00:00:00Z', '2026-09-21T24:00:00Z'])(
     'DIFFCITY_NOW=%j is refused with exit 1 before building',
     async (value) => {
       const { deps, out } = harness(() => Promise.resolve(sampleReport));
