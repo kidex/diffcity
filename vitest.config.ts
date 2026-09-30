@@ -8,5 +8,7 @@ export default defineConfig({
     globalSetup: ['test/global-setup.ts'],
     // Integration tests spawn many git processes; under parallel load they exceed the 5 s default.
     testTimeout: 30_000,
+    // Shared-repo beforeAll hooks spawn as many git processes as a test does.
+    hookTimeout: 30_000,
   },
 });
