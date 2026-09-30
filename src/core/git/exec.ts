@@ -4,7 +4,7 @@
 
 import { execFile } from 'node:child_process';
 
-export type GitErrorCode = 'not-a-repo' | 'no-commits' | 'no-base' | 'bad-ref' | 'git-failed';
+export type GitErrorCode = 'not-a-repo' | 'no-commits' | 'no-base' | 'bad-ref' | 'bad-path' | 'git-failed';
 
 export class GitError extends Error {
   readonly code: GitErrorCode;
