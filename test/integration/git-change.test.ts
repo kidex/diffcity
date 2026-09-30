@@ -1,4 +1,4 @@
-import { mkdtemp, rm, symlink } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -268,6 +268,36 @@ describe('resolveChange and changedFiles (ADR-012)', { timeout: 30_000 }, () => 
     const meta = await computeMeta(await resolveChange(repo.dir, noGh));
     expect(meta.head).toBe(await repo.git('rev-parse', '--short', 'HEAD'));
     expect(meta.commits).toBe(1);
+  });
+
+  it('refuses to read through a symlinked directory that points outside the repo', async () => {
+    const outside = await mkdtemp(join(tmpdir(), 'diffcity-outside-'));
+    dirs.push(outside);
+    await writeFile(join(outside, 'hosts'), 'outside content\n', 'utf8');
+    const repo = await repoOn({ files: { 'a.ts': 'x\n' } });
+    await symlink(outside, join(repo.dir, 'outside'));
+    await symlink(join(outside, 'hosts'), join(repo.dir, 'hosts-link'));
+    await mkdir(join(repo.dir, 'lib'));
+    await symlink('../outside', join(repo.dir, 'lib', 'nested'));
+    const change = await resolveChange(repo.dir, noGh);
+
+    await expect(readAfter(change, 'outside/hosts')).rejects.toMatchObject({ code: 'bad-path' });
+    await expect(readAfter(change, 'lib/nested/hosts')).rejects.toMatchObject({ code: 'bad-path' });
+    // A symlink itself reads as its target text, never as the target's content.
+    expect(await readAfter(change, 'hosts-link')).toBe(join(outside, 'hosts'));
+    expect(await readAfter(change, 'outside')).toBe(outside);
+  });
+
+  it('refuses paths with a .git segment, and symlinks that lead into .git', async () => {
+    const repo = await repoOn({ files: { 'a.ts': 'x\n' } });
+    await symlink('.git', join(repo.dir, 'meta'));
+    const change = await resolveChange(repo.dir, noGh);
+    for (const path of ['.git/config', 'sub/.git/HEAD', '.GIT/config', 'meta/config']) {
+      await expect(readAfter(change, path)).rejects.toMatchObject({ code: 'bad-path' });
+    }
+    await expect(readBefore(change, '.git/config')).rejects.toMatchObject({ code: 'bad-path' });
+    const committed = await resolveChange(repo.dir, { ...noGh, head: 'HEAD' });
+    await expect(readAfter(committed, '.git/config')).rejects.toMatchObject({ code: 'bad-path' });
   });
 
   it('refuses paths that escape the repo', async () => {

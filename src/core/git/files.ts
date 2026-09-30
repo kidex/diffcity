@@ -1,7 +1,7 @@
 // Changed files, file contents and the head file list for a resolved change.
 
-import { lstat, open, readFile, readlink } from 'node:fs/promises';
-import { join, posix } from 'node:path';
+import { lstat, open, readFile, readlink, realpath } from 'node:fs/promises';
+import { basename, dirname, isAbsolute, join, posix, relative, sep } from 'node:path';
 import type { ResolvedChange } from './change.js';
 import { GitError, git, gitRaw, splitNul } from './exec.js';
 
@@ -114,7 +114,15 @@ export async function changedFiles(change: ResolvedChange): Promise<ChangedFile[
   return files.sort(byPath);
 }
 
-/** Validates a repo-relative path so it cannot reach outside the repo. */
+function badPath(path: string, reason: string): GitError {
+  return new GitError('bad-path', `${reason}: ${path}`);
+}
+
+function hasGitSegment(relPath: string): boolean {
+  return relPath.split('/').some((segment) => segment.toLowerCase() === '.git');
+}
+
+/** Validates a repo-relative path: no absolute path, no `..` escape, no `.git` segment. */
 function checkRepoPath(path: string): string {
   const normalized = posix.normalize(path);
   if (
@@ -124,9 +132,33 @@ function checkRepoPath(path: string): string {
     normalized === '..' ||
     normalized.startsWith('../')
   ) {
-    throw new GitError('bad-path', `path must be relative to the repo root: ${path}`);
+    throw badPath(path, 'path must be relative to the repo root');
   }
+  if (hasGitSegment(normalized)) throw badPath(path, 'path must not point into .git');
   return normalized;
+}
+
+/**
+ * Absolute on-disk location of a repo-relative path, with every directory
+ * symlink resolved, or null when its parent directory does not exist. The last
+ * component is not followed: a symlink is read as a link, like git stores it.
+ * Throws when the resolved parent lies outside the repo or inside `.git`.
+ */
+async function confinedWorktreePath(root: string, path: string): Promise<string | null> {
+  const relPath = checkRepoPath(path);
+  const realRoot = await realpath(root);
+  let realParent: string;
+  try {
+    realParent = await realpath(join(realRoot, dirname(relPath)));
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === 'ENOENT' || code === 'ENOTDIR') return null;
+    throw error;
+  }
+  const inside = relative(realRoot, realParent);
+  if (inside.startsWith('..') || isAbsolute(inside)) throw badPath(path, 'path resolves outside the repo');
+  if (hasGitSegment(inside.split(sep).join('/'))) throw badPath(path, 'path must not point into .git');
+  return join(realParent, basename(relPath));
 }
 
 async function readBlob(root: string, commit: string, path: string): Promise<string | null> {
@@ -146,7 +178,8 @@ export function readBefore(change: ResolvedChange, path: string): Promise<string
  */
 export async function readAfter(change: ResolvedChange, path: string): Promise<string | null> {
   if (!change.worktree) return readBlob(change.root, change.headCommit, path);
-  const absPath = join(change.root, checkRepoPath(path));
+  const absPath = await confinedWorktreePath(change.root, path);
+  if (absPath === null) return null;
   try {
     const stats = await lstat(absPath);
     if (stats.isSymbolicLink()) return await readlink(absPath, 'utf8');
