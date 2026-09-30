@@ -34,8 +34,9 @@ diffcity --help
 | `diffcity export html\|puml [--out]` | self-contained export of the current change |
 | `diffcity status` | repos ordered by urgency |
 | `diffcity audit [--stale] [<repo>]` | full audit: dependencies, semgrep, gitleaks, AI review on tier 1 |
+| `diffcity --version` | print the installed version |
 
-Commands other than `--help` are not implemented yet and exit with status 2.
+`--help` and `--version` work today; the other commands are not implemented yet and exit with status 2.
 
 ## Development
 
