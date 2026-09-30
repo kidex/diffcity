@@ -1,0 +1,703 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>diffcity: shopfront, feature/order-discounts</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #12203A;
+    --bg-deep: #0D172B;
+    --panel: #172A4A;
+    --panel-2: #1D3358;
+    --line: #2A4068;
+    --line-soft: #223659;
+    --ink: #E9EFFA;
+    --ink-2: #B4C2DC;
+    --muted: #7F92B5;
+    --grid: #1B2D4E;
+    --plot: #16294A;
+    --plot-line: #2F4A7A;
+
+    --add: #6FD3A0;
+    --mod: #F4B94A;
+    --del: #F0705F;
+    --sig: #B69BFF;
+    --same: #2B4068;
+    --same-top: #35507F;
+    --tier: #FF8A5B;
+
+    --sev-high: #F0705F;
+    --sev-med: #F4B94A;
+    --sev-low: #7FB1FF;
+
+    --code-bg: #0F1D35;
+    --code-add: rgba(111,211,160,.16);
+    --code-del: rgba(240,112,95,.16);
+
+    --sans: "Sora", "Segoe UI", system-ui, -apple-system, sans-serif;
+    --mono: "IBM Plex Mono", "SFMono-Regular", Menlo, Consolas, monospace;
+
+    box-sizing: border-box;
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  @media (prefers-color-scheme: light) {
+    :root:not([data-theme="dark"]) {
+      --bg: #EEF2F8; --bg-deep: #E3E9F3; --panel: #FFFFFF; --panel-2: #F4F7FC;
+      --line: #D3DCEA; --line-soft: #E3E9F2; --ink: #16223B; --ink-2: #3D4D6E;
+      --muted: #74829E; --grid: #E2E8F2; --plot: #F5F8FC; --plot-line: #C9D5E8;
+      --same: #C9D3E4; --same-top: #DCE4F0; --code-bg: #F7F9FD;
+    }
+  }
+  :root[data-theme="light"] {
+    --bg: #EEF2F8; --bg-deep: #E3E9F3; --panel: #FFFFFF; --panel-2: #F4F7FC;
+    --line: #D3DCEA; --line-soft: #E3E9F2; --ink: #16223B; --ink-2: #3D4D6E;
+    --muted: #74829E; --grid: #E2E8F2; --plot: #F5F8FC; --plot-line: #C9D5E8;
+    --same: #C9D3E4; --same-top: #DCE4F0; --code-bg: #F7F9FD;
+  }
+  html { scroll-padding-top: env(safe-area-inset-top, 0px); }
+  html, body { height: 100%; margin: 0; }
+  *, *::before, *::after { box-sizing: inherit; }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 14px;
+    line-height: 1.45;
+    -webkit-font-smoothing: antialiased;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; }
+  button:focus-visible, [tabindex]:focus-visible { outline: 2px solid var(--sig); outline-offset: 2px; }
+  @media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition: none !important; animation: none !important; } }
+
+  /* ---------- top bar ---------- */
+  .top {
+    display: flex; align-items: center; gap: 22px;
+    padding: 12px 22px;
+    border-bottom: 1px solid var(--line);
+    background: var(--bg-deep);
+    flex: 0 0 auto;
+  }
+  .brand { display: flex; align-items: center; gap: 10px; font-weight: 600; letter-spacing: -.01em; }
+  .brand .mark { width: 22px; height: 22px; }
+  .crumb { display: flex; align-items: baseline; gap: 8px; color: var(--ink-2); }
+  .crumb strong { color: var(--ink); font-weight: 600; }
+  .crumb .branch { font-family: var(--mono); font-size: 12.5px; color: var(--ink-2); background: var(--panel); border: 1px solid var(--line); padding: 3px 8px; border-radius: 6px; }
+  .crumb .vs { color: var(--muted); font-size: 12px; }
+  .stats { display: flex; gap: 18px; margin-left: auto; color: var(--ink-2); }
+  .stat { display: flex; align-items: baseline; gap: 6px; }
+  .stat b { font-size: 18px; font-weight: 600; color: var(--ink); letter-spacing: -.02em; }
+  .stat small { font-size: 12px; color: var(--muted); }
+  .stat .sw { width: 9px; height: 9px; border-radius: 2px; display: inline-block; transform: translateY(-1px); }
+  .tier {
+    display: flex; align-items: center; gap: 8px;
+    background: color-mix(in srgb, var(--tier) 16%, transparent);
+    border: 1px solid color-mix(in srgb, var(--tier) 55%, transparent);
+    color: var(--tier); padding: 6px 12px; border-radius: 999px; font-weight: 500; font-size: 13px;
+  }
+  .tier .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--tier); box-shadow: 0 0 0 4px color-mix(in srgb, var(--tier) 25%, transparent); }
+  .actions { display: flex; gap: 8px; }
+  .btn { padding: 7px 12px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel); color: var(--ink-2); font-weight: 500; font-size: 13px; }
+  .btn:hover { color: var(--ink); border-color: var(--plot-line); }
+  .btn.primary { background: var(--ink); color: var(--bg-deep); border-color: var(--ink); }
+  .btn.primary:hover { opacity: .92; }
+
+  /* ---------- workspace ---------- */
+  .work { flex: 1 1 auto; display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(360px, 1fr); min-height: 0; }
+  .city { position: relative; min-width: 0; min-height: 0; background:
+      radial-gradient(1200px 600px at 40% 30%, color-mix(in srgb, var(--panel-2) 60%, transparent), transparent 70%),
+      var(--bg); }
+  .city svg { width: 100%; height: 100%; display: block; }
+  .city .title { position: absolute; left: 22px; top: 18px; pointer-events: none; }
+  .city .title h1 { margin: 0; font-size: 20px; font-weight: 600; letter-spacing: -.02em; }
+  .city .title p { margin: 4px 0 0; color: var(--muted); font-size: 13px; max-width: 46ch; }
+  .legend { position: absolute; left: 22px; bottom: 18px; display: flex; gap: 14px; flex-wrap: wrap; color: var(--ink-2); font-size: 12.5px; }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .legend i { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
+  .legend i.del { background: transparent; border: 1.5px dashed var(--del); }
+  .legend i.tier { background: transparent; border: 1.5px solid var(--tier); border-radius: 50%; width: 10px; height: 10px; }
+
+  .tip {
+    position: absolute; pointer-events: none; opacity: 0; transform: translateY(4px);
+    transition: opacity .12s ease, transform .12s ease;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+    padding: 10px 12px; min-width: 210px; box-shadow: 0 14px 40px rgba(0,0,0,.35);
+    font-size: 12.5px; z-index: 5;
+  }
+  .tip.show { opacity: 1; transform: translateY(0); }
+  .tip .f { font-family: var(--mono); font-size: 12px; color: var(--ink); }
+  .tip .p { color: var(--muted); font-size: 11.5px; margin-bottom: 6px; }
+  .tip .row { display: flex; gap: 10px; color: var(--ink-2); }
+  .tip .row b { font-weight: 600; }
+  .tip .row .add { color: var(--add); } .tip .row .mod { color: var(--mod); } .tip .row .del { color: var(--del); } .tip .row .sig { color: var(--sig); }
+  .tip .pins { margin-top: 6px; color: var(--ink-2); display: flex; align-items: center; gap: 6px; }
+
+  /* fleet strip */
+  .fleet {
+    position: absolute; right: 22px; bottom: 18px;
+    background: color-mix(in srgb, var(--panel) 88%, transparent);
+    backdrop-filter: blur(8px);
+    border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; width: 262px;
+  }
+  .fleet h3 { margin: 0 0 8px; font-size: 12.5px; font-weight: 500; color: var(--muted); display: flex; justify-content: space-between; }
+  .fleet h3 a { color: var(--ink-2); text-decoration: none; }
+  .fleet .r { display: grid; grid-template-columns: 1fr auto; gap: 4px 10px; align-items: center; font-size: 12.5px; padding: 4px 0; }
+  .fleet .r .n { font-family: var(--mono); font-size: 12px; color: var(--ink); }
+  .fleet .r .age { color: var(--muted); }
+  .fleet .r.stale .age { color: var(--del); font-weight: 500; }
+  .fleet .bar { grid-column: 1 / -1; height: 3px; border-radius: 2px; background: var(--line-soft); overflow: hidden; }
+  .fleet .bar i { display: block; height: 100%; background: var(--add); }
+  .fleet .r.stale .bar i { background: var(--del); }
+  .fleet .r.warn .bar i { background: var(--mod); }
+
+  /* ---------- reading panel ---------- */
+  .read { border-left: 1px solid var(--line); background: var(--panel); display: flex; flex-direction: column; min-height: 0; }
+  .read header { padding: 18px 22px 12px; border-bottom: 1px solid var(--line-soft); }
+  .read header h2 { margin: 0; font-size: 16px; font-weight: 600; letter-spacing: -.01em; }
+  .read header p { margin: 4px 0 0; color: var(--muted); font-size: 12.5px; }
+  .read .tabs { display: flex; gap: 4px; margin-top: 12px; }
+  .read .tabs button { padding: 6px 10px; border-radius: 7px; color: var(--muted); font-size: 12.5px; font-weight: 500; }
+  .read .tabs button.on { background: var(--panel-2); color: var(--ink); }
+  .read .tabs .cnt { margin-left: 5px; color: var(--muted); font-weight: 400; }
+  .scroll { overflow: auto; flex: 1 1 auto; min-height: 0; padding: 6px 0 24px; }
+
+  .step { padding: 14px 22px 16px 22px; position: relative; cursor: pointer; border-left: 3px solid transparent; }
+  .step:hover, .step.on { background: color-mix(in srgb, var(--panel-2) 70%, transparent); }
+  .step.on { border-left-color: var(--sig); }
+  .step .rail { position: absolute; left: 30px; top: 0; bottom: 0; width: 1px; background: var(--line); }
+  .step:first-child .rail { top: 22px; } .step:last-child .rail { bottom: auto; height: 22px; }
+  .step .node { position: absolute; left: 25px; top: 17px; width: 11px; height: 11px; border-radius: 50%; background: var(--panel); border: 2px solid var(--muted); }
+  .step.add .node { border-color: var(--add); } .step.mod .node { border-color: var(--mod); } .step.sig .node { border-color: var(--sig); } .step.del .node { border-color: var(--del); }
+  .step .head { display: flex; align-items: baseline; gap: 8px; padding-left: 24px; }
+  .step .sym { font-family: var(--mono); font-size: 13px; font-weight: 500; color: var(--ink); }
+  .step .file { color: var(--muted); font-size: 12px; font-family: var(--mono); }
+  .step .tag { margin-left: auto; font-size: 11.5px; padding: 2px 7px; border-radius: 5px; font-weight: 500; white-space: nowrap; }
+  .tag.add { color: var(--add); background: color-mix(in srgb, var(--add) 14%, transparent); }
+  .tag.mod { color: var(--mod); background: color-mix(in srgb, var(--mod) 14%, transparent); }
+  .tag.sig { color: var(--sig); background: color-mix(in srgb, var(--sig) 16%, transparent); }
+  .tag.del { color: var(--del); background: color-mix(in srgb, var(--del) 14%, transparent); }
+  .tag.tier { color: var(--tier); background: color-mix(in srgb, var(--tier) 14%, transparent); }
+  .step .why { padding-left: 24px; margin: 4px 0 0; color: var(--ink-2); font-size: 12.5px; }
+  .code {
+    margin: 10px 0 0 24px; background: var(--code-bg); border: 1px solid var(--line-soft); border-radius: 8px;
+    font-family: var(--mono); font-size: 12px; line-height: 1.55; overflow-x: auto; padding: 6px 0;
+  }
+  .code .l { display: flex; white-space: pre; padding: 0 12px; }
+  .code .l .g { color: var(--muted); width: 14px; flex: 0 0 auto; user-select: none; }
+  .code .l.a { background: var(--code-add); } .code .l.a .g { color: var(--add); }
+  .code .l.d { background: var(--code-del); } .code .l.d .g { color: var(--del); }
+  .code .l.c { color: var(--ink-2); }
+  .pin { margin: 10px 0 0 24px; display: flex; gap: 10px; align-items: flex-start; padding: 9px 11px; border-radius: 8px; background: var(--panel-2); border: 1px solid var(--line-soft); }
+  .pin .sev { width: 8px; height: 8px; border-radius: 50%; flex: 0 0 auto; margin-top: 6px; }
+  .pin .sev.high { background: var(--sev-high); box-shadow: 0 0 0 3px color-mix(in srgb, var(--sev-high) 25%, transparent); }
+  .pin .sev.med { background: var(--sev-med); } .pin .sev.low { background: var(--sev-low); }
+  .pin .t { font-size: 12.5px; color: var(--ink); }
+  .pin .m { font-size: 12px; color: var(--ink-2); margin-top: 2px; }
+  .pin .src { margin-left: auto; flex: 0 0 auto; font-size: 11px; color: var(--muted); border: 1px solid var(--line); border-radius: 5px; padding: 1px 6px; }
+  .pin .fix { margin-top: 6px; display: flex; gap: 6px; }
+  .pin .fix button { font-size: 11.5px; color: var(--ink-2); padding: 3px 8px; border-radius: 6px; border: 1px solid var(--line); }
+  .pin .fix button:hover { color: var(--ink); }
+
+  .foot { border-top: 1px solid var(--line-soft); padding: 12px 22px; display: flex; gap: 10px; align-items: center; font-size: 12.5px; color: var(--muted); }
+  .foot .k { font-family: var(--mono); font-size: 11px; border: 1px solid var(--line); border-radius: 4px; padding: 1px 5px; color: var(--ink-2); }
+  .foot .spacer { flex: 1; }
+
+  @media (max-width: 980px) {
+    .work { grid-template-columns: 1fr; grid-template-rows: 52vh 1fr; }
+    .read { border-left: 0; border-top: 1px solid var(--line); }
+    .stats { display: none; }
+    .fleet { display: none; }
+    .city .title p { display: none; }
+  }
+
+  /* ---------- v2: 3D scene + verdicts ---------- */
+  .city canvas { width: 100%; height: 100%; display: block; }
+  .verdicts { position: absolute; left: 22px; top: 82px; display: flex; gap: 6px; flex-wrap: wrap; max-width: 560px; }
+  .verdicts button {
+    display: inline-flex; align-items: center; gap: 7px; padding: 6px 11px 6px 9px; border-radius: 999px;
+    background: color-mix(in srgb, var(--panel) 85%, transparent); border: 1px solid var(--line); color: var(--ink-2);
+    font-size: 12.5px; font-weight: 500; backdrop-filter: blur(6px);
+  }
+  .verdicts button i { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
+  .verdicts button b { font-weight: 600; color: var(--ink); }
+  .verdicts button.on { border-color: var(--ink-2); color: var(--ink); }
+  .verdicts button:hover { border-color: var(--plot-line); }
+  .verdicts.types { top: 122px; }
+  .verdicts.types button i { border-radius: 2px; }
+  .verdicts .clear { border-style: dashed; color: var(--muted); }
+  .hint { position: absolute; right: 22px; top: 18px; color: var(--muted); font-size: 12px; text-align: right; }
+  .hint .k { font-family: var(--mono); font-size: 11px; border: 1px solid var(--line); border-radius: 4px; padding: 1px 5px; color: var(--ink-2); }
+  .tip .v { display: inline-flex; align-items: center; gap: 6px; margin-bottom: 6px; font-weight: 500; }
+  .tip .v i { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+  .step .file-verdict { font-size: 11.5px; padding: 2px 7px; border-radius: 5px; font-weight: 500; }
+  .legend .g { display: inline-flex; gap: 12px; padding-right: 12px; margin-right: 2px; border-right: 1px solid var(--line); }
+  .legend i.v { border-radius: 50%; width: 9px; height: 9px; }
+  @media (max-width: 980px) { .verdicts { top: 56px; } .verdicts.types { top: 96px; } .hint { display: none; } }
+</style>
+</head>
+<body>
+
+<div class="top">
+  <div class="brand">
+    <svg class="mark" viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M12 2 21 7v10l-9 5-9-5V7l9-5Z" fill="none" stroke="currentColor" stroke-width="1.6"/>
+      <path d="M12 12 21 7M12 12v10M12 12 3 7" fill="none" stroke="currentColor" stroke-width="1.6"/>
+      <path d="M12 12v5l4.5-2.5V9.5" fill="#6FD3A0" opacity=".9"/>
+    </svg>
+    diffcity
+  </div>
+  <div class="crumb">
+    <strong>shopfront</strong>
+    <span class="branch">feature/order-discounts</span>
+    <span class="vs">against</span>
+    <span class="branch">main</span>
+    <span class="vs">4 commits, 41 min ago</span>
+  </div>
+  <div class="stats">
+    <div class="stat"><b>13</b><small>files</small></div>
+    <div class="stat"><span class="sw" style="background:var(--add)"></span><b>10</b><small>added</small></div>
+    <div class="stat"><span class="sw" style="background:var(--mod)"></span><b>8</b><small>modified</small></div>
+    <div class="stat"><span class="sw" style="background:var(--sig)"></span><b>1</b><small>signature</small></div>
+    <div class="stat"><span class="sw" style="background:var(--del)"></span><b>1</b><small>removed</small></div>
+  </div>
+  <div class="tier"><span class="dot"></span>2 files need your eyes before merge</div>
+  <div class="actions">
+    <button class="btn">Export PlantUML</button>
+    <button class="btn primary">Approve when tier 1 is read</button>
+  </div>
+</div>
+
+<div class="work">
+  <section class="city" aria-label="Change map">
+    <div class="title">
+      <h1>What the agent built</h1>
+      <p>Every block is a file, every floor a function. The label above each block is the review verdict. Filter by verdict or by kind of change.</p>
+    </div>
+    <div class="verdicts" id="verdicts" role="group" aria-label="Filter by verdict"></div>
+    <div class="verdicts types" id="types" role="group" aria-label="Filter by change type"></div>
+    <div class="hint">Drag to orbit, scroll to zoom<br><span class="k">R</span> reset view</div>
+    <canvas id="scene"></canvas>
+    <div class="tip" id="tip"></div>
+    <div class="legend">
+      <span class="g">
+        <span><i class="v" style="background:var(--tier)"></i>needs your eyes</span>
+        <span><i class="v" style="background:var(--del)"></i>risky</span>
+        <span><i class="v" style="background:#FF7AC6"></i>outside the spec</span>
+        <span><i class="v" style="background:var(--add)"></i>reviewed, fine</span>
+      </span>
+      <span><i style="background:var(--add)"></i>added</span>
+      <span><i style="background:var(--mod)"></i>modified</span>
+      <span><i style="background:var(--sig)"></i>signature</span>
+      <span><i class="del"></i>removed</span>
+      <span><i style="background:var(--same-top)"></i>untouched</span>
+    </div>
+    <aside class="fleet" aria-label="Audit status across your projects">
+      <h3>Last full audit <a href="#">all 9 projects</a></h3>
+      <div class="r"><span class="n">shopfront</span><span class="age">3 days</span><span class="bar"><i style="width:10%"></i></span></div>
+      <div class="r warn"><span class="n">ledger-api</span><span class="age">19 days</span><span class="bar"><i style="width:63%"></i></span></div>
+      <div class="r stale"><span class="n">fieldops</span><span class="age">47 days, 3 new CVEs</span><span class="bar"><i style="width:100%"></i></span></div>
+      <div class="r stale"><span class="n">notify-hub</span><span class="age">61 days</span><span class="bar"><i style="width:100%"></i></span></div>
+    </aside>
+  </section>
+
+  <aside class="read" aria-label="Reading path">
+    <header>
+      <h2>Reading path</h2>
+      <p>Entry point to database, 6 stops. About 9 minutes to read.</p>
+      <div class="tabs">
+        <button class="on">Execution order<span class="cnt">6</span></button>
+        <button>Findings<span class="cnt">5</span></button>
+        <button>Outside the spec<span class="cnt">2</span></button>
+        <button>Symbols<span class="cnt">21</span></button>
+      </div>
+    </header>
+    <div class="scroll" id="steps"></div>
+    <div class="foot">
+      <span class="k">J</span><span class="k">K</span> next / previous stop
+      <span class="spacer"></span>
+      <span>Findings from Claude, semgrep, eslint</span>
+    </div>
+  </aside>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+document.fonts.ready.then(() => {
+  // ---------- data ----------
+  const packages = [
+    { id: 'api', name: 'src/api/orders', x: 0, y: 0, w: 7, d: 6, files: [
+      { id: 'ctrl', name: 'orders.controller.ts', x: 1, y: 1, w: 2, d: 2,
+        floors: [ {n:'constructor', s:'same'}, {n:'list()', s:'same'}, {n:'get()', s:'same'}, {n:'create()', s:'mod'}, {n:'cancel()', s:'add'} ],
+        pins: [{sev:'med'}] },
+      { id: 'dto', name: 'orders.dto.ts', x: 4, y: 1, w: 2, d: 1,
+        floors: [ {n:'CreateOrderDto', s:'mod'}, {n:'CancelOrderDto', s:'add'} ] },
+      { id: 'routes', name: 'orders.routes.ts', x: 1, y: 4, w: 2, d: 1,
+        floors: [ {n:'registerRoutes()', s:'mod'} ] },
+      { id: 'apitest', name: 'orders.controller.spec.ts', x: 4, y: 3, w: 2, d: 2,
+        floors: [ {n:'list', s:'same'}, {n:'create', s:'mod'}, {n:'cancel', s:'add'} ] },
+    ]},
+    { id: 'svc', name: 'src/services/orders', x: 9, y: 0, w: 7, d: 6, files: [
+      { id: 'service', name: 'orders.service.ts', x: 1, y: 1, w: 2, d: 2,
+        floors: [ {n:'constructor', s:'same'}, {n:'place()', s:'mod'}, {n:'validate()', s:'mod'}, {n:'calcTotal()', s:'add'}, {n:'applyDiscount()', s:'add'}, {n:'notify()', s:'add'} ],
+        pins: [{sev:'high'},{sev:'low'}] },
+      { id: 'pricing', name: 'pricing.ts', x: 4, y: 1, w: 2, d: 1, spec: false,
+        floors: [ {n:'basePrice()', s:'same'}, {n:'vat()', s:'same'}, {n:'roundMoney()', s:'del'} ] },
+      { id: 'discount', name: 'discount.rules.ts', x: 4, y: 3, w: 2, d: 2,
+        floors: [ {n:'DiscountRule', s:'add'}, {n:'percentage()', s:'add'}, {n:'threshold()', s:'add'} ] },
+      { id: 'mailer', name: 'mailer.ts', x: 1, y: 4, w: 2, d: 1, spec: false,
+        floors: [ {n:'send()', s:'mod'}, {n:'template()', s:'add'} ] },
+    ]},
+    { id: 'auth', name: 'src/auth', x: 0, y: 8, w: 5, d: 4, tier: true, files: [
+      { id: 'guard', name: 'order.guard.ts', x: 1, y: 1, w: 2, d: 2,
+        floors: [ {n:'canRead()', s:'same'}, {n:'canPlace(user, order)', s:'sig'} ],
+        pins: [{sev:'high'}] },
+      { id: 'roles', name: 'roles.ts', x: 3, y: 2, w: 1, d: 1,
+        floors: [ {n:'Role', s:'same'} ] },
+    ]},
+    { id: 'repo', name: 'src/repo', x: 7, y: 8, w: 5, d: 4, files: [
+      { id: 'orepo', name: 'orders.repo.ts', x: 1, y: 1, w: 2, d: 2,
+        floors: [ {n:'findById()', s:'same'}, {n:'insert()', s:'mod'}, {n:'markCancelled()', s:'add'} ] },
+      { id: 'urepo', name: 'users.repo.ts', x: 3, y: 2, w: 1, d: 1,
+        floors: [ {n:'findById()', s:'same'}, {n:'byEmail()', s:'same'} ] },
+    ]},
+    { id: 'db', name: 'db/migrations', x: 14, y: 8, w: 5, d: 4, tier: true, files: [
+      { id: 'mig', name: '20260921_order_discounts.sql', x: 1, y: 1, w: 2, d: 2,
+        floors: [ {n:'ALTER TABLE orders', s:'add'}, {n:'CREATE INDEX', s:'add'} ],
+        pins: [{sev:'med'}] },
+      { id: 'mig0', name: '20260811_orders.sql', x: 3, y: 3, w: 1, d: 1,
+        floors: [ {n:'CREATE TABLE', s:'same'} ] },
+    ]},
+    { id: 'shared', name: 'src/shared', x: 18, y: 0, w: 4, d: 6, files: [
+      { id: 'money', name: 'money.ts', x: 1, y: 1, w: 2, d: 1,
+        floors: [ {n:'Money', s:'same'}, {n:'round()', s:'same'} ] },
+      { id: 'log', name: 'logger.ts', x: 1, y: 3, w: 1, d: 1,
+        floors: [ {n:'log()', s:'same'} ] },
+      { id: 'errs', name: 'errors.ts', x: 2, y: 4, w: 1, d: 1,
+        floors: [ {n:'AppError', s:'same'}, {n:'NotFound', s:'same'}, {n:'Forbidden', s:'same'} ] },
+    ]},
+  ];
+
+  const steps = [
+    { file: 'routes', sym: 'POST /orders/:id/cancel', s: 'add', why: 'New public endpoint. Unauthenticated calls reach the controller.',
+      code: [['c','router.post("/orders", ctrl.create);'],['a','router.post("/orders/:id/cancel", guard.canPlace, ctrl.cancel);']] },
+    { file: 'ctrl', sym: 'OrdersController.cancel()', s: 'add', why: 'Reads the id from the URL and hands off to the service.',
+      code: [['a','async cancel(req: Req, res: Res) {'],['a','  const dto = CancelOrderDto.from(req.params, req.body);'],['a','  const order = await this.svc.cancel(req.user, dto);'],['a','  res.status(200).json(order);'],['a','}']],
+      pins: [{sev:'med', t:'Missing NotFound handling', m:'svc.cancel throws NotFound; the route has no error mapping, callers get a 500.', src:'Claude'}] },
+    { file: 'guard', sym: 'OrderGuard.canPlace(user, order)', s: 'sig', tier: true, why: 'Signature grew a second parameter. Four call sites were rewritten by the agent.',
+      code: [['d','canPlace(user: User): boolean {'],['a','canPlace(user: User, order?: Order): boolean {'],['c','  if (user.role === Role.Admin) return true;'],['a','  return order ? order.ownerId === user.id : true;'],['c','}']],
+      pins: [{sev:'high', t:'Optional order defaults to allow', m:'When order is undefined the guard returns true. The new cancel route calls it without an order, so any logged-in user can cancel any order.', src:'Claude'}] },
+    { file: 'service', sym: 'OrdersService.applyDiscount()', s: 'add', why: 'Discount math added to place(). This is where the money changes.',
+      code: [['a','private applyDiscount(total: Money, rules: DiscountRule[]) {'],['a','  const pct = rules.reduce((p, r) => p + r.percentage(total), 0);'],['a','  return total.times(1 - pct / 100);'],['a','}']],
+      pins: [{sev:'high', t:'Percentages stack without a cap', m:'Two rules at 60% each give a negative total. No test covers stacked rules.', src:'Claude'},
+             {sev:'low', t:'Unused import Logger', m:'Imported on line 3, never referenced.', src:'eslint'}] },
+    { file: 'orepo', sym: 'OrdersRepo.insert()', s: 'mod', why: 'Persists discount_pct and discounted_total on the row.',
+      code: [['c','  INSERT INTO orders (id, owner_id, total'],['a','    , discount_pct, discounted_total'],['c','  ) VALUES ($1, $2, $3'],['a','    , $4, $5'],['c','  )']] },
+    { file: 'mig', sym: 'ALTER TABLE orders', s: 'add', tier: true, why: 'Schema change. Runs on every environment on deploy.',
+      code: [['a','ALTER TABLE orders'],['a','  ADD COLUMN discount_pct NUMERIC(5,2) NOT NULL DEFAULT 0,'],['a','  ADD COLUMN discounted_total NUMERIC(12,2);'],['a','CREATE INDEX orders_discount_idx ON orders (discount_pct);']],
+      pins: [{sev:'med', t:'Index on a low-cardinality column', m:'discount_pct will be 0 on most rows. The index costs writes and helps no query in this diff.', src:'semgrep'}] },
+  ];
+
+  // ---------- verdicts ----------
+  const VERDICT = {
+    eyes: { label: 'Needs your eyes', color: '#FF8A5B' },
+    risky: { label: 'Risky', color: '#F0705F' },
+    spec: { label: 'Outside the spec', color: '#FF7AC6' },
+    ok: { label: 'Reviewed, fine', color: '#6FD3A0' },
+    same: { label: 'Untouched', color: '#5A6F98' },
+  };
+  const buildings = [];
+  packages.forEach(p => p.files.forEach(f => {
+    const touched = f.floors.some(fl => fl.s !== 'same');
+    let v = 'same';
+    if (touched) {
+      if (p.tier || f.floors.some(fl => fl.s === 'sig')) v = 'eyes';
+      else if ((f.pins || []).some(pin => pin.sev === 'high')) v = 'risky';
+      else if (f.spec === false) v = 'spec';
+      else v = 'ok';
+    }
+    buildings.push({ ...f, pkg: p, ax: p.x + f.x, ay: p.y + f.y, touched, verdict: v });
+  }));
+
+  // ---------- scene ----------
+  const cs = getComputedStyle(document.documentElement);
+  const V = (v) => cs.getPropertyValue(v).trim();
+  const FLOOR = { add: V('--add'), mod: V('--mod'), del: V('--del'), sig: V('--sig'), same: V('--same-top') };
+  const canvas = document.getElementById('scene');
+  const cityEl = document.querySelector('.city');
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.outputEncoding = THREE.sRGBEncoding;
+  const scene = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(32, 1, 0.1, 200);
+  const CENTER = new THREE.Vector3(11, 0, 6);
+
+  scene.add(new THREE.HemisphereLight(0xdfe8ff, 0x1a2a4a, 0.85));
+  const sun = new THREE.DirectionalLight(0xffffff, 0.9);
+  sun.position.set(-8, 18, 6); sun.castShadow = true;
+  sun.shadow.mapSize.set(2048, 2048);
+  Object.assign(sun.shadow.camera, { left: -16, right: 16, top: 16, bottom: -16, near: 1, far: 60 });
+  sun.target.position.copy(CENTER); scene.add(sun, sun.target);
+
+  // ground and grid
+  const ground = new THREE.Mesh(new THREE.PlaneGeometry(60, 60), new THREE.ShadowMaterial({ opacity: 0.35 }));
+  ground.rotation.x = -Math.PI / 2; ground.position.set(11, -0.01, 6); ground.receiveShadow = true; scene.add(ground);
+  const grid = new THREE.GridHelper(60, 60, new THREE.Color(V('--grid')), new THREE.Color(V('--grid')));
+  grid.position.set(11, 0, 6); grid.material.opacity = 0.7; grid.material.transparent = true; scene.add(grid);
+
+  const FH = 0.5, GAP = 0.06, INSET = 0.18;
+  const edgeMatBase = new THREE.LineBasicMaterial({ color: new THREE.Color(V('--bg-deep')), transparent: true, opacity: 0.85 });
+
+  // plots
+  packages.forEach(p => {
+    const geo = new THREE.BoxGeometry(p.w, 0.12, p.d);
+    const mat = new THREE.MeshStandardMaterial({ color: new THREE.Color(V('--plot')), roughness: 0.95 });
+    const m = new THREE.Mesh(geo, mat); m.position.set(p.x + p.w / 2, -0.06, p.y + p.d / 2); m.receiveShadow = true; scene.add(m);
+    const edge = new THREE.LineSegments(new THREE.EdgesGeometry(geo), new THREE.LineBasicMaterial({ color: new THREE.Color(p.tier ? V('--tier') : V('--plot-line')) }));
+    edge.position.copy(m.position); scene.add(edge);
+    if (p.tier) {
+      const ring = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(p.w + 0.16, 0.2, p.d + 0.16)), new THREE.LineDashedMaterial({ color: new THREE.Color(V('--tier')), dashSize: 0.3, gapSize: 0.2 }));
+      ring.computeLineDistances(); ring.position.copy(m.position); scene.add(ring);
+    }
+    scene.add(label(p.name + (p.tier ? '   tier 1' : ''), { x: p.x + 0.15, z: p.y + p.d - 0.15, y: 0.08, color: p.tier ? V('--tier') : V('--muted'), size: 0.34, mono: true, anchor: 'left' }));
+  });
+
+  // buildings
+  const pickables = [];
+  const byId = {};
+  buildings.forEach(b => {
+    const group = new THREE.Group();
+    group.userData = { id: b.id };
+    const edgeMat = edgeMatBase.clone();
+    const w = b.w - INSET * 2, d = b.d - INSET * 2, cx = b.ax + b.w / 2, cz = b.ay + b.d / 2;
+    b.floors.forEach((fl, i) => {
+      const y = i * (FH + GAP) + FH / 2;
+      const geo = new THREE.BoxGeometry(w, FH, d);
+      if (fl.s === 'del') {
+        const ghost = new THREE.LineSegments(new THREE.EdgesGeometry(geo), new THREE.LineDashedMaterial({ color: new THREE.Color(FLOOR.del), dashSize: 0.16, gapSize: 0.1 }));
+        ghost.computeLineDistances(); ghost.position.set(cx, y, cz); ghost.userData = { s: 'del' }; group.add(ghost); return;
+      }
+      const mat = new THREE.MeshStandardMaterial({ color: new THREE.Color(FLOOR[fl.s]), roughness: 0.55, metalness: 0.05, emissive: new THREE.Color(FLOOR[fl.s]), emissiveIntensity: fl.s === 'same' ? 0.05 : 0.18 });
+      const mesh = new THREE.Mesh(geo, mat); mesh.position.set(cx, y, cz); mesh.castShadow = true; mesh.receiveShadow = true;
+      mesh.userData = { id: b.id, floor: fl.n, s: fl.s }; group.add(mesh); pickables.push(mesh);
+      const edge = new THREE.LineSegments(new THREE.EdgesGeometry(geo), edgeMat); edge.position.copy(mesh.position); group.add(edge);
+    });
+    const h = b.floors.length * (FH + GAP);
+    if (b.touched) {
+      group.add(label(b.name, { x: cx, z: cz, y: h + 0.32, color: V('--ink'), size: 0.3, mono: true, anchor: 'center' }));
+      group.add(badge(VERDICT[b.verdict].label, VERDICT[b.verdict].color, cx, h + 0.95, cz));
+    }
+    (b.pins || []).forEach((pin, i) => {
+      const c = { high: V('--sev-high'), med: V('--sev-med'), low: V('--sev-low') }[pin.sev];
+      const px = cx + w / 2 - 0.12 - i * 0.28, pz = cz + d / 2 - 0.12;
+      const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.6, 6), new THREE.MeshBasicMaterial({ color: new THREE.Color(c) }));
+      stem.position.set(px, h + 0.3, pz); group.add(stem);
+      const head = new THREE.Mesh(new THREE.SphereGeometry(pin.sev === 'high' ? 0.11 : 0.085, 16, 16), new THREE.MeshStandardMaterial({ color: new THREE.Color(c), emissive: new THREE.Color(c), emissiveIntensity: 0.6, roughness: 0.4 }));
+      head.position.set(px, h + 0.6, pz); group.add(head);
+    });
+    group.userData.meshes = group.children.filter(c => c.isMesh && c.userData.floor);
+    if (!b.touched) group.userData.meshes.forEach(m => { m.material.transparent = true; m.material.opacity = 0.85; });
+    byId[b.id] = group; scene.add(group);
+  });
+
+  // reading path on the ground
+  const center = (id) => { const b = buildings.find(b => b.id === id); return new THREE.Vector3(b.ax + b.w / 2, 0.03, b.ay + b.d / 2); };
+  const pts = steps.map(s => center(s.file));
+  const path = new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), new THREE.LineDashedMaterial({ color: new THREE.Color(V('--sig')), dashSize: 0.25, gapSize: 0.18, linewidth: 1 }));
+  path.computeLineDistances(); scene.add(path);
+  pts.forEach((p, i) => {
+    const disc = new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.34, 0.06, 32), new THREE.MeshStandardMaterial({ color: new THREE.Color(V('--sig')), emissive: new THREE.Color(V('--sig')), emissiveIntensity: 0.5 }));
+    disc.position.set(p.x, 0.03, p.z + 0.02); scene.add(disc);
+    scene.add(label(String(i + 1), { x: p.x, z: p.z, y: 0.09, color: V('--bg-deep'), size: 0.34, bold: true, anchor: 'center', flat: true }));
+  });
+
+  // ---------- text helpers (canvas textures) ----------
+  function makeTex(draw, w, h) {
+    const c = document.createElement('canvas'); const S = 2; c.width = w * S; c.height = h * S;
+    const ctx = c.getContext('2d'); ctx.scale(S, S); draw(ctx, w, h);
+    const t = new THREE.CanvasTexture(c); t.minFilter = THREE.LinearFilter; t.encoding = THREE.sRGBEncoding; return t;
+  }
+  function label(text, o) {
+    const font = `${o.bold ? '700' : '500'} 28px ${o.mono ? '"IBM Plex Mono", monospace' : 'Sora, sans-serif'}`;
+    const probe = document.createElement('canvas').getContext('2d'); probe.font = font;
+    const tw = Math.ceil(probe.measureText(text).width) + 16, th = 40;
+    const tex = makeTex((ctx, w, h) => { ctx.font = font; ctx.fillStyle = o.color; ctx.textBaseline = 'middle'; ctx.textAlign = 'center';
+      if (!o.flat) { ctx.lineWidth = 6; ctx.strokeStyle = V('--bg-deep'); ctx.lineJoin = 'round'; ctx.strokeText(text, w / 2, h / 2); }
+      ctx.fillText(text, w / 2, h / 2); }, tw, th);
+    const scale = o.size / th * 1.0;
+    if (o.flat) {
+      const m = new THREE.Mesh(new THREE.PlaneGeometry(tw * scale, th * scale), new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false }));
+      m.rotation.x = -Math.PI / 2; m.position.set(o.x, o.y, o.z); return m;
+    }
+    const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false }));
+    sp.scale.set(tw * scale, th * scale, 1);
+    if (o.anchor === 'left') sp.center.set(0, 0.5);
+    sp.position.set(o.x, o.y, o.z); return sp;
+  }
+  function badge(text, color, x, y, z) {
+    const font = '600 26px Sora, sans-serif';
+    const probe = document.createElement('canvas').getContext('2d'); probe.font = font;
+    const tw = Math.ceil(probe.measureText(text).width) + 58, th = 44;
+    const tex = makeTex((ctx, w, h) => {
+      ctx.fillStyle = color; roundRect(ctx, 0, 0, w, h, h / 2); ctx.fill();
+      ctx.fillStyle = '#0D172B'; ctx.beginPath(); ctx.arc(22, h / 2, 6, 0, Math.PI * 2); ctx.fill();
+      ctx.font = font; ctx.fillStyle = '#0D172B'; ctx.textBaseline = 'middle'; ctx.textAlign = 'left'; ctx.fillText(text, 38, h / 2 + 1);
+    }, tw, th);
+    const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false }));
+    const s = 0.42 / th; sp.scale.set(tw * s, th * s, 1); sp.position.set(x, y, z); sp.renderOrder = 10; return sp;
+  }
+  function roundRect(ctx, x, y, w, h, r) { ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r); ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath(); }
+
+  // ---------- camera / orbit ----------
+  const cam = { theta: Math.PI * 0.22, phi: 0.98, r: 30 };
+  const HOME = { ...cam };
+  function applyCam() {
+    camera.position.set(CENTER.x + cam.r * Math.sin(cam.phi) * Math.cos(cam.theta), CENTER.y + cam.r * Math.cos(cam.phi), CENTER.z + cam.r * Math.sin(cam.phi) * Math.sin(cam.theta));
+    camera.lookAt(CENTER);
+  }
+  let drag = null;
+  canvas.addEventListener('pointerdown', (e) => { drag = { x: e.clientX, y: e.clientY, moved: false }; canvas.setPointerCapture(e.pointerId); });
+  canvas.addEventListener('pointermove', (e) => {
+    if (drag) { const dx = e.clientX - drag.x, dy = e.clientY - drag.y; if (Math.abs(dx) + Math.abs(dy) > 3) drag.moved = true;
+      cam.theta -= dx * 0.006; cam.phi = Math.max(0.35, Math.min(1.35, cam.phi - dy * 0.005)); drag.x = e.clientX; drag.y = e.clientY; applyCam(); return; }
+    hover(e);
+  });
+  canvas.addEventListener('pointerup', (e) => { if (drag && !drag.moved) click(e); drag = null; });
+  canvas.addEventListener('pointerleave', () => { drag = null; setHover(null); });
+  canvas.addEventListener('wheel', (e) => { e.preventDefault(); cam.r = Math.max(14, Math.min(48, cam.r * (1 + e.deltaY * 0.0012))); applyCam(); }, { passive: false });
+  document.addEventListener('keydown', (e) => { if (e.key === 'r' || e.key === 'R') { Object.assign(cam, HOME); applyCam(); } });
+
+  function resize() {
+    const r = cityEl.getBoundingClientRect();
+    renderer.setSize(r.width, r.height, false);
+    camera.aspect = r.width / r.height; camera.updateProjectionMatrix();
+  }
+  new ResizeObserver(resize).observe(cityEl);
+  resize(); applyCam();
+
+  // ---------- hover / select ----------
+  const ray = new THREE.Raycaster(); const mouse = new THREE.Vector2();
+  const tip = document.getElementById('tip');
+  let hovered = null, selected = null, filter = null, typeFilter = null;
+  function pick(e) {
+    const r = canvas.getBoundingClientRect();
+    mouse.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
+    ray.setFromCamera(mouse, camera);
+    const hit = ray.intersectObjects(pickables, false)[0];
+    return hit ? hit.object.userData : null;
+  }
+  function setHover(ud) {
+    const id = ud && ud.id;
+    if (hovered && hovered !== id) paint(hovered);
+    hovered = id; if (id) paint(id, { hover: true });
+    canvas.style.cursor = id ? 'pointer' : 'grab';
+    if (!id) { tip.classList.remove('show'); return; }
+  }
+  function hover(e) {
+    const ud = pick(e); setHover(ud);
+    if (!ud) return;
+    const b = buildings.find(x => x.id === ud.id);
+    const n = (s) => b.floors.filter(f => f.s === s).length;
+    const v = VERDICT[b.verdict];
+    tip.innerHTML = `<div class="v" style="color:${v.color}"><i style="background:${v.color}"></i>${v.label}</div>
+      <div class="f">${b.name}</div><div class="p">${b.pkg.name}</div>
+      <div class="row"><span class="add"><b>+${n('add')}</b> added</span><span class="mod"><b>${n('mod')}</b> modified</span><span class="sig"><b>${n('sig')}</b> sig</span><span class="del"><b>${n('del')}</b> removed</span></div>
+      <div class="pins">${ud.floor ? 'floor: ' + ud.floor : ''}${b.pins ? `<span style="margin-left:auto">${b.pins.length} finding${b.pins.length > 1 ? 's' : ''}</span>` : ''}</div>`;
+    const r = cityEl.getBoundingClientRect();
+    tip.style.left = Math.min(e.clientX - r.left + 14, r.width - 250) + 'px';
+    tip.style.top = (e.clientY - r.top + 14) + 'px';
+    tip.classList.add('show');
+  }
+  function paint(id, o = {}) {
+    const g = byId[id]; const b = buildings.find(x => x.id === id);
+    const vDim = filter && b.verdict !== filter;
+    const tMatch = !typeFilter || b.floors.some(f => f.s === typeFilter);
+    const dimmed = vDim || !tMatch;
+    g.userData.meshes.forEach(m => {
+      const fdim = dimmed || (typeFilter && m.userData.s !== typeFilter);
+      const base = m.material.color; m.material.emissive.copy(base);
+      m.material.emissiveIntensity = o.hover ? 0.5 : (selected === id ? 0.42 : (b.touched ? 0.18 : 0.05));
+      m.material.transparent = true; m.material.opacity = fdim ? 0.14 : (b.touched ? 1 : 0.85);
+    });
+    g.children.forEach(c => {
+      if (c.userData.s === 'del') { c.material.transparent = true; c.material.opacity = (dimmed || (typeFilter && typeFilter !== 'del')) ? 0.12 : 1; return; }
+      if (c.isSprite || c.isLineSegments || (c.isMesh && !c.userData.floor)) { c.material.opacity = dimmed ? 0.12 : 1; c.material.transparent = true; }
+    });
+  }
+  function select(id, scroll) {
+    selected = id; buildings.forEach(b => paint(b.id));
+    document.querySelectorAll('.step').forEach(st => st.classList.toggle('on', st.dataset.file === id));
+    if (scroll) { const st = document.querySelector(`.step[data-file="${id}"]`); if (st) st.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); }
+  }
+  function click(e) { const ud = pick(e); if (ud) select(ud.id, true); }
+
+  // verdict filters
+  const vEl = document.getElementById('verdicts');
+  const counts = {}; buildings.forEach(b => counts[b.verdict] = (counts[b.verdict] || 0) + 1);
+  vEl.innerHTML = ['eyes', 'risky', 'spec', 'ok', 'same'].map(k => `<button data-v="${k}"><i style="background:${VERDICT[k].color}"></i>${VERDICT[k].label}<b>${counts[k] || 0}</b></button>`).join('');
+  vEl.addEventListener('click', (e) => {
+    const btn = e.target.closest('button'); if (!btn) return;
+    filter = filter === btn.dataset.v ? null : btn.dataset.v;
+    vEl.querySelectorAll('button').forEach(x => x.classList.toggle('on', x.dataset.v === filter));
+    buildings.forEach(b => paint(b.id));
+  });
+
+  const TYPES = { add: ['Added', FLOOR.add], mod: ['Modified', FLOOR.mod], sig: ['Signature changed', FLOOR.sig], del: ['Removed', FLOOR.del] };
+  const tEl = document.getElementById('types');
+  const tCounts = {}; buildings.forEach(b => b.floors.forEach(f => tCounts[f.s] = (tCounts[f.s] || 0) + 1));
+  tEl.innerHTML = Object.keys(TYPES).map(k => `<button data-t="${k}"><i style="background:${TYPES[k][1]}"></i>${TYPES[k][0]}<b>${tCounts[k] || 0}</b></button>`).join('')
+    + `<button class="clear" data-t="">Show everything</button>`;
+  tEl.addEventListener('click', (e) => {
+    const btn = e.target.closest('button'); if (!btn) return;
+    if (btn.dataset.t === '') { typeFilter = null; filter = null; vEl.querySelectorAll('button').forEach(x => x.classList.remove('on')); }
+    else typeFilter = typeFilter === btn.dataset.t ? null : btn.dataset.t;
+    tEl.querySelectorAll('button').forEach(x => x.classList.toggle('on', x.dataset.t !== '' && x.dataset.t === typeFilter));
+    buildings.forEach(b => paint(b.id));
+  });
+
+  // ---------- reading panel ----------
+  const stepsEl = document.getElementById('steps');
+  const tagName = { add: 'added', mod: 'modified', sig: 'signature', del: 'removed' };
+  stepsEl.innerHTML = steps.map((s, i) => {
+    const b = buildings.find(b => b.id === s.file); const v = VERDICT[b.verdict];
+    return `
+    <article class="step ${s.s}" data-i="${i}" data-file="${s.file}" tabindex="0">
+      <span class="rail"></span><span class="node"></span>
+      <div class="head"><span class="sym">${s.sym}</span><span class="file">${b.name}</span>
+        <span class="tag file-verdict" style="margin-left:auto;color:${v.color};background:${v.color}22">${v.label}</span>
+        <span class="tag ${s.s}" style="margin-left:6px">${tagName[s.s]}</span></div>
+      <p class="why">${s.why}</p>
+      <div class="code">${s.code.map(([k, l]) => `<div class="l ${k}"><span class="g">${k === 'a' ? '+' : k === 'd' ? '−' : ' '}</span>${l.replace(/</g, '&lt;')}</div>`).join('')}</div>
+      ${(s.pins || []).map(p => `<div class="pin"><span class="sev ${p.sev}"></span><div><div class="t">${p.t}</div><div class="m">${p.m}</div><div class="fix"><button>Ask agent to fix</button><button>Mark as intended</button></div></div><span class="src">${p.src}</span></div>`).join('')}
+    </article>`; }).join('');
+  stepsEl.addEventListener('click', (e) => { const st = e.target.closest('.step'); if (st && !e.target.closest('button')) select(st.dataset.file, false); });
+  stepsEl.addEventListener('mouseover', (e) => { const st = e.target.closest('.step'); if (st) paint(st.dataset.file, { hover: true }); });
+  stepsEl.addEventListener('mouseout', (e) => { const st = e.target.closest('.step'); if (st) paint(st.dataset.file); });
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'j' && e.key !== 'k') return;
+    const cur = steps.findIndex(s => s.file === selected);
+    const next = Math.max(0, Math.min(steps.length - 1, cur + (e.key === 'j' ? 1 : -1)));
+    select(steps[next].file, true);
+  });
+
+  // ---------- render loop ----------
+  const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  let t0 = performance.now();
+  function frame(now) {
+    if (!reduced && now - t0 < 1400) { const k = Math.min(1, (now - t0) / 1400), e = 1 - Math.pow(1 - k, 3); cam.r = 46 - (46 - HOME.r) * e; applyCam(); }
+    renderer.render(scene, camera);
+    requestAnimationFrame(frame);
+  }
+  select('guard', false); requestAnimationFrame(frame);
+});
+</script>
+</body>
+</html>

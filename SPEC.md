@@ -1,0 +1,405 @@
+# diffcity
+
+A local, all-in-one visual code review app for code written by AI agents. It runs as a daemon on your machine, watches every repo you work in, and builds the list of changes (working tree, branches, open PRs) for each one on its own. Any change opens as a 3D city: every package is a lot, every file a building, every function a floor. The review verdict floats above every touched building. A side panel reads the change in the order the code runs, with findings anchored to symbols.
+
+The name `diffcity` is final: the npm package `diffcity` and the GitHub repo `kidex/diffcity` are both available.
+
+`design/mockup.html` is the mandatory visual reference. The generated report must look and behave like the mockup.
+
+---
+
+## 1. Who and why
+
+| | |
+|---|---|
+| User | A single senior developer working with Claude Code on several repos in parallel |
+| Problem | Vibe-coded diffs are large and chaotic; line-by-line review is slow and tiring |
+| Desired outcome | In 5 minutes you understand what the agent built, where the risk is, and what deserves a manual read |
+| Context | Personal tool, run locally, presentable to a team as a demo; public repo on GitHub |
+
+Division of labour: the AI writes the line-by-line comments (imported as findings). diffcity provides the canvas on which the human understands the change.
+
+---
+
+## 2. v1 scope
+
+| In v1 | Deferred (backlog) |
+|---|---|
+| TypeScript and JavaScript | Java, PHP, Python (tree-sitter adds them once the model is stable) |
+| Symbol-level semantic diff (before/after) | Impact map on untouched code |
+| Local app (daemon + browser UI) with a dynamic list of changes per repo | Advanced dedup across reviewers |
+| Filters by verdict and by change type | |
+| Reading in execution order | Hover with full call graph |
+| Findings import (own JSON + SARIF) | Direct Claude API integration |
+| `/code-review` slash command + Stop hook for Claude Code | GitHub Action, hosted dashboard, GitHub App |
+| Automatic collection when entering a repo (shell hook) and on every Claude Code session | PUML class diagram |
+| Project registry with `status` and `audit` | |
+| PlantUML sequence export of the execution path | |
+| Self-contained HTML export of a change (phase 5): the same change screen, with the `Report` embedded and three.js inlined, like `design/mockup.html` | |
+
+---
+
+## 3. CLI commands
+
+```
+diffcity up [--port 4321]                              # start the daemon and open the UI (localhost)
+diffcity shell-init [zsh|bash|fish]                    # print the shell hook; add to .zshrc: eval "$(diffcity shell-init zsh)"
+diffcity track [<dir>] [--agent]                       # register the current repo and ask the daemon to collect; --agent marks the change as "agent worked, not reviewed"
+diffcity scan <dir>                                    # discover repos (folders with .git) under a folder and register them
+diffcity diff --json [--base] [--head]                 # semantic diff of the current change, for AI and other tools
+diffcity import <findings.json|*.sarif.json> [--open]  # anchor findings to symbols and attach them to the current change; --open opens the change in the UI
+diffcity export html|puml [--out]                      # self-contained export of the current change (phase 5)
+diffcity status                                        # repos ordered by urgency (unreviewed changes, stale audit)
+diffcity audit [--stale] [<repo>]                      # full audit (deps, semgrep, gitleaks, AI on tier 1)
+```
+
+Global install (`npm i -g diffcity`) or `npx`. Defaults: the base is detected per repo (`main`, then `master`, then the default branch from `gh`), overridable in `diffcity.config.js`.
+
+---
+
+## 3a. Automatic collection
+
+| Trigger | What happens |
+|---|---|
+| You `cd` into a folder with `.git` (`chpwd`/`PROMPT_COMMAND` hook) | `diffcity track` registers the repo if missing and asks the daemon to collect; costs under 50 ms, the rest is asynchronous |
+| The daemon is running | watches `.git/refs`, `.git/HEAD` and the working tree of active repos with chokidar; on change it recomputes only the affected change, with a 2 s debounce |
+| Claude Code finishes a task (Stop hook) | `diffcity track --agent` marks the change as "agent worked, not reviewed" |
+| `/code-review` from the editor | findings land on the current change and update its verdicts |
+| Every 15 min, per active repo | `gh pr list --json` (if `gh` is installed and authenticated) refreshes open PRs |
+
+### Change list per repo
+
+Built dynamically from three sources, deduplicated on `head`:
+
+| Source | How it is detected | UI label |
+|---|---|---|
+| Working tree | `git status --porcelain` with uncommitted changes | Draft |
+| Local branch | `git for-each-ref` with commits ahead of the base | Branch |
+| Open PR | `gh pr list` (or a remote branch with an associated PR) | PR #N |
+
+Each change has: a title (first commit message or PR title), ahead/behind, touched files and symbols by status, aggregated verdicts, review state (`unreviewed`, `in-review`, `approved`), the last event (agent, commit, review) and its time. Merged or deleted changes move to the archive and remain viewable for 90 days.
+
+---
+
+## 4. Data model
+
+### 4.1 Report (computed in the daemon, served over the API; embedded in the HTML export)
+
+```ts
+type Status = 'add' | 'mod' | 'sig' | 'del' | 'same';
+type Verdict = 'eyes' | 'risky' | 'spec' | 'ok' | 'same';
+
+interface Report {
+  meta: { repo: string; base: string; head: string; commits: number; generatedAt: string; };
+  packages: Package[];
+  steps: Step[];            // execution path
+  findings: Finding[];
+  summary: { files: number; byStatus: Record<Status, number>; byVerdict: Record<Verdict, number>; tier1Files: string[]; };
+}
+interface Package { id: string; path: string; tier1: boolean; files: File[]; }
+interface File {
+  id: string; path: string; language: string; status: Status; verdict: Verdict;
+  inSpec: boolean | null;   // null when there is no spec
+  symbols: Symbol[];
+}
+interface Symbol {
+  id: string; name: string; kind: 'class' | 'function' | 'method' | 'export' | 'sql';
+  status: Status; range: { start: number; end: number }; signatureBefore?: string; signatureAfter?: string;
+  callsites?: number;       // how many calls the agent rewrote, for 'sig'
+}
+interface Step { order: number; symbolId: string; fileId: string; why: string; diff: DiffLine[]; }
+interface DiffLine { kind: 'ctx' | 'add' | 'del'; text: string; }
+interface Finding {
+  id: string; source: string;                 // 'claude' | 'semgrep' | 'eslint' | ...
+  severity: 'high' | 'med' | 'low';
+  category: 'security' | 'correctness' | 'scope' | 'style' | 'tests';
+  file: string; line: number; symbolId?: string;   // symbolId is resolved on import
+  title: string; message: string; fix?: string;
+  state: 'open' | 'intended' | 'fixed';
+}
+```
+
+### 4.2 Database (`~/.config/diffcity/diffcity.db`, SQLite via better-sqlite3)
+
+| Table | Contents |
+|---|---|
+| repos | path, name, base, active, tier1Paths, lastAudit (at, commit, model, rulesetVersion), lastSeenAt |
+| changes | repoId, kind (draft/branch/pr), ref, head, base, title, ahead, behind, reviewState, lastEvent, updatedAt, archivedAt |
+| snapshots | changeId, head, serialized `Report` (JSON), computedAt; one per head, the latest is the one shown |
+| findings | changeId, head, serialized `Finding`, state |
+| events | repoId, changeId, type (collect/agent/commit/review/import/audit), at, payload |
+
+A change's report (`Report` from 4.1) keeps the same structure; it is computed in the daemon and served to the UI over the API.
+
+---
+
+## 5. Rules
+
+### 5.1 Symbol status
+
+| Status | Rule |
+|---|---|
+| add | the symbol exists only in after |
+| del | the symbol exists only in before |
+| sig | same name, the signature (parameters, types, return) differs |
+| mod | same name and signature, different body |
+| same | identical |
+
+A file's status = the "heaviest" status among its symbols, in the order sig > add > del > mod > same. A new file has all symbols add.
+
+### 5.2 File verdict
+
+| Verdict | Rule | UI label |
+|---|---|---|
+| eyes | file in a tier 1 zone or with at least one `sig` symbol | Needs your eyes |
+| risky | has at least one open finding with high severity | Risky |
+| spec | `inSpec === false` (change outside the task) | Outside the spec |
+| ok | touched, zero open high findings | Reviewed, fine |
+| same | zero changes | Untouched |
+
+Evaluation follows the table order; the first matching rule wins.
+
+### 5.3 Tier 1 zones (default, overridable in `diffcity.config.js`)
+
+Paths containing: `auth`, `guard`, `security`, `session`, `payment`, `billing`, `migration`, `schema`, `infra`, `k8s`, `terraform`, `Dockerfile`, `.env`, `secrets`.
+
+### 5.4 Execution path
+
+1. Entry points, in priority order: newly registered or modified HTTP routes, controller handlers, `main`/CLI entry, scheduled jobs, new tests.
+2. From each entry point, BFS over the call graph restricted to touched symbols; call resolution uses ts-morph for TS and tree-sitter + name matching for JS.
+3. Touched SQL migrations go at the end, after the last repo/DB symbol.
+4. Touched symbols left outside every path form the "Unconnected" section at the end of the list.
+5. The `why` field is generated from simple rules (new endpoint, signature changed with N call sites, schema modified) and can be overridden from findings.
+
+### 5.5 Spec and "Outside the spec"
+
+If `.diffcity/spec.md` exists (or the `--spec` argument is given), touched files with no link to the symbols on paths starting from the spec get `inSpec: false`. Without a spec, `inSpec` stays `null` and the `spec` verdict is disabled.
+
+### 5.6 Findings import
+
+- Own format: an array of `Finding` without `symbolId`.
+- SARIF 2.1: `results[]` → `Finding` (ruleId → title, level → severity, physicalLocation → file/line, tool.driver.name → source).
+- Anchoring: the line maps to the symbol whose `range` contains it, in the `after` version. Findings without a symbol stay at file level.
+- Simple dedup: same `symbolId` + `category` + normalized title → a single entry with the list of sources.
+
+---
+
+## 6. The app and its screens
+
+A Node daemon (Fastify) serves the UI on `localhost:4321` plus a JSON API and SSE for live updates. The UI is a single-page app (Vite + TypeScript, no heavy framework; `three` from npm at the current release for the scene), with the Sora and IBM Plex Mono fonts and a local fallback. All screens use the colour tokens and components from `design/mockup.html`.
+
+| Screen | Contents |
+|---|---|
+| Fleet (home) | all repos as lots on an overview map: colour is audit age, size is the number of unreviewed changes; below the map, the repo list with counters (draft/branch/PR, high findings, last audit); click enters the repo |
+| Repo | the dynamic change list (section 3a), sorted by last event, with state badges and aggregated verdicts; filters by kind and reviewState; "Audit now" button |
+| Change | the 3D city and the reading panel, identical to the mockup (table below); live update while the agent keeps writing code |
+| Top bar, on every screen | fleet / repo / change breadcrumb, daemon indicator, quick search (Cmd+K) by repo, branch or file |
+
+### The change screen
+
+| Area | Behaviour (identical to the mockup) |
+|---|---|
+| Top bar | repo, branch vs base, counters of files and symbols by status, "N files need your eyes" badge, Export PlantUML and Approve buttons (disabled until every tier 1 file has been selected) |
+| 3D city | lots = packages (tier 1 with a dotted orange outline), buildings = files with an inset, floors = symbols coloured by status, `del` floors as a dotted red skeleton, file name label on the roof of touched buildings, verdict badge above, roof pins for findings (colour by severity), dotted ground path with numbered discs |
+| Camera | drag to orbit, scroll to zoom, R to reset, short intro animation (disabled under prefers-reduced-motion) |
+| Filters | row 1: verdicts (Needs your eyes, Risky, Outside the spec, Reviewed fine, Untouched) with counters; row 2: change type (Added, Modified, Signature changed, Removed) with counters, plus "Show everything". Filters combine (AND). A type filter dims floors of other types and buildings with no matching floors. Clicking an active filter turns it off |
+| Hover | tooltip with verdict, file, package, counters by status, the floor under the cursor, number of findings |
+| Click building | selects, highlights, scrolls the panel to the matching stop |
+| Right panel | tabs: Execution order, Findings, Outside the spec, Symbols; each stop shows the symbol, file, file verdict, status tag, `why`, inline diff, findings with source, and the "Ask agent to fix" / "Mark as intended" buttons; J/K navigate |
+| Fleet (card) | bottom-right card with the last audit of the other repos, red above 30 days or with new CVEs; click goes to the fleet screen |
+| Theme | dark by default, light under prefers-color-scheme: light; colours as tokens on :root |
+
+"Ask agent to fix" writes the finding to `.diffcity/fix-queue.json` in the repo; the slash command picks it up. "Mark as intended" sets `state: 'intended'` in the DB and removes it from the verdict computation. "Approve" sets `reviewState: 'approved'` on the change and unlocks only after every tier 1 file has been opened in the panel.
+
+---
+
+## 7. Claude Code integration
+
+### 7.1 `.claude/commands/code-review.md`
+
+```
+Run `npx diffcity diff --json` and read the result: it is the semantic diff of the current change
+(touched symbols, changed signatures with call sites, the execution path, tier 1 zones).
+Review this change with a focus on: security (auth/authz, input validation, secrets),
+correctness (unhandled errors, edge cases, money arithmetic), scope creep relative to $ARGUMENTS,
+tests that actually assert something, architecture violations.
+Write the findings to `.diffcity/findings.json` in the format from docs/findings.md,
+with `source: "claude"`, `file`, `line`, `severity`, `category`, `title`, `message`, `fix`.
+Then run `npx diffcity import .diffcity/findings.json --open`.
+If `.diffcity/fix-queue.json` exists, apply its fixes before the review and empty the file.
+```
+
+### 7.2 Stop hook (`.claude/settings.json`)
+
+```json
+{ "hooks": { "Stop": [ { "matcher": "", "hooks": [ { "type": "command", "command": "npx diffcity track --agent" } ] } ] } }
+```
+
+The hook does not open the browser; the UI updates live over SSE.
+
+---
+
+## 8. Full audit
+
+| Step | What runs | Tool |
+|---|---|---|
+| Dependencies | new CVEs on the lockfile | `npm audit --json` (v1 npm only) |
+| Code | default semgrep rules + custom ones from `.diffcity/rules/` | semgrep, if installed; otherwise the step is skipped with a warning |
+| Secrets | on history since the last audit | gitleaks, if installed |
+| AI | review only of tier 1 files changed since `lastAudit.commit` | via the slash command, with `--since <commit>` |
+
+A repo is "stale" when: 30 days have passed since the last audit, `npm audit` reports new CVEs, the ruleset has grown, or there are changes with `reviewState: 'unreviewed'` older than 3 days. `status` and the fleet screen sort by the number of conditions met, then by age. The daemon checks CVEs once a day per active repo.
+
+---
+
+## 9. Phases and definition of done
+
+| Phase | Deliverable | Done when |
+|---|---|---|
+| 0 | Public repo, strict TS, vitest, eslint, CI on GitHub Actions, `design/mockup.html` in the repo, `docs/findings.md` with the format; complete `.claude/` (agents, skills, hooks, settings, CLAUDE.md) per section 10a; epics and tasks in Jira; base pages in Confluence | `npm test` green, `diffcity --help` works, a sample task passes through the full flow architect → dev → reviewer → tester → Done |
+| 1 | TS/JS semantic diff: git diff → before/after symbols → status, verdict, tier 1 | `diff --json` correct on 3 real changes, with fixture tests (add, mod, sig, del, new file, deleted file) |
+| 2 | Daemon + DB + collection: `up`, `shell-init`, `track`, `scan`, watcher, dynamic change list (draft/branch/PR), Fleet and Repo screens, SSE | you `cd` into any of your repos and within 5 seconds it appears in the UI with all its changes, with no manual command |
+| 3 | Change screen: 3D city, hover, select, verdict and type filters, live update | the screen looks like the mockup on the 3 changes; it updates on its own when the agent writes code |
+| 4 | Execution path, reading panel, findings + SARIF import, slash command, Stop hook, Ask agent to fix / Mark as intended / Approve | `/code-review` from the editor puts the pins on the city with no manual steps |
+| 5 | `audit`, `status`, fleet map with audit age, self-contained HTML and PlantUML export, light theme, README with GIF | a 3-minute demo run end to end in front of the team |
+
+Each phase closes with a `v0.<phase>.0` tag and a CHANGELOG entry.
+
+---
+
+## 10. Code constraints
+
+- Strict TypeScript, Node 22.13+, ESM, a single npm package with `bin`; the UI is built with Vite into `dist/ui` and served by the daemon. The same build also produces a single-file variant of the change screen for the HTML export.
+- Structure: `src/cli/`, `src/daemon/` (server, API, SSE, watcher, collector, scheduler), `src/core/` (git, parse, diff, verdict, path, findings, db), `src/ui/` (SPA: fleet, repo and change screens; three.js scene), `test/fixtures/`.
+- The daemon runs a single instance (lock file in `~/.config/diffcity/`); `track` talks to it over a local socket and starts the daemon if it is missing.
+- Parsers: `tree-sitter` + `tree-sitter-typescript`/`tree-sitter-javascript` via `web-tree-sitter` (wasm, so install works without a native build); `ts-morph` for call resolution in TS.
+- Zero personal paths, zero secrets, zero client names in code, tests or fixtures. The repo is public.
+- Every rule in section 5 has unit tests on small fixtures.
+- Conventional commits (`feat:`, `fix:`, `test:`), one commit per logical step.
+- All computation (diff, verdict, path, findings anchoring) lives in `src/core` and runs in the daemon; the UI receives a ready-made `Report` and only does rendering, filters, hover and selection. The change screen renders from a `Report` alone, so it also works without the daemon (HTML export).
+- Collection runs in worker threads so the UI and API stay responsive on large repos.
+
+---
+
+## 10a. How Claude Code works on the project: agent team, guardrails, skills
+
+The main Claude Code session is the team lead and orchestrates. The human is the PO: approves plans, decides on ambiguities, accepts phases. Execution work is delegated to the subagents below, defined in `.claude/agents/*.md`.
+
+### The team
+
+| Agent | Role | Access | When it steps in |
+|---|---|---|---|
+| architect | reads the spec and the code, writes the phase plan, makes design decisions and records them as ADRs in Confluence | code read-only, Confluence write | at the start of every phase and on any architecture decision |
+| dev-core | implements `src/core`, `src/daemon`, `src/cli` and their tests | code write, no push | engine, collection, DB, API tasks |
+| dev-ui | implements `src/ui` (SPA, three.js scene, screens) starting from `design/mockup.html` | code write, no push | UI tasks |
+| reviewer | reviews each task's diff using the checklist from the `review-checklist` skill; verdict approved / rework with a list of findings | code read-only | after every task, before the tester |
+| tester | runs vitest, writes missing fixture tests, checks the UI with Playwright (Playwright Test for regressions, Playwright MCP for new features), opens a Jira Bug with video and trace attached on failure | code write only in `test/`, Jira write | after review, before the task is closed |
+
+The team lead (main session) does: breaking the phase into Jira tasks, dispatching to dev-core / dev-ui in separate worktrees, moving tasks through states, commit and tag at the end of the phase, the phase report in Confluence.
+
+Task flow: Jira task → architect (if a decision is needed) → dev-core or dev-ui in a worktree → reviewer → tester → the team lead merges, moves the task to Done and comments the summary on it.
+
+### Guardrails
+
+| Type | What it enforces |
+|---|---|
+| `CLAUDE.md` | the rules from sections 5, 3a and 10; one commit per logical step; zero secrets and personal paths; a single question on ambiguity |
+| `.claude/settings.json` permissions | allow: `npm test`, `npm run lint`, `npm run build`, `git add/commit/tag`, `gh pr`; deny: `git push --force`, `rm -rf`, any command touching the real `~/.config/diffcity` in tests (tests use a temporary directory) |
+| PreToolUse hook (Bash) | blocks the commands on the deny list and any write outside the repo |
+| PostToolUse hook (Edit/Write) | runs `eslint --fix` and `tsc --noEmit` on the touched files; blocks the commit if errors appear |
+| PreToolUse hook (Write) | rejects content that looks like secrets (token, key, password with a value) or real home paths |
+| Stop hook | runs `npm test` and writes a 5-line summary; the session stops only with green tests or with an explanation of the failure |
+| Worktrees | dev-core and dev-ui work in separate `git worktree`s under `.worktrees/` in the repo (gitignored, so they stay inside the write boundary), one per task; merge only through the team lead after reviewer and tester |
+
+These guardrails apply only to developing diffcity itself. They do not restrict the product: once installed, `diffcity` runs from anywhere, on any repo.
+
+### Skills (`.claude/skills/<name>/SKILL.md`)
+
+| Skill | Contents |
+|---|---|
+| spec-rules | sections 5 and 3a as a verifiable checklist, with fixture examples for each rule |
+| review-checklist | security, correctness, scope relative to the task, tests that assert, adherence to the `src/` structure, zero computation logic in the UI |
+| three-scene | how the mockup scene is built (tokens, materials, badge sprites, orbit, raycast, filters) and how it maps onto `src/ui` |
+| testing | fixture conventions, `playwright.config.ts` with `retain-on-failure` for video, trace and screenshot, how artefacts are attached to the Jira Bug |
+| jira-flow | the project, epics per phase, task format (title, acceptance criteria, link to the spec section), states, branch naming `<KEY>-<nr>-<slug>`, commits with the task key |
+| confluence-docs | the space structure and templates: ADR, phase report, runbook, scope decision |
+
+### Jira
+
+The project is created manually by the human (Jira Software, team-managed); the team lead then creates the structure through the Atlassian MCP:
+
+| Epic | Contents |
+|---|---|
+| Phase 0: Setup | repo, tooling, CI, complete `.claude/` (agents, skills, hooks, settings, CLAUDE.md), Jira and Confluence structure |
+| Phase 1: Semantic diff | tasks per rule from sections 5.1, 5.2, 5.3 and per fixture |
+| Phase 2: Daemon and collection | tasks per CLI command, watcher, change list, Fleet and Repo screens, SSE |
+| Phase 3: Change screen | 3D scene, hover, select, filters, live update |
+| Phase 4: Reading and findings | execution path, panel, findings and SARIF import, slash command, Stop hook, finding actions |
+| Phase 5: Audit and export | audit, status, fleet map, HTML and PlantUML export, light theme, README |
+| Release | final name, npm publish, demo GIF, announcement |
+
+Every task has acceptance criteria copied from the phase's definition of done or from the matching spec rule. Bugs created by the tester are linked to the parent task.
+
+### Confluence
+
+The space is created manually by the human (knowledge base type, named after the project); the team lead then creates the pages:
+
+| Page | Contents | Maintained by |
+|---|---|---|
+| Overview | spec summary, links to repo, Jira, mockup | team lead |
+| Architecture | parent page with ADRs, one per decision (context, options, decision, consequences) | architect |
+| Agent team and workflow | the team above, the task flow, guardrails | team lead, in phase 0 |
+| Phase reports | one page per phase, written at the tag: delivered, remaining, metrics (tests, findings, time) | team lead |
+| Runbook | install, shell hook, daemon, troubleshooting | dev-core |
+| Findings format | own format and SARIF mapping | dev-core |
+
+---
+
+## 11. Kickoff prompt for Claude Code
+
+Paste the block below as the first message, with `SPEC.md` (this file) and `design/mockup.html` already in the project folder.
+
+```
+We are building diffcity, a local all-in-one visual code review app for code written by AI agents:
+a daemon that watches every repo I work in, builds the list of changes (working tree, branches, PRs)
+for each one on its own, and a browser UI where any change opens as a 3D city with review verdicts.
+The full specification is in SPEC.md and is the source of truth.
+The visual reference is design/mockup.html: the change screen must look and behave identically;
+the Fleet and Repo screens use the same tokens and components.
+
+You are the team lead. I am the PO: I approve plans, decide on ambiguities, accept phases.
+You work with the agent team, guardrails and skills from section 10a of the spec,
+and with Jira + Confluence through the Atlassian MCP. The Jira project key is DC (epics DC-1..DC-7 and the
+phase 0 tasks DC-8..DC-15 already exist), the Confluence space key is DI.
+
+Phase 0, in this order:
+1. Read SPEC.md in full and design/mockup.html; extract from the mockup the tokens, fonts,
+   interaction rules and the three.js scene for the three-scene skill and for src/ui.
+2. Check availability of the name diffcity on npm and GitHub; if it is taken, propose 3 alternatives and wait.
+3. Create the complete .claude/: agents (architect, dev-core, dev-ui, reviewer, tester), skills
+   (spec-rules, review-checklist, three-scene, testing, jira-flow, confluence-docs), hooks, settings.json
+   with permissions, and CLAUDE.md, exactly as section 10a describes. Show me each file before moving on.
+4. Read epics DC-1..DC-7 and phase 0 tasks DC-8..DC-15 from Jira; create in Confluence
+   the pages Overview, Architecture, Agent team and workflow, Phase reports, Runbook, Findings format.
+5. Propose the folder structure and package.json; wait for my confirmation.
+6. Implement phase 0 with the team: every task goes through architect (if needed) → dev → reviewer → tester,
+   in separate worktrees, with the Jira task moved through states and commented at the end.
+7. Stop at the phase 0 definition of done: green tests, diffcity --help works, a sample task has gone through the full flow.
+
+Rules throughout:
+- Before every phase: architect writes the plan and the fixture list, you create the phase's Jira tasks, I give the OK.
+- Follow sections 5 (status, verdict, tier 1, path, findings import) and 3a (collection, dynamic list) exactly.
+  Flag any deviation explicitly and record it as an ADR.
+- All computation lives in src/core and runs in the daemon; the UI only renders, filters, selects.
+- Public repo: zero personal paths, zero secrets, zero real client names in code, tests, fixtures, Jira or Confluence.
+- Strict TypeScript, ESM, Node 22.13+, vitest, Vite for the UI, one commit per logical step, conventional commits with the task key.
+- At the end of every phase: green tests, tag v0.<phase>.0, CHANGELOG.md and README.md updated,
+  the phase report page in Confluence, the epic closed in Jira, and a 10-line summary for me.
+- When something in the spec is ambiguous, ask a single precise question with your recommended option.
+```
+
+---
+
+## 12. Backlog after v1
+
+Java and PHP via tree-sitter; impact map on untouched code; GitLab and Bitbucket as PR sources; PUML class diagram; a GitHub Action that runs the engine in CI and attaches the HTML export to the PR; hosted dashboard with metadata sync (SARIF + symbol graph, no source code).
