@@ -1,0 +1,23 @@
+{
+  "repo": "ledger",
+  "base": "main",
+  "branch": "feature/session-refresh",
+  "now": "2026-09-22T08:30:00.000Z",
+  "commits": [
+    {
+      "message": "refactor: rename ledger entries to journal",
+      "rename": { "src/ledger/entries.ts": "src/ledger/journal.ts" },
+      "files": "steps/01-journal"
+    },
+    {
+      "message": "feat: rotate sessions on refresh, drop the cookie reader",
+      "delete": ["src/session/cookie.ts"],
+      "files": "steps/02-rotate"
+    },
+    { "message": "style: reformat ledger format helpers", "files": "steps/03-format" }
+  ],
+  "uncommitted": {
+    "files": "uncommitted",
+    "stage": ["scripts/seed-ledger.js"]
+  }
+}

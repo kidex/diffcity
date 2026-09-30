@@ -1,0 +1,808 @@
+{
+  "meta": {
+    "repo": "shopfront",
+    "base": "main",
+    "head": "feature/order-discounts",
+    "commits": 3,
+    "generatedAt": "2026-09-21T10:00:00.000Z"
+  },
+  "packages": [
+    {
+      "id": "db/migrations",
+      "path": "db/migrations",
+      "tier1": true,
+      "files": [
+        {
+          "id": "db/migrations/20260811_orders.sql",
+          "path": "db/migrations/20260811_orders.sql",
+          "language": "sql",
+          "status": "same",
+          "verdict": "same",
+          "inSpec": null,
+          "symbols": [
+            {
+              "id": "db/migrations/20260811_orders.sql#CREATE TABLE orders",
+              "name": "CREATE TABLE orders",
+              "kind": "sql",
+              "status": "same",
+              "range": {
+                "start": 2,
+                "end": 7
+              }
+            }
+          ]
+        },
+        {
+          "id": "db/migrations/20260921_order_discounts.sql",
+          "path": "db/migrations/20260921_order_discounts.sql",
+          "language": "sql",
+          "status": "add",
+          "verdict": "eyes",
+          "inSpec": null,
+          "symbols": [
+            {
+              "id": "db/migrations/20260921_order_discounts.sql#ALTER TABLE orders",
+              "name": "ALTER TABLE orders",
+              "kind": "sql",
+              "status": "add",
+              "range": {
+                "start": 1,
+                "end": 3
+              }
+            },
+            {
+              "id": "db/migrations/20260921_order_discounts.sql#CREATE INDEX orders_discount_idx",
+              "name": "CREATE INDEX orders_discount_idx",
+              "kind": "sql",
+              "status": "add",
+              "range": {
+                "start": 4,
+                "end": 4
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "src/api/orders",
+      "path": "src/api/orders",
+      "tier1": false,
+      "files": [
+        {
+          "id": "src/api/orders/orders.controller.spec.ts",
+          "path": "src/api/orders/orders.controller.spec.ts",
+          "language": "typescript",
+          "status": "add",
+          "verdict": "ok",
+          "inSpec": null,
+          "symbols": [
+            {
+              "id": "src/api/orders/orders.controller.spec.ts#list",
+              "name": "list",
+              "kind": "function",
+              "status": "same",
+              "range": {
+                "start": 4,
+                "end": 12
+              }
+            },
+            {
+              "id": "src/api/orders/orders.controller.spec.ts#create",
+              "name": "create",
+              "kind": "function",
+              "status": "mod",
+              "range": {
+                "start": 14,
+                "end": 24
+              }
+            },
+            {
+              "id": "src/api/orders/orders.controller.spec.ts#cancel",
+              "name": "cancel",
+              "kind": "function",
+              "status": "add",
+              "range": {
+                "start": 26,
+                "end": 34
+              }
+            }
+          ]
+        },
+        {
+          "id": "src/api/orders/orders.controller.ts",
+          "path": "src/api/orders/orders.controller.ts",
+          "language": "typescript",
+          "status": "add",
+          "verdict": "ok",
+          "inSpec": null,
+          "symbols": [
+            {
+              "id": "src/api/orders/orders.controller.ts#OrdersController",
+              "name": "OrdersController",
+              "kind": "class",
+              "status": "same",
+              "range": {
+                "start": 15,
+                "end": 37
+              }
+            },
+            {
+              "id": "src/api/orders/orders.controller.ts#OrdersController.constructor",
+              "name": "OrdersController.constructor",
+              "kind": "method",
+              "status": "same",
+              "range": {
+                "start": 16,
+                "end": 16
+              }
+            },
+            {
+              "id": "src/api/orders/orders.controller.ts#OrdersController.list",
+              "name": "OrdersController.list",
+              "kind": "method",
+              "status": "same",
+              "range": {
+                "start": 18,
+                "end": 20
+              }
+            },
+            {
+              "id": "src/api/orders/orders.controller.ts#OrdersController.get",
+              "name": "OrdersController.get",
+              "kind": "method",
+              "status": "same",
+              "range": {
+                "start": 22,
+                "end": 24
+              }
+            },
+            {
+              "id": "src/api/orders/orders.controller.ts#OrdersController.create",
+              "name": "OrdersController.create",
+              "kind": "method",
+              "status": "mod",
+              "range": {
+                "start": 26,
+                "end": 30
+              }
+            },
+            {
+              "id": "src/api/orders/orders.controller.ts#OrdersController.cancel",
+              "name": "OrdersController.cancel",
+              "kind": "method",
+              "status": "add",
+              "range": {
+                "start": 32,
+                "end": 36
+              }
+            }
+          ]
+        },
+        {
+          "id": "src/api/orders/orders.dto.ts",
+          "path": "src/api/orders/orders.dto.ts",
+          "language": "typescript",
+          "status": "add",
+          "verdict": "ok",
+          "inSpec": null,
+          "symbols": [
+            {
+              "id": "src/api/orders/orders.dto.ts#CreateOrderDto",
+              "name": "CreateOrderDto",
+              "kind": "class",
+              "status": "mod",
+              "range": {
+                "start": 3,
+                "end": 13
+              }
+            },
+            {
+              "id": "src/api/orders/orders.dto.ts#CreateOrderDto.from",
+              "name": "CreateOrderDto.from",
+              "kind": "method",
+              "status": "same",
+              "range": {
+                "start": 8,
+                "end": 12
+              }
+            },
+            {
+              "id": "src/api/orders/orders.dto.ts#CancelOrderDto",
+              "name": "CancelOrderDto",
+              "kind": "class",
+              "status": "add",
+              "range": {
+                "start": 15,
+                "end": 25
+              }
+            },
+            {
+              "id": "src/api/orders/orders.dto.ts#CancelOrderDto.from",
+              "name": "CancelOrderDto.from",
+              "kind": "method",
+              "status": "add",
+              "range": {
+                "start": 19,
+                "end": 24
+              }
+            }
+          ]
+        },
+        {
+          "id": "src/api/orders/orders.routes.ts",
+          "path": "src/api/orders/orders.routes.ts",
+          "language": "typescript",
+          "status": "mod",
+          "verdict": "ok",
+          "inSpec": null,
+          "symbols": [
+            {
+              "id": "src/api/orders/orders.routes.ts#registerRoutes",
+              "name": "registerRoutes",
+              "kind": "function",
+              "status": "mod",
+              "range": {
+                "start": 9,
+                "end": 14
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "src/auth",
+      "path": "src/auth",
+      "tier1": true,
+      "files": [
+        {
+          "id": "src/auth/order.guard.ts",
+          "path": "src/auth/order.guard.ts",
+          "language": "typescript",
+          "status": "sig",
+          "verdict": "eyes",
+          "inSpec": null,
+          "symbols": [
+            {
+              "id": "src/auth/order.guard.ts#OrderGuard",
+              "name": "OrderGuard",
+              "kind": "class",
+              "status": "same",
+              "range": {
+                "start": 12,
+                "end": 21
+              }
+            },
+            {
+              "id": "src/auth/order.guard.ts#OrderGuard.canRead",
+              "name": "OrderGuard.canRead",
+              "kind": "method",
+              "status": "same",
+              "range": {
+                "start": 13,
+                "end": 15
+              }
+            },
+            {
+              "id": "src/auth/order.guard.ts#OrderGuard.canPlace",
+              "name": "OrderGuard.canPlace",
+              "kind": "method",
+              "status": "sig",
+              "range": {
+                "start": 17,
+                "end": 20
+              },
+              "signatureBefore": "canPlace(user: User): boolean",
+              "signatureAfter": "canPlace(user: User, order?: Order): boolean"
+            }
+          ]
+        },
+        {
+          "id": "src/auth/roles.ts",
+          "path": "src/auth/roles.ts",
+          "language": "typescript",
+          "status": "same",
+          "verdict": "same",
+          "inSpec": null,
+          "symbols": [
+            {
+              "id": "src/auth/roles.ts#Role",
+              "name": "Role",
+              "kind": "export",
+              "status": "same",
+              "range": {
+                "start": 1,
+                "end": 4
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "src/repo",
+      "path": "src/repo",
+      "tier1": false,
+      "files": [
+        {
+          "id": "src/repo/orders.repo.ts",
+          "path": "src/repo/orders.repo.ts",
+          "language": "typescript",
+          "status": "add",
+          "verdict": "ok",
+          "inSpec": null,
+          "symbols": [
+            {
+              "id": "src/repo/orders.repo.ts#OrdersRepo",
+              "name": "OrdersRepo",
+              "kind": "class",
+              "status": "same",
+              "range": {
+                "start": 14,
+                "end": 33
+              }
+            },
+            {
+              "id": "src/repo/orders.repo.ts#OrdersRepo.constructor",
+              "name": "OrdersRepo.constructor",
+              "kind": "method",
+              "status": "same",
+              "range": {
+                "start": 15,
+                "end": 15
+              }
+            },
+            {
+              "id": "src/repo/orders.repo.ts#OrdersRepo.findById",
+              "name": "OrdersRepo.findById",
+              "kind": "method",
+              "status": "same",
+              "range": {
+                "start": 17,
+                "end": 20
+              }
+            },
+            {
+              "id": "src/repo/orders.repo.ts#OrdersRepo.insert",
+              "name": "OrdersRepo.insert",
+              "kind": "method",
+              "status": "mod",
+              "range": {
+                "start": 22,
+                "end": 28
+              }
+            },
+            {
+              "id": "src/repo/orders.repo.ts#OrdersRepo.markCancelled",
+              "name": "OrdersRepo.markCancelled",
+              "kind": "method",
+              "status": "add",
+              "range": {
+                "start": 30,
+                "end": 32
+              }
+            }
+          ]
+        },
+        {
+          "id": "src/repo/users.repo.ts",
+          "path": "src/repo/users.repo.ts",
+          "language": "typescript",
+          "status": "same",
+          "verdict": "same",
+          "inSpec": null,
+          "symbols": [
+            {
+              "id": "src/repo/users.repo.ts#UsersRepo",
+              "name": "UsersRepo",
+              "kind": "class",
+              "status": "same",
+              "range": {
+                "start": 5,
+                "end": 17
+              }
+            },
+            {
+              "id": "src/repo/users.repo.ts#UsersRepo.constructor",
+              "name": "UsersRepo.constructor",
+              "kind": "method",
+              "status": "same",
+              "range": {
+                "start": 6,
+                "end": 6
+              }
+            },
+            {
+              "id": "src/repo/users.repo.ts#UsersRepo.findById",
+              "name": "UsersRepo.findById",
+              "kind": "method",
+              "status": "same",
+              "range": {
+                "start": 8,
+                "end": 11
+              }
+            },
+            {
+              "id": "src/repo/users.repo.ts#UsersRepo.byEmail",
+              "name": "UsersRepo.byEmail",
+              "kind": "method",
+              "status": "same",
+              "range": {
+                "start": 13,
+                "end": 16
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "src/services/orders",
+      "path": "src/services/orders",
+      "tier1": false,
+      "files": [
+        {
+          "id": "src/services/orders/discount.rules.ts",
+          "path": "src/services/orders/discount.rules.ts",
+          "language": "typescript",
+          "status": "add",
+          "verdict": "ok",
+          "inSpec": null,
+          "symbols": [
+            {
+              "id": "src/services/orders/discount.rules.ts#DiscountRule",
+              "name": "DiscountRule",
+              "kind": "export",
+              "status": "add",
+              "range": {
+                "start": 3,
+                "end": 5
+              }
+            },
+            {
+              "id": "src/services/orders/discount.rules.ts#percentage",
+              "name": "percentage",
+              "kind": "function",
+              "status": "add",
+              "range": {
+                "start": 7,
+                "end": 9
+              }
+            },
+            {
+              "id": "src/services/orders/discount.rules.ts#threshold",
+              "name": "threshold",
+              "kind": "function",
+              "status": "add",
+              "range": {
+                "start": 11,
+                "end": 13
+              }
+            }
+          ]
+        },
+        {
+          "id": "src/services/orders/mailer.ts",
+          "path": "src/services/orders/mailer.ts",
+          "language": "typescript",
+          "status": "add",
+          "verdict": "ok",
+          "inSpec": null,
+          "symbols": [
+            {
+              "id": "src/services/orders/mailer.ts#send",
+              "name": "send",
+              "kind": "function",
+              "status": "mod",
+              "range": {
+                "start": 1,
+                "end": 3
+              }
+            },
+            {
+              "id": "src/services/orders/mailer.ts#template",
+              "name": "template",
+              "kind": "function",
+              "status": "add",
+              "range": {
+                "start": 5,
+                "end": 7
+              }
+            }
+          ]
+        },
+        {
+          "id": "src/services/orders/orders.service.ts",
+          "path": "src/services/orders/orders.service.ts",
+          "language": "typescript",
+          "status": "add",
+          "verdict": "ok",
+          "inSpec": null,
+          "symbols": [
+            {
+              "id": "src/services/orders/orders.service.ts#OrdersService",
+              "name": "OrdersService",
+              "kind": "class",
+              "status": "same",
+              "range": {
+                "start": 9,
+                "end": 38
+              }
+            },
+            {
+              "id": "src/services/orders/orders.service.ts#OrdersService.constructor",
+              "name": "OrdersService.constructor",
+              "kind": "method",
+              "status": "same",
+              "range": {
+                "start": 10,
+                "end": 10
+              }
+            },
+            {
+              "id": "src/services/orders/orders.service.ts#OrdersService.place",
+              "name": "OrdersService.place",
+              "kind": "method",
+              "status": "mod",
+              "range": {
+                "start": 12,
+                "end": 19
+              }
+            },
+            {
+              "id": "src/services/orders/orders.service.ts#OrdersService.validate",
+              "name": "OrdersService.validate",
+              "kind": "method",
+              "status": "mod",
+              "range": {
+                "start": 21,
+                "end": 24
+              }
+            },
+            {
+              "id": "src/services/orders/orders.service.ts#OrdersService.calcTotal",
+              "name": "OrdersService.calcTotal",
+              "kind": "method",
+              "status": "add",
+              "range": {
+                "start": 26,
+                "end": 28
+              }
+            },
+            {
+              "id": "src/services/orders/orders.service.ts#OrdersService.applyDiscount",
+              "name": "OrdersService.applyDiscount",
+              "kind": "method",
+              "status": "add",
+              "range": {
+                "start": 30,
+                "end": 33
+              }
+            },
+            {
+              "id": "src/services/orders/orders.service.ts#OrdersService.notify",
+              "name": "OrdersService.notify",
+              "kind": "method",
+              "status": "add",
+              "range": {
+                "start": 35,
+                "end": 37
+              }
+            }
+          ]
+        },
+        {
+          "id": "src/services/orders/pricing.ts",
+          "path": "src/services/orders/pricing.ts",
+          "language": "typescript",
+          "status": "del",
+          "verdict": "ok",
+          "inSpec": null,
+          "symbols": [
+            {
+              "id": "src/services/orders/pricing.ts#basePrice",
+              "name": "basePrice",
+              "kind": "function",
+              "status": "same",
+              "range": {
+                "start": 3,
+                "end": 5
+              }
+            },
+            {
+              "id": "src/services/orders/pricing.ts#vat",
+              "name": "vat",
+              "kind": "function",
+              "status": "same",
+              "range": {
+                "start": 7,
+                "end": 9
+              }
+            },
+            {
+              "id": "src/services/orders/pricing.ts#roundMoney",
+              "name": "roundMoney",
+              "kind": "function",
+              "status": "del",
+              "range": {
+                "start": 11,
+                "end": 13
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "src/shared",
+      "path": "src/shared",
+      "tier1": false,
+      "files": [
+        {
+          "id": "src/shared/errors.ts",
+          "path": "src/shared/errors.ts",
+          "language": "typescript",
+          "status": "same",
+          "verdict": "same",
+          "inSpec": null,
+          "symbols": [
+            {
+              "id": "src/shared/errors.ts#AppError",
+              "name": "AppError",
+              "kind": "class",
+              "status": "same",
+              "range": {
+                "start": 1,
+                "end": 1
+              }
+            },
+            {
+              "id": "src/shared/errors.ts#NotFound",
+              "name": "NotFound",
+              "kind": "class",
+              "status": "same",
+              "range": {
+                "start": 3,
+                "end": 3
+              }
+            },
+            {
+              "id": "src/shared/errors.ts#Forbidden",
+              "name": "Forbidden",
+              "kind": "class",
+              "status": "same",
+              "range": {
+                "start": 5,
+                "end": 5
+              }
+            }
+          ]
+        },
+        {
+          "id": "src/shared/logger.ts",
+          "path": "src/shared/logger.ts",
+          "language": "typescript",
+          "status": "same",
+          "verdict": "same",
+          "inSpec": null,
+          "symbols": [
+            {
+              "id": "src/shared/logger.ts#log",
+              "name": "log",
+              "kind": "function",
+              "status": "same",
+              "range": {
+                "start": 1,
+                "end": 3
+              }
+            }
+          ]
+        },
+        {
+          "id": "src/shared/money.ts",
+          "path": "src/shared/money.ts",
+          "language": "typescript",
+          "status": "same",
+          "verdict": "same",
+          "inSpec": null,
+          "symbols": [
+            {
+              "id": "src/shared/money.ts#Money",
+              "name": "Money",
+              "kind": "class",
+              "status": "same",
+              "range": {
+                "start": 1,
+                "end": 19
+              }
+            },
+            {
+              "id": "src/shared/money.ts#Money.constructor",
+              "name": "Money.constructor",
+              "kind": "method",
+              "status": "same",
+              "range": {
+                "start": 2,
+                "end": 2
+              }
+            },
+            {
+              "id": "src/shared/money.ts#Money.of",
+              "name": "Money.of",
+              "kind": "method",
+              "status": "same",
+              "range": {
+                "start": 4,
+                "end": 6
+              }
+            },
+            {
+              "id": "src/shared/money.ts#Money.zero",
+              "name": "Money.zero",
+              "kind": "method",
+              "status": "same",
+              "range": {
+                "start": 8,
+                "end": 10
+              }
+            },
+            {
+              "id": "src/shared/money.ts#Money.plus",
+              "name": "Money.plus",
+              "kind": "method",
+              "status": "same",
+              "range": {
+                "start": 12,
+                "end": 14
+              }
+            },
+            {
+              "id": "src/shared/money.ts#Money.times",
+              "name": "Money.times",
+              "kind": "method",
+              "status": "same",
+              "range": {
+                "start": 16,
+                "end": 18
+              }
+            },
+            {
+              "id": "src/shared/money.ts#round",
+              "name": "round",
+              "kind": "function",
+              "status": "same",
+              "range": {
+                "start": 21,
+                "end": 23
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "steps": [],
+  "findings": [],
+  "summary": {
+    "files": 17,
+    "byStatus": {
+      "add": 14,
+      "mod": 8,
+      "sig": 1,
+      "del": 1,
+      "same": 32
+    },
+    "byVerdict": {
+      "eyes": 2,
+      "risky": 0,
+      "spec": 0,
+      "ok": 9,
+      "same": 6
+    },
+    "tier1Files": [
+      "db/migrations/20260921_order_discounts.sql",
+      "src/auth/order.guard.ts"
+    ]
+  }
+}

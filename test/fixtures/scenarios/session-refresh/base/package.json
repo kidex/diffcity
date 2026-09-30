@@ -1,0 +1,5 @@
+{
+  "name": "ledger",
+  "private": true,
+  "type": "module"
+}

@@ -1,0 +1,11 @@
+{
+  "repo": "shopfront",
+  "base": "main",
+  "branch": "feature/order-discounts",
+  "now": "2026-09-21T10:00:00.000Z",
+  "commits": [
+    { "message": "feat: order guard checks the order owner", "files": "steps/01-guard" },
+    { "message": "feat: discount rules, pricing cleanup and discount columns", "files": "steps/02-discounts" },
+    { "message": "feat: cancel endpoint", "files": "steps/03-cancel" }
+  ]
+}

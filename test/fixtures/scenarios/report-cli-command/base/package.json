@@ -1,0 +1,6 @@
+{
+  "name": "acme-cli",
+  "private": true,
+  "type": "module",
+  "bin": { "acme": "dist/cli.js" }
+}
