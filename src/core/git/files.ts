@@ -161,24 +161,39 @@ async function worktreeChanges(root: string, mergeBase: string): Promise<Changed
       GIT_ALTERNATE_OBJECT_DIRECTORIES: objectsDir,
       GIT_LITERAL_PATHSPECS: '1',
     };
-    await git(
-      root,
-      ['-c', 'core.splitIndex=false', 'add', '--intent-to-add', '--pathspec-from-file=-', '--pathspec-file-nul'],
-      { env, input: addable.map((path) => `${path}\0`).join('') },
-    );
+    try {
+      await git(
+        root,
+        ['-c', 'core.splitIndex=false', 'add', '--intent-to-add', '--pathspec-from-file=-', '--pathspec-file-nul'],
+        { env, input: addable.map((path) => `${path}\0`).join('') },
+      );
+    } catch {
+      // Typically an untracked file vanished after ls-files (a bundler's temp
+      // file): pathspec did not match. Plain diff for this round; only rename
+      // pairing with untracked files is lost.
+      return await withOthers(root, parseDiffOutput(await git(root, diffArgs)), [...addable, ...others]);
+    }
     return await withOthers(root, parseDiffOutput(await git(root, diffArgs, { env })), others);
   } finally {
     await rm(tempDir, { recursive: true, force: true });
   }
 }
 
-/** Adds untracked entries git could not diff (not a file or symlink) as `add`. */
+/**
+ * Adds untracked entries that git did not diff as `add`. Entries that no longer
+ * exist on disk are dropped: they are not part of the change any more.
+ */
 async function withOthers(root: string, files: ChangedFile[], others: string[]): Promise<ChangedFile[]> {
   const known = new Set(files.map((file) => file.path));
   for (const path of others) {
-    if (!known.has(path)) {
-      files.push({ path, oldPath: null, type: 'add', binary: await isBinaryOnDisk(join(root, path)) });
+    if (known.has(path)) continue;
+    const absPath = join(root, path);
+    try {
+      await lstat(absPath);
+    } catch {
+      continue;
     }
+    files.push({ path, oldPath: null, type: 'add', binary: await isBinaryOnDisk(absPath) });
   }
   return files;
 }
