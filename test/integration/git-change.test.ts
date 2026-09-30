@@ -1,6 +1,8 @@
+import { execFile } from 'node:child_process';
 import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
+import { promisify } from 'node:util';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
   GitError,
@@ -16,6 +18,8 @@ import { ghForbidden, isolateGitConfig } from '../helpers/git-env.js';
 import { createRepo, type CreateRepoOptions, type TempRepo } from '../helpers/repo.js';
 
 isolateGitConfig();
+
+const execFileAsync = promisify(execFile);
 
 const repos: TempRepo[] = [];
 const dirs: string[] = [];
@@ -136,6 +140,28 @@ describe('resolveChange and changedFiles (ADR-012)', { timeout: 30_000 }, () => 
       { path: 'assets/logo.bin', oldPath: 'assets/logo.bin', type: 'mod', binary: true },
       { path: 'notes.txt', oldPath: 'notes.txt', type: 'mod', binary: false },
     ]);
+  });
+
+  it('worktree-dirty-untracked: odd untracked entries never break the list', async () => {
+    const repo = await repoOn({ files: { 'lib/a.ts': 'x\n' } });
+    await mkdir(join(repo.dir, 'lib', 'dir'));
+    await writeFile(join(repo.dir, 'lib', 'dir', 'inner.ts'), 'y\n', 'utf8');
+    await symlink('does-not-exist.ts', join(repo.dir, 'lib', 'dangling.ts'));
+    await symlink('dir', join(repo.dir, 'lib', 'dir-link'));
+    await execFileAsync('mkfifo', [join(repo.dir, 'lib', 'pipe')]);
+    // A nested repository is not a file of this change.
+    await execFileAsync('git', ['init', '--quiet', join(repo.dir, 'vendor', 'nested')]);
+    await writeFile(join(repo.dir, 'vendor', 'nested', 'n.ts'), 'n\n', 'utf8');
+
+    const change = await resolveChange(repo.dir, noGh);
+    expect(await changedFiles(change)).toEqual([
+      { path: 'lib/dangling.ts', oldPath: null, type: 'add', binary: false },
+      { path: 'lib/dir-link', oldPath: null, type: 'add', binary: false },
+      { path: 'lib/dir/inner.ts', oldPath: null, type: 'add', binary: false },
+    ]);
+    expect(await readAfter(change, 'lib/dangling.ts')).toBe('does-not-exist.ts');
+    expect(await readAfter(change, 'lib/pipe')).toBeNull();
+    expect(await listHeadFiles(change)).toEqual(['lib/a.ts', 'lib/dangling.ts', 'lib/dir-link', 'lib/dir/inner.ts']);
   });
 
   it('head-ref: --head compares against that commit and ignores the working tree', async () => {

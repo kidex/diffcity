@@ -77,20 +77,36 @@ export function parseDiffOutput(output: string): ChangedFile[] {
   return files;
 }
 
+/**
+ * Binary flag of an untracked entry. Only regular files are opened (git's own
+ * heuristic: a NUL byte in the first 8000 bytes). A symlink is stored by git as
+ * its target text, so it is never binary; anything else (FIFO, socket, device)
+ * is never opened. A file that cannot be read counts as not binary.
+ */
 async function isBinaryOnDisk(absPath: string): Promise<boolean> {
-  const handle = await open(absPath, 'r');
   try {
-    const buffer = Buffer.alloc(BINARY_SNIFF_BYTES);
-    const { bytesRead } = await handle.read(buffer, 0, BINARY_SNIFF_BYTES, 0);
-    return buffer.subarray(0, bytesRead).includes(0);
-  } finally {
-    await handle.close();
+    const stats = await lstat(absPath);
+    if (!stats.isFile()) return false;
+    const handle = await open(absPath, 'r');
+    try {
+      const buffer = Buffer.alloc(BINARY_SNIFF_BYTES);
+      const { bytesRead } = await handle.read(buffer, 0, BINARY_SNIFF_BYTES, 0);
+      return buffer.subarray(0, bytesRead).includes(0);
+    } finally {
+      await handle.close();
+    }
+  } catch {
+    return false;
   }
 }
 
-/** Non-ignored untracked files, relative to the root. */
+/**
+ * Non-ignored untracked files, relative to the root. Nested repositories
+ * (listed by git as `dir/`) are not files of this change and are left out.
+ */
 async function untrackedFiles(root: string): Promise<string[]> {
-  return splitNul(await git(root, ['ls-files', '-z', '--others', '--exclude-standard', '--full-name']));
+  const entries = splitNul(await git(root, ['ls-files', '-z', '--others', '--exclude-standard', '--full-name']));
+  return entries.filter((path) => !path.endsWith('/'));
 }
 
 /**
