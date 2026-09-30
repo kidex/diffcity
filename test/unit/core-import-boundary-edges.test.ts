@@ -45,6 +45,10 @@ describe('src/core import boundary, edge cases', () => {
   });
 
   it('the real src/core files are clean under the rule', async () => {
+    // The lintText cases above fed fake content for real paths into the shared
+    // typescript-eslint project service; lint those files from disk first so
+    // their importers are type-checked against the real declarations.
+    await eslint.lintFiles([report, parse]);
     const results = await eslint.lintFiles(['src/core/**/*.ts']);
     expect(results.length).toBeGreaterThanOrEqual(2);
     for (const result of results) expect(result.errorCount).toBe(0);
