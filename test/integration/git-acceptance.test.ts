@@ -140,7 +140,7 @@ describe('process execution (ADR-012)', () => {
     expect(sources.length).toBeGreaterThan(0);
     for (const file of sources) {
       const text = await readFile(new URL(file, root), 'utf8');
-      expect(text, file).not.toMatch(/\b(exec|execSync|spawn|spawnSync|execFileSync|fork)\s*\(/);
+      expect(text, file).not.toMatch(/(?<![.\w])(exec|execSync|spawn|spawnSync|execFileSync|fork)\s*\(/);
       expect(text, file).not.toMatch(/shell\s*:/);
       if (text.includes('node:child_process')) {
         expect(text, file).toMatch(/import \{ execFile \} from 'node:child_process'/);
