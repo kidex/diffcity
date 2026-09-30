@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { mkdir, mkdtemp, readFile, readdir, rename, rm, stat, symlink, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, readdir, rename, rm, stat, symlink, utimes, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
 import { promisify } from 'node:util';
@@ -275,6 +275,29 @@ describe('resolveChange and changedFiles (ADR-012)', { timeout: 30_000 }, () => 
     expect(await fingerprint(indexFile)).toEqual(indexBefore);
     expect(await listObjects(repo.dir)).toEqual(objectsBefore);
     expect(await repo.status()).toContain('?? lib/target.ts');
+  });
+
+  it('worktree-dirty-untracked: a same-size edit in the same second as the index is still seen', async () => {
+    // Only git's racy-entry rule can catch this edit: size and mtime match the
+    // index entry and ctime is not trusted. The rule needs the index mtime to be
+    // no later than the entry's, which the temp index copy must preserve.
+    const repo = await repoOn({ files: { 'seed.txt': 's\n' } });
+    await repo.git('config', 'core.trustctime', 'false');
+    const second = Math.floor(Date.now() / 1000) - 3600;
+    const file = join(repo.dir, 'lib', 'racy.ts');
+    await repo.write({ 'lib/racy.ts': 'export const flag = 1;\n' });
+    await utimes(file, second, second);
+    await repo.commit('racy');
+    await repo.write({ 'lib/racy.ts': 'export const flag = 2;\n' });
+    await utimes(file, second, second);
+    await utimes(join(repo.dir, '.git', 'index'), second, second);
+    // An untracked file sends changedFiles through the temp index.
+    await repo.write({ 'lib/new.ts': 'export const fresh = 1;\n' });
+
+    expect(await changedFiles(await resolveChange(repo.dir, noGh))).toEqual([
+      { path: 'lib/new.ts', oldPath: null, type: 'add', binary: false },
+      { path: 'lib/racy.ts', oldPath: 'lib/racy.ts', type: 'mod', binary: false },
+    ]);
   });
 
   it('rename-detected: files below the 50% similarity threshold are add + del', async () => {
