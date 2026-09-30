@@ -228,9 +228,9 @@ describe("5.1 renames", () => {
         kind: "function",
         status: "sig",
         range: { start: 1, end: 3 },
-        signatureBefore: "export function portion(weight: number): number",
+        signatureBefore: "function portion(weight: number): number",
         signatureAfter:
-          "export function portion(weight: number, slices: number): number",
+          "function portion(weight: number, slices: number): number",
       },
       {
         id: "src/kitchen/portion.ts#label",

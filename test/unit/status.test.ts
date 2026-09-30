@@ -57,13 +57,13 @@ describe('5.1 symbol status', () => {
   });
 
   it.each([
-    ['sig-param-added', 'knead', 'export function knead(dough: string): string', 'export function knead(dough: string, minutes: number): string'],
-    ['sig-param-removed', 'decant', 'export function decant(jar: string, spoon: number): string', 'export function decant(jar: string): string'],
-    ['sig-param-retyped', 'proof', 'export function proof(minutes: number): boolean', 'export function proof(minutes: string): boolean'],
-    ['sig-return-changed', 'ovenTemp', 'export function ovenTemp(level: number): number', 'export function ovenTemp(level: number): string'],
-    ['sig-param-renamed', 'slice', 'export function slice(loaf: string): string[]', 'export function slice(bread: string): string[]'],
-    ['sig-default-changed', 'glaze', 'export function glaze(layers = 1): number', 'export function glaze(layers = 2): number'],
-    ['sig-async-added', 'coolDown', 'export function coolDown(minutes: number): number', 'export async function coolDown(minutes: number): number'],
+    ['sig-param-added', 'knead', 'function knead(dough: string): string', 'function knead(dough: string, minutes: number): string'],
+    ['sig-param-removed', 'decant', 'function decant(jar: string, spoon: number): string', 'function decant(jar: string): string'],
+    ['sig-param-retyped', 'proof', 'function proof(minutes: number): boolean', 'function proof(minutes: string): boolean'],
+    ['sig-return-changed', 'ovenTemp', 'function ovenTemp(level: number): number', 'function ovenTemp(level: number): string'],
+    ['sig-param-renamed', 'slice', 'function slice(loaf: string): string[]', 'function slice(bread: string): string[]'],
+    ['sig-default-changed', 'glaze', 'function glaze(layers = 1): number', 'function glaze(layers = 2): number'],
+    ['sig-async-added', 'coolDown', 'function coolDown(minutes: number): number', 'async function coolDown(minutes: number): number'],
   ])('S3 sig: %s', async (fixture, name, signatureBefore, signatureAfter) => {
     const result = await compare({ fixture, path: 'src/bakery.ts', change: 'mod' });
     expect(result.symbols).toEqual([
@@ -185,8 +185,8 @@ describe('5.1 symbol status', () => {
     });
     expect(byId(result.symbols, 'src/tools.ts#Mixer')).toMatchObject({
       kind: 'class',
-      signatureBefore: 'export class Mixer',
-      signatureAfter: 'export class Mixer<T>',
+      signatureBefore: 'class Mixer',
+      signatureAfter: 'class Mixer<T>',
     });
     expect(result.status).toBe('sig');
   });
@@ -258,8 +258,8 @@ describe('5.1 classes, interfaces and overloads (ADR-006)', () => {
       'src/proofer.ts#Proofer.start': 'same',
     });
     expect(byId(result.symbols, 'src/proofer.ts#Proofer')).toMatchObject({
-      signatureBefore: 'export class Proofer extends Appliance',
-      signatureAfter: 'export class Proofer extends HeatedAppliance',
+      signatureBefore: 'class Proofer extends Appliance',
+      signatureAfter: 'class Proofer extends HeatedAppliance',
     });
     expect(result.status).toBe('sig');
   });

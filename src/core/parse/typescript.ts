@@ -361,6 +361,7 @@ class Extractor {
       start: first.startPosition.row + 1,
       end: last.endPosition.row + 1,
       ...parts,
+      signatureText: displaySignature(parts.signatureText),
       members: [],
     };
   }
@@ -509,6 +510,40 @@ function trailingSemicolon(member: Node): Node | null {
 
 function leadingDirectives(node: Node): Node[] {
   return leadingAttachments(node).filter(isDirectiveComment);
+}
+
+/** Length of the leading decorators of a declaration head (`@name`, `@a.b(...)`), whitespace included. */
+function decoratorsEnd(text: string): number {
+  let i = 0;
+  for (;;) {
+    const at = /^\s*@[\w$.]+/.exec(text.slice(i));
+    if (at === null) return i;
+    i += at[0].length;
+    if (text[i] === '(') {
+      let depth = 0;
+      for (; i < text.length; i++) {
+        if (text[i] === '(') depth++;
+        else if (text[i] === ')' && --depth === 0) {
+          i++;
+          break;
+        }
+      }
+    }
+    i += /^\s*/.exec(text.slice(i))?.[0].length ?? 0;
+  }
+}
+
+/**
+ * Signature text for display: the leading `export`, `export default` and
+ * `declare` keywords are dropped (after any decorators), so a top-level
+ * function reads like a method. The normalized signature used for comparison
+ * is built separately and keeps its own rules. The head of
+ * `export default <expression>` reads `default`.
+ */
+function displaySignature(text: string): string {
+  const start = decoratorsEnd(text);
+  const rest = text.slice(start).replace(/^(?:export\s+(?:default\s+)?)?(?:declare\s+)?/, '');
+  return rest === '' ? text : text.slice(0, start) + rest;
 }
 
 function trimStatementEnd(text: string): string {

@@ -297,8 +297,8 @@
                 "start": 3,
                 "end": 9
               },
-              "signatureBefore": "export function formatDuration(ms: number): string\nexport function formatDuration(start: Date, end: Date): string\nexport function formatDuration(a: number | Date, b?: Date): string",
-              "signatureAfter": "export function formatDuration(ms: number): string\nexport function formatDuration(ms: bigint): string\nexport function formatDuration(start: Date, end: Date): string\nexport function formatDuration(a: number | bigint | Date, b?: Date): string"
+              "signatureBefore": "function formatDuration(ms: number): string\nfunction formatDuration(start: Date, end: Date): string\nfunction formatDuration(a: number | Date, b?: Date): string",
+              "signatureAfter": "function formatDuration(ms: number): string\nfunction formatDuration(ms: bigint): string\nfunction formatDuration(start: Date, end: Date): string\nfunction formatDuration(a: number | bigint | Date, b?: Date): string"
             }
           ]
         }

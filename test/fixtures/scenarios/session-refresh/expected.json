@@ -359,8 +359,8 @@
                 "start": 13,
                 "end": 16
               },
-              "signatureBefore": "export function refreshSession(raw: string): Session | null",
-              "signatureAfter": "export function refreshSession(session: Session, now: number = Date.now()): Session | null"
+              "signatureBefore": "function refreshSession(raw: string): Session | null",
+              "signatureAfter": "function refreshSession(session: Session, now: number = Date.now()): Session | null"
             },
             {
               "id": "src/session/refresh.ts#rotate",

@@ -30,7 +30,7 @@ describe('extractSymbols', () => {
       ['default', 'function', 15, 17],
     ]);
     expect(find(symbols, 'priceWithTax').signatureText).toBe(
-      'export function priceWithTax(amount: number, rate = 0.2): number',
+      'function priceWithTax(amount: number, rate = 0.2): number',
     );
     expect(find(symbols, 'priceWithTax').signature).toBe('( amount : number , rate = 0.2 ) : number');
     expect(find(symbols, 'streamInvoices').signature).toBe('async * ( ids : string [ ] )');
@@ -41,9 +41,9 @@ describe('extractSymbols', () => {
       '( value : string | number ) : number',
     ]);
     expect(overloaded.signatureText.split('\n')).toEqual([
-      'export function roundCents(value: string): number',
-      'export function roundCents(value: number): number',
-      'export function roundCents(value: string | number): number',
+      'function roundCents(value: string): number',
+      'function roundCents(value: number): number',
+      'function roundCents(value: string | number): number',
     ]);
   });
 
@@ -59,7 +59,7 @@ describe('extractSymbols', () => {
       ['whisper', 'function', 17, 17],
     ]);
     expect(find(symbols, 'describeOrder').signature).toBe('async < T , > ( order : T )');
-    expect(find(symbols, 'describeOrder').signatureText).toBe('export const describeOrder = async <T,>(order: T) =>');
+    expect(find(symbols, 'describeOrder').signatureText).toBe('const describeOrder = async <T,>(order: T) =>');
     expect(find(symbols, 'trimLabel').signature).toBe(': Formatter ( text )');
     expect(find(symbols, 'whisper').signatureText).toBe('whisper = (text: string) =>');
   });
@@ -75,7 +75,7 @@ describe('extractSymbols', () => {
     const book = find(symbols, 'InvoiceBook');
     expect(book.signature).toBe('@ sealed abstract < T > extends LedgerBase implements Printable');
     expect(book.signatureText).toBe(
-      '@sealed\nexport abstract class InvoiceBook<T> extends LedgerBase implements Printable',
+      '@sealed\nabstract class InvoiceBook<T> extends LedgerBase implements Printable',
     );
     expect(book.body).toContain('private readonly entries');
     expect(book.body).not.toContain('count');
@@ -136,7 +136,7 @@ describe('extractSymbols', () => {
     expect(find(symbols, 'TAX_RATE').signatureText).toBe('TAX_RATE: number');
     expect(find(symbols, 'CURRENCY').signature).toBe('');
     expect(find(symbols, 'Receipt').signature).toBe('< T >');
-    expect(find(symbols, 'Receipt').signatureText).toBe('export interface Receipt<T>');
+    expect(find(symbols, 'Receipt').signatureText).toBe('interface Receipt<T>');
     expect(find(symbols, 'Channel').signature).toBe('');
     expect(find(symbols, 'default').body).toBe('export default createRegistry ( ) ;');
   });
@@ -242,6 +242,44 @@ describe('extractSymbols', () => {
 
   it('keeps the signature text of non-ASCII sources intact', async () => {
     const [symbol] = await extractSymbols("export function grüße(név = 'ő'): string {\n  return név;\n}\n", 'typescript');
-    expect(symbol?.signatureText).toBe("export function grüße(név = 'ő'): string");
+    expect(symbol?.signatureText).toBe("function grüße(név = 'ő'): string");
+  });
+});
+
+describe('signatureText is display text without export, default or declare', () => {
+  it('drops export and export default for every kind, after leading decorators, and keeps other modifiers', async () => {
+    const source = [
+      'export default async function brew(cups: number): Promise<void> {}',
+      'export abstract class Kettle<T> extends Pot {}',
+      '@sealed',
+      'export class Teapot {}',
+      '@sealed() export default class {}',
+      'export type Blend<T> = T[];',
+      'export const pour = (cup: string) => cup;',
+      'export const volume: number = 2;',
+      '',
+    ].join('\n');
+    const symbols = await extractSymbols(source, 'typescript');
+    expect(symbols.map((s) => [s.qualifiedName, s.signatureText])).toEqual([
+      ['brew', 'async function brew(cups: number): Promise<void>'],
+      ['Kettle', 'abstract class Kettle<T> extends Pot'],
+      ['Teapot', '@sealed\nclass Teapot'],
+      ['default', '@sealed() class'],
+      ['Blend', 'type Blend<T>'],
+      ['pour', 'const pour = (cup: string) =>'],
+      ['volume', 'volume: number'],
+    ]);
+  });
+
+  it('leaves the normalized signature used for comparison untouched', async () => {
+    const [symbol] = await extractSymbols('export function steep(minutes: number): void {}\n', 'typescript');
+    expect(symbol?.signature).toBe('( minutes : number ) : void');
+  });
+});
+
+describe('signatureText of an expression default export', () => {
+  it('reads default', async () => {
+    const [symbol] = await extractSymbols('export default { steep: 3 };\n', 'typescript');
+    expect(symbol?.signatureText).toBe('default');
   });
 });
