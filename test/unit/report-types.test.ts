@@ -136,10 +136,11 @@ describe('Report types (SPEC.md 4.1)', () => {
 });
 
 describe('ParsedSymbol', () => {
-  it('has name, qualifiedName, kind, range, normalized signature and body, signatureText', () => {
+  it('has name, qualifiedName, baseQualifiedName, kind, range, normalized signature and body, signatureText', () => {
     const parsed: ParsedSymbol = {
       name: 'total',
       qualifiedName: 'InvoiceBook.total',
+      baseQualifiedName: 'InvoiceBook.total',
       kind: 'method',
       range: { start: 4, end: 12 },
       signature: 'total(currency:string):number',
@@ -150,6 +151,7 @@ describe('ParsedSymbol', () => {
     expectTypeOf<ParsedSymbol>().toEqualTypeOf<{
       name: string;
       qualifiedName: string;
+      baseQualifiedName: string;
       kind: Symbol['kind'];
       range: Symbol['range'];
       signature: string;

@@ -365,6 +365,7 @@ export function extractSqlSymbols(source: string): ParsedSymbol[] {
     return {
       name,
       qualifiedName: qualifiedNames[i] ?? name,
+      baseQualifiedName: name,
       kind: 'sql',
       range: { start: lineOf(starts, first?.start ?? 0), end: lineOf(starts, (last?.end ?? 1) - 1) },
       signature: '',

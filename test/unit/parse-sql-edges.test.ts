@@ -84,6 +84,7 @@ describe('extractSqlSymbols: names and duplicates', () => {
     const symbols = extractSqlSymbols('SELECT 1; SELECT 2; SELECT 3;');
     expect(symbols.map((s) => s.name)).toEqual(['SELECT', 'SELECT', 'SELECT']);
     expect(symbols.map((s) => s.qualifiedName)).toEqual(['SELECT', 'SELECT~2', 'SELECT~3']);
+    expect(symbols.map((s) => s.baseQualifiedName)).toEqual(['SELECT', 'SELECT', 'SELECT']);
   });
 
   it('a suffix already taken by a literal name is skipped', () => {

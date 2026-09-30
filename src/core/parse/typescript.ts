@@ -76,15 +76,19 @@ class Extractor {
     // prefix (`Menu~2.render`). The final pass over the flattened list catches a
     // member colliding with a top-level name (`Cart.total` vs a test titled so).
     const topLevel = withDuplicateSuffixes(candidates.map((c) => c.name));
-    const flat: [Candidate, string][] = candidates.flatMap((candidate, i) => {
+    const flat: [Candidate, string, string][] = candidates.flatMap((candidate, i) => {
       const qualifiedName = topLevel[i] ?? candidate.name;
       return [
-        [candidate, qualifiedName] as [Candidate, string],
-        ...candidate.members.map((member): [Candidate, string] => [member, `${qualifiedName}.${member.name}`]),
+        [candidate, qualifiedName, candidate.name] as [Candidate, string, string],
+        ...candidate.members.map((member): [Candidate, string, string] => [
+          member,
+          `${qualifiedName}.${member.name}`,
+          `${candidate.name}.${member.name}`,
+        ]),
       ];
     });
     const unique = withDuplicateSuffixes(flat.map(([, name]) => name));
-    return flat.map(([candidate, name], i) => toSymbol(candidate, unique[i] ?? name));
+    return flat.map(([candidate, name, base], i) => toSymbol(candidate, unique[i] ?? name, base));
   }
 
   private statement(statement: Node): Candidate[] {
@@ -367,10 +371,11 @@ class Extractor {
   }
 }
 
-function toSymbol(candidate: Candidate, qualifiedName: string): ParsedSymbol {
+function toSymbol(candidate: Candidate, qualifiedName: string, baseQualifiedName: string): ParsedSymbol {
   return {
     name: candidate.name,
     qualifiedName,
+    baseQualifiedName,
     kind: candidate.kind,
     range: { start: candidate.start, end: candidate.end },
     signature: candidate.signature,
