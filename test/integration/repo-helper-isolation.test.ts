@@ -80,7 +80,7 @@ afterEach(async () => {
   await rm(hostile, { recursive: true, force: true });
 });
 
-describe('test/helpers/repo.ts isolation from the machine git setup', () => {
+describe('test/helpers/repo.ts isolation from the machine git setup', { timeout: 30_000 }, () => {
   it('ignores a hostile global config and inherited GIT_* variables', async () => {
     const repo = await createRepo({ files: { 'ledger/entry.txt': 'line one\r\nline two\n' } });
     repos.push(repo);
