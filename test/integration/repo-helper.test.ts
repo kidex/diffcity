@@ -1,6 +1,6 @@
 import { existsSync, readFileSync, realpathSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createRepo, type TempRepo } from '../helpers/repo.js';
 
@@ -81,6 +81,22 @@ describe('test/helpers/repo.ts', { timeout: 30_000 }, () => {
   it('refuses paths that escape the repo', async () => {
     const repo = await track(createRepo());
     await expect(repo.write({ '../outside.txt': 'x' })).rejects.toThrow(/outside/);
+  });
+
+  it('names the working tree after `name`, inside its own temp directory', async () => {
+    const repo = await track(createRepo({ name: 'sample-ledger', files: { 'a.txt': 'a\n' } }));
+    expect(basename(repo.dir)).toBe('sample-ledger');
+    const parent = dirname(repo.dir);
+    expect(realpathSync(parent).startsWith(realpathSync(tmpdir()))).toBe(true);
+    expect(realpathSync(parent)).not.toBe(realpathSync(tmpdir()));
+    expect(await repo.git('rev-parse', '--show-toplevel')).toBe(realpathSync(repo.dir));
+    await repo.cleanup();
+    expect(existsSync(parent)).toBe(false);
+  });
+
+  it('refuses a name that is not a single path segment', async () => {
+    await expect(createRepo({ name: '../escape' })).rejects.toThrow(/single directory name/);
+    await expect(createRepo({ name: '.git' })).rejects.toThrow(/single directory name/);
   });
 
   it('cleanup removes the directory', async () => {
