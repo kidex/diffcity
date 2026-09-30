@@ -1,6 +1,7 @@
 // Changed files, file contents and the head file list for a resolved change.
 
-import { lstat, open, readFile, readlink, realpath } from 'node:fs/promises';
+import { copyFile, lstat, mkdir, mkdtemp, open, readFile, readlink, realpath, rm, stat, utimes } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { basename, dirname, isAbsolute, join, posix, relative, sep } from 'node:path';
 import type { ResolvedChange } from './change.js';
 import { GitError, git, gitRaw, splitNul } from './exec.js';
@@ -110,23 +111,88 @@ async function untrackedFiles(root: string): Promise<string[]> {
 }
 
 /**
- * Files that differ between before (merge-base) and after, sorted by path.
- * Renames are detected with `-M` (50% similarity). In the working tree case,
- * non-ignored untracked files are reported as `add`.
+ * Diff of the working tree against the merge-base, untracked files included.
+ *
+ * Untracked files are made visible to rename detection by marking them
+ * intent-to-add (`git add -N`) in a throwaway copy of the index, so a plain
+ * `mv` pairs up as a rename. The repo's own index and object store are never
+ * written: the index copy and any object git writes live in os.tmpdir().
  */
-export async function changedFiles(change: ResolvedChange): Promise<ChangedFile[]> {
-  const { root } = change;
-  const range = change.worktree ? [change.mergeBase] : [change.mergeBase, change.headCommit];
-  const files = parseDiffOutput(await git(root, ['diff', ...DIFF_FLAGS, ...range, '--']));
-
-  if (change.worktree) {
-    const known = new Set(files.map((file) => file.path));
-    for (const path of await untrackedFiles(root)) {
-      if (known.has(path)) continue;
-      files.push({ path, oldPath: null, type: 'add', binary: await isBinaryOnDisk(join(root, path)) });
+async function worktreeChanges(root: string, mergeBase: string): Promise<ChangedFile[]> {
+  const addable: string[] = [];
+  const others: string[] = [];
+  for (const path of await untrackedFiles(root)) {
+    try {
+      const stats = await lstat(join(root, path));
+      (stats.isFile() || stats.isSymbolicLink() ? addable : others).push(path);
+    } catch {
+      // Vanished between listing and lstat: not part of the change any more.
     }
   }
 
+  const diffArgs = ['diff', ...DIFF_FLAGS, mergeBase, '--'];
+  if (addable.length === 0) return withOthers(root, parseDiffOutput(await git(root, diffArgs)), others);
+
+  const gitPath = async (name: string): Promise<string> =>
+    (await git(root, ['rev-parse', '--path-format=absolute', '--git-path', name])).trim();
+  const indexFile = await gitPath('index');
+  const objectsDir = await gitPath('objects');
+  const tempDir = await mkdtemp(join(tmpdir(), 'diffcity-index-'));
+  try {
+    const tempIndex = join(tempDir, 'index');
+    try {
+      await copyFile(indexFile, tempIndex);
+      // Keep git's racy-entry check honest: entries modified at or after the
+      // index's mtime are re-checked by content. A copy gets a fresh mtime,
+      // which would make same-size edits look clean, so back-date it instead.
+      const { atimeMs, mtimeMs } = await stat(indexFile);
+      await utimes(tempIndex, atimeMs / 1000, (mtimeMs - 1000) / 1000);
+    } catch {
+      // No index to copy (unusual once HEAD exists): plain diff, untracked files as adds.
+      return await withOthers(root, parseDiffOutput(await git(root, diffArgs)), [...addable, ...others]);
+    }
+    const tempObjects = join(tempDir, 'objects');
+    await mkdir(tempObjects);
+    const env = {
+      GIT_INDEX_FILE: tempIndex,
+      // Anything git decides to write (the empty blob for intent-to-add) lands in
+      // the temp dir; the repo's own objects are still readable as an alternate.
+      GIT_OBJECT_DIRECTORY: tempObjects,
+      GIT_ALTERNATE_OBJECT_DIRECTORIES: objectsDir,
+      GIT_LITERAL_PATHSPECS: '1',
+    };
+    await git(
+      root,
+      ['-c', 'core.splitIndex=false', 'add', '--intent-to-add', '--pathspec-from-file=-', '--pathspec-file-nul'],
+      { env, input: addable.map((path) => `${path}\0`).join('') },
+    );
+    return await withOthers(root, parseDiffOutput(await git(root, diffArgs, { env })), others);
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+}
+
+/** Adds untracked entries git could not diff (not a file or symlink) as `add`. */
+async function withOthers(root: string, files: ChangedFile[], others: string[]): Promise<ChangedFile[]> {
+  const known = new Set(files.map((file) => file.path));
+  for (const path of others) {
+    if (!known.has(path)) {
+      files.push({ path, oldPath: null, type: 'add', binary: await isBinaryOnDisk(join(root, path)) });
+    }
+  }
+  return files;
+}
+
+/**
+ * Files that differ between before (merge-base) and after, sorted by path.
+ * Renames are detected with `-M` (50% similarity), including between a deleted
+ * tracked file and an untracked one. In the working tree case, non-ignored
+ * untracked files are reported as `add`.
+ */
+export async function changedFiles(change: ResolvedChange): Promise<ChangedFile[]> {
+  const files = change.worktree
+    ? await worktreeChanges(change.root, change.mergeBase)
+    : parseDiffOutput(await git(change.root, ['diff', ...DIFF_FLAGS, change.mergeBase, change.headCommit, '--']));
   return files.sort(byPath);
 }
 

@@ -1,5 +1,6 @@
 import { execFile } from 'node:child_process';
-import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
+import { mkdir, mkdtemp, readFile, readdir, rename, rm, stat, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
 import { promisify } from 'node:util';
@@ -20,6 +21,15 @@ import { createRepo, type CreateRepoOptions, type TempRepo } from '../helpers/re
 isolateGitConfig();
 
 const execFileAsync = promisify(execFile);
+
+async function fingerprint(file: string): Promise<{ sha: string; mtimeMs: number }> {
+  const sha = createHash('sha256').update(await readFile(file)).digest('hex');
+  return { sha, mtimeMs: (await stat(file)).mtimeMs };
+}
+
+async function listObjects(repoDir: string): Promise<string[]> {
+  return (await readdir(join(repoDir, '.git', 'objects'), { recursive: true })).sort();
+}
 
 const repos: TempRepo[] = [];
 const dirs: string[] = [];
@@ -240,6 +250,31 @@ describe('resolveChange and changedFiles (ADR-012)', { timeout: 30_000 }, () => 
     expect(await changedFiles(await resolveChange(repo.dir, noGh))).toEqual([
       { path: 'lib/after.ts', oldPath: 'lib/before.ts', type: 'rename', binary: false },
     ]);
+  });
+
+  it('rename-detected: an unstaged plain mv is a rename, and the repo is not written to', async () => {
+    const body = Array.from({ length: 20 }, (_, i) => `export const w${String(i)} = ${String(i)};\n`).join('');
+    const repo = await repoOn({ files: { 'lib/source.ts': body, 'lib/kept.ts': 'k\n' } });
+    const indexFile = join(repo.dir, '.git', 'index');
+    const indexBefore = await fingerprint(indexFile);
+    const objectsBefore = await listObjects(repo.dir);
+
+    await rename(join(repo.dir, 'lib', 'source.ts'), join(repo.dir, 'lib', 'target.ts'));
+    await writeFile(join(repo.dir, 'lib', 'target.ts'), body + 'export const more = 1;\n', 'utf8');
+    // Names that would be pathspec magic if git did not read them literally.
+    await repo.write({ 'lib/star*.ts': 's\n', 'lib/[ab].ts': 'b\n', ':(glob)odd.ts': 'o\n' });
+
+    const change = await resolveChange(repo.dir, noGh);
+    expect(await changedFiles(change)).toEqual([
+      { path: ':(glob)odd.ts', oldPath: null, type: 'add', binary: false },
+      { path: 'lib/[ab].ts', oldPath: null, type: 'add', binary: false },
+      { path: 'lib/star*.ts', oldPath: null, type: 'add', binary: false },
+      { path: 'lib/target.ts', oldPath: 'lib/source.ts', type: 'rename', binary: false },
+    ]);
+
+    expect(await fingerprint(indexFile)).toEqual(indexBefore);
+    expect(await listObjects(repo.dir)).toEqual(objectsBefore);
+    expect(await repo.status()).toContain('?? lib/target.ts');
   });
 
   it('rename-detected: files below the 50% similarity threshold are add + del', async () => {

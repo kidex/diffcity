@@ -75,13 +75,26 @@ export interface GitResult {
   exitCode: number;
 }
 
+export interface GitCallOptions {
+  /** Extra variables for this call only, applied after gitEnv() (e.g. a temporary GIT_INDEX_FILE). */
+  env?: Record<string, string>;
+  /** Written to git's stdin. */
+  input?: string;
+}
+
 /** Runs git and returns stdout as bytes plus the exit code; rejects only when git cannot be spawned. */
-export function gitRaw(cwd: string, args: readonly string[]): Promise<GitResult> {
+export function gitRaw(cwd: string, args: readonly string[], options: GitCallOptions = {}): Promise<GitResult> {
   return new Promise((resolve, reject) => {
-    execFile(
+    const child = execFile(
       'git',
       [...args],
-      { cwd, env: gitEnv(), encoding: 'buffer', maxBuffer: GIT_MAX_BUFFER, windowsHide: true },
+      {
+        cwd,
+        env: { ...gitEnv(), ...options.env },
+        encoding: 'buffer',
+        maxBuffer: GIT_MAX_BUFFER,
+        windowsHide: true,
+      },
       (error, stdout, stderr) => {
         const stderrText = stderr.toString('utf8');
         if (error === null) {
@@ -95,12 +108,13 @@ export function gitRaw(cwd: string, args: readonly string[]): Promise<GitResult>
         reject(new GitError('git-failed', `git ${args.join(' ')} failed: ${error.message}`, { cause: error }));
       },
     );
+    child.stdin?.end(options.input ?? '');
   });
 }
 
 /** Runs git; resolves with stdout as UTF-8, rejects with a GitError on a non-zero exit. */
-export async function git(cwd: string, args: readonly string[]): Promise<string> {
-  const result = await gitRaw(cwd, args);
+export async function git(cwd: string, args: readonly string[], options: GitCallOptions = {}): Promise<string> {
+  const result = await gitRaw(cwd, args, options);
   if (result.exitCode !== 0) {
     throw new GitError('git-failed', `git ${args.join(' ')} failed: ${result.stderr.trim()}`);
   }
