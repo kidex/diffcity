@@ -283,3 +283,29 @@ describe('signatureText of an expression default export', () => {
     expect(symbol?.signatureText).toBe('default');
   });
 });
+
+describe('ambient declarations (declare) are not symbols', () => {
+  // The extractor skips ambient declarations at module top level; their lines
+  // fall under "changes outside symbols" (ADR-008). If this changes, the
+  // `declare` branch of the display signature must then be covered here.
+  it('export declare function f(): void; yields no symbol', async () => {
+    await expect(extractSymbols('export declare function f(): void;\n', 'typescript')).resolves.toEqual([]);
+  });
+
+  it('yields no symbol for other ambient forms, exported or not', async () => {
+    const source = [
+      'declare function glaze(coats: number): string;',
+      'export declare class Kiln {}',
+      'declare const heat: number;',
+      'export declare const firing: string;',
+      '',
+    ].join('\n');
+    await expect(extractSymbols(source, 'typescript')).resolves.toEqual([]);
+  });
+
+  it('keeps the non-ambient neighbours of an ambient declaration', async () => {
+    const source = ['export declare function f(): void;', 'export function g(): void {}', ''].join('\n');
+    const symbols = await extractSymbols(source, 'typescript');
+    expect(symbols.map((s) => [s.qualifiedName, s.signatureText, s.range.start])).toEqual([['g', 'function g(): void', 2]]);
+  });
+});
