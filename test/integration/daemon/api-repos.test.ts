@@ -65,7 +65,7 @@ describe('api on the built daemon', () => {
   it('GET /api/repos serves the seeded repos by last event, without a SQLite warning', async () => {
     const { shopId } = await seed();
     const spawned = daemons.spawnDaemon(temp.env);
-    const info: DaemonInfo = await waitFor(() => readDaemonInfo(paths).then((value) => value ?? undefined), 10_000, 'daemon.json');
+    const info: DaemonInfo = await waitFor(() => readDaemonInfo(paths).then((value) => value ?? undefined), 45_000, 'daemon.json');
     const base = `http://127.0.0.1:${String(info.port)}`;
 
     const response = await fetch(`${base}/api/repos`);

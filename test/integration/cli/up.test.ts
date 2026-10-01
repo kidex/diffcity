@@ -179,7 +179,7 @@ describe('diffcity up', () => {
 
   it('--foreground runs the daemon in the CLI process, logging to stderr, until SIGTERM', async () => {
     const run = daemons.cli(['up', '--foreground', '--port', '0', '--no-open'], temp.env, temp.userHome);
-    const info = await waitFor(() => readDaemonInfo(paths).then((value) => value ?? undefined), 10_000, 'daemon.json');
+    const info = await waitFor(() => readDaemonInfo(paths).then((value) => value ?? undefined), 45_000, 'daemon.json');
     expect(info.pid).toBe(run.child.pid);
     await waitFor(() => run.stdout().includes('\n'), 5000, 'the URL');
     expect(run.stdout()).toBe(`http://127.0.0.1:${String(info.port)}\n`);

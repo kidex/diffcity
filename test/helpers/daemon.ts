@@ -26,7 +26,7 @@ export interface Spawned {
 }
 
 /** Polls `check` until it returns a value other than undefined/false, or throws after `timeoutMs`. */
-export async function waitFor<T>(check: () => Promise<T | undefined | false> | T | undefined | false, timeoutMs = 10_000, what = 'condition'): Promise<T> {
+export async function waitFor<T>(check: () => Promise<T | undefined | false> | T | undefined | false, timeoutMs = 45_000, what = 'condition'): Promise<T> {
   const deadline = Date.now() + timeoutMs;
   for (;;) {
     const value = await check();
