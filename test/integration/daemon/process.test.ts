@@ -113,7 +113,8 @@ describe('daemon process', () => {
       await Promise.all(racers.map((racer) => racer.exited));
       expect(results.filter((result) => result.acquired), `run ${String(run)}`).toHaveLength(1);
     }
-  });
+    // 15 runs start 60 node processes; under parallel load each start can take seconds.
+  }, 180_000);
 
   it.each(['shutdown request', 'SIGTERM', 'SIGINT'] as const)('daemon/shutdown-cleans-files: %s removes daemon.json, the socket and the lock', async (how) => {
     const spawned = daemons.spawnDaemon(temp.env);
