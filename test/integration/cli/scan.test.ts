@@ -115,6 +115,22 @@ describe('diffcity scan', () => {
     expect(fake.requests.flatMap((request) => (request.type === 'register' ? request.dirs : []))).toEqual(repos);
   });
 
+  it('a later batch that fails: the counts registered so far, then the error, exit 1', async () => {
+    const repos = [];
+    for (let index = 0; index < 6; index++) repos.push(await fakeRepo(`repo-${String(index)}`));
+    let batches = 0;
+    fakes.push(
+      await startFakeDaemon(paths, {
+        register: (request) => (++batches === 1 ? { ok: true, registered: request.dirs.length, known: 0 } : { ok: false, error: 'sample failure' }),
+      }),
+    );
+    const result = await scan(projects, { maxRequestBytes: 2 * (repos[0]?.length ?? 0) + 64 });
+    expect(batches).toBe(2);
+    expect(result.code).toBe(1);
+    expect(result.stdout).toMatch(/^registered \d+ repos? \(0 already known\) before the error\n$/);
+    expect(result.stderr).toBe('diffcity scan: sample failure\n');
+  });
+
   it('an error response: its message on stderr, exit 1', async () => {
     await fakeRepo('sample-shop');
     fakes.push(await startFakeDaemon(paths, { register: () => ({ ok: false, error: 'sample failure' }) }));

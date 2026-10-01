@@ -86,10 +86,14 @@ export async function runScan(dirArg: string, deps: ScanDeps): Promise<number> {
         ...(deps.startTimeoutMs === undefined ? {} : { timeoutMs: deps.startTimeoutMs }),
       },
     );
-    if (!result.ok) return fail(result.error);
-    if (!result.response.ok) return fail(result.response.error);
-    registered += result.response.registered;
-    known += result.response.known;
+    const response = result.ok ? result.response : { ok: false as const, error: result.error };
+    if (!response.ok) {
+      // Earlier batches are registered already: say so before the error.
+      if (registered + known > 0) io.stdout(`registered ${repos(registered)} (${String(known)} already known) before the error\n`);
+      return fail(response.error);
+    }
+    registered += response.registered;
+    known += response.known;
   }
   io.stdout(`registered ${repos(registered)} (${String(known)} already known)\n`);
   return 0;
