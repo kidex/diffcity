@@ -1,0 +1,48 @@
+/*
+ * Direction C, "Night data city". Dark theme of the mockup palette, one step
+ * deeper for the night ground; glass and grid tints derived from it.
+ */
+:root {
+  --c-void: #070D1A;
+  --c-ground: #0A1222;
+  --c-sky: #2F4A7A;
+  --c-lot: #0E1A30;
+  --c-glass: #10203C;
+  --c-glass-quiet: #0D182D;
+
+  --stage-bg: #070D1A;
+  --hud-bg: color-mix(in srgb, #0D172B 70%, transparent);
+  --hud-panel: color-mix(in srgb, #0D172B 82%, transparent);
+  --hud-top-bg: color-mix(in srgb, #070D1A 85%, transparent);
+  --hud-chip: color-mix(in srgb, #172A4A 80%, transparent);
+  --hud-line: color-mix(in srgb, #2F4A7A 70%, transparent);
+  --hud-blur: 14px;
+  --hud-shadow: 0 0 0 1px rgb(127 177 255 / 0.04) inset, 0 20px 50px rgb(0 0 0 / 0.5);
+}
+.chips button.on { box-shadow: 0 0 14px color-mix(in srgb, var(--c) 35%, transparent); }
+
+/* holographic verdict tags */
+.roof { display: flex; flex-direction: column; align-items: center; gap: 3px; pointer-events: none; }
+.roof .badge {
+  position: relative; overflow: hidden;
+  display: inline-flex; align-items: center; gap: 7px; padding: 4px 10px 4px 8px; border-radius: 4px;
+  font: 500 10.5px/1.2 var(--mono); letter-spacing: .1em; text-transform: uppercase; white-space: nowrap;
+  color: color-mix(in srgb, var(--c) 80%, white);
+  background:
+    repeating-linear-gradient(to bottom, color-mix(in srgb, var(--c) 10%, transparent) 0 1px, transparent 1px 3px),
+    linear-gradient(to bottom, color-mix(in srgb, var(--c) 26%, transparent), color-mix(in srgb, var(--c) 8%, transparent));
+  border: 1px solid color-mix(in srgb, var(--c) 70%, transparent);
+  box-shadow: 0 0 16px color-mix(in srgb, var(--c) 40%, transparent), inset 0 0 10px color-mix(in srgb, var(--c) 20%, transparent);
+  text-shadow: 0 0 8px color-mix(in srgb, var(--c) 80%, transparent);
+  backdrop-filter: blur(3px);
+}
+.roof .badge i { width: 6px; height: 6px; background: var(--c); box-shadow: 0 0 8px var(--c); transform: rotate(45deg); }
+.roof .file { font: 500 11px/1.2 var(--mono); color: var(--ink); white-space: nowrap; text-shadow: 0 0 6px rgb(0 0 0 / 0.9), 0 0 2px rgb(0 0 0); }
+.roof.v-ok .badge { padding: 2px 7px 2px 6px; font-size: 9.5px; box-shadow: none; text-shadow: none; background: color-mix(in srgb, var(--c) 10%, transparent); border-color: color-mix(in srgb, var(--c) 40%, transparent); }
+.roof.is-selected .badge { border-color: var(--sig); }
+.roof.is-selected .file, .roof.is-hover .file { color: white; }
+
+.stop {
+  font: 600 10px/1 var(--mono); color: var(--sig); width: 16px; height: 16px; display: grid; place-items: center;
+  pointer-events: none; text-shadow: 0 0 6px var(--sig);
+}
