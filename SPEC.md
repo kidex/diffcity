@@ -44,7 +44,9 @@ Division of labour: the AI writes the line-by-line comments (imported as finding
 ## 3. CLI commands
 
 ```
-diffcity up [--port 4321]                              # start the daemon and open the UI (localhost)
+diffcity start [<dir>]                                 # the one command to use: start the daemon if needed, register the repo at <dir> (or the current repo) and open it in the browser
+diffcity stop                                          # stop the daemon
+diffcity up [--port 4321]                              # start the daemon and open the UI (localhost); start without a repo
 diffcity shell-init [zsh|bash|fish]                    # print the shell hook; add to .zshrc: eval "$(diffcity shell-init zsh)"
 diffcity track [<dir>] [--agent]                       # register the current repo and ask the daemon to collect; --agent marks the change as "agent worked, not reviewed" and links the Claude Code session from the hook JSON on stdin
 diffcity scan <dir>                                    # discover repos (folders with .git) under a folder and register them
