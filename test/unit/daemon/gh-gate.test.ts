@@ -4,7 +4,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { fetchOpenPrs, GH_PR_LIST_ARGS } from '../../../src/core/changes/index.js';
-import { createGhGate, GH_UNAVAILABLE_TTL_MS } from '../../../src/daemon/collector/gh.js';
+import { createGhGate, GH_TIMEOUT_PAUSE_MS, GH_UNAVAILABLE_TTL_MS } from '../../../src/daemon/collector/gh.js';
 import { fakeRunner } from '../../helpers/git-env.js';
 
 const START = Date.parse('2026-02-01T00:00:00.000Z');
@@ -56,6 +56,26 @@ describe('gh gate', () => {
     expect(gate.usable(1)).toBe(true);
     gate.record(1, { ok: false, reason: 'failed' });
     gate.record(1, { ok: true, prs: [] });
+    expect(gate.usable(1)).toBe(true);
+  });
+
+  it('a hung GitHub: 2 timeouts in a row pause gh in that repo for 5 minutes', () => {
+    let clock = START;
+    const gate = createGhGate(() => new Date(clock));
+    const timeout = { ok: false, reason: 'timeout' } as const;
+    gate.record(1, timeout);
+    expect(gate.usable(1)).toBe(true);
+    gate.record(1, timeout);
+    expect([gate.usable(1), gate.usable(2)]).toEqual([false, true]);
+    clock += GH_TIMEOUT_PAUSE_MS - 1;
+    expect(gate.usable(1)).toBe(false);
+    clock += 1;
+    expect(gate.usable(1)).toBe(true);
+    // The count starts over after the pause, and any answer resets it.
+    gate.record(1, timeout);
+    expect(gate.usable(1)).toBe(true);
+    gate.record(1, { ok: true, prs: [] });
+    gate.record(1, timeout);
     expect(gate.usable(1)).toBe(true);
   });
 });

@@ -7,6 +7,7 @@ import { mkdir, realpath, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { sendRequest } from '../../../src/daemon/client.js';
+import { GH_TIMEOUT_PAUSE_MS } from '../../../src/daemon/collector/gh.js';
 import { getRuntime } from '../../../src/daemon/runtime.js';
 import { fakeRunner, isolateGitConfig } from '../../helpers/git-env.js';
 import { waitFor } from '../../helpers/daemon.js';
@@ -247,13 +248,41 @@ describe('collect/first-collect-refreshes-prs (C5)', () => {
     if (!response.ok) throw new Error(response.error);
     await test.idle();
     const db = test.collection.db();
-    expect(db.changes.listLive(response.repo.id).map((change) => change.kind)).toEqual(['branch']);
+    const branches = db.changes.listLive(response.repo.id);
+    expect(branches.map((change) => change.kind)).toEqual(['branch']);
     expect(db.repos.get(response.repo.id)?.collectError).toBeNull();
 
     slow = false;
     expect(await test.collection.collector().request(response.repo.id, 'refs', 'normal')).toEqual({ ok: true });
     expect(gh.calls).toHaveLength(2);
-    expect(db.changes.listLiveSummaries(response.repo.id)).toEqual([expect.objectContaining({ kind: 'pr', prNumber: 12 })]);
+    // The Branch became the PR: the same change, with its id.
+    expect(db.changes.listLiveSummaries(response.repo.id)).toEqual([
+      expect.objectContaining({ id: branches[0]?.id, kind: 'pr', prNumber: 12 }),
+    ]);
+  });
+
+  it('a hung GitHub: after 2 timeouts in a row the repo skips gh for 5 minutes', async () => {
+    const repo = await sampleRepo();
+    let clock = NOW.getTime();
+    const gh = fakeRunner(() => {
+      throw Object.assign(new Error('gh timed out'), { killed: true, signal: 'SIGTERM' });
+    });
+    const test = await startTestDaemon({ gh: gh.runner, now: () => new Date(clock) });
+    const response = await test.track(repo.dir);
+    if (!response.ok) throw new Error(response.error);
+    await test.idle();
+    const collector = test.collection.collector();
+    expect(gh.calls).toHaveLength(1);
+    // A timeout leaves the PR cache unrefreshed, so the next collection asks again...
+    expect(await collector.request(response.repo.id, 'refs', 'normal')).toEqual({ ok: true });
+    expect(gh.calls).toHaveLength(2);
+    // ...but after the second timeout in a row gh is paused for this repo.
+    expect(await collector.request(response.repo.id, 'prs', 'normal')).toEqual({ ok: true });
+    expect(gh.calls).toHaveLength(2);
+    clock += GH_TIMEOUT_PAUSE_MS;
+    expect(await collector.request(response.repo.id, 'prs', 'normal')).toEqual({ ok: true });
+    expect(gh.calls).toHaveLength(3);
+    expect(test.collection.db().repos.get(response.repo.id)?.collectError).toBeNull();
   });
 
   it('without gh the PR step is skipped silently: no error on the repo', async () => {
