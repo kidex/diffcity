@@ -76,7 +76,10 @@ export function buildProgram(io: CliIo = defaultIo): Command {
     .command('scan')
     .description('discover and register every repo under a folder')
     .argument('<dir>', 'folder to scan')
-    .action(notImplemented(io, 'scan'));
+    .action(async (dir: string) => {
+      const { runScan } = await import('./scan.js');
+      process.exitCode = await runScan(dir, { io, env: io.env?.() ?? process.env, cwd: io.cwd?.() ?? process.cwd() });
+    });
 
   program
     .command('diff')
