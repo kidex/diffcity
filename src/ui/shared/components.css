@@ -12,7 +12,6 @@
   border-bottom: 1px solid var(--line);
   background: var(--bg-deep);
   flex: 0 0 auto;
-  min-height: 55px;
 }
 .brand { display: flex; align-items: center; gap: 10px; font-weight: 600; letter-spacing: -.01em; color: var(--ink); text-decoration: none; }
 .brand .mark { width: 22px; height: 22px; }
