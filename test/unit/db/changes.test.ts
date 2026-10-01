@@ -1,6 +1,7 @@
 // The changes store: applyPlan, the live-ref index and archive (ADR-018, ADR-019, SPEC.md section 3a L7).
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { changedColumns } from '../../../src/core/changes/index.js';
 import type { Db } from '../../../src/core/db/index.js';
 import type { RepoRecord } from '../../../src/core/model/types.js';
 import { T0, addRepo, branchFields, daysAfter, sampleSummary, sha, snapshotInput, tempDb, type TempDb } from './db-helpers.js';
@@ -315,5 +316,38 @@ describe('lists and summaries', () => {
   it('get and getSummary return null for an unknown id', () => {
     expect(db.changes.get(42)).toBeNull();
     expect(db.changes.getSummary(42)).toBeNull();
+  });
+});
+
+describe('round trip with reconcile (DC-26)', () => {
+  it('stored records have real booleans and numbers, so changedColumns sees no change', () => {
+    const fieldSets = [
+      branchFields('refunds', { kind: 'pr', ref: 'pr:7', prNumber: 7, ahead: 3, behind: 1, dirty: true, headAvailable: true }),
+      branchFields('not-fetched', {
+        kind: 'pr',
+        ref: 'pr:8',
+        prNumber: 8,
+        ahead: null,
+        behind: null,
+        dirty: false,
+        headAvailable: false,
+      }),
+      branchFields('draft', { kind: 'draft', ref: 'draft:.', worktreePath: '/work/sample-shop', ahead: 0, behind: 0 }),
+    ];
+    db.changes.applyPlan(repo.id, { create: fieldSets, update: [], archive: [] }, NOW);
+
+    const stored = db.changes.listLive(repo.id);
+    expect(stored).toHaveLength(fieldSets.length);
+    for (const fields of fieldSets) {
+      const record = stored.find((change) => change.ref === fields.ref);
+      if (record === undefined) throw new Error(`missing ${fields.ref}`);
+      expect(typeof record.dirty).toBe('boolean');
+      expect(typeof record.headAvailable).toBe('boolean');
+      for (const value of [record.prNumber, record.ahead, record.behind]) {
+        expect(value === null || typeof value === 'number').toBe(true);
+      }
+      expect(changedColumns(record, fields)).toBeNull();
+      expect(changedColumns(db.changes.get(record.id) ?? record, fields)).toBeNull();
+    }
   });
 });
