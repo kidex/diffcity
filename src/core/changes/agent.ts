@@ -5,7 +5,7 @@
 
 import { sep } from 'node:path';
 import type { ChangeRecord } from '../model/types.js';
-import { storedFields } from './reconcile.js';
+import { changedColumns } from './reconcile.js';
 import type { ChangeUpdate, WorktreeInfo } from './types.js';
 
 export interface AgentEvent {
@@ -47,10 +47,7 @@ export function applyAgent(
   const payload = { worktree: worktree.path };
   if (change === null) return { update: null, event: { changeId: null, type: 'agent', at, payload } };
   return {
-    update: {
-      id: change.id,
-      fields: { ...storedFields(change), reviewState: 'unreviewed', lastEventType: 'agent', lastEventAt: at, updatedAt: at },
-    },
+    update: changedColumns(change, { reviewState: 'unreviewed', lastEventType: 'agent', lastEventAt: at }),
     event: { changeId: change.id, type: 'agent', at, payload },
   };
 }

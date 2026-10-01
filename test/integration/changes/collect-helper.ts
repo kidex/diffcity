@@ -57,7 +57,14 @@ export async function collect(repo: TempRepo, options: CollectOptions = {}): Pro
 
 /** Stores the created changes as live records, the way the daemon's applyPlan would. */
 export function stored(plan: ChangePlan): ChangeRecord[] {
-  return plan.create.map((fields, index) => ({ ...fields, id: index + 1, repoId: 1, archivedAt: null, archiveReason: null }));
+  return plan.create.map((fields, index) => ({
+    ...fields,
+    id: index + 1,
+    repoId: 1,
+    updatedAt: NOW.toISOString(),
+    archivedAt: null,
+    archiveReason: null,
+  }));
 }
 
 export function ghPr(number: number, headRefOid: string, partial: Partial<GhPullRequest> = {}): GhPullRequest {

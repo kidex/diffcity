@@ -25,7 +25,6 @@ describe('reconcile: sources to candidates (ADR-019)', () => {
         reviewState: 'unreviewed',
         lastEventType: 'commit',
         lastEventAt: '2026-03-01T09:00:00.000Z',
-        updatedAt: NOW_ISO,
       },
     ]);
     expect(plan.update).toEqual([]);
@@ -153,7 +152,6 @@ describe('reconcile: sources to candidates (ADR-019)', () => {
         reviewState: 'unreviewed',
         lastEventType: 'commit',
         lastEventAt: '2026-03-05T10:00:00.000Z',
-        updatedAt: NOW_ISO,
       },
     ]);
   });
@@ -249,22 +247,8 @@ describe('reconcile: change identity, last event and review state (ADR-019)', ()
     );
     expect(plan.create).toEqual([]);
     expect(plan.archive).toEqual([]);
-    expect(plan.update).toMatchObject([
-      {
-        id: 41,
-        fields: {
-          kind: 'pr',
-          ref: 'pr:12',
-          prNumber: 12,
-          head: B,
-          title: 'PR title 12',
-          reviewState: 'in-review',
-          lastEventType: 'commit',
-          lastEventAt: live.lastEventAt,
-          updatedAt: NOW_ISO,
-        },
-      },
-    ]);
+    // Only the columns that changed: the review state and the last event stay as stored.
+    expect(plan.update).toEqual([{ id: 41, kind: 'pr', ref: 'pr:12', prNumber: 12, title: 'PR title 12', ahead: 3, behind: 1 }]);
   });
 
   it('a live change with nothing new produces no update', () => {
@@ -288,7 +272,7 @@ describe('reconcile: change identity, last event and review state (ADR-019)', ()
       discovered({ branches: [branch('feature/cart', B, { committedAt: '2026-03-08T07:30:00.000Z' })] }),
       NOW,
     );
-    expect(plan.update[0]?.fields).toMatchObject({ head: B, lastEventType: 'commit', lastEventAt: '2026-03-08T07:30:00.000Z' });
+    expect(plan.update[0]).toMatchObject({ head: B, lastEventAt: '2026-03-08T07:30:00.000Z' });
   });
 
   it('changes/last-event-commit-date (L6): the commit event never moves the last event backwards', () => {
@@ -299,31 +283,34 @@ describe('reconcile: change identity, last event and review state (ADR-019)', ()
       discovered({ branches: [branch('feature/cart', B, { committedAt: '2026-03-01T00:00:00.000Z' })] }),
       NOW,
     );
-    expect(plan.update[0]?.fields).toMatchObject({ lastEventType: 'commit', lastEventAt: '2026-03-09T00:00:00.000Z' });
+    expect(plan.update[0]).toMatchObject({ lastEventType: 'commit' });
+    expect(plan.update[0]).not.toHaveProperty('lastEventAt');
   });
 
   it('changes/approved-reset-on-new-head (Q5): approved + a new head goes back to unreviewed', () => {
     const live = record({ id: 5, ref: 'branch:feature/cart', head: A, reviewState: 'approved' });
     const plan = reconcile([live], [], discovered({ branches: [branch('feature/cart', B)] }), NOW);
-    expect(plan.update[0]?.fields.reviewState).toBe('unreviewed');
+    expect(plan.update[0]?.reviewState).toBe('unreviewed');
   });
 
   it('approved stays approved while the head does not move', () => {
-    const live = record({ id: 5, ref: 'branch:feature/cart', head: A, reviewState: 'approved', ahead: 1 });
+    const live = record({ id: 5, ref: 'branch:feature/cart', head: A, reviewState: 'approved', ahead: 1, title: 'first commit of feature/cart' });
     const plan = reconcile([live], [], discovered({ branches: [branch('feature/cart', A, { ahead: 1, behind: 4 })] }), NOW);
-    expect(plan.update[0]?.fields).toMatchObject({ reviewState: 'approved', behind: 4 });
+    expect(plan.update).toEqual([{ id: 5, behind: 4 }]);
   });
 
   it('changes/in-review-kept (Q5): in-review + a new head stays in-review', () => {
     const live = record({ id: 5, ref: 'branch:feature/cart', head: A, reviewState: 'in-review' });
     const plan = reconcile([live], [], discovered({ branches: [branch('feature/cart', B)] }), NOW);
-    expect(plan.update[0]?.fields.reviewState).toBe('in-review');
+    expect(plan.update[0]).toMatchObject({ head: B });
+    expect(plan.update[0]).not.toHaveProperty('reviewState');
   });
 
   it('a Draft keeps its identity by worktree path when its HEAD moves', () => {
     const live = record({ id: 9, kind: 'draft', ref: 'draft:.', head: A, dirty: true, worktreePath: REPO, title: 'Uncommitted changes on main' });
     const plan = reconcile([live], [], discovered({ worktrees: [worktree({ head: B, dirty: true })] }), NOW);
-    expect(plan.update).toMatchObject([{ id: 9, fields: { kind: 'draft', head: B } }]);
+    expect(plan.update).toMatchObject([{ id: 9, head: B }]);
+    expect(plan.update[0]).not.toHaveProperty('kind');
     expect(plan.create).toEqual([]);
   });
 
@@ -336,8 +323,8 @@ describe('reconcile: change identity, last event and review state (ADR-019)', ()
       discovered({ branches: [branch('feature/pr-12', B)], prs: { available: true, open: [pr(12, B)], states: {} } }),
       NOW,
     );
-    expect(plan.update.map((update) => [update.id, update.fields.ref, update.fields.head])).toEqual([[1, 'pr:12', B]]);
-    expect(plan.archive).toEqual([{ id: 2, reason: 'merged', at: NOW_ISO }]);
+    expect(plan.update.map((update) => [update.id, update.head])).toEqual([[1, B]]);
+    expect(plan.archive).toEqual([{ id: 2, reason: 'merged' }]);
   });
 });
 
@@ -345,13 +332,13 @@ describe('reconcile: archive (L7)', () => {
   it('changes/archive-pr-merged (L7): a PR missing from the open list and MERGED is archived as merged', () => {
     const live = record({ id: 3, kind: 'pr', ref: 'pr:12', prNumber: 12, head: B });
     const plan = reconcile([live], [], discovered({ prs: { available: true, open: [], states: { 12: 'MERGED' } } }), NOW);
-    expect(plan.archive).toEqual([{ id: 3, reason: 'merged', at: NOW_ISO }]);
+    expect(plan.archive).toEqual([{ id: 3, reason: 'merged' }]);
   });
 
   it('changes/archive-pr-closed (L7, Q4): a PR missing from the open list and CLOSED is archived as closed', () => {
     const live = record({ id: 3, kind: 'pr', ref: 'pr:12', prNumber: 12, head: B });
     const plan = reconcile([live], [], discovered({ prs: { available: true, open: [], states: { 12: 'CLOSED' } } }), NOW);
-    expect(plan.archive).toEqual([{ id: 3, reason: 'closed', at: NOW_ISO }]);
+    expect(plan.archive).toEqual([{ id: 3, reason: 'closed' }]);
   });
 
   it('a PR missing from the open list with an unknown or OPEN state stays live', () => {
@@ -376,19 +363,19 @@ describe('reconcile: archive (L7)', () => {
   it('changes/archive-branch-deleted (L7): a branch whose ref no longer exists is archived as deleted', () => {
     const live = record({ id: 4, ref: 'branch:feature/cart', head: A });
     const plan = reconcile([live], [], discovered({ localBranches: ['main'] }), NOW);
-    expect(plan.archive).toEqual([{ id: 4, reason: 'deleted', at: NOW_ISO }]);
+    expect(plan.archive).toEqual([{ id: 4, reason: 'deleted' }]);
   });
 
   it('changes/archive-branch-merged (L7): a branch whose tip is contained in the base is archived as merged', () => {
     const live = record({ id: 4, ref: 'branch:feature/cart', head: A });
     const plan = reconcile([live], [], discovered({ localBranches: ['main', 'feature/cart'] }), NOW);
-    expect(plan.archive).toEqual([{ id: 4, reason: 'merged', at: NOW_ISO }]);
+    expect(plan.archive).toEqual([{ id: 4, reason: 'merged' }]);
   });
 
   it('changes/archive-draft-clean (L7, Q4): a Draft whose working tree became clean is archived as clean', () => {
     const live = record({ id: 6, kind: 'draft', ref: 'draft:.', head: BASE(), dirty: true, worktreePath: REPO });
     const plan = reconcile([live], [], discovered(), NOW);
-    expect(plan.archive).toEqual([{ id: 6, reason: 'clean', at: NOW_ISO }]);
+    expect(plan.archive).toEqual([{ id: 6, reason: 'clean' }]);
   });
 
   it('changes/archive-draft-clean (L7, Q4): a Draft whose changes folded into a branch is archived as clean', () => {
@@ -402,7 +389,7 @@ describe('reconcile: archive (L7)', () => {
       }),
       NOW,
     );
-    expect(plan.archive).toEqual([{ id: 6, reason: 'clean', at: NOW_ISO }]);
+    expect(plan.archive).toEqual([{ id: 6, reason: 'clean' }]);
     expect(plan.create).toEqual([expect.objectContaining({ ref: 'branch:feature/cart', dirty: true })]);
   });
 
@@ -430,7 +417,7 @@ describe('reconcile: archive (L7)', () => {
       }),
       NOW,
     );
-    expect(plan.archive).toEqual([{ id: 3, reason: 'merged', at: NOW_ISO }]);
+    expect(plan.archive).toEqual([{ id: 3, reason: 'merged' }]);
     expect(plan.create).toEqual([]);
   });
 
@@ -461,9 +448,11 @@ describe('reconcile: archive (L7)', () => {
 describe('reviewAfterSnapshot (ADR-019, Q5)', () => {
   it('changes/approved-reset-on-content (Q5): approved + a snapshot with different content goes back to unreviewed', () => {
     const live = record({ id: 5, reviewState: 'approved', dirty: true });
-    expect(reviewAfterSnapshot(live, 'replaced', NOW)).toMatchObject({
+    expect(reviewAfterSnapshot(live, 'replaced', NOW)).toEqual({
       id: 5,
-      fields: { reviewState: 'unreviewed', lastEventType: 'collect', lastEventAt: NOW_ISO, updatedAt: NOW_ISO },
+      reviewState: 'unreviewed',
+      lastEventType: 'collect',
+      lastEventAt: NOW_ISO,
     });
   });
 
@@ -473,16 +462,12 @@ describe('reviewAfterSnapshot (ADR-019, Q5)', () => {
 
   it('new content on a clean change resets approved without a collect event', () => {
     const live = record({ id: 5, reviewState: 'approved' });
-    expect(reviewAfterSnapshot(live, 'created', NOW)?.fields).toMatchObject({
-      reviewState: 'unreviewed',
-      lastEventType: live.lastEventType,
-      lastEventAt: live.lastEventAt,
-    });
+    expect(reviewAfterSnapshot(live, 'created', NOW)).toEqual({ id: 5, reviewState: 'unreviewed' });
   });
 
   it('new content on an in-review change keeps in-review and records the collect event when dirty', () => {
     const live = record({ id: 5, reviewState: 'in-review', dirty: true });
-    expect(reviewAfterSnapshot(live, 'replaced', NOW)?.fields).toMatchObject({ reviewState: 'in-review', lastEventType: 'collect' });
+    expect(reviewAfterSnapshot(live, 'replaced', NOW)).toEqual({ id: 5, lastEventType: 'collect', lastEventAt: NOW_ISO });
   });
 
   it('new content on an unreviewed clean change needs no update', () => {

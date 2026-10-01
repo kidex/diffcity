@@ -56,7 +56,7 @@ interface Group {
 }
 
 /** The parts of a change computed from the sources, before identity and events. */
-type Observed = Omit<ChangeFields, 'reviewState' | 'lastEventType' | 'lastEventAt' | 'updatedAt'> & {
+type Observed = Omit<ChangeFields, 'reviewState' | 'lastEventType' | 'lastEventAt'> & {
   committedAt: string | null;
 };
 
@@ -131,7 +131,6 @@ function fieldsFor(observed: Observed, existing: ChangeRecord | null, now: strin
       reviewState: 'unreviewed',
       lastEventType: 'commit',
       lastEventAt: committedAt ?? now,
-      updatedAt: now,
     };
   }
   const headMoved = existing.head !== observed.head;
@@ -140,11 +139,10 @@ function fieldsFor(observed: Observed, existing: ChangeRecord | null, now: strin
     reviewState: headMoved && existing.reviewState === 'approved' ? 'unreviewed' : existing.reviewState,
     lastEventType: headMoved ? 'commit' : existing.lastEventType,
     lastEventAt: headMoved ? laterOf(committedAt ?? now, existing.lastEventAt) : existing.lastEventAt,
-    updatedAt: existing.updatedAt,
   };
 }
 
-const COMPARED: readonly (keyof ChangeFields)[] = [
+const COLUMNS: readonly (keyof ChangeFields)[] = [
   'kind',
   'ref',
   'prNumber',
@@ -161,29 +159,15 @@ const COMPARED: readonly (keyof ChangeFields)[] = [
   'lastEventAt',
 ];
 
-/** The writable columns of a stored change. */
-export function storedFields(change: ChangeRecord): ChangeFields {
-  return {
-    kind: change.kind,
-    ref: change.ref,
-    prNumber: change.prNumber,
-    head: change.head,
-    headAvailable: change.headAvailable,
-    dirty: change.dirty,
-    worktreePath: change.worktreePath,
-    base: change.base,
-    title: change.title,
-    ahead: change.ahead,
-    behind: change.behind,
-    reviewState: change.reviewState,
-    lastEventType: change.lastEventType,
-    lastEventAt: change.lastEventAt,
-    updatedAt: change.updatedAt,
-  };
-}
-
-function changed(fields: ChangeFields, existing: ChangeRecord): boolean {
-  return COMPARED.some((key) => fields[key] !== existing[key]);
+/** The update carrying only the columns of `fields` that differ from `existing`; null when none does. */
+export function changedColumns(existing: ChangeRecord, fields: Partial<ChangeFields>): ChangeUpdate | null {
+  const update: ChangeUpdate = { id: existing.id };
+  for (const key of COLUMNS) {
+    const value = fields[key];
+    // `value` is fields[key], so the key keeps its column type.
+    if (value !== undefined && value !== existing[key]) Object.assign(update, { [key]: value });
+  }
+  return Object.keys(update).length > 1 ? update : null;
 }
 
 export function reconcile(
@@ -195,12 +179,16 @@ export function reconcile(
   const at = now.toISOString();
   const plan: ChangePlan = { create: [], update: [], archive: [] };
   const archive = (change: ChangeRecord, reason: ArchiveReason): void => {
-    plan.archive.push({ id: change.id, reason, at });
+    plan.archive.push({ id: change.id, reason });
   };
   const emit = (observed: Observed, existing: ChangeRecord | null): void => {
     const fields = fieldsFor(observed, existing, at);
-    if (existing === null) plan.create.push(fields);
-    else if (changed(fields, existing)) plan.update.push({ id: existing.id, fields: { ...fields, updatedAt: at } });
+    if (existing === null) {
+      plan.create.push(fields);
+      return;
+    }
+    const update = changedColumns(existing, fields);
+    if (update !== null) plan.update.push(update);
   };
 
   const liveByRef = new Map(live.map((change) => [change.ref, change]));
@@ -372,14 +360,8 @@ export function reviewAfterSnapshot(
   const resetsReview = change.reviewState === 'approved';
   if (!resetsReview && !change.dirty) return null;
   const at = now.toISOString();
-  return {
-    id: change.id,
-    fields: {
-      ...storedFields(change),
-      reviewState: resetsReview ? 'unreviewed' : change.reviewState,
-      lastEventType: change.dirty ? 'collect' : change.lastEventType,
-      lastEventAt: change.dirty ? laterOf(at, change.lastEventAt) : change.lastEventAt,
-      updatedAt: at,
-    },
-  };
+  return changedColumns(change, {
+    reviewState: resetsReview ? 'unreviewed' : change.reviewState,
+    ...(change.dirty ? { lastEventType: 'collect' as const, lastEventAt: laterOf(at, change.lastEventAt) } : {}),
+  });
 }

@@ -94,27 +94,29 @@ export interface Discovered {
   prs: PrSource;
 }
 
-/** The writable columns of a change; `id`, `repoId` and the archive columns are set by the store. */
-export type ChangeFields = Omit<ChangeRecord, 'id' | 'repoId' | 'archivedAt' | 'archiveReason'>;
+/**
+ * The columns a plan writes. `id`, `repoId`, the archive columns and
+ * `updatedAt` are set by the store, which stamps the times with its own `now`.
+ */
+export type ChangeFields = Omit<ChangeRecord, 'id' | 'repoId' | 'archivedAt' | 'archiveReason' | 'updatedAt'>;
 
-export interface ChangeUpdate {
-  id: number;
-  /** The complete new values of the change. */
-  fields: ChangeFields;
-}
+/** A live change to update: only the columns that changed. */
+export type ChangeUpdate = { id: number } & Partial<ChangeFields>;
 
+/** A live change to archive; the store sets `archivedAt`. */
 export interface ChangeArchive {
   id: number;
   reason: ArchiveReason;
-  /** ISO 8601 UTC; becomes `archivedAt`. */
-  at: string;
 }
 
-/** Output of `reconcile` (ADR-019), applied by the daemon in a single transaction. */
+/**
+ * Output of `reconcile` (ADR-019), applied by the daemon in a single
+ * transaction. The canonical plan type: src/core/db applies it as is.
+ */
 export interface ChangePlan {
   /** New live changes, `reviewState: 'unreviewed'`. */
   create: ChangeFields[];
-  /** Live changes whose fields changed; unchanged ones are left out. */
+  /** Live changes with at least one changed column; unchanged ones are left out. */
   update: ChangeUpdate[];
   archive: ChangeArchive[];
 }

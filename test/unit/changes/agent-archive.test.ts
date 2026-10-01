@@ -11,10 +11,7 @@ describe('applyAgent (C3, ADR-001)', () => {
     const change = record({ id: 4, head: A, worktreePath: REPO, reviewState: 'approved', lastEventType: 'commit' });
     const other = record({ id: 5, head: sha('b1') });
     const outcome = applyAgent([other, change], worktree({ head: A }), AT);
-    expect(outcome.update).toMatchObject({
-      id: 4,
-      fields: { reviewState: 'unreviewed', lastEventType: 'agent', lastEventAt: AT, updatedAt: AT, head: A },
-    });
+    expect(outcome.update).toEqual({ id: 4, reviewState: 'unreviewed', lastEventType: 'agent', lastEventAt: AT });
     expect(outcome.event).toEqual({ changeId: 4, type: 'agent', at: AT, payload: { worktree: REPO } });
   });
 

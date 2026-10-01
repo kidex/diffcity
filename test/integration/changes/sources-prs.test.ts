@@ -15,7 +15,7 @@ import {
 } from '../../../src/core/changes/sources.js';
 import type { CommandRunner } from '../../../src/core/git/index.js';
 import { fakeRunner, ghMissing, isolateGitConfig, type RecordedCall } from '../../helpers/git-env.js';
-import { NOT_LOCAL, NOW, checkoutRepo, cleanupRepos, collect, ghPr, remotePr, sampleShop, stored } from './collect-helper.js';
+import { NOT_LOCAL, checkoutRepo, cleanupRepos, collect, ghPr, remotePr, sampleShop, stored } from './collect-helper.js';
 
 isolateGitConfig();
 cleanupRepos();
@@ -116,7 +116,8 @@ describe('PRs (L3, L4, Q3)', () => {
     const live = stored(first.plan).map((change) => ({ ...change, reviewState: 'in-review' as const }));
     const { plan } = await collect(repo, { live, openPrs: [ghPr(7, tip)] });
     expect(plan.create).toEqual([]);
-    expect(plan.update).toMatchObject([{ id: 1, fields: { kind: 'pr', ref: 'pr:7', prNumber: 7, reviewState: 'in-review' } }]);
+    expect(plan.update).toMatchObject([{ id: 1, kind: 'pr', ref: 'pr:7', prNumber: 7 }]);
+    expect(plan.update[0]).not.toHaveProperty('reviewState');
   });
 
   it('changes/archive-pr-merged (L7): a live PR no longer open is checked with gh pr view and archived', async () => {
@@ -125,7 +126,7 @@ describe('PRs (L3, L4, Q3)', () => {
     const gh = fakeRunner((call: RecordedCall) => (call.args[1] === 'view' ? '{"state":"MERGED"}' : '[]'));
     const { plan } = await collect(repo, { live: [pr], openPrs: [], runner: gh.runner });
     expect(gh.calls.map((call) => call.args)).toContainEqual(['pr', 'view', '9', '--json', 'state']);
-    expect(plan.archive).toEqual([{ id: 3, reason: 'merged', at: NOW.toISOString() }]);
+    expect(plan.archive).toEqual([{ id: 3, reason: 'merged' }]);
   });
 });
 

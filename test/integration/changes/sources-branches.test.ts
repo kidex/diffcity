@@ -4,7 +4,7 @@ import { identifyRepo } from '../../../src/core/changes/identity.js';
 import type { CommandRunner } from '../../../src/core/git/index.js';
 import { fakeRunner, ghForbidden, isolateGitConfig } from '../../helpers/git-env.js';
 import type { TempRepo } from '../../helpers/repo.js';
-import { NOW, checkoutRepo, cleanupRepos, collect, sampleShop, stored } from './collect-helper.js';
+import { checkoutRepo, cleanupRepos, collect, sampleShop, stored } from './collect-helper.js';
 
 isolateGitConfig();
 cleanupRepos();
@@ -30,7 +30,6 @@ describe('branches (L2, L6)', () => {
         lastEventType: 'commit',
         // The third commit of the helper's clock: 2026-01-01T00:00Z + 2 minutes.
         lastEventAt: '2026-01-01T00:02:00.000Z',
-        updatedAt: NOW.toISOString(),
       },
     ]);
   });
@@ -65,7 +64,7 @@ describe('branches (L2, L6)', () => {
     const newTip = await repo.commit('checkout tax', { 'src/tax.ts': 'export const tax = 0;\n' });
     const second = await collect(repo, { live: stored(first.plan) });
     expect(second.plan.update).toMatchObject([
-      { id: 1, fields: { head: newTip, lastEventType: 'commit', lastEventAt: '2026-01-01T00:04:00.000Z', ahead: 3 } },
+      { id: 1, head: newTip, lastEventAt: '2026-01-01T00:04:00.000Z', ahead: 3 },
     ]);
   });
 });
@@ -76,7 +75,7 @@ describe('archive with real refs (L7)', () => {
     const first = await collect(repo);
     await repo.git('branch', '-D', 'feature/checkout');
     const { plan } = await collect(repo, { live: stored(first.plan) });
-    expect(plan.archive).toEqual([{ id: 1, reason: 'deleted', at: NOW.toISOString() }]);
+    expect(plan.archive).toEqual([{ id: 1, reason: 'deleted' }]);
   });
 
   it('changes/archive-branch-merged (L7): a branch contained in the base is archived as merged', async () => {
@@ -85,7 +84,7 @@ describe('archive with real refs (L7)', () => {
     await repo.git('merge', '--quiet', '--no-edit', 'feature/checkout');
     const { discovered, plan } = await collect(repo, { live: stored(first.plan) });
     expect(discovered.localBranches).toContain('feature/checkout');
-    expect(plan.archive).toEqual([{ id: 1, reason: 'merged', at: NOW.toISOString() }]);
+    expect(plan.archive).toEqual([{ id: 1, reason: 'merged' }]);
   });
 });
 
