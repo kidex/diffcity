@@ -223,6 +223,8 @@ describe('api/repo-open-touches-last-seen', () => {
     ['an unparsable Referer', { referer: 'not a url' }],
     ['Sec-Fetch-Site: cross-site', { 'sec-fetch-site': 'cross-site' }],
     ['Sec-Fetch-Site: same-site', { 'sec-fetch-site': 'same-site' }],
+    ['Origin: null', { origin: 'null' }],
+    ['the own Origin and a foreign Referer', { origin: own, referer: 'http://evil.example/page' }],
   ])('a GET with %s is answered but leaves lastSeenAt unchanged', async (_what, headers: Record<string, string>) => {
     const response = await app.inject({ method: 'GET', url: `/api/repos/${String(seed.docs.id)}`, headers: { ...HOST, ...headers } });
     expect(response.statusCode).toBe(200);
