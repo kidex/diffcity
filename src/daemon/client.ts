@@ -10,7 +10,7 @@ import { setTimeout as sleep } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
 import type { HomePaths } from '../core/home.js';
 import type { DaemonInfo, SocketRequest, SocketResponseFor } from '../core/model/types.js';
-import { readDaemonInfo } from './files.js';
+import { readDaemonInfo, resolvePort } from './files.js';
 
 /** Exit code of the daemon script when its port is taken. */
 export const EXIT_PORT_IN_USE = 3;
@@ -146,6 +146,121 @@ export function spawnDaemon(options: SpawnDaemonOptions): SpawnedDaemon {
     return { pid: child.pid, exited };
   } finally {
     closeSync(logFd);
+  }
+}
+
+/**
+ * How long a client waits for a daemon it spawned to write daemon.json: longer
+ * than the daemon's own wait for a live lock owner (OWNER_WAIT_MS) before it
+ * takes the lock over, plus 10 s to start. Used by `up`, `track` and `scan`.
+ */
+export const DAEMON_START_TIMEOUT_MS = OWNER_WAIT_MS + 10_000;
+
+export type StartDaemonResult =
+  | { ok: true; info: DaemonInfo; version: string }
+  /** The daemon exited with EXIT_PORT_IN_USE. */
+  | { ok: false; reason: 'port-in-use' }
+  /** The daemon exited with another code (null: killed by a signal) before it was ready. */
+  | { ok: false; reason: 'exited'; exitCode: number | null }
+  | { ok: false; reason: 'timeout'; timeoutMs: number };
+
+export interface StartDaemonOptions {
+  paths: HomePaths;
+  /** Passed as `--port`; omitted, the daemon uses state.json or 4321. */
+  port?: number;
+  env?: NodeJS.ProcessEnv;
+  /** Defaults to spawnDaemon. */
+  spawn?: (options: SpawnDaemonOptions) => SpawnedDaemon;
+  /** Defaults to DAEMON_START_TIMEOUT_MS. */
+  timeoutMs?: number;
+}
+
+/**
+ * Spawns a detached daemon and waits until a daemon answers `ping`. When the
+ * spawned process exits with code 0, another daemon won the lock: the wait
+ * goes on for that one.
+ */
+export async function startDaemon(options: StartDaemonOptions): Promise<StartDaemonResult> {
+  const { paths } = options;
+  const spawnOptions: SpawnDaemonOptions = { paths };
+  if (options.port !== undefined) spawnOptions.port = options.port;
+  if (options.env !== undefined) spawnOptions.env = options.env;
+  const spawned = (options.spawn ?? spawnDaemon)(spawnOptions);
+  const timeoutMs = options.timeoutMs ?? DAEMON_START_TIMEOUT_MS;
+  const started = Date.now();
+  let ready = await waitForDaemon(paths, { timeoutMs, stop: spawned.exited });
+  if (ready === null) {
+    const exitCode = await Promise.race([spawned.exited, Promise.resolve('running' as const)]);
+    if (exitCode === 0) {
+      // Another daemon won the lock; it answered our daemon before this one exited.
+      ready = await waitForDaemon(paths, { timeoutMs: Math.max(0, timeoutMs - (Date.now() - started)) });
+    } else if (exitCode === EXIT_PORT_IN_USE) {
+      return { ok: false, reason: 'port-in-use' };
+    } else if (exitCode !== 'running') {
+      return { ok: false, reason: 'exited', exitCode };
+    }
+  }
+  if (ready === null) return { ok: false, reason: 'timeout', timeoutMs };
+  return { ok: true, ...ready };
+}
+
+/** True for the connection errors that mean no daemon listens on the socket. */
+export function isNoDaemonError(error: unknown): boolean {
+  const code = (error as NodeJS.ErrnoException | null)?.code;
+  return code === 'ENOENT' || code === 'ECONNREFUSED';
+}
+
+export type AutostartResult<T extends SocketRequest['type']> =
+  | { ok: true; response: SocketResponseFor<T> }
+  /** The request could not be delivered; `error` is a message for the user. */
+  | { ok: false; error: string };
+
+export interface RequestWithAutostartOptions extends Omit<StartDaemonOptions, 'paths' | 'port'> {
+  /** Wait for the response, per attempt. Defaults to CLIENT_TIMEOUT_MS. */
+  requestTimeoutMs?: number;
+}
+
+/**
+ * Sends `request` to the daemon of `paths`, starting the daemon detached when
+ * no daemon listens on the socket (ENOENT or ECONNREFUSED, ADR-016). A daemon
+ * started here takes its port from state.json, else the default.
+ */
+export async function requestWithAutostart<R extends SocketRequest>(
+  paths: HomePaths,
+  request: R,
+  options: RequestWithAutostartOptions = {},
+): Promise<AutostartResult<R['type']>> {
+  const timeoutMs = options.requestTimeoutMs ?? CLIENT_TIMEOUT_MS;
+  const send = async (socketPath: string): Promise<AutostartResult<R['type']>> => ({
+    ok: true,
+    response: await sendRequest(socketPath, request, { timeoutMs }),
+  });
+  try {
+    return await send(paths.socket);
+  } catch (error) {
+    if (!isNoDaemonError(error)) return { ok: false, error: `cannot reach the daemon: ${messageOf(error)}` };
+  }
+
+  const started = await startDaemon({ ...options, paths });
+  if (!started.ok) return { ok: false, error: await startFailureMessage(started, paths) };
+  try {
+    return await send(started.info.socket);
+  } catch (error) {
+    return { ok: false, error: `cannot reach the daemon: ${messageOf(error)}` };
+  }
+}
+
+const messageOf = (error: unknown): string => (error instanceof Error ? error.message : String(error));
+
+/** The message for a daemon that `track` or `scan` could not start. */
+async function startFailureMessage(result: Exclude<StartDaemonResult, { ok: true }>, paths: HomePaths): Promise<string> {
+  switch (result.reason) {
+    case 'port-in-use':
+      return `${portInUseMessage(await resolvePort(paths, undefined))} to diffcity up`;
+    case 'exited':
+      return `the daemon exited with code ${String(result.exitCode)}; see ${paths.log}`;
+    case 'timeout':
+      return `the daemon did not start within ${String(result.timeoutMs / 1000)} s; see ${paths.log}`;
   }
 }
 
