@@ -14,6 +14,10 @@ const load = (name: string): unknown => JSON.parse(readFileSync(`${fixturesDir}$
 /** The JSON fixtures in test/fixtures/ui/, with their DTO types. */
 export const fixtures = {
   fleetThreeRepos: () => load('fleet-three-repos.json') as RepoSummary[],
+  fleetIndicators: () => load('fleet-indicators.json') as RepoSummary[],
+  fleetNewRepo: () => load('fleet-new-repo.json') as RepoSummary,
+  fleetEmpty: () => load('fleet-empty.json') as RepoSummary[],
+  fleetManyRepos: () => load('fleet-many-repos.json') as RepoSummary[],
   repoMixedChanges: () => load('repo-mixed-changes.json') as RepoDetail,
   searchResults: () => load('search-results.json') as SearchResult[],
 };

@@ -60,23 +60,29 @@ export function buildProgram(io: CliIo = defaultIo): Command {
     .command('shell-init')
     .description('print the shell hook that tracks repos on cd')
     .argument('[shell]', 'zsh, bash or fish', 'zsh')
-    .action(notImplemented(io, 'shell-init'));
+    .action(async (shell: string) => {
+      const { runShellInit } = await import('./shell-init.js');
+      process.exitCode = runShellInit(shell, { io });
+    });
 
   program
     .command('track')
     .description('register a repo and ask the daemon to collect its changes')
-    .argument('[dir]', 'repo directory', '.')
-    .option('--agent', 'mark the current change as "agent worked, not reviewed"')
-    .action(async (dir: string, options: TrackCommandOptions) => {
+    .argument('[dir]', 'repo directory (default: the current directory, or cwd from the hook input with --agent)')
+    .option('--agent', 'mark the current change as "agent worked, not reviewed"; reads the Claude Code hook JSON from stdin')
+    .action(async (dir: string | undefined, options: TrackCommandOptions) => {
       const { runTrack } = await import('./track.js');
-      process.exitCode = await runTrack(dir, options, { io });
+      process.exitCode = await runTrack(dir, options, { io, env: io.env?.() ?? process.env, cwd: io.cwd?.() ?? process.cwd() });
     });
 
   program
     .command('scan')
     .description('discover and register every repo under a folder')
     .argument('<dir>', 'folder to scan')
-    .action(notImplemented(io, 'scan'));
+    .action(async (dir: string) => {
+      const { runScan } = await import('./scan.js');
+      process.exitCode = await runScan(dir, { io, env: io.env?.() ?? process.env, cwd: io.cwd?.() ?? process.cwd() });
+    });
 
   program
     .command('diff')

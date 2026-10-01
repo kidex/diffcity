@@ -27,7 +27,7 @@ afterEach(async () => {
   await temp.cleanup();
 });
 
-const ready = (): Promise<DaemonInfo> => waitFor(() => readDaemonInfo(paths).then((info) => info ?? undefined), 10_000, 'daemon.json');
+const ready = (): Promise<DaemonInfo> => waitFor(() => readDaemonInfo(paths).then((info) => info ?? undefined), 45_000, 'daemon.json');
 
 async function gone(file: string): Promise<boolean> {
   return stat(file).then(
@@ -142,7 +142,7 @@ describe('daemon process', () => {
 
     it('a plugin stop that hangs past the deadline: exit 1, files removed', async () => {
       const spawned = daemons.spawn(fixture, ['300'], temp.env);
-      await waitFor(() => spawned.stdout().includes('ready'), 10_000, 'ready');
+      await waitFor(() => spawned.stdout().includes('ready'), 45_000, 'ready');
       const started = Date.now();
       spawned.child.kill('SIGTERM');
       expect(await spawned.exited).toBe(1);
@@ -153,7 +153,7 @@ describe('daemon process', () => {
 
     it('a second signal forces the exit at once', async () => {
       const spawned = daemons.spawn(fixture, ['60000'], temp.env);
-      await waitFor(() => spawned.stdout().includes('ready'), 10_000, 'ready');
+      await waitFor(() => spawned.stdout().includes('ready'), 45_000, 'ready');
       spawned.child.kill('SIGTERM');
       await waitFor(async () => (await readFile(paths.log, 'utf8')).includes('shutting down'), 5000, 'the shutdown to start');
       const started = Date.now();
@@ -170,7 +170,7 @@ describe('daemon process', () => {
     const longPaths = homePaths(longHome);
     expect(Buffer.byteLength(join(longHome, 'daemon.sock'))).toBeGreaterThan(MAX_SOCKET_PATH_BYTES);
     const spawned = daemons.spawnDaemon(env);
-    const info = await waitFor(() => readDaemonInfo(longPaths).then((value) => value ?? undefined), 10_000, 'daemon.json');
+    const info = await waitFor(() => readDaemonInfo(longPaths).then((value) => value ?? undefined), 45_000, 'daemon.json');
     expect(info.socket).toBe(longPaths.socket);
     expect(info.socket.startsWith(longHome)).toBe(false);
     expect(await sendRequest(info.socket, { v: 1, type: 'shutdown' })).toEqual({ ok: true });

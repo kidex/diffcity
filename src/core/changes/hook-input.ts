@@ -1,0 +1,45 @@
+// The Claude Code Stop hook JSON that `track --agent` reads from stdin when
+// stdin is not a TTY (SPEC.md section 3, ADR-001). It carries the session
+// (`session_id`, `transcript_path`) and the `cwd` that replaces the default
+// directory; it is at most 64 KB. Other fields of the hook payload are ignored.
+
+import { isAbsolute } from 'node:path';
+
+/** Longest hook input accepted, in bytes. */
+export const MAX_HOOK_INPUT_BYTES = 64 * 1024;
+
+export interface AgentHookInput {
+  sessionId: string;
+  /** Absolute path of the session transcript (JSON lines). */
+  transcriptPath: string;
+  /** Absolute directory the agent worked in. */
+  cwd: string;
+}
+
+/** `input` is null when stdin carried nothing but whitespace. */
+export type AgentHookInputResult = { ok: true; input: AgentHookInput | null } | { ok: false; error: string };
+
+const fail = (error: string): AgentHookInputResult => ({ ok: false, error });
+
+export function parseAgentHookInput(text: string): AgentHookInputResult {
+  if (Buffer.byteLength(text, 'utf8') > MAX_HOOK_INPUT_BYTES) {
+    return fail(`hook input exceeds ${String(MAX_HOOK_INPUT_BYTES)} bytes`);
+  }
+  if (text.trim() === '') return { ok: true, input: null };
+  let value: unknown;
+  try {
+    value = JSON.parse(text);
+  } catch {
+    return fail('hook input is not valid JSON');
+  }
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return fail('hook input must be a JSON object');
+  const fields = value as Record<string, unknown>;
+
+  const { session_id: sessionId, transcript_path: transcriptPath, cwd } = fields;
+  if (typeof sessionId !== 'string' || sessionId === '') return fail('hook input: session_id must be a non-empty string');
+  if (typeof transcriptPath !== 'string' || !isAbsolute(transcriptPath)) {
+    return fail('hook input: transcript_path must be an absolute path');
+  }
+  if (typeof cwd !== 'string' || !isAbsolute(cwd)) return fail('hook input: cwd must be an absolute path');
+  return { ok: true, input: { sessionId, transcriptPath, cwd } };
+}
