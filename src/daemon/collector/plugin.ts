@@ -11,9 +11,13 @@
 // new one once, at low priority. Known repos keep their state.
 //
 // On start, every active repo gets one low-priority collection (ADR-020).
+//
+// Two hooks for the watchers (DC-33): onActivated fires when `track` registers
+// a repo or reactivates an inactive one; onListed fires after each collection
+// read a repo's working trees.
 
 import { availableParallelism } from 'node:os';
-import { identifyRepo, type RepoIdentity } from '../../core/changes/index.js';
+import { identifyRepo, type RepoIdentity, type WorktreeInfo } from '../../core/changes/index.js';
 import type { Db } from '../../core/db/index.js';
 import type { CommandRunner } from '../../core/git/index.js';
 import type { SocketSuccessResponses } from '../../core/model/types.js';
@@ -49,6 +53,23 @@ export interface Collection {
   db(): Db;
   /** The collector, created in setup; throws before setup and after stop. */
   collector(): Collector;
+  /** Calls `listener` when `track` registers a repo or reactivates it; returns the unsubscribe. */
+  onActivated(listener: (repoId: number) => void): () => void;
+  /** Calls `listener` after each collection read a repo's working trees; returns the unsubscribe. */
+  onListed(listener: (repoId: number, worktrees: readonly WorktreeInfo[]) => void): () => void;
+}
+
+function listeners<A extends unknown[]>(): { add(fn: (...args: A) => void): () => void; emit(...args: A): void } {
+  const set = new Set<(...args: A) => void>();
+  return {
+    add(fn) {
+      set.add(fn);
+      return () => set.delete(fn);
+    },
+    emit(...args) {
+      for (const fn of set) fn(...args);
+    },
+  };
 }
 
 /** The time of a request, when it is a valid date; otherwise `fallback`. */
@@ -74,6 +95,8 @@ export function createCollection(options: CollectionPluginOptions = {}): Collect
   const now = options.now ?? ((): Date => new Date());
   let db: Db | null = null;
   let collector: Collector | null = null;
+  const activated = listeners<[number]>();
+  const listed = listeners<[number, readonly WorktreeInfo[]]>();
 
   const need = <T>(value: T | null, what: string): T => {
     if (value === null) throw new Error(`the ${what} is not open`);
@@ -98,6 +121,13 @@ export function createCollection(options: CollectionPluginOptions = {}): Collect
     if (!created) {
       if (!repo.active) store.repos.setActive(repo.id, true);
       if (at > repo.lastSeenAt) store.repos.touchSeen(repo.id, at);
+    }
+    if (created || !repo.active) {
+      try {
+        activated.emit(repo.id);
+      } catch (error) {
+        context.log.error(`collection: onActivated failed: ${errorMessage(error)}`);
+      }
     }
     context.broadcast({ event: 'repo', data: { repoId: repo.id } });
     later(async () => {
@@ -158,6 +188,9 @@ export function createCollection(options: CollectionPluginOptions = {}): Collect
         log: context.log,
         now,
         ...(options.gh === undefined ? {} : { gh: options.gh }),
+        onListed: (repoId, worktrees) => {
+          listed.emit(repoId, worktrees);
+        },
       });
       collector = created;
       context.setCollectingCounter(() => created.collecting);
@@ -186,5 +219,7 @@ export function createCollection(options: CollectionPluginOptions = {}): Collect
     plugin,
     db: () => need(db, 'database'),
     collector: () => need(collector, 'collector'),
+    onActivated: (listener) => activated.add(listener),
+    onListed: (listener) => listed.add(listener),
   };
 }

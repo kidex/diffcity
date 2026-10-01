@@ -81,12 +81,16 @@ export interface CollectorOptions {
   /** Runs gh (and nothing else); defaults to execFile. Tests inject a stub. */
   gh?: CommandRunner;
   now?: () => Date;
+  /** After the sources of a repo are read: its working trees, for the watchers (ADR-020). */
+  onListed?: (repoId: number, worktrees: readonly WorktreeInfo[]) => void;
 }
 
 export interface Collector extends CollectorPort {
   /** Repos with a collection queued or running: the `collecting` of /api/health. */
   readonly collecting: number;
   isCollecting(repoId: number): boolean;
+  /** False while gh is known to be unavailable for this repo (gh.ts); PR polling skips it then. */
+  ghUsable(repoId: number): boolean;
   /**
    * `track --agent` (C3, ADR-001): marks the change of the working tree that
    * contains `dir` as "agent worked, not reviewed", or writes a repo-level
@@ -297,6 +301,11 @@ export function createCollector(options: CollectorOptions): Collector {
     };
     worktreesSeen.set(repo.id, discovered.worktrees);
     if (closing) return { pending: [], base };
+    try {
+      options.onListed?.(repo.id, discovered.worktrees);
+    } catch (error) {
+      log.error(`collection: onListed failed: ${errorMessage(error)}`);
+    }
 
     const at = now();
     const iso = at.toISOString();
@@ -415,6 +424,7 @@ export function createCollector(options: CollectorOptions): Collector {
       return inFlight.size;
     },
     isCollecting: (repoId) => inFlight.has(repoId),
+    ghUsable: (repoId) => ghGate.usable(repoId),
     async request(repoId, scope, priority) {
       if (closing) return { ok: false, error: 'the daemon is shutting down' };
       wanted.set(repoId, mergeWanted(wanted.get(repoId), scope, priority));
