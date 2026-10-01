@@ -51,7 +51,7 @@ afterEach(async () => {
 });
 
 // Each test spawns a few dozen git processes; inside vitest workers a spawn costs ~70 ms.
-describe('resolveChange and changedFiles (ADR-012)', { timeout: 30_000 }, () => {
+describe('resolveChange and changedFiles (ADR-012)', { timeout: 60_000 }, () => {
   it('merge-base-not-tip: before is merge-base(base, head), not the base tip', async () => {
     const repo = await repoOn({
       files: { 'lib/ledger.ts': 'export const total = 1;\n', 'lib/rates.ts': 'export const rate = 1;\n' },
