@@ -288,7 +288,11 @@ async function assertBlobAbsent(root: string, commit: string, path: string): Pro
   const listing = await gitRaw(root, ['ls-tree', '-z', '--full-tree', commit, '--', path], {
     env: { GIT_LITERAL_PATHSPECS: '1' },
   });
-  if (listing.exitCode !== 0) return;
+  // The commit resolved, so its tree should list: failing means the tree (or a
+  // subtree) is missing too, as in a treeless clone. Absence cannot be proven.
+  if (listing.exitCode !== 0) {
+    throw new GitError('git-failed', `tree of ${commit} is not available locally (partial clone?): ${listing.stderr.trim()}`);
+  }
   for (const entry of splitNul(listing.stdout.toString('utf8'))) {
     const tab = entry.indexOf('\t');
     const [, type] = entry.slice(0, tab).split(' ');
