@@ -1,11 +1,11 @@
 // collect/gh-down-keeps-prs (SPEC.md section 3a L3, C5; ADR-019, ADR-020): a PR
 // the daemon already knows stays live, with its snapshot, when gh stops working
-// later in the daemon's lifetime: `gh pr list` exiting non-zero while the
-// cached probe still says gh is available, and the probe itself failing once
-// its cache has expired. No PR is archived and the repo records no error.
+// later in the daemon's lifetime: `gh pr list` exiting non-zero, then failing
+// again once the hour it is skipped for has passed (DC-49: no separate probe;
+// the list's outcome decides). No PR is archived and the repo records no error.
 
 import { describe, expect, it } from 'vitest';
-import { GH_PROBE_TTL_MS } from '../../../src/daemon/collector/gh.js';
+import { GH_UNAVAILABLE_TTL_MS } from '../../../src/daemon/collector/gh.js';
 import { fakeRunner, isolateGitConfig } from '../../helpers/git-env.js';
 import { cleanupAfterEach, sampleRepo, startTestDaemon } from './collect-helpers.js';
 
@@ -49,7 +49,7 @@ describe('collect/gh-down-keeps-prs (L3, C5)', () => {
     expect(before).toEqual([expect.objectContaining({ kind: 'pr', prNumber: 31, title: 'Pastry counter', head: tip })]);
     expect(before[0]?.stats).not.toBeNull();
 
-    // gh goes down: the probe is still cached as available, `pr list` exits non-zero.
+    // gh goes down: `pr list` exits non-zero.
     gh.state.down = true;
     const listCallsBefore = gh.count('pr');
     expect(await collector.request(repoId, 'prs', 'normal')).toEqual({ ok: true });
@@ -58,18 +58,20 @@ describe('collect/gh-down-keeps-prs (L3, C5)', () => {
     expect(db.changes.listArchived(repoId)).toEqual([]);
     expect(db.repos.get(repoId)?.collectError).toBeNull();
 
-    // An hour later the probe runs again and fails too: still nothing archived.
-    clock += GH_PROBE_TTL_MS + 1;
-    const probesBefore = gh.count('auth');
+    // Within the hour gh is skipped; after it `pr list` runs again and fails too: still nothing archived.
+    expect(await collector.request(repoId, 'prs', 'normal')).toEqual({ ok: true });
+    expect(gh.count('pr')).toBe(listCallsBefore + 1);
+    clock += GH_UNAVAILABLE_TTL_MS + 1;
     expect(await collector.request(repoId, 'full', 'high')).toEqual({ ok: true });
-    expect(gh.count('auth')).toBe(probesBefore + 1);
+    expect(gh.count('pr')).toBe(listCallsBefore + 2);
+    expect(gh.count('auth')).toBe(0);
     expect(db.changes.listLiveSummaries(repoId)).toEqual(before);
     expect(db.changes.listArchived(repoId)).toEqual([]);
     expect(db.repos.get(repoId)?.collectError).toBeNull();
 
     // gh comes back: the PR is listed again and stays the same change.
     gh.state.down = false;
-    clock += GH_PROBE_TTL_MS + 1;
+    clock += GH_UNAVAILABLE_TTL_MS + 1;
     expect(await collector.request(repoId, 'prs', 'normal')).toEqual({ ok: true });
     expect(db.changes.listLiveSummaries(repoId).map((change) => change.id)).toEqual(before.map((change) => change.id));
   });

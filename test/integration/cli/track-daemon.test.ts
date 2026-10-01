@@ -16,10 +16,10 @@ import { tempHome, type TempHome } from '../../helpers/config.js';
 import { CLI_DIST, DaemonTracker } from '../../helpers/daemon.js';
 import { createRepo, type TempRepo } from '../../helpers/repo.js';
 
-// The daemon's track and register handlers arrive with DC-29. Until then the
-// daemon answers "<type> is not supported by this daemon yet", which the CLI
-// must report cleanly. Set this to true once DC-29 is merged.
-const DAEMON_HANDLES_TRACK_AND_REGISTER = false as boolean;
+// The daemon's track and register handlers (DC-29) answer for real. Set to
+// false, the expectations cover a daemon without them, which answers
+// "<type> is not supported by this daemon yet".
+const DAEMON_HANDLES_TRACK_AND_REGISTER = true as boolean;
 
 let temp: TempHome;
 let paths: HomePaths;
