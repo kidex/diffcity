@@ -53,4 +53,6 @@ test('reconnecting at start, then offline, when no daemon answers', async ({ pag
   await page.goto('/#/');
   await expect(indicator(page)).toHaveAttribute('data-state', 'reconnecting');
   await expect(indicator(page)).toHaveAttribute('data-state', 'offline', { timeout: 8_000 });
+  // The one command to start the daemon (SPEC.md section 3).
+  await expect(indicator(page)).toHaveAttribute('title', 'The diffcity daemon is not reachable. Start it with: diffcity start');
 });

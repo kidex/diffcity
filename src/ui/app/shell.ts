@@ -25,7 +25,7 @@ const DAEMON_LABEL: Record<DaemonState, string> = {
 const DAEMON_TITLE: Record<DaemonState, string> = {
   connected: 'Live updates from the diffcity daemon',
   reconnecting: 'Lost the diffcity daemon, reconnecting',
-  offline: 'The diffcity daemon is not reachable. Start it with: diffcity up',
+  offline: 'The diffcity daemon is not reachable. Start it with: diffcity start',
 };
 
 /** What the breadcrumb needs, fetched for the current route. */
