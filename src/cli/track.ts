@@ -8,6 +8,7 @@ import { resolve } from 'node:path';
 import { identifyRepo } from '../core/changes/identity.js';
 import { MAX_HOOK_INPUT_BYTES, parseAgentHookInput, type AgentHookInput } from '../core/changes/hook-input.js';
 import { ensureHome, homePaths, resolveHome } from '../core/home.js';
+import type { SocketRequest } from '../core/model/types.js';
 import { requestWithAutostart, type SpawnDaemonOptions, type SpawnedDaemon } from '../daemon/client.js';
 import { readStdin } from './stdin.js';
 
@@ -64,6 +65,11 @@ async function readHookInput(stdin: TrackStdin, warn: (message: string) => void)
   return parsed.input;
 }
 
+/** The `track` socket request for an absolute repo directory; `start` sends it too. */
+export function trackRequest(dir: string, agent: boolean, at: Date): Extract<SocketRequest, { type: 'track' }> {
+  return { v: 1, type: 'track', dir, agent, at: at.toISOString() };
+}
+
 /** Runs the command; resolves with the process exit code (0 or 1). */
 export async function runTrack(dirArg: string | undefined, options: TrackCommandOptions, deps: TrackDeps): Promise<number> {
   const { io } = deps;
@@ -96,10 +102,9 @@ export async function runTrack(dirArg: string | undefined, options: TrackCommand
     return fail(error instanceof Error ? error.message : String(error));
   }
 
-  const at = (deps.now?.() ?? new Date()).toISOString();
   const result = await requestWithAutostart(
     paths,
-    { v: 1, type: 'track', dir, agent, at },
+    trackRequest(dir, agent, deps.now?.() ?? new Date()),
     {
       env,
       ...(deps.spawnDaemon === undefined ? {} : { spawn: deps.spawnDaemon }),
