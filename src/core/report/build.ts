@@ -168,6 +168,11 @@ async function describeUnchanged(path: string, bytes: Buffer | null): Promise<Re
  * in a supported language, as `same`.
  */
 export async function buildReport(options: BuildReportOptions): Promise<Report> {
+  return (await buildReportWithHead(options)).report;
+}
+
+/** buildReport, plus the sha the after state is built on (the `--head` commit, or HEAD for the working tree). */
+export async function buildReportWithHead(options: BuildReportOptions): Promise<{ report: Report; headCommit: string }> {
   const root = await findRepoRoot(options.repoDir);
   const config = await loadConfig(root);
   const isTier1 = tier1For(config);
@@ -196,9 +201,10 @@ export async function buildReport(options: BuildReportOptions): Promise<Report> 
     );
   }
 
-  return assembleReport(
+  const report = assembleReport(
     meta,
     [...touchedInputs, ...untouchedInputs.filter((input): input is ReportFileInput => input !== null)],
     isTier1,
   );
+  return { report, headCommit: change.headCommit };
 }

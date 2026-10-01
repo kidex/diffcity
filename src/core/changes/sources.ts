@@ -188,17 +188,42 @@ function parsePullRequests(stdout: string): GhPullRequest[] | null {
 }
 
 /**
+ * What `gh pr list` gave (C5, ADR-020): the open PRs, or why there are none.
+ * The call itself tells whether gh can be used, with no separate probe:
+ * - `missing`: gh is not installed (ENOENT);
+ * - `failed`: gh exited non-zero (not authenticated, no GitHub remote, an API
+ *   error) or answered something unreadable;
+ * - `timeout`: gh did not answer within GH_PR_TIMEOUT_MS.
+ */
+export type OpenPrsOutcome = { ok: true; prs: GhPullRequest[] } | { ok: false; reason: 'missing' | 'failed' | 'timeout' };
+
+function failureReason(error: unknown): 'missing' | 'failed' | 'timeout' {
+  if (typeof error !== 'object' || error === null) return 'failed';
+  const { code, killed } = error as { code?: unknown; killed?: unknown };
+  if (code === 'ENOENT') return 'missing';
+  if (killed === true || code === 'ETIMEDOUT') return 'timeout';
+  return 'failed';
+}
+
+/** Runs `gh pr list` once and classifies the outcome; never throws. */
+export async function fetchOpenPrs(root: string, runner: CommandRunner = defaultRunner): Promise<OpenPrsOutcome> {
+  let stdout: string;
+  try {
+    stdout = await runner('gh', GH_PR_LIST_ARGS, { cwd: root, timeoutMs: GH_PR_TIMEOUT_MS });
+  } catch (error) {
+    return { ok: false, reason: failureReason(error) };
+  }
+  const prs = parsePullRequests(stdout);
+  return prs === null ? { ok: false, reason: 'failed' } : { ok: true, prs };
+}
+
+/**
  * Open PRs from `gh pr list` (L3, C5), or null when gh is missing, failing,
  * slow or answers something unreadable: then PRs are "unavailable" and none is archived.
  */
 export async function listOpenPrs(root: string, runner: CommandRunner = defaultRunner): Promise<GhPullRequest[] | null> {
-  let stdout: string;
-  try {
-    stdout = await runner('gh', GH_PR_LIST_ARGS, { cwd: root, timeoutMs: GH_PR_TIMEOUT_MS });
-  } catch {
-    return null;
-  }
-  return parsePullRequests(stdout);
+  const outcome = await fetchOpenPrs(root, runner);
+  return outcome.ok ? outcome.prs : null;
 }
 
 /** `gh pr view <n> --json state`, or null when it cannot be confirmed. */
@@ -219,20 +244,28 @@ async function hasCommit(root: string, oid: string): Promise<boolean> {
   return (await gitRaw(root, ['cat-file', '-e', `${oid}^{commit}`])).exitCode === 0;
 }
 
-/** The PR base as a local commit: the branch, else origin's, else the repo base. */
-async function prBaseCommit(root: string, baseRefName: string, repoBase: ResolvedBase): Promise<string> {
-  for (const ref of [`refs/heads/${baseRefName}`, `refs/remotes/origin/${baseRefName}`]) {
-    const result = await gitRaw(root, ['rev-parse', '--verify', '--quiet', `${ref}^{commit}`]);
-    if (result.exitCode === 0) return result.stdout.toString('utf8').trim();
+/**
+ * The base of a PR as the local repo knows it, never fetched: the local branch
+ * `<baseRefName>`, else `origin/<baseRefName>`, else the repo base. `ref` is a
+ * commit-ish to pass as `--base` (a snapshot's base), `commit` its sha.
+ */
+export async function prBase(root: string, baseRefName: string, repoBase: ResolvedBase): Promise<{ ref: string; commit: string }> {
+  const candidates = [
+    { ref: baseRefName, full: `refs/heads/${baseRefName}` },
+    { ref: `origin/${baseRefName}`, full: `refs/remotes/origin/${baseRefName}` },
+  ];
+  for (const { ref, full } of candidates) {
+    const result = await gitRaw(root, ['rev-parse', '--verify', '--quiet', `${full}^{commit}`]);
+    if (result.exitCode === 0) return { ref, commit: result.stdout.toString('utf8').trim() };
   }
-  return repoBase.commit;
+  return { ref: repoBase.commit, commit: repoBase.commit };
 }
 
 /** Completes a gh PR with what the local repo knows; never fetches (Q3). */
 async function localPrInfo(root: string, pr: GhPullRequest, base: ResolvedBase): Promise<PrInfo> {
   const headAvailable = await hasCommit(root, pr.headRefOid);
   if (!headAvailable) return { ...pr, headAvailable, ahead: null, behind: null, committedAt: null };
-  const baseCommit = await prBaseCommit(root, pr.baseRefName, base);
+  const baseCommit = (await prBase(root, pr.baseRefName, base)).commit;
   const [counts, committedAt] = await Promise.all([
     aheadBehind(root, baseCommit, pr.headRefOid),
     committerDate(root, pr.headRefOid),

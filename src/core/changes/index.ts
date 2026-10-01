@@ -8,13 +8,15 @@ export {
   GH_PR_TIMEOUT_MS,
   collectSources,
   detectBase,
+  fetchOpenPrs,
   listBranches,
   listOpenPrs,
   listWorktrees,
+  prBase,
   prState,
   readPrs,
 } from './sources.js';
-export type { CollectSourcesOptions, GhPullRequest } from './sources.js';
+export type { CollectSourcesOptions, GhPullRequest, OpenPrsOutcome } from './sources.js';
 export type {
   BranchInfo,
   ChangeArchive,

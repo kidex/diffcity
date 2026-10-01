@@ -4,12 +4,19 @@
 
 import { getDb } from '../db.js';
 import type { DaemonPlugin } from '../plugin.js';
+import { getRuntime } from '../runtime.js';
 import { registerApiRoutes } from './routes.js';
 
 export const apiPlugin: DaemonPlugin = {
   name: 'api',
   async setup(context, http) {
     const db = await getDb(context);
-    registerApiRoutes(http, { db, now: () => new Date().toISOString(), port: () => context.port() });
+    registerApiRoutes(http, {
+      db,
+      now: () => new Date().toISOString(),
+      port: () => context.port(),
+      // `collecting` from the collector, `watch` from the watchers (src/daemon/runtime.ts).
+      runtime: getRuntime(context),
+    });
   },
 };
