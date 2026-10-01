@@ -72,6 +72,34 @@ describe('daemon process', () => {
     expect(await sendRequest(info.socket, { v: 1, type: 'ping' })).toMatchObject({ ok: true });
   });
 
+  it('daemon/stale-lock-race: separate processes racing for a stale lock, exactly one acquires it', async () => {
+    const { execFile } = await import('node:child_process');
+    const { fileURLToPath } = await import('node:url');
+    const dist = (path: string): string => fileURLToPath(new URL(`../../../dist/${path}`, import.meta.url));
+    // Each racer tries the lock, prints the result, and holds it for a moment before exiting.
+    const script = [
+      `import { acquireLock } from ${JSON.stringify(dist('daemon/files.js'))};`,
+      `import { homePaths } from ${JSON.stringify(dist('core/home.js'))};`,
+      `const result = await acquireLock(homePaths(process.env.DIFFCITY_HOME), { pid: process.pid });`,
+      'process.stdout.write(JSON.stringify(result));',
+      'await new Promise((resolve) => setTimeout(resolve, 300));',
+    ].join('\n');
+    const race = (): Promise<{ acquired: boolean }> =>
+      new Promise((resolve, reject) => {
+        execFile(process.execPath, ['--input-type=module', '-e', script], { env: temp.env }, (error, stdout) => {
+          if (error !== null) reject(new Error(`racer failed: ${error.message}`));
+          else resolve(JSON.parse(stdout) as { acquired: boolean });
+        });
+      });
+    await mkdir(paths.home, { recursive: true, mode: 0o700 });
+    for (let run = 0; run < 15; run++) {
+      const dead = spawnSync(process.execPath, ['-e', 'process.stdout.write(String(process.pid))'], { encoding: 'utf8' });
+      await writeFile(paths.lock, `${dead.stdout}\n`);
+      const results = await Promise.all([race(), race(), race()]);
+      expect(results.filter((result) => result.acquired), `run ${String(run)}`).toHaveLength(1);
+    }
+  });
+
   it.each(['shutdown request', 'SIGTERM', 'SIGINT'] as const)('daemon/shutdown-cleans-files: %s removes daemon.json, the socket and the lock', async (how) => {
     const spawned = daemons.spawnDaemon(temp.env);
     const info = await ready();

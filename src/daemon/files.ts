@@ -2,7 +2,7 @@
 // lock, daemon.json (the "ready" signal) and state.json (the last `up --port`).
 // The CLI reads them too, through this module.
 
-import { open, readFile, rename, rm, writeFile } from 'node:fs/promises';
+import { open, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { setTimeout as sleep } from 'node:timers/promises';
 import type { HomePaths } from '../core/home.js';
 import type { DaemonInfo, DaemonState } from '../core/model/types.js';
@@ -30,6 +30,8 @@ export interface AcquireLockOptions {
    * creates the file and writes its pid in two steps. Defaults to 500 ms.
    */
   unreadableGraceMs?: number;
+  /** Test seam: runs after the lock was judged stale, before it is removed. */
+  beforeTakeover?: () => Promise<void>;
 }
 
 function parsePid(text: string): number | null {
@@ -62,31 +64,82 @@ async function createLock(path: string, pid: number): Promise<boolean> {
   return true;
 }
 
+/** A takeover guard older than this was left by a starter that died holding it. */
+export const TAKEOVER_GUARD_STALE_MS = 5000;
+
+async function readText(path: string): Promise<string | null> {
+  try {
+    return await readFile(path, 'utf8');
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
+    throw error;
+  }
+}
+
+/**
+ * Takes `<lock>.takeover` with `wx`, waiting while another starter holds it.
+ * A guard older than TAKEOVER_GUARD_STALE_MS (by mtime) is removed first.
+ */
+async function takeGuard(path: string): Promise<void> {
+  for (;;) {
+    try {
+      const handle = await open(path, 'wx', 0o600);
+      await handle.close();
+      return;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
+    }
+    const age = await stat(path).then(
+      (info) => Date.now() - info.mtimeMs,
+      () => 0,
+    );
+    if (age > TAKEOVER_GUARD_STALE_MS) await rm(path, { force: true });
+    else await sleep(10);
+  }
+}
+
+/**
+ * Removes the lock only if it still holds exactly `staleText`, under the
+ * takeover guard: two starters that both judged the same lock stale cannot
+ * both remove it, and neither removes a lock another starter just created.
+ */
+async function removeStaleLock(paths: HomePaths, staleText: string): Promise<void> {
+  const guard = `${paths.lock}.takeover`;
+  await takeGuard(guard);
+  try {
+    if ((await readText(paths.lock)) === staleText) await rm(paths.lock, { force: true });
+  } finally {
+    await rm(guard, { force: true });
+  }
+}
+
 /**
  * Takes the single-instance lock: `daemon.lock` created with `wx`, holding our
  * pid. When it exists and its pid is alive, the lock is not ours and the owner
  * is returned. When the pid is dead (or the file never gets a valid pid), the
- * lock is stale: the lock and the socket are removed and the lock is tried once
- * more. A lost second try reports the new owner.
+ * lock is stale and is removed under a takeover guard, then the lock is tried
+ * again. The socket is left alone: the daemon's listen() replaces it once it
+ * holds the lock and HTTP is bound.
  */
 export async function acquireLock(paths: HomePaths, options: AcquireLockOptions): Promise<LockResult> {
   const isAlive = options.isAlive ?? isProcessAlive;
   const graceMs = options.unreadableGraceMs ?? 500;
 
-  for (let attempt = 0; attempt < 2; attempt++) {
+  for (let attempt = 0; attempt < 5; attempt++) {
     if (await createLock(paths.lock, options.pid)) return { acquired: true };
 
-    let owner = await readLockPid(paths.lock);
+    let text = await readText(paths.lock);
+    let owner = text === null ? null : parsePid(text);
     const deadline = Date.now() + graceMs;
-    while (owner === null && Date.now() < deadline) {
+    while (text !== null && owner === null && Date.now() < deadline) {
       await sleep(10);
-      owner = await readLockPid(paths.lock);
+      text = await readText(paths.lock);
+      owner = text === null ? null : parsePid(text);
     }
-    if (owner === 'missing') continue;
+    if (text === null) continue;
     if (owner !== null && isAlive(owner)) return { acquired: false, owner };
-    if (attempt === 1) break;
-    await rm(paths.lock, { force: true });
-    await rm(paths.socket, { force: true });
+    await options.beforeTakeover?.();
+    await removeStaleLock(paths, text);
   }
 
   const owner = await readLockPid(paths.lock);

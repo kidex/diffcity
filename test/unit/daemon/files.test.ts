@@ -35,6 +35,14 @@ function deadPid(): number {
   return Number(child.stdout);
 }
 
+async function waitUntil(check: () => Promise<boolean>): Promise<void> {
+  const deadline = Date.now() + 5000;
+  while (!(await check())) {
+    if (Date.now() > deadline) throw new Error('timed out');
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+}
+
 describe('lock', () => {
   it('creates the lock with our pid', async () => {
     const result = await acquireLock(paths, { pid: 4242, isAlive: () => false });
@@ -49,14 +57,71 @@ describe('lock', () => {
     expect(await readFile(paths.lock, 'utf8')).toBe('777\n');
   });
 
-  it('daemon/stale-lock: recovers a lock whose pid is dead, removing the stale socket', async () => {
+  it('daemon/stale-lock: recovers a lock whose pid is dead and leaves the socket to listen()', async () => {
     const dead = deadPid();
     await writeFile(paths.lock, `${String(dead)}\n`);
     await writeFile(paths.socket, '');
     const result = await acquireLock(paths, { pid: 4242, isAlive: isProcessAlive });
     expect(result).toEqual({ acquired: true });
     expect(await readFile(paths.lock, 'utf8')).toBe('4242\n');
-    await expect(stat(paths.socket)).rejects.toThrow(/ENOENT/);
+    expect((await stat(paths.socket)).isFile()).toBe(true);
+  });
+
+  it('daemon/stale-lock-race: two staggered starters on a stale lock, exactly one acquires it', async () => {
+    const dead = deadPid();
+    const live = new Set([4242, 4343]);
+    const isAlive = (pid: number): boolean => live.has(pid);
+    for (let run = 0; run < 100; run++) {
+      await writeFile(paths.lock, `${String(dead)}\n`);
+      const delay = run % 5;
+      const [a, b] = await Promise.all([
+        acquireLock(paths, { pid: 4242, isAlive }),
+        new Promise<void>((resolve) => setTimeout(resolve, delay)).then(() => acquireLock(paths, { pid: 4343, isAlive })),
+      ]);
+      const winners = [a, b].filter((result) => result.acquired);
+      expect(winners, `run ${String(run)}`).toHaveLength(1);
+      const holder = a.acquired ? 4242 : 4343;
+      expect(await readFile(paths.lock, 'utf8')).toBe(`${String(holder)}\n`);
+      expect(a.acquired ? b : a).toEqual({ acquired: false, owner: holder });
+      await rm(paths.lock, { force: true });
+    }
+  });
+
+  it('daemon/stale-lock-race: a starter that judged the lock stale does not remove the lock another starter just took', async () => {
+    const dead = deadPid();
+    const live = new Set([4242, 4343]);
+    const isAlive = (pid: number): boolean => live.has(pid);
+    await writeFile(paths.lock, `${String(dead)}\n`);
+    let releaseB = (): void => undefined;
+    const bJudgedStale = new Promise<void>((resolve) => {
+      releaseB = resolve;
+    });
+    // B judges the lock stale first, then is held until A has replaced it.
+    const b = acquireLock(paths, {
+      pid: 4343,
+      isAlive,
+      beforeTakeover: async () => {
+        releaseB();
+        await waitUntil(async () => (await readFile(paths.lock, 'utf8').catch(() => '')) === '4242\n');
+      },
+    });
+    await bJudgedStale;
+    const a = await acquireLock(paths, { pid: 4242, isAlive });
+    expect(a).toEqual({ acquired: true });
+    expect(await b).toEqual({ acquired: false, owner: 4242 });
+    expect(await readFile(paths.lock, 'utf8')).toBe('4242\n');
+  });
+
+  it('a stale takeover guard left by a crashed starter is ignored after a few seconds', async () => {
+    const dead = deadPid();
+    await writeFile(paths.lock, `${String(dead)}\n`);
+    const guard = `${paths.lock}.takeover`;
+    await writeFile(guard, '');
+    const old = new Date(Date.now() - 60_000);
+    const { utimes } = await import('node:fs/promises');
+    await utimes(guard, old, old);
+    expect(await acquireLock(paths, { pid: 4242, isAlive: (pid) => pid === 4242 })).toEqual({ acquired: true });
+    await expect(stat(guard)).rejects.toThrow(/ENOENT/);
   });
 
   it('treats an unreadable lock that stays unreadable as stale', async () => {
