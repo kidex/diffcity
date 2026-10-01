@@ -1,0 +1,404 @@
+{
+  "meta": {
+    "repo": "acme-cli",
+    "base": "master",
+    "head": "feature/report-command",
+    "commits": 2,
+    "generatedAt": "2026-09-23T14:15:00.000Z"
+  },
+  "packages": [
+    {
+      "id": ".",
+      "path": ".",
+      "tier1": false,
+      "files": [
+        {
+          "id": "diffcity.config.js",
+          "path": "diffcity.config.js",
+          "language": "javascript",
+          "status": "same",
+          "verdict": "same",
+          "inSpec": null,
+          "symbols": [
+            {
+              "id": "diffcity.config.js#default",
+              "name": "default",
+              "kind": "export",
+              "status": "same",
+              "range": {
+                "start": 2,
+                "end": 4
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "src",
+      "path": "src",
+      "tier1": false,
+      "files": [
+        {
+          "id": "src/cli.ts",
+          "path": "src/cli.ts",
+          "language": "typescript",
+          "status": "same",
+          "verdict": "same",
+          "inSpec": null,
+          "symbols": [
+            {
+              "id": "src/cli.ts#main",
+              "name": "main",
+              "kind": "function",
+              "status": "same",
+              "range": {
+                "start": 4,
+                "end": 13
+              }
+            }
+          ]
+        },
+        {
+          "id": "src/program.ts",
+          "path": "src/program.ts",
+          "language": "typescript",
+          "status": "same",
+          "verdict": "same",
+          "inSpec": null,
+          "symbols": [
+            {
+              "id": "src/program.ts#Program",
+              "name": "Program",
+              "kind": "export",
+              "status": "same",
+              "range": {
+                "start": 1,
+                "end": 3
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "src/commands",
+      "path": "src/commands",
+      "tier1": false,
+      "files": [
+        {
+          "id": "src/commands/index.ts",
+          "path": "src/commands/index.ts",
+          "language": "typescript",
+          "status": "add",
+          "verdict": "ok",
+          "inSpec": null,
+          "symbols": [
+            {
+              "id": "src/commands/index.ts#registerList",
+              "name": "registerList",
+              "kind": "export",
+              "status": "same",
+              "range": {
+                "start": 1,
+                "end": 1
+              }
+            },
+            {
+              "id": "src/commands/index.ts#registerHealth",
+              "name": "registerHealth",
+              "kind": "export",
+              "status": "same",
+              "range": {
+                "start": 2,
+                "end": 2
+              }
+            },
+            {
+              "id": "src/commands/index.ts#registerReport",
+              "name": "registerReport",
+              "kind": "export",
+              "status": "add",
+              "range": {
+                "start": 3,
+                "end": 3
+              }
+            },
+            {
+              "id": "src/commands/index.ts#report",
+              "name": "report",
+              "kind": "export",
+              "status": "add",
+              "range": {
+                "start": 3,
+                "end": 3
+              }
+            }
+          ]
+        },
+        {
+          "id": "src/commands/list.ts",
+          "path": "src/commands/list.ts",
+          "language": "typescript",
+          "status": "mod",
+          "verdict": "ok",
+          "inSpec": null,
+          "symbols": [
+            {
+              "id": "src/commands/list.ts#registerList",
+              "name": "registerList",
+              "kind": "function",
+              "status": "same",
+              "range": {
+                "start": 4,
+                "end": 8
+              }
+            }
+          ]
+        },
+        {
+          "id": "src/commands/report.ts",
+          "path": "src/commands/report.ts",
+          "language": "typescript",
+          "status": "add",
+          "verdict": "ok",
+          "inSpec": null,
+          "symbols": [
+            {
+              "id": "src/commands/report.ts#Period",
+              "name": "Period",
+              "kind": "export",
+              "status": "add",
+              "range": {
+                "start": 4,
+                "end": 4
+              }
+            },
+            {
+              "id": "src/commands/report.ts#parsePeriod",
+              "name": "parsePeriod",
+              "kind": "function",
+              "status": "add",
+              "range": {
+                "start": 6,
+                "end": 11
+              }
+            },
+            {
+              "id": "src/commands/report.ts#runReport",
+              "name": "runReport",
+              "kind": "function",
+              "status": "add",
+              "range": {
+                "start": 13,
+                "end": 15
+              }
+            },
+            {
+              "id": "src/commands/report.ts#registerReport",
+              "name": "registerReport",
+              "kind": "function",
+              "status": "add",
+              "range": {
+                "start": 17,
+                "end": 22
+              }
+            }
+          ]
+        },
+        {
+          "id": "src/commands/status.ts",
+          "path": "src/commands/status.ts",
+          "language": "typescript",
+          "status": "same",
+          "verdict": "same",
+          "inSpec": null,
+          "symbols": [
+            {
+              "id": "src/commands/status.ts#registerStatus",
+              "name": "registerStatus",
+              "kind": "function",
+              "status": "same",
+              "range": {
+                "start": 3,
+                "end": 7
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "src/config",
+      "path": "src/config",
+      "tier1": false,
+      "files": [
+        {
+          "id": "src/config/schema.ts",
+          "path": "src/config/schema.ts",
+          "language": "typescript",
+          "status": "mod",
+          "verdict": "ok",
+          "inSpec": null,
+          "symbols": [
+            {
+              "id": "src/config/schema.ts#configSchema",
+              "name": "configSchema",
+              "kind": "export",
+              "status": "mod",
+              "range": {
+                "start": 1,
+                "end": 5
+              }
+            },
+            {
+              "id": "src/config/schema.ts#ConfigKey",
+              "name": "ConfigKey",
+              "kind": "export",
+              "status": "same",
+              "range": {
+                "start": 7,
+                "end": 7
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "src/format",
+      "path": "src/format",
+      "tier1": false,
+      "files": [
+        {
+          "id": "src/format/duration.ts",
+          "path": "src/format/duration.ts",
+          "language": "typescript",
+          "status": "sig",
+          "verdict": "eyes",
+          "inSpec": null,
+          "symbols": [
+            {
+              "id": "src/format/duration.ts#MS_PER_SECOND",
+              "name": "MS_PER_SECOND",
+              "kind": "export",
+              "status": "same",
+              "range": {
+                "start": 1,
+                "end": 1
+              }
+            },
+            {
+              "id": "src/format/duration.ts#formatDuration",
+              "name": "formatDuration",
+              "kind": "function",
+              "status": "sig",
+              "range": {
+                "start": 3,
+                "end": 9
+              },
+              "signatureBefore": "function formatDuration(ms: number): string\nfunction formatDuration(start: Date, end: Date): string\nfunction formatDuration(a: number | Date, b?: Date): string",
+              "signatureAfter": "function formatDuration(ms: number): string\nfunction formatDuration(ms: bigint): string\nfunction formatDuration(start: Date, end: Date): string\nfunction formatDuration(a: number | bigint | Date, b?: Date): string"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "src/release",
+      "path": "src/release",
+      "tier1": true,
+      "files": [
+        {
+          "id": "src/release/version.ts",
+          "path": "src/release/version.ts",
+          "language": "typescript",
+          "status": "mod",
+          "verdict": "eyes",
+          "inSpec": null,
+          "symbols": [
+            {
+              "id": "src/release/version.ts#nextVersion",
+              "name": "nextVersion",
+              "kind": "function",
+              "status": "mod",
+              "range": {
+                "start": 1,
+                "end": 5
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "src/ui",
+      "path": "src/ui",
+      "tier1": false,
+      "files": [
+        {
+          "id": "src/ui/ReportTable.tsx",
+          "path": "src/ui/ReportTable.tsx",
+          "language": "tsx",
+          "status": "add",
+          "verdict": "ok",
+          "inSpec": null,
+          "symbols": [
+            {
+              "id": "src/ui/ReportTable.tsx#ReportRow",
+              "name": "ReportRow",
+              "kind": "export",
+              "status": "add",
+              "range": {
+                "start": 1,
+                "end": 4
+              }
+            },
+            {
+              "id": "src/ui/ReportTable.tsx#ReportTable",
+              "name": "ReportTable",
+              "kind": "function",
+              "status": "add",
+              "range": {
+                "start": 6,
+                "end": 16
+              }
+            },
+            {
+              "id": "src/ui/ReportTable.tsx#ReportLine",
+              "name": "ReportLine",
+              "kind": "function",
+              "status": "add",
+              "range": {
+                "start": 18,
+                "end": 23
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "steps": [],
+  "findings": [],
+  "summary": {
+    "files": 11,
+    "byStatus": {
+      "add": 9,
+      "mod": 2,
+      "sig": 1,
+      "del": 0,
+      "same": 9
+    },
+    "byVerdict": {
+      "eyes": 2,
+      "risky": 0,
+      "spec": 0,
+      "ok": 5,
+      "same": 4
+    },
+    "tier1Files": [
+      "src/release/version.ts"
+    ]
+  }
+}

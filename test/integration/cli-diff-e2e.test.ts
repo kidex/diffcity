@@ -138,8 +138,8 @@ describe('e2e: diffcity diff --json on a branch with sig, mod, add and del', () 
       ['src/lib/pricing.ts#formatPrice', 'mod'],
     ]);
     const sig = file?.symbols[0];
-    expect(sig?.signatureBefore).toBe('export function applyDiscount(total: number): number');
-    expect(sig?.signatureAfter).toBe('export function applyDiscount(total: number, rate: number): number');
+    expect(sig?.signatureBefore).toBe('function applyDiscount(total: number): number');
+    expect(sig?.signatureAfter).toBe('function applyDiscount(total: number, rate: number): number');
   });
 
   it('S mod in a tier 1 zone: symbol mod, file mod, verdict eyes', () => {

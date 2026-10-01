@@ -23,6 +23,12 @@ export interface CreateRepoOptions {
   message?: string;
   /** Name of the initial branch. Defaults to `main`. */
   initialBranch?: string;
+  /**
+   * Directory name of the working tree (meta.repo is the root's basename). The
+   * repo is created as a child named so inside a fresh temp directory; cleanup
+   * removes both. Defaults to a random `diffcity-repo-*` directory.
+   */
+  name?: string;
 }
 
 export interface TempRepo {
@@ -79,8 +85,16 @@ function resolveInside(root: string, relPath: string): string {
   return join(root, normalized);
 }
 
+function assertDirName(name: string): void {
+  const valid = name !== '' && name !== '.' && name !== '..' && !/[\\/]/.test(name) && name.toLowerCase() !== '.git';
+  if (!valid) throw new Error(`Repo name must be a single directory name: ${name}`);
+}
+
 export async function createRepo(options: CreateRepoOptions = {}): Promise<TempRepo> {
-  const dir = await mkdtemp(join(tmpdir(), 'diffcity-repo-'));
+  if (options.name !== undefined) assertDirName(options.name);
+  const tempRoot = await mkdtemp(join(tmpdir(), 'diffcity-repo-'));
+  const dir = options.name === undefined ? tempRoot : join(tempRoot, options.name);
+  if (dir !== tempRoot) await mkdir(dir);
   const baseEnv = isolatedEnv();
   let clock = 0;
 
@@ -128,7 +142,7 @@ export async function createRepo(options: CreateRepoOptions = {}): Promise<TempR
     currentBranch: () => git('symbolic-ref', '--short', 'HEAD'),
     status: () => git('status', '--porcelain'),
     async cleanup() {
-      await rm(dir, { recursive: true, force: true });
+      await rm(tempRoot, { recursive: true, force: true });
     },
   };
 

@@ -1,5 +1,5 @@
 import { Command } from 'commander';
-import { runDiff, type DiffCommandOptions } from './diff.js';
+import { NOW_ENV, runDiff, type DiffCommandOptions } from './diff.js';
 import { readVersion } from './version.js';
 
 export interface CliIo {
@@ -7,6 +7,8 @@ export interface CliIo {
   stderr: (text: string) => void;
   /** Working directory the commands act on; defaults to process.cwd(). */
   cwd?: () => string;
+  /** Environment the commands read; defaults to process.env. */
+  env?: () => NodeJS.ProcessEnv;
 }
 
 const defaultIo: CliIo = {
@@ -63,7 +65,8 @@ export function buildProgram(io: CliIo = defaultIo): Command {
     .option('--head <ref>', 'head ref')
     .action(async (options: DiffCommandOptions) => {
       const cwd = io.cwd?.() ?? process.cwd();
-      process.exitCode = await runDiff(options, { cwd, io });
+      const env = io.env?.() ?? process.env;
+      process.exitCode = await runDiff(options, { cwd, io, now: env[NOW_ENV] });
     });
 
   program

@@ -1,0 +1,405 @@
+{
+  "meta": {
+    "repo": "ledger",
+    "base": "main",
+    "head": "feature/session-refresh",
+    "commits": 3,
+    "generatedAt": "2026-09-22T08:30:00.000Z"
+  },
+  "packages": [
+    {
+      "id": ".",
+      "path": ".",
+      "tier1": false,
+      "files": [
+        {
+          "id": "Dockerfile",
+          "path": "Dockerfile",
+          "language": "other",
+          "status": "mod",
+          "verdict": "eyes",
+          "inSpec": null,
+          "symbols": []
+        }
+      ]
+    },
+    {
+      "id": "scripts",
+      "path": "scripts",
+      "tier1": false,
+      "files": [
+        {
+          "id": "scripts/seed-ledger.js",
+          "path": "scripts/seed-ledger.js",
+          "language": "javascript",
+          "status": "add",
+          "verdict": "ok",
+          "inSpec": null,
+          "symbols": [
+            {
+              "id": "scripts/seed-ledger.js#seedAccounts",
+              "name": "seedAccounts",
+              "kind": "function",
+              "status": "same",
+              "range": {
+                "start": 3,
+                "end": 5
+              }
+            },
+            {
+              "id": "scripts/seed-ledger.js#seedJournal",
+              "name": "seedJournal",
+              "kind": "function",
+              "status": "add",
+              "range": {
+                "start": 7,
+                "end": 7
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "src/ledger",
+      "path": "src/ledger",
+      "tier1": false,
+      "files": [
+        {
+          "id": "src/ledger/accounts.ts",
+          "path": "src/ledger/accounts.ts",
+          "language": "typescript",
+          "status": "same",
+          "verdict": "same",
+          "inSpec": null,
+          "symbols": [
+            {
+              "id": "src/ledger/accounts.ts#AccountBook",
+              "name": "AccountBook",
+              "kind": "class",
+              "status": "same",
+              "range": {
+                "start": 1,
+                "end": 11
+              }
+            },
+            {
+              "id": "src/ledger/accounts.ts#AccountBook.open",
+              "name": "AccountBook.open",
+              "kind": "method",
+              "status": "same",
+              "range": {
+                "start": 4,
+                "end": 6
+              }
+            },
+            {
+              "id": "src/ledger/accounts.ts#AccountBook.has",
+              "name": "AccountBook.has",
+              "kind": "method",
+              "status": "same",
+              "range": {
+                "start": 8,
+                "end": 10
+              }
+            }
+          ]
+        },
+        {
+          "id": "src/ledger/format.ts",
+          "path": "src/ledger/format.ts",
+          "language": "typescript",
+          "status": "same",
+          "verdict": "same",
+          "inSpec": null,
+          "symbols": [
+            {
+              "id": "src/ledger/format.ts#formatAmount",
+              "name": "formatAmount",
+              "kind": "function",
+              "status": "same",
+              "range": {
+                "start": 5,
+                "end": 11
+              }
+            },
+            {
+              "id": "src/ledger/format.ts#formatAccount",
+              "name": "formatAccount",
+              "kind": "function",
+              "status": "same",
+              "range": {
+                "start": 13,
+                "end": 17
+              }
+            },
+            {
+              "id": "src/ledger/format.ts#DEFAULT_CURRENCY",
+              "name": "DEFAULT_CURRENCY",
+              "kind": "export",
+              "status": "same",
+              "range": {
+                "start": 20,
+                "end": 21
+              }
+            }
+          ]
+        },
+        {
+          "id": "src/ledger/journal.ts",
+          "path": "src/ledger/journal.ts",
+          "language": "typescript",
+          "status": "mod",
+          "verdict": "ok",
+          "inSpec": null,
+          "symbols": [
+            {
+              "id": "src/ledger/journal.ts#Entry",
+              "name": "Entry",
+              "kind": "export",
+              "status": "same",
+              "range": {
+                "start": 1,
+                "end": 5
+              }
+            },
+            {
+              "id": "src/ledger/journal.ts#debit",
+              "name": "debit",
+              "kind": "function",
+              "status": "same",
+              "range": {
+                "start": 7,
+                "end": 9
+              }
+            },
+            {
+              "id": "src/ledger/journal.ts#credit",
+              "name": "credit",
+              "kind": "function",
+              "status": "same",
+              "range": {
+                "start": 11,
+                "end": 13
+              }
+            },
+            {
+              "id": "src/ledger/journal.ts#balance",
+              "name": "balance",
+              "kind": "function",
+              "status": "mod",
+              "range": {
+                "start": 15,
+                "end": 18
+              }
+            },
+            {
+              "id": "src/ledger/journal.ts#describeEntry",
+              "name": "describeEntry",
+              "kind": "function",
+              "status": "same",
+              "range": {
+                "start": 20,
+                "end": 22
+              }
+            },
+            {
+              "id": "src/ledger/journal.ts#byAccount",
+              "name": "byAccount",
+              "kind": "function",
+              "status": "same",
+              "range": {
+                "start": 24,
+                "end": 28
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "src/session",
+      "path": "src/session",
+      "tier1": true,
+      "files": [
+        {
+          "id": "src/session/cookie.ts",
+          "path": "src/session/cookie.ts",
+          "language": "typescript",
+          "status": "del",
+          "verdict": "eyes",
+          "inSpec": null,
+          "symbols": [
+            {
+              "id": "src/session/cookie.ts#readCookie",
+              "name": "readCookie",
+              "kind": "function",
+              "status": "del",
+              "range": {
+                "start": 3,
+                "end": 7
+              }
+            },
+            {
+              "id": "src/session/cookie.ts#writeCookie",
+              "name": "writeCookie",
+              "kind": "function",
+              "status": "del",
+              "range": {
+                "start": 9,
+                "end": 11
+              }
+            }
+          ]
+        },
+        {
+          "id": "src/session/index.ts",
+          "path": "src/session/index.ts",
+          "language": "typescript",
+          "status": "same",
+          "verdict": "same",
+          "inSpec": null,
+          "symbols": [
+            {
+              "id": "src/session/index.ts#SESSION_TTL_MS",
+              "name": "SESSION_TTL_MS",
+              "kind": "export",
+              "status": "same",
+              "range": {
+                "start": 1,
+                "end": 1
+              }
+            },
+            {
+              "id": "src/session/index.ts#isExpired",
+              "name": "isExpired",
+              "kind": "export",
+              "status": "same",
+              "range": {
+                "start": 1,
+                "end": 1
+              }
+            },
+            {
+              "id": "src/session/index.ts#refreshSession",
+              "name": "refreshSession",
+              "kind": "export",
+              "status": "same",
+              "range": {
+                "start": 1,
+                "end": 1
+              }
+            }
+          ]
+        },
+        {
+          "id": "src/session/refresh.test.ts",
+          "path": "src/session/refresh.test.ts",
+          "language": "typescript",
+          "status": "add",
+          "verdict": "eyes",
+          "inSpec": null,
+          "symbols": [
+            {
+              "id": "src/session/refresh.test.ts#refreshSession",
+              "name": "refreshSession",
+              "kind": "function",
+              "status": "add",
+              "range": {
+                "start": 4,
+                "end": 14
+              }
+            }
+          ]
+        },
+        {
+          "id": "src/session/refresh.ts",
+          "path": "src/session/refresh.ts",
+          "language": "typescript",
+          "status": "sig",
+          "verdict": "eyes",
+          "inSpec": null,
+          "symbols": [
+            {
+              "id": "src/session/refresh.ts#SESSION_TTL_MS",
+              "name": "SESSION_TTL_MS",
+              "kind": "export",
+              "status": "same",
+              "range": {
+                "start": 1,
+                "end": 1
+              }
+            },
+            {
+              "id": "src/session/refresh.ts#Session",
+              "name": "Session",
+              "kind": "export",
+              "status": "mod",
+              "range": {
+                "start": 3,
+                "end": 7
+              }
+            },
+            {
+              "id": "src/session/refresh.ts#isExpired",
+              "name": "isExpired",
+              "kind": "function",
+              "status": "mod",
+              "range": {
+                "start": 9,
+                "end": 11
+              }
+            },
+            {
+              "id": "src/session/refresh.ts#refreshSession",
+              "name": "refreshSession",
+              "kind": "function",
+              "status": "sig",
+              "range": {
+                "start": 13,
+                "end": 16
+              },
+              "signatureBefore": "function refreshSession(raw: string): Session | null",
+              "signatureAfter": "function refreshSession(session: Session, now: number = Date.now()): Session | null"
+            },
+            {
+              "id": "src/session/refresh.ts#rotate",
+              "name": "rotate",
+              "kind": "function",
+              "status": "add",
+              "range": {
+                "start": 18,
+                "end": 20
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "steps": [],
+  "findings": [],
+  "summary": {
+    "files": 9,
+    "byStatus": {
+      "add": 3,
+      "mod": 3,
+      "sig": 1,
+      "del": 2,
+      "same": 16
+    },
+    "byVerdict": {
+      "eyes": 4,
+      "risky": 0,
+      "spec": 0,
+      "ok": 2,
+      "same": 3
+    },
+    "tier1Files": [
+      "Dockerfile",
+      "src/session/cookie.ts",
+      "src/session/refresh.test.ts",
+      "src/session/refresh.ts"
+    ]
+  }
+}
