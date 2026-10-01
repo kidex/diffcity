@@ -52,7 +52,8 @@ export function mountChangeRoute(element: HTMLElement, context: DataContext, cha
   const stage = h('section', { class: 'stage change', 'data-screen': 'change' });
   const body = h('div', { class: 'change-body' });
   replaceChildren(element, stage);
-  replaceChildren(stage, h('div', { class: 'title' }, h('p', { role: 'status' }, 'Loading the change…')));
+  // Not inside .title: the stage hides `.title p` at 980 px and below.
+  replaceChildren(stage, h('div', { class: 'change-message' }, h('p', { role: 'status', 'data-testid': 'change-loading' }, 'Loading the change…')));
 
   let disposed = false;
   let controller: AbortController | null = null;
@@ -68,9 +69,9 @@ export function mountChangeRoute(element: HTMLElement, context: DataContext, cha
         stage,
         h(
           'div',
-          { class: 'title' },
+          { class: 'change-message', 'data-testid': `change-${loaded.error}` },
           h('h1', null, loaded.error === 'missing' ? 'This change is gone' : 'Can’t reach the diffcity daemon'),
-          h('p', null, loaded.error === 'missing' ? 'It may have been archived more than 90 days ago.' : 'The change appears as soon as the daemon answers.'),
+          h('p', { role: 'status' }, loaded.error === 'missing' ? 'It may have been archived more than 90 days ago.' : 'The change appears as soon as the daemon answers.'),
         ),
       );
       return;
