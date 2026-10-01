@@ -69,6 +69,20 @@
 .tag.sig { color: var(--sig); background: color-mix(in srgb, var(--sig) 16%, transparent); }
 .tag.del { color: var(--del); background: color-mix(in srgb, var(--del) 14%, transparent); }
 .tag.tier { color: var(--tier); background: color-mix(in srgb, var(--tier) 14%, transparent); }
+/* the mockup's .file-verdict: the verdict colour on a tint of itself */
+.tag.verdict { display: inline-flex; align-items: center; gap: 6px; color: var(--v); background: color-mix(in srgb, var(--v) 13%, transparent); }
+.tag.verdict i { width: 7px; height: 7px; border-radius: 50%; background: var(--v); }
+.tag.verdict b { font-weight: 600; }
+.tag.verdict.eyes { --v: var(--verdict-eyes); }
+.tag.verdict.risky { --v: var(--verdict-risky); }
+.tag.verdict.spec { --v: var(--verdict-spec); }
+.tag.verdict.ok { --v: var(--verdict-ok); }
+.tag.verdict.same { --v: var(--verdict-same); }
+/* change kind (Draft, Branch, PR #N) and review state */
+.tag.kind { font-family: var(--mono); color: var(--ink-2); background: var(--panel-2); border: 1px solid var(--line-soft); }
+.tag.review.unreviewed { color: var(--ink-2); background: var(--panel-2); }
+.tag.review.in-review { color: var(--sig); background: color-mix(in srgb, var(--sig) 16%, transparent); }
+.tag.review.approved { color: var(--add); background: color-mix(in srgb, var(--add) 14%, transparent); }
 
 .chips { display: flex; gap: 6px; flex-wrap: wrap; }
 .chip {

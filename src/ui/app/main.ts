@@ -40,7 +40,7 @@ function mountScreen(route: Route): void {
       unmount = mountFleet(view, context);
       break;
     case 'repo':
-      unmount = mountRepo(view, route.id);
+      unmount = mountRepo(view, context, route.id);
       break;
     case 'change':
       // Phase 3 fetches the Report and passes the snapshot signal as `live`.
