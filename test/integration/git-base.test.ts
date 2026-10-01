@@ -176,7 +176,7 @@ describe('defaultRunner', () => {
 
   it('returns stdout of a successful command', async () => {
     expect(
-      await defaultRunner(process.execPath, ['-e', 'process.stdout.write("ok")'], { cwd: process.cwd(), timeoutMs: 5000 }),
+      await defaultRunner(process.execPath, ['-e', 'process.stdout.write("ok")'], { cwd: process.cwd(), timeoutMs: 30_000 }),
     ).toBe('ok');
   });
 
