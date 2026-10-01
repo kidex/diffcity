@@ -43,12 +43,23 @@ test('header, touched files with status and verdict, back link, note', async ({ 
   await expect(page.getByTestId('change-row')).toHaveCount(6);
 });
 
-test('a PR shows PR #N and no ref line', async ({ page }) => {
+test('a PR whose head is not fetched says so, not computing', async ({ page }) => {
   await mockApi(page);
   await page.goto('/#/change/12');
   await expect(page.getByTestId('change-kind')).toHaveText('PR #7');
   await expect(page.getByTestId('change-ref')).toHaveCount(0);
-  await expect(page.getByTestId('report-computing')).toBeVisible();
+  const note = page.getByTestId('head-not-fetched');
+  await expect(note).toHaveText('head not fetched locally');
+  await expect(note).toHaveAttribute('title', 'diffcity never runs git fetch. Fetch the pull request to see what it changes.');
+  await expect(page.getByTestId('report-computing')).toHaveCount(0);
+});
+
+test('a change with its head but no snapshot yet is computing', async ({ page }) => {
+  await mockApi(page);
+  await page.goto('/#/change/13');
+  await expect(page.getByTestId('change-kind')).toHaveText('Branch');
+  await expect(page.getByTestId('report-computing')).toHaveText('Computing the first snapshot of this change…');
+  await expect(page.getByTestId('head-not-fetched')).toHaveCount(0);
 });
 
 test('a change without a snapshot fills in on SSE snapshot', async ({ page }, testInfo) => {
