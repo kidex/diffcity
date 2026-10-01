@@ -1,7 +1,7 @@
 /* The header of #/change/:id in the SPA: the mockup's stage title, with the
    change kind tag and the way back to the repo. */
 .stage.change { display: flex; flex-direction: column; }
-.change-head { padding-bottom: 16px; }
+.stage .change-head { padding-bottom: 16px; }
 .change-head .back { display: inline-block; margin-bottom: 8px; color: var(--muted); font-size: 12.5px; text-decoration: none; }
 .change-head .back:hover { color: var(--ink); }
 .change-head .name-line { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
