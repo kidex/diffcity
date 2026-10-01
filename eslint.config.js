@@ -69,7 +69,9 @@ const CHANGE_SCREEN_RULES = `${CHANGE_SCREEN_FORBIDDEN[1].message} ${UI_RULES}`;
 
 export default tseslint.config(
   {
-    ignores: ['dist/', 'coverage/', 'test-results/', '.worktrees/', '.tmp/', 'design/', 'test/fixtures/'],
+    // design/ holds the static mockup; the visual-direction pages in
+    // design/directions are TypeScript and are linted like the rest.
+    ignores: ['dist/', 'coverage/', 'test-results/', '.worktrees/', '.tmp/', 'design/*', '!design/directions/', 'test/fixtures/'],
   },
   js.configs.recommended,
   ...tseslint.configs.strictTypeChecked,
@@ -106,6 +108,11 @@ export default tseslint.config(
     // The daemon orchestrates src/core; the CLI and the UI are its clients.
     files: ['src/daemon/**'],
     rules: boundary(DAEMON_FORBIDDEN, DAEMON_FORBIDDEN[0].message),
+  },
+  {
+    // Design exploration pages run in the browser.
+    files: ['design/directions/**'],
+    languageOptions: { globals: globals.browser },
   },
   {
     files: ['**/*.js', '**/*.mjs'],

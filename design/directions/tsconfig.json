@@ -1,0 +1,15 @@
+{
+  // The visual-direction pages run in the browser like src/ui (DOM lib, Vite
+  // client types); vite.config.ts needs the Node types. Checked by
+  // `npm run typecheck`; Vite builds the pages, tsc never emits them.
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "types": ["vite/client", "node"],
+    "noEmit": true
+  },
+  "include": ["**/*.ts"],
+  "exclude": []
+}
