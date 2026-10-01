@@ -24,8 +24,27 @@ const COLUMNS = [
   ['event', 'Last event'],
 ] as const;
 
-function count(value: number, column: string, extra = ''): HTMLTableCellElement {
-  return h('td', { class: `num${value === 0 ? ' zero' : ''}${extra}`, 'data-col': column }, value);
+/** The cells of a row, created once and updated in place on every render. */
+interface RowParts {
+  link: HTMLAnchorElement;
+  indicators: HTMLElement;
+  path: HTMLElement;
+  notes: HTMLElement;
+  counts: Record<'draft' | 'branch' | 'pr' | 'unreviewed' | 'high', HTMLTableCellElement>;
+  audit: HTMLTableCellElement;
+  event: HTMLTableCellElement;
+}
+
+const COUNT_COLUMNS = ['draft', 'branch', 'pr', 'unreviewed', 'high'] as const;
+
+/** Sets `text` on `element` only when it differs, so unchanged text nodes stay. */
+function setText(element: Element, text: string): void {
+  if (element.textContent !== text) element.textContent = text;
+}
+
+function setCount(cell: HTMLTableCellElement, value: number, extra: string): void {
+  setText(cell, String(value));
+  cell.className = `num${value === 0 ? ' zero' : ''}${extra}`;
 }
 
 export function createFleetList(go: (href: string) => void): FleetList {
@@ -59,8 +78,26 @@ export function createFleetList(go: (href: string) => void): FleetList {
     }
   }
 
+  const parts = new WeakMap<HTMLElement, RowParts>();
+
   function createRow(repo: RepoSummary): HTMLTableRowElement {
-    const row = h('tr', { 'data-testid': 'repo-row' });
+    const link = h('a', { class: 'name' });
+    const indicators = h('span', { class: 'indicators' });
+    const path = h('div', { class: 'path' });
+    const notes = h('div', { class: 'notes' });
+    const cell = (column: string): HTMLTableCellElement => h('td', { 'data-col': column });
+    const counts = Object.fromEntries(COUNT_COLUMNS.map((column) => [column, cell(column)])) as RowParts['counts'];
+    const audit = cell('audit');
+    const event = cell('event');
+    const row = h(
+      'tr',
+      { 'data-testid': 'repo-row' },
+      h('th', { scope: 'row', 'data-col': 'repo' }, h('div', { class: 'name-line' }, link, indicators), path, notes),
+      COUNT_COLUMNS.map((column) => counts[column]),
+      audit,
+      event,
+    );
+    parts.set(row, { link, indicators, path, notes, counts, audit, event });
     // The name is the keyboard target; a click anywhere on the row follows it.
     row.addEventListener('click', (event) => {
       if (event.target instanceof Element && event.target.closest('a')) return;
@@ -82,50 +119,53 @@ export function createFleetList(go: (href: string) => void): FleetList {
     row.classList.toggle('inactive', !repo.active);
     row.classList.toggle('hot', repo.id === hot);
 
-    // Rebuild the cells only when what they show changes (the relative time
-    // included), so a live refetch with the same data leaves the row alone.
-    const signature = JSON.stringify([repo, repo.lastEventAt === null ? null : relativeTime(repo.lastEventAt, now)]);
-    if (row.dataset['signature'] === signature) return;
-    row.dataset['signature'] = signature;
+    const cells = parts.get(row);
+    if (!cells) return;
+    // Text, classes and attributes change in place: the name link keeps its
+    // focus across live updates and clock ticks. Only the indicator and note
+    // containers, which hold nothing focusable, are rebuilt, and only when
+    // what they show changes.
+    const href = routeHref({ name: 'repo', id: repo.id });
+    if (cells.link.getAttribute('href') !== href) cells.link.setAttribute('href', href);
+    setText(cells.link, repo.name);
+    setText(cells.path, repo.path);
 
-    const indicators: HTMLElement[] = [];
-    if (repo.collecting) indicators.push(h('span', { class: 'tag collecting', 'data-testid': 'collecting' }, h('i'), 'collecting'));
-    if (repo.error !== null) indicators.push(h('span', { class: 'tag del', 'data-testid': 'collect-error', title: repo.error }, 'error'));
-    if (!repo.active) indicators.push(h('span', { class: 'tag', 'data-testid': 'inactive' }, 'inactive'));
+    const status = JSON.stringify([repo.collecting, repo.error, repo.active, repo.watch]);
+    if (cells.indicators.dataset['status'] !== status) {
+      cells.indicators.dataset['status'] = status;
+      const indicators: HTMLElement[] = [];
+      if (repo.collecting) indicators.push(h('span', { class: 'tag collecting', 'data-testid': 'collecting' }, h('i'), 'collecting'));
+      if (repo.error !== null) indicators.push(h('span', { class: 'tag del', 'data-testid': 'collect-error', title: repo.error }, 'error'));
+      if (!repo.active) indicators.push(h('span', { class: 'tag', 'data-testid': 'inactive' }, 'inactive'));
+      replaceChildren(cells.indicators, indicators);
 
-    const notes: HTMLElement[] = [];
-    if (repo.error !== null) notes.push(h('span', { class: 'note error', title: repo.error }, repo.error));
-    if (repo.watch === 'git-only') {
-      notes.push(h('span', { class: 'note', 'data-testid': 'git-only' }, 'working tree not watched (too large)'));
+      const notes: HTMLElement[] = [];
+      if (repo.error !== null) notes.push(h('span', { class: 'note error', title: repo.error }, repo.error));
+      if (repo.watch === 'git-only') notes.push(h('span', { class: 'note', 'data-testid': 'git-only' }, 'working tree not watched (too large)'));
+      replaceChildren(cells.notes, notes);
     }
 
-    const event = repo.lastEventAt;
-    replaceChildren(
-      row,
-      h(
-        'th',
-        { scope: 'row', 'data-col': 'repo' },
-        h(
-          'div',
-          { class: 'name-line' },
-          h('a', { href: routeHref({ name: 'repo', id: repo.id }), class: 'name' }, repo.name),
-          indicators,
-        ),
-        h('div', { class: 'path' }, repo.path),
-        notes,
-      ),
-      count(repo.counts.draft, 'draft'),
-      count(repo.counts.branch, 'branch'),
-      count(repo.counts.pr, 'pr'),
-      count(repo.unreviewed, 'unreviewed', ' strong'),
-      count(repo.highFindings, 'high', repo.highFindings > 0 ? ' high' : ''),
-      h('td', { class: `when${repo.lastAudit === null ? ' never' : ''}`, 'data-col': 'audit' }, lastAuditLabel(repo.lastAudit, now)),
-      h(
-        'td',
-        { class: 'when', 'data-col': 'event', title: event ?? '' },
-        event === null ? h('span', { class: 'none' }, 'no events yet') : h('time', { datetime: event }, relativeTime(event, now)),
-      ),
-    );
+    setCount(cells.counts.draft, repo.counts.draft, '');
+    setCount(cells.counts.branch, repo.counts.branch, '');
+    setCount(cells.counts.pr, repo.counts.pr, '');
+    setCount(cells.counts.unreviewed, repo.unreviewed, ' strong');
+    setCount(cells.counts.high, repo.highFindings, repo.highFindings > 0 ? ' high' : '');
+
+    cells.audit.className = `when${repo.lastAudit === null ? ' never' : ''}`;
+    setText(cells.audit, lastAuditLabel(repo.lastAudit, now));
+
+    const at = repo.lastEventAt;
+    cells.event.className = 'when';
+    cells.event.title = at ?? '';
+    const shown = cells.event.firstElementChild;
+    if (at === null) {
+      if (!(shown instanceof HTMLSpanElement)) replaceChildren(cells.event, h('span', { class: 'none' }, 'no events yet'));
+    } else if (shown instanceof HTMLTimeElement) {
+      if (shown.dateTime !== at) shown.dateTime = at;
+      setText(shown, relativeTime(at, now));
+    } else {
+      replaceChildren(cells.event, h('time', { datetime: at }, relativeTime(at, now)));
+    }
   }
 
   return {
