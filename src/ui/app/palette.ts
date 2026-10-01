@@ -188,6 +188,12 @@ export function mountPalette(api: Api, go: (route: Route) => void, doc: Document
 
   function close(): void {
     if (backdrop.hidden) return;
+    // Hiding the dialog does not move focus out of it at once: the browser
+    // drops focus from a hidden element only at its next rendering update.
+    // Blur first, so focus is on the page as soon as the palette is closed,
+    // even when there is no control to give it back to.
+    const inside = doc.activeElement;
+    if (inside instanceof HTMLElement && backdrop.contains(inside)) inside.blur();
     backdrop.hidden = true;
     if (timer !== null) clearTimeout(timer);
     timer = null;
