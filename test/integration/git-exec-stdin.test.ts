@@ -16,7 +16,7 @@ afterEach(async () => {
   }
 });
 
-describe('gitRaw stdin', { timeout: 30_000 }, () => {
+describe('gitRaw stdin', { timeout: 60_000 }, () => {
   it('reports the exit code when git exits before reading a large input (no EPIPE crash)', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'diffcity-stdin-'));
     dirs.push(dir);

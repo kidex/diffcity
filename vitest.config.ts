@@ -4,6 +4,8 @@ export default defineConfig({
   test: {
     include: ['test/unit/**/*.test.ts', 'test/integration/**/*.test.ts'],
     environment: 'node',
+    // Git-heavy integration tests contend for the CPU; half the cores keeps them under their timeouts.
+    maxWorkers: '50%',
     // Builds dist/ once for the tests that spawn the built CLI.
     globalSetup: ['test/global-setup.ts'],
     // Points DIFFCITY_HOME and HOME at a fresh temporary directory for each test file (ADR-015).

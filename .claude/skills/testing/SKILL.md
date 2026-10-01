@@ -42,7 +42,7 @@ Run with `npm run test:e2e`. Artefacts land in `test-results/<test>/` (`video.we
 
 Locally, when Playwright's Chromium cannot be downloaded, use the installed Chrome without video: `DIFFCITY_E2E_CHANNEL=chrome DIFFCITY_E2E_VIDEO=off npm run test:e2e`. CI sets neither and uses the downloaded Chromium with video. `DIFFCITY_E2E_SKIP_BUILD=1` skips the build in the global setup.
 
-Under load, git-heavy vitest suites can hit the 30 s timeouts. Run `npx vitest run --maxWorkers=2` when other agents are testing in parallel, and rerun a timed-out file alone before calling it a failure.
+Launch vitest and Playwright through `node` (`npm test`, `npm run test:e2e`, or `node node_modules/vitest/vitest.mjs run <files>`), never through `npx` or `node_modules/.bin`. On macOS, a process started by executing a shebang script carries a provenance check that slows every process it spawns, so git-heavy suites run two to ten times slower and hit their timeouts. Under load, add `--maxWorkers=2` and rerun a timed-out file alone before calling it a failure.
 
 Scene tests assert through state the UI exposes for tests (a `data-state` attribute on the city container with the selected building, active filters and hovered id), not by reading pixels. Visual parity with the mockup is checked with screenshots compared by eye and attached to the task.
 

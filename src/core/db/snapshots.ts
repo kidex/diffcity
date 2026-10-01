@@ -37,6 +37,19 @@ export interface SnapshotStore {
   latest(changeId: number): SnapshotRecord | null;
   /** The serialized Report of `latest`, verbatim, or null while there is none. */
   latestReport(changeId: number): string | null;
+  /**
+   * The touched paths of the latest snapshot of every live change that has one,
+   * by the change's `lastEventAt` desc; for search (ADR-017). Reads only the
+   * `touched` column, never a report.
+   */
+  liveTouched(): LiveTouched[];
+}
+
+/** The touched paths of a live change's latest snapshot. */
+export interface LiveTouched {
+  repoId: number;
+  changeId: number;
+  touched: string[];
 }
 
 function toRecord(row: SnapshotRow): SnapshotRecord {
@@ -73,6 +86,13 @@ export function createSnapshotStore(db: Connection): SnapshotStore {
   );
   const latest = db.prepare<[number], SnapshotRow>(`SELECT * FROM snapshots ${LATEST}`);
   const latestReport = db.prepare<[number], { report: string }>(`SELECT report FROM snapshots ${LATEST}`);
+  const liveTouched = db.prepare<[], { repoId: number; changeId: number; touched: string | null }>(
+    `SELECT c.repoId, c.id AS changeId,
+       (SELECT s.touched FROM snapshots s WHERE s.changeId = c.id
+        ORDER BY s.computedAt DESC, s.id DESC LIMIT 1) AS touched
+     FROM changes c WHERE c.archivedAt IS NULL
+     ORDER BY c.lastEventAt DESC, c.id DESC`,
+  );
 
   const put = (snapshot: SnapshotInput): SnapshotPutResult => {
     const existing = existingHash.get(snapshot.changeId, snapshot.head);
@@ -105,5 +125,9 @@ export function createSnapshotStore(db: Connection): SnapshotStore {
       return row === undefined ? null : toRecord(row);
     },
     latestReport: (changeId) => latestReport.get(changeId)?.report ?? null,
+    liveTouched: () =>
+      liveTouched.all().flatMap(({ repoId, changeId, touched }) =>
+        touched === null ? [] : [{ repoId, changeId, touched: JSON.parse(touched) as string[] }],
+      ),
   };
 }

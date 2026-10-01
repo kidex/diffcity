@@ -1,5 +1,5 @@
-// The collection plugin (ADR-016, ADR-019, ADR-020, ADR-021): opens the
-// database, owns the snapshot pool and the collector, and serves the `track`
+// The collection plugin (ADR-016, ADR-019, ADR-020, ADR-021): uses the
+// shared database (src/daemon/db.ts), owns the snapshot pool and the collector, and serves the `track`
 // and `register` socket requests.
 //
 // track (C2, C3): identifies the repo, registers it if missing (active, seen
@@ -15,9 +15,9 @@
 import { availableParallelism } from 'node:os';
 import { identifyRepo, type RepoIdentity } from '../../core/changes/index.js';
 import type { Db } from '../../core/db/index.js';
-import { suppressSqliteExperimentalWarning } from '../../core/db/warning.js';
 import type { CommandRunner } from '../../core/git/index.js';
 import type { SocketSuccessResponses } from '../../core/model/types.js';
+import { getDb } from '../db.js';
 import { errorMessage } from '../log.js';
 import type { DaemonContext, DaemonPlugin } from '../plugin.js';
 import { provideRuntime } from '../runtime.js';
@@ -49,23 +49,6 @@ export interface Collection {
   db(): Db;
   /** The collector, created in setup; throws before setup and after stop. */
   collector(): Collector;
-}
-
-// The database swap point. DC-31 brings src/daemon/db.ts (getDb/closeDb and a
-// dbPlugin listed first that owns the connection): on merge, acquireDb becomes
-// `getDb(context)` and releaseDb a no-op, since the dbPlugin closes it.
-
-/** Opens the daemon's database. */
-async function acquireDb(context: DaemonContext): Promise<Db> {
-  // Before node:sqlite is first loaded (see warning.ts).
-  suppressSqliteExperimentalWarning();
-  const { openDb } = await import('../../core/db/index.js');
-  return openDb(context.paths.db);
-}
-
-/** Closes what acquireDb opened. */
-function releaseDb(db: Db): void {
-  db.close();
 }
 
 /** The time of a request, when it is a valid date; otherwise `fallback`. */
@@ -154,7 +137,8 @@ export function createCollection(options: CollectionPluginOptions = {}): Collect
   const plugin: DaemonPlugin = {
     name: 'collection',
     async setup(context: DaemonContext) {
-      const opened = await acquireDb(context);
+      // The shared connection; dbPlugin, listed before this plugin, owns and closes it.
+      const opened = await getDb(context);
       db = opened;
       const snapshots = createSnapshotPool({
         runner: options.runner ?? 'thread',
@@ -193,9 +177,8 @@ export function createCollection(options: CollectionPluginOptions = {}): Collect
       const current = collector;
       collector = null;
       if (current !== null) await current.close();
-      const open = db;
+      // The connection belongs to dbPlugin, which closes it after this plugin stops.
       db = null;
-      if (open !== null) releaseDb(open);
     },
   };
 

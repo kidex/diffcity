@@ -6,6 +6,7 @@ import { PassThrough } from 'node:stream';
 import { afterEach } from 'vitest';
 import type { CommandRunner } from '../../../src/core/git/index.js';
 import { sendRequest } from '../../../src/daemon/client.js';
+import { dbPlugin } from '../../../src/daemon/db.js';
 import { createCollection, type Collection, type CollectionPluginOptions } from '../../../src/daemon/collector/plugin.js';
 import { startDaemon, type RunningDaemon } from '../../../src/daemon/daemon.js';
 import { createStreamLogger } from '../../../src/daemon/log.js';
@@ -78,7 +79,7 @@ export async function startTestDaemon(options: CollectionPluginOptions = {}): Pr
   const result = await startDaemon({
     env: home.env,
     port: 0,
-    plugins: [collection.plugin],
+    plugins: [dbPlugin, collection.plugin],
     log: createStreamLogger(new PassThrough()),
   });
   if (result.status !== 'started') throw new Error(`daemon did not start: ${result.status}`);

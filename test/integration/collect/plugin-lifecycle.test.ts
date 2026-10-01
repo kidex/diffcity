@@ -3,6 +3,7 @@
 
 import { PassThrough } from 'node:stream';
 import { afterEach, describe, expect, it } from 'vitest';
+import { dbPlugin } from '../../../src/daemon/db.js';
 import { createCollection } from '../../../src/daemon/collector/plugin.js';
 import { startDaemon } from '../../../src/daemon/daemon.js';
 import { createStreamLogger } from '../../../src/daemon/log.js';
@@ -41,7 +42,7 @@ describe('collection plugin lifecycle', () => {
       },
     };
     await expect(
-      startDaemon({ env: home.env, port: 0, plugins: [collection.plugin, failing], log: createStreamLogger(new PassThrough()) }),
+      startDaemon({ env: home.env, port: 0, plugins: [dbPlugin, collection.plugin, failing], log: createStreamLogger(new PassThrough()) }),
     ).rejects.toThrow('later plugin failed');
     expect(() => collection.db()).toThrow(/not open/);
     expect(() => collection.collector()).toThrow(/not open/);
@@ -62,7 +63,7 @@ describe('collection plugin lifecycle', () => {
     const result = await startDaemon({
       env: first.home.env,
       port: 0,
-      plugins: [collection.plugin],
+      plugins: [dbPlugin, collection.plugin],
       log: createStreamLogger(new PassThrough()),
     });
     if (result.status !== 'started') throw new Error(result.status);

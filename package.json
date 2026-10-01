@@ -26,9 +26,9 @@
     "dev:ui": "vite",
     "typecheck": "tsc --noEmit && tsc --noEmit -p src/ui && tsc --noEmit -p test/unit/ui",
     "lint": "eslint .",
-    "test": "vitest run",
-    "test:watch": "vitest",
-    "test:e2e": "playwright test -c test/playwright.config.ts",
+    "test": "node node_modules/vitest/vitest.mjs run",
+    "test:watch": "node node_modules/vitest/vitest.mjs",
+    "test:e2e": "node node_modules/@playwright/test/cli.js test -c test/playwright.config.ts",
     "prepare": "node scripts/copy-grammars.mjs"
   },
   "dependencies": {
