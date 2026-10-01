@@ -10,7 +10,7 @@ import type { SocketRequest } from '../../../src/core/model/types.js';
 import { sendRequest } from '../../../src/daemon/client.js';
 import { createStreamLogger } from '../../../src/daemon/log.js';
 import { parseRequest, MAX_REQUEST_BYTES, REQUEST_TIMEOUT_MS } from '../../../src/daemon/socket/protocol.js';
-import { createSocketServer, RESPONSE_LINGER_MS, type SocketServer } from '../../../src/daemon/socket/server.js';
+import { createSocketServer, RESPONSE_LINGER_MS, sweepTempSockets, type SocketServer } from '../../../src/daemon/socket/server.js';
 import { PassThrough } from 'node:stream';
 
 let dir: string;
@@ -233,6 +233,50 @@ describe('socket server', () => {
     await writeFile(path, '');
     await start();
     expect(await sendRequest(path, { v: 1, type: 'ping' })).toMatchObject({ ok: true });
+  });
+});
+
+describe('sweepTempSockets', () => {
+  /** A socket file named `name` that nobody listens on, as a daemon SIGKILLed before its rename leaves. */
+  async function deadSocket(name: string): Promise<string> {
+    const { createServer } = await import('node:net');
+    const { rename } = await import('node:fs/promises');
+    const bindPath = join(dir, 'bind.tmp');
+    const target = join(dir, name);
+    const other = createServer();
+    await new Promise<void>((resolve) => other.listen(bindPath, resolve));
+    await rename(bindPath, target);
+    // close() unlinks bind.tmp, which is gone: the renamed socket stays, with no listener.
+    await new Promise((resolve) => other.close(resolve));
+    return target;
+  }
+
+  it('removes .dc temp sockets nobody listens on and keeps live ones and other files', async () => {
+    const { createServer } = await import('node:net');
+    const { writeFile } = await import('node:fs/promises');
+    const dead = await deadSocket('.dcaaaaaa');
+    expect((await stat(dead)).isSocket()).toBe(true);
+    const live = join(dir, '.dcbbbbbb');
+    const listener = createServer();
+    await new Promise<void>((resolve) => listener.listen(live, resolve));
+    const regular = join(dir, '.dccccccc');
+    await writeFile(regular, 'not a socket');
+    const unrelated = await deadSocket('other.sock');
+    try {
+      await sweepTempSockets(dir);
+      await expect(stat(dead)).rejects.toThrow(/ENOENT/);
+      expect((await stat(live)).isSocket()).toBe(true);
+      expect((await stat(regular)).isFile()).toBe(true);
+      expect((await stat(unrelated)).isSocket()).toBe(true);
+    } finally {
+      await new Promise((resolve) => listener.close(resolve));
+    }
+  });
+
+  it('listen() sweeps leftovers in the socket directory', async () => {
+    const dead = await deadSocket('.dcdddddd');
+    await start();
+    await expect(stat(dead)).rejects.toThrow(/ENOENT/);
   });
 });
 
