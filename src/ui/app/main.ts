@@ -10,9 +10,9 @@ import '../shared/fonts.js';
 import { createApi } from '../data/api.js';
 import type { DataContext } from '../data/context.js';
 import { connectLive, createCoalescer } from '../data/live.js';
-import { mountChange } from '../screens/change/index.js';
 import { mountFleet } from '../screens/fleet/index.js';
 import { mountRepo } from '../screens/repo/index.js';
+import { mountChangeRoute } from './change-route.js';
 import { navigate, startRouter, type Route } from './router.js';
 import { mountShell } from './shell.js';
 
@@ -43,8 +43,7 @@ function mountScreen(route: Route): void {
       unmount = mountRepo(view, context, route.id);
       break;
     case 'change':
-      // Phase 3 fetches the Report and passes the snapshot signal as `live`.
-      unmount = mountChange(view, { report: null });
+      unmount = mountChangeRoute(view, context, route.id);
       break;
   }
 }
