@@ -10,6 +10,6 @@ export const apiPlugin: DaemonPlugin = {
   name: 'api',
   async setup(context, http) {
     const db = await getDb(context);
-    registerApiRoutes(http, { db, now: () => new Date().toISOString() });
+    registerApiRoutes(http, { db, now: () => new Date().toISOString(), port: () => context.port() });
   },
 };

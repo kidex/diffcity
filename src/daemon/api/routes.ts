@@ -7,12 +7,15 @@ import type { Db, RepoRuntimeLookup } from '../../core/db/index.js';
 import type { ChangeSummary, RepoDetail, RepoSummary, SearchResult } from '../../core/model/types.js';
 import { search } from '../../core/search/index.js';
 import { HttpError } from '../http/errors.js';
+import { isSameOrigin } from './origin.js';
 import { parseArchived, parseId, parseLimit, parseSearchQuery, type Query } from './params.js';
 
 export interface ApiDeps {
   db: Db;
   /** The current time as ISO 8601 UTC, for `lastSeenAt`. */
   now: () => string;
+  /** The daemon's HTTP port, read per request: the own origin is `http://127.0.0.1:<port>` or `http://localhost:<port>`. */
+  port: () => number;
   /** Daemon state merged into each RepoSummary (collecting, watch); the store default when absent. */
   runtime?: RepoRuntimeLookup;
 }
@@ -41,13 +44,15 @@ export function registerApiRoutes(http: FastifyInstance, deps: ApiDeps): void {
   http.get('/api/repos', (): RepoSummary[] => db.repos.listSummaries(deps.runtime));
 
   // Opening a repo in the UI counts as seeing it (ADR-020, Q6), so it updates
-  // lastSeenAt. No SSE `repo` signal goes out: the UI would refetch this route
-  // on it, and the refetch would signal again.
+  // lastSeenAt, but only for a GET from the daemon's own origin: a HEAD or a
+  // cross-site request gets the same answer and writes nothing. No SSE `repo`
+  // signal goes out: the UI would refetch this route on it, and the refetch
+  // would signal again.
   http.get<{ Params: IdParams; Querystring: Query }>('/api/repos/:id', (request): RepoDetail => {
     const id = parseId('id', request.params.id);
     const archived = parseArchived(request.query);
     if (db.repos.get(id) === null) throw notFound('repo', id);
-    db.repos.touchSeen(id, deps.now());
+    if (request.method === 'GET' && isSameOrigin(request, deps.port())) db.repos.touchSeen(id, deps.now());
     return { repo: repoSummary(id), changes: changesOf(id, archived) };
   });
 

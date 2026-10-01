@@ -120,7 +120,7 @@ beforeEach(async () => {
     log: createStreamLogger(new PassThrough()),
     port: () => PORT,
   });
-  registerApiRoutes(app, { db, now: () => NOW });
+  registerApiRoutes(app, { db, now: () => NOW, port: () => PORT });
 });
 afterEach(async () => {
   hub.close();
@@ -209,6 +209,37 @@ describe('api/repo-open-touches-last-seen', () => {
     expect(detail.repo.lastSeenAt).toBe(NOW);
     expect(db.repos.get(seed.docs.id)?.lastSeenAt).toBe(NOW);
     expect(db.repos.get(seed.shop.id)?.lastSeenAt).toBe(T0);
+  });
+
+  const own = `http://127.0.0.1:${String(PORT)}`;
+
+  it.each([
+    ['a foreign Origin', { origin: 'http://evil.example' }],
+    ['a foreign Referer', { referer: 'http://evil.example/page' }],
+    ['an unparsable Referer', { referer: 'not a url' }],
+    ['Sec-Fetch-Site: cross-site', { 'sec-fetch-site': 'cross-site' }],
+    ['Sec-Fetch-Site: same-site', { 'sec-fetch-site': 'same-site' }],
+  ])('a GET with %s is answered but leaves lastSeenAt unchanged', async (_what, headers: Record<string, string>) => {
+    const response = await app.inject({ method: 'GET', url: `/api/repos/${String(seed.docs.id)}`, headers: { ...HOST, ...headers } });
+    expect(response.statusCode).toBe(200);
+    expect(response.json<RepoDetail>().repo.lastSeenAt).toBe(T0);
+    expect(db.repos.get(seed.docs.id)?.lastSeenAt).toBe(T0);
+  });
+
+  it('a HEAD request never writes', async () => {
+    const response = await app.inject({ method: 'HEAD', url: `/api/repos/${String(seed.docs.id)}`, headers: HOST });
+    expect(response.statusCode).toBe(200);
+    expect(db.repos.get(seed.docs.id)?.lastSeenAt).toBe(T0);
+  });
+
+  it.each([
+    ['the own Origin, Referer and Sec-Fetch-Site: same-origin', { origin: own, referer: `${own}/#/repo/1`, 'sec-fetch-site': 'same-origin' }],
+    ['a localhost Referer', { referer: `http://localhost:${String(PORT)}/` }],
+    ['Sec-Fetch-Site: none', { 'sec-fetch-site': 'none' }],
+  ])('a GET with %s updates lastSeenAt', async (_what, headers: Record<string, string>) => {
+    const response = await app.inject({ method: 'GET', url: `/api/repos/${String(seed.docs.id)}`, headers: { ...HOST, ...headers } });
+    expect(response.statusCode).toBe(200);
+    expect(db.repos.get(seed.docs.id)?.lastSeenAt).toBe(NOW);
   });
 
   it('listing repos or a repo changes list does not touch it', async () => {
