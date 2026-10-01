@@ -1,6 +1,6 @@
 {
   "name": "diffcity",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Local visual code review for code written by AI agents: every change becomes a 3D city with review verdicts.",
   "type": "module",
   "license": "UNLICENSED",

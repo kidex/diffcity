@@ -36,7 +36,23 @@ diffcity --help
 | `diffcity audit [--stale] [<repo>]` | full audit: dependencies, semgrep, gitleaks, AI review on tier 1 |
 | `diffcity --version` | print the installed version |
 
-`--help` and `--version` work today; the other commands are not implemented yet and exit with status 2.
+`diff`, `--help` and `--version` work today; the other commands are not implemented yet and exit with status 2.
+
+### Semantic diff
+
+```sh
+diffcity diff            # summary of the current change against the detected base
+diffcity diff --json     # the full report: packages, files, symbols, statuses, verdicts
+```
+
+The base is `--base`, then `base` in `diffcity.config.js`, then `main`, `master` or the default branch reported by `gh`. Without `--head`, the working tree is compared, including untracked files. An optional `diffcity.config.js` at the repository root sets `base` and the tier 1 path tokens:
+
+```js
+export default {
+  base: 'develop',
+  tier1: (defaults) => [...defaults, 'release'],
+};
+```
 
 ## Development
 
