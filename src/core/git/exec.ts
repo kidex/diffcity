@@ -3,6 +3,8 @@
 // index lock the user's own git commands need (ADR-012).
 
 import { execFile } from 'node:child_process';
+import { devNull } from 'node:os';
+import { GUARDED_CONFIG_PATTERN, configEnv, configOverrides, parseScopedConfig } from './guard.js';
 
 export type GitErrorCode = 'not-a-repo' | 'no-commits' | 'no-base' | 'bad-ref' | 'bad-path' | 'git-failed';
 
@@ -42,10 +44,24 @@ export const defaultRunner: CommandRunner = (file, args, options) =>
   });
 
 /**
- * Prepended to every git call. A collected repo's own .git/config could point
- * core.fsmonitor at a command; reading a repo must never run it.
+ * Prepended to every git call. A collected repo's own .git/config can name
+ * commands git would run; reading a repo must never run any of them (DC-37):
+ * - core.fsmonitor: queried on every index read;
+ * - core.hooksPath: `add` (and any index write) runs post-index-change; a
+ *   hooks directory that cannot exist means no hook is ever found;
+ * - filter drivers: overridden per call (see guard.ts);
+ * - transports: refused through the environment (see gitEnv).
+ * - pager: never used without a terminal; --no-pager makes that explicit.
+ * diff.external, diff.<driver>.command and diff.<driver>.textconv are turned
+ * off by the diff flags (--no-ext-diff, --no-textconv).
  */
-const SAFE_CONFIG = ['-c', 'core.fsmonitor=false'];
+const SAFE_CONFIG = [
+  '--no-pager',
+  '-c',
+  'core.fsmonitor=false',
+  '-c',
+  `core.hooksPath=${devNull}`,
+];
 
 /** Big enough for any single source file or file list we read. */
 const GIT_MAX_BUFFER = 512 * 1024 * 1024;
@@ -72,6 +88,13 @@ export function gitEnv(): NodeJS.ProcessEnv {
   }
   env.GIT_OPTIONAL_LOCKS = '0';
   env.GIT_TERMINAL_PROMPT = '0';
+  // A partial clone fetches missing objects on demand through the repo's own
+  // remote settings (uploadpack, core.sshCommand, credential.helper, ...).
+  // GIT_NO_LAZY_FETCH stops that on git 2.44+. An empty GIT_ALLOW_PROTOCOL
+  // allows no transport at all, overriding any protocol.*.allow config, on
+  // every git version and for every subcommand: diffcity never talks to a remote.
+  env.GIT_NO_LAZY_FETCH = '1';
+  env.GIT_ALLOW_PROTOCOL = '';
   return env;
 }
 
@@ -88,15 +111,37 @@ export interface GitCallOptions {
   input?: string;
 }
 
-/** Runs git and returns stdout as bytes plus the exit code; rejects only when git cannot be spawned. */
-export function gitRaw(cwd: string, args: readonly string[], options: GitCallOptions = {}): Promise<GitResult> {
+/**
+ * Subcommands that never pass working tree content through a filter driver
+ * (`cat-file` only with --filters or --textconv), so they skip the config
+ * lookup gitRaw does for every other call.
+ */
+const NO_FILTER_SUBCOMMANDS = new Set(['rev-parse', 'merge-base', 'rev-list', 'symbolic-ref', 'ls-tree', 'cat-file', 'config']);
+
+/** First non-option argument, skipping `-c <name>=<value>` pairs. */
+function subcommand(args: readonly string[]): string | undefined {
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    if (arg === '-c') i++;
+    else if (arg !== undefined && !arg.startsWith('-')) return arg;
+  }
+  return undefined;
+}
+
+function mayRunFilters(args: readonly string[]): boolean {
+  const name = subcommand(args);
+  if (name === undefined || !NO_FILTER_SUBCOMMANDS.has(name)) return true;
+  return args.some((arg) => arg.startsWith('--filters') || arg.startsWith('--textconv'));
+}
+
+function spawnGit(cwd: string, args: readonly string[], env: NodeJS.ProcessEnv, input: string | undefined): Promise<GitResult> {
   return new Promise((resolve, reject) => {
     const child = execFile(
       'git',
       [...SAFE_CONFIG, ...args],
       {
         cwd,
-        env: { ...gitEnv(), ...options.env },
+        env,
         encoding: 'buffer',
         maxBuffer: GIT_MAX_BUFFER,
         windowsHide: true,
@@ -120,8 +165,29 @@ export function gitRaw(cwd: string, args: readonly string[], options: GitCallOpt
       if (error.code === 'EPIPE') return;
       reject(new GitError('git-failed', `git ${args.join(' ')} failed writing stdin: ${error.message}`, { cause: error }));
     });
-    child.stdin?.end(options.input ?? '');
+    child.stdin?.end(input ?? '');
   });
+}
+
+/**
+ * Runs git and returns stdout as bytes plus the exit code; rejects only when git cannot be spawned.
+ *
+ * Unless the subcommand cannot run a filter driver, the repo's filter
+ * settings are read first and overridden for this call (guard.ts),
+ * so a filter the repo configures never runs. When that lookup fails (a
+ * broken config file, say) git is not run and the lookup's failure is returned.
+ */
+export async function gitRaw(cwd: string, args: readonly string[], options: GitCallOptions = {}): Promise<GitResult> {
+  const env: NodeJS.ProcessEnv = { ...gitEnv(), ...options.env };
+  if (mayRunFilters(args)) {
+    const lookup = await spawnGit(cwd, ['config', '--show-scope', '-z', '--get-regexp', GUARDED_CONFIG_PATTERN], env, undefined);
+    // Exit code 1: no matching key.
+    if (lookup.exitCode !== 0 && lookup.exitCode !== 1) {
+      return { stdout: Buffer.alloc(0), stderr: lookup.stderr, exitCode: lookup.exitCode };
+    }
+    Object.assign(env, configEnv(configOverrides(parseScopedConfig(lookup.stdout.toString('utf8'))), env));
+  }
+  return spawnGit(cwd, args, env, options.input);
 }
 
 /** Runs git; resolves with stdout as UTF-8, rejects with a GitError on a non-zero exit. */

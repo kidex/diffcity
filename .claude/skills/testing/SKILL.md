@@ -29,31 +29,20 @@ test/
 
 ## Playwright Test (regressions)
 
-`test/playwright.config.ts`:
+`test/playwright.config.ts` defines two projects (ADR-023):
 
-```ts
-import { defineConfig } from '@playwright/test';
+| Project | Specs | Server | Purpose |
+|---|---|---|---|
+| `screens` | `test/e2e/screens/**` | `test/e2e/support/stub-server.mjs`: serves `dist/ui`, holds a real SSE stream, answers `/api/*` from `test/fixtures/ui/`; specs may also mock routes with `page.route` | screen behaviour against fixed data, no daemon |
+| `acceptance` | `test/e2e/acceptance/**` | the real daemon: `node dist/cli/index.js up --foreground --no-open --port <free>` with a temporary `DIFFCITY_HOME` | end-to-end proof (for example `cd` → UI in 5 s) |
 
-export default defineConfig({
-  testDir: './e2e',
-  outputDir: '../test-results',
-  retries: process.env.CI ? 1 : 0,
-  use: {
-    baseURL: 'http://127.0.0.1:4321',
-    video: 'retain-on-failure',
-    trace: 'retain-on-failure',
-    screenshot: 'only-on-failure',
-  },
-  webServer: {
-    command: 'node dist/cli/index.js up --no-open --port 4321',
-    url: 'http://127.0.0.1:4321',
-    reuseExistingServer: !process.env.CI,
-    env: { DIFFCITY_HOME: '.tmp/e2e-home' },
-  },
-});
-```
+`up` detaches unless `--foreground` is passed, so a web server command must always use `--foreground`. Video, trace and screenshot are kept on failure; CI retries once.
 
-Run with `npx playwright test -c test/playwright.config.ts`. Artefacts land in `test-results/<test>/` (`video.webm`, `trace.zip`, `test-failed-1.png`). `test-results/` is gitignored.
+Run with `npm run test:e2e`. Artefacts land in `test-results/<test>/` (`video.webm`, `trace.zip`, `test-failed-1.png`). `test-results/` is gitignored.
+
+Locally, when Playwright's Chromium cannot be downloaded, use the installed Chrome without video: `DIFFCITY_E2E_CHANNEL=chrome DIFFCITY_E2E_VIDEO=off npm run test:e2e`. CI sets neither and uses the downloaded Chromium with video. `DIFFCITY_E2E_SKIP_BUILD=1` skips the build in the global setup.
+
+Under load, git-heavy vitest suites can hit the 30 s timeouts. Run `npx vitest run --maxWorkers=2` when other agents are testing in parallel, and rerun a timed-out file alone before calling it a failure.
 
 Scene tests assert through state the UI exposes for tests (a `data-state` attribute on the city container with the selected building, active filters and hovered id), not by reading pixels. Visual parity with the mockup is checked with screenshots compared by eye and attached to the task.
 

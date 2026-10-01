@@ -79,4 +79,12 @@ describe('gitEnv', () => {
     expect(env.GIT_WORK_TREE).toBeUndefined();
     expect(env.GIT_CONFIG_NOSYSTEM).toBe('1');
   });
+
+  it('refuses every transport and lazy fetch, whatever the caller environment allows', () => {
+    vi.stubEnv('GIT_ALLOW_PROTOCOL', 'file:ext');
+    vi.stubEnv('GIT_NO_LAZY_FETCH', '0');
+    const env = gitEnv();
+    expect(env.GIT_ALLOW_PROTOCOL).toBe('');
+    expect(env.GIT_NO_LAZY_FETCH).toBe('1');
+  });
 });
