@@ -11,7 +11,10 @@
 //   specs mock these with page.route() anyway, so they do not depend on it.
 // - Test controls under /__stub/: `GET health`; `POST sse/drop?client=<id>`
 //   closes the SSE streams opened with the cookie `e2e-client=<id>` (all of
-//   them without `client`), which is how a spec simulates a lost daemon.
+//   them without `client`), which is how a spec simulates a lost daemon;
+//   `POST sse/emit?event=<name>&client=<id>` with a JSON body sends that event
+//   with the body as its data to the same streams, which is how a spec plays
+//   a live update.
 //
 // Usage: node test/e2e/support/stub-server.mjs [--port 4399]
 
@@ -130,6 +133,31 @@ const server = createServer((req, res) => {
       }
     }
     return json(res, 200, { dropped });
+  }
+  if (url.pathname === '/__stub/sse/emit' && req.method === 'POST') {
+    const event = url.searchParams.get('event');
+    const client = url.searchParams.get('client');
+    if (!event || !/^[a-z]+$/.test(event)) return json(res, 400, { error: { code: 'bad-event', message: String(event) } });
+    let raw = '';
+    req.setEncoding('utf8');
+    req.on('data', (chunk) => (raw += chunk));
+    req.on('end', () => {
+      let data;
+      try {
+        data = JSON.parse(raw || '{}');
+      } catch {
+        return json(res, 400, { error: { code: 'bad-json', message: 'the body must be JSON' } });
+      }
+      let sent = 0;
+      for (const entry of streams) {
+        if (client === null || entry.client === client) {
+          entry.res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+          sent++;
+        }
+      }
+      json(res, 200, { sent });
+    });
+    return;
   }
   if (req.method !== 'GET') return json(res, 405, { error: { code: 'method-not-allowed', message: req.method ?? '' } });
   if (url.pathname === '/api/events') return openEvents(req, res);

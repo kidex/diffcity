@@ -1,0 +1,62 @@
+[
+  {
+    "id": 11,
+    "name": "billing-worker",
+    "path": "/work/billing-worker",
+    "active": true,
+    "lastSeenAt": "2026-05-04T11:58:00.000Z",
+    "lastEventAt": "2026-05-04T11:50:00.000Z",
+    "counts": { "draft": 2, "branch": 3, "pr": 4 },
+    "unreviewed": 8,
+    "highFindings": 2,
+    "lastAudit": null,
+    "collecting": false,
+    "error": null,
+    "watch": "full"
+  },
+  {
+    "id": 12,
+    "name": "media-pipeline",
+    "path": "/work/media-pipeline",
+    "active": true,
+    "lastSeenAt": "2026-05-04T10:00:00.000Z",
+    "lastEventAt": "2026-05-04T09:30:00.000Z",
+    "counts": { "draft": 1, "branch": 0, "pr": 0 },
+    "unreviewed": 1,
+    "highFindings": 0,
+    "lastAudit": null,
+    "collecting": false,
+    "error": null,
+    "watch": "git-only"
+  },
+  {
+    "id": 13,
+    "name": "status-page",
+    "path": "/work/status-page",
+    "active": true,
+    "lastSeenAt": "2026-05-03T18:00:00.000Z",
+    "lastEventAt": "2026-05-03T17:45:00.000Z",
+    "counts": { "draft": 0, "branch": 2, "pr": 0 },
+    "unreviewed": 2,
+    "highFindings": 0,
+    "lastAudit": null,
+    "collecting": false,
+    "error": "git rev-parse failed: not a git repository",
+    "watch": "full"
+  },
+  {
+    "id": 14,
+    "name": "fresh-checkout",
+    "path": "/work/fresh-checkout",
+    "active": true,
+    "lastSeenAt": "2026-05-04T11:59:00.000Z",
+    "lastEventAt": null,
+    "counts": { "draft": 0, "branch": 0, "pr": 0 },
+    "unreviewed": 0,
+    "highFindings": 0,
+    "lastAudit": null,
+    "collecting": true,
+    "error": null,
+    "watch": "full"
+  }
+]
