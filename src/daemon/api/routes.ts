@@ -48,12 +48,12 @@ export function registerApiRoutes(http: FastifyInstance, deps: ApiDeps): void {
   // cross-site request gets the same answer and writes nothing. No SSE `repo`
   // signal goes out: the UI would refetch this route on it, and the refetch
   // would signal again.
-  http.get<{ Params: IdParams; Querystring: Query }>('/api/repos/:id', (request): RepoDetail => {
+  // Always the live changes (ADR-017); archived ones come from /api/repos/:id/changes?archived=1.
+  http.get<{ Params: IdParams }>('/api/repos/:id', (request): RepoDetail => {
     const id = parseId('id', request.params.id);
-    const archived = parseArchived(request.query);
     if (db.repos.get(id) === null) throw notFound('repo', id);
     if (request.method === 'GET' && isSameOrigin(request, deps.port())) db.repos.touchSeen(id, deps.now());
-    return { repo: repoSummary(id), changes: changesOf(id, archived) };
+    return { repo: repoSummary(id), changes: changesOf(id, false) };
   });
 
   http.get<{ Params: IdParams; Querystring: Query }>('/api/repos/:id/changes', (request): ChangeSummary[] => {

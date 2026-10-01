@@ -179,11 +179,10 @@ describe('api/repo-changes-excludes-archived', () => {
 });
 
 describe('api/archived-list', () => {
-  it.each(['/api/repos/:id?archived=1', '/api/repos/:id/changes?archived=1'])('%s lists archived changes by archivedAt desc, with the reason', async (route) => {
-    const response = await get(route.replace(':id', String(seed.shop.id)));
+  it('/api/repos/:id/changes?archived=1 lists archived changes by archivedAt desc, with the reason', async () => {
+    const response = await get(`/api/repos/${String(seed.shop.id)}/changes?archived=1`);
     expect(response.status).toBe(200);
-    const body = response.json() as RepoDetail | ChangeSummary[];
-    const changes = Array.isArray(body) ? body : body.changes;
+    const changes = response.json() as ChangeSummary[];
     expect(changes.map(({ id, archivedAt, archiveReason }) => ({ id, archivedAt, archiveReason }))).toEqual([
       { id: seed.deleted.id, archivedAt: daysAfter(T0, 11), archiveReason: 'deleted' },
       { id: seed.merged.id, archivedAt: daysAfter(T0, 10), archiveReason: 'merged' },
@@ -195,8 +194,13 @@ describe('api/archived-list', () => {
     expect(changes).toHaveLength(3);
   });
 
+  it('/api/repos/:id ignores archived and always lists the live changes', async () => {
+    const detail = (await get(`/api/repos/${String(seed.shop.id)}?archived=1`)).json() as RepoDetail;
+    expect(detail.changes.map((change) => change.id)).toEqual([seed.session.id, seed.draft.id, seed.discounts.id]);
+  });
+
   it('any other archived value is a 400', async () => {
-    const response = await get(`/api/repos/${String(seed.shop.id)}?archived=maybe`);
+    const response = await get(`/api/repos/${String(seed.shop.id)}/changes?archived=maybe`);
     expect(response.status).toBe(400);
     expect(response.json()).toEqual({ error: { code: 'bad-request', message: expect.any(String) as unknown } });
   });
