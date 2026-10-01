@@ -23,6 +23,7 @@ test('archived changes show their reason and date, read-only', async ({ page }) 
   expect(request?.searchParams.get('archived')).toBe('1');
 
   await expect(page.locator('.repo .changes h2')).toHaveText('Archive');
+  await expect(page.getByTestId('change-count-text')).toHaveText('4 archived changes');
   await expect(page.getByTestId('archive-reason')).toHaveText(['Merged', 'PR closed', 'Draft cleaned', 'Branch deleted']);
   await expect(page.getByTestId('archived-at')).toHaveText(['3 May 2026', '30 Apr 2026', '21 Apr 2026', '12 Apr 2026']);
   await expect(page.getByTestId('archived-at').first()).toHaveAttribute('datetime', '2026-05-03T09:00:00.000Z');

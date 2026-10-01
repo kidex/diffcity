@@ -26,14 +26,18 @@ test('a kind chip filters, a second click turns it off', async ({ page }) => {
   await expect(branch).toHaveClass(/\bon\b/);
   await expect(page.getByTestId('change-row')).toHaveCount(3);
   expect(await shownIds(page)).toEqual(['11', '13', '14']);
-  await expect(page.locator('.repo .changes .cnt')).toHaveText('3 of 6');
+  await expect(page.getByTestId('change-count')).toHaveText('3 of 6');
+  await expect(page.getByTestId('change-count')).toHaveAttribute('aria-hidden', 'true');
+  await expect(page.getByTestId('change-count-text')).toHaveText('3 of 6 changes shown');
+  await expect(page.getByRole('region', { name: 'Changes' })).toContainText('3 of 6 changes shown');
   // The counters do not move.
   await expect(kinds(page).getByRole('button')).toHaveText(['Draft 1', 'Branch 3', 'PR 2']);
 
   await branch.click();
   await expect(branch).toHaveAttribute('aria-pressed', 'false');
   await expect(page.getByTestId('change-row')).toHaveCount(6);
-  await expect(page.locator('.repo .changes .cnt')).toHaveText('6');
+  await expect(page.getByTestId('change-count')).toHaveText('6');
+  await expect(page.getByTestId('change-count-text')).toHaveText('6 changes');
 });
 
 test('another kind chip replaces the active one', async ({ page }) => {
