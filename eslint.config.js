@@ -31,20 +31,41 @@ const UI_CORE_VALUE_IMPORTS = [
   `ImportExpression[source.value=${inSelector(into('core'))}]`,
 ].map((selector) => ({ selector, message: UI_TYPE_ONLY_CORE }));
 
+// Dynamic import() is checked only through its specifier, so it must be a plain
+// string literal: a template literal (even without placeholders) or an
+// expression would slip past every pattern above.
+const NON_LITERAL_IMPORT = 'ImportExpression[source.type!="Literal"]';
+const literalOnly = (boundaryMessage) =>
+  `Dynamic import() needs a string literal path so the import boundary can be checked: ${boundaryMessage}`;
+
 /**
  * Rules that forbid every import (types included) matching `patterns`, static or
- * dynamic: no-restricted-imports does not see import(), so a selector covers it.
- * `extraSyntax` adds no-restricted-syntax entries, since a later config object
- * replaces the rule options of an earlier one instead of merging them.
+ * dynamic: no-restricted-imports does not see import(), so a selector covers it,
+ * and a dynamic import() with a non-literal specifier is rejected with
+ * `nonLiteralMessage`. `extraSyntax` adds no-restricted-syntax entries, since a
+ * later config object replaces the rule options of an earlier one instead of
+ * merging them.
  */
-const boundary = (patterns, extraSyntax = []) => ({
+const boundary = (patterns, nonLiteralMessage, extraSyntax = []) => ({
   'no-restricted-imports': ['error', { patterns }],
   'no-restricted-syntax': [
     'error',
     ...extraSyntax,
     ...patterns.map(({ regex, message }) => ({ selector: `ImportExpression[source.value=${inSelector(regex)}]`, message })),
+    { selector: NON_LITERAL_IMPORT, message: literalOnly(nonLiteralMessage) },
   ],
 });
+
+const CORE_FORBIDDEN = [
+  {
+    // A relative import that walks into a cli/, daemon/ or ui/ directory,
+    // or any specifier that goes through src/cli, src/daemon or src/ui.
+    regex: into('cli|daemon|ui'),
+    message: 'src/core must not import from src/cli, src/daemon or src/ui.',
+  },
+];
+const UI_RULES = `${UI_TYPE_ONLY_CORE} ${UI_FORBIDDEN[0].message}`;
+const CHANGE_SCREEN_RULES = `${CHANGE_SCREEN_FORBIDDEN[1].message} ${UI_RULES}`;
 
 export default tseslint.config(
   {
@@ -69,36 +90,22 @@ export default tseslint.config(
   {
     // All computation lives in src/core; it never depends on the layers that call it.
     files: ['src/core/**/*.ts'],
-    rules: {
-      'no-restricted-imports': [
-        'error',
-        {
-          patterns: [
-            {
-              // A relative import that walks into a cli/, daemon/ or ui/ directory,
-              // or any specifier that goes through src/cli, src/daemon or src/ui.
-              regex: '^(?:\\.{1,2}/(?:.*/)?|(?:.*/)?src/)(?:cli|daemon|ui)(?:/|$)',
-              message: 'src/core must not import from src/cli, src/daemon or src/ui.',
-            },
-          ],
-        },
-      ],
-    },
+    rules: boundary(CORE_FORBIDDEN, CORE_FORBIDDEN[0].message),
   },
   {
     // The UI only renders a Report and the DTOs; it never runs core code (ADR-022).
     files: ['src/ui/**'],
-    rules: boundary(UI_FORBIDDEN, UI_CORE_VALUE_IMPORTS),
+    rules: boundary(UI_FORBIDDEN, UI_RULES, UI_CORE_VALUE_IMPORTS),
   },
   {
     // The change screen doubles as the HTML export, so it cannot depend on the daemon client.
     files: ['src/ui/screens/change/**'],
-    rules: boundary(CHANGE_SCREEN_FORBIDDEN, UI_CORE_VALUE_IMPORTS),
+    rules: boundary(CHANGE_SCREEN_FORBIDDEN, CHANGE_SCREEN_RULES, UI_CORE_VALUE_IMPORTS),
   },
   {
     // The daemon orchestrates src/core; the CLI and the UI are its clients.
     files: ['src/daemon/**'],
-    rules: boundary(DAEMON_FORBIDDEN),
+    rules: boundary(DAEMON_FORBIDDEN, DAEMON_FORBIDDEN[0].message),
   },
   {
     files: ['**/*.js', '**/*.mjs'],
