@@ -101,7 +101,9 @@ test('Ctrl+K from nothing focused opens the palette, and Esc leaves focus on the
   await expect(input(page)).toBeFocused();
   await page.keyboard.press('Escape');
   await expect(dialog(page)).toBeHidden();
-  expect(await focused(page)).toBe('body');
+  // Wait on focus itself, not on the dialog: being hidden and losing focus
+  // are separate steps in the browser.
+  await expect.poll(() => focused(page)).toBe('body');
   // Tab still starts from the top bar.
   await page.keyboard.press('Tab');
   expect(await focused(page)).toBe('a:diffcity, all repos');
