@@ -74,7 +74,9 @@ describe('ui/fleet-layout', () => {
     });
 
     it('wraps to a new row when the width is used up', () => {
-      const width = 2 * DEFAULT_LAYOUT.padX + 2 * DEFAULT_LAYOUT.minCell + DEFAULT_LAYOUT.gapX;
+      const cell = (side: number): number => Math.max(DEFAULT_LAYOUT.minCell, side + 2 * DEFAULT_LAYOUT.margin);
+      // Room for exactly the first two cells.
+      const width = 2 * DEFAULT_LAYOUT.padX + cell(at(lots, 0).side) + cell(at(lots, 1).side) + DEFAULT_LAYOUT.gapX;
       const placed = layoutLots(lots, width).lots;
       expect(at(placed, 2).y).toBeGreaterThan(bottom(at(placed, 0)));
       expect(bottom(at(placed, 0))).toBe(bottom(at(placed, 1)));
@@ -85,6 +87,29 @@ describe('ui/fleet-layout', () => {
       for (const lot of layout.lots) {
         expect(lot.y).toBeGreaterThanOrEqual(DEFAULT_LAYOUT.padTop);
         expect(bottom(lot) + DEFAULT_LAYOUT.label).toBeLessThanOrEqual(layout.height - DEFAULT_LAYOUT.padBottom);
+      }
+    });
+
+    it('keeps neighbouring lot faces and labels apart for mixed sizes', () => {
+      const mixed = [LOT_MAX, LOT_UNIT, LOT_MAX, lotSide(2), LOT_MAX, lotSide(5), LOT_UNIT].map((side, id) => ({ id, side }));
+      for (const width of [600, 900, 1440]) {
+        const placed = layoutLots(mixed, width).lots;
+        for (let i = 1; i < placed.length; i++) {
+          const left = at(placed, i - 1);
+          const right = at(placed, i);
+          if (right.y + right.side !== left.y + left.side) continue; // a new row
+          expect(right.x - (left.x + left.side)).toBeGreaterThanOrEqual(2 * DEFAULT_LAYOUT.margin + DEFAULT_LAYOUT.gapX);
+          const leftLabelEnd = left.x + left.side / 2 + left.label / 2;
+          const rightLabelStart = right.x + right.side / 2 - right.label / 2;
+          expect(rightLabelStart - leftLabelEnd).toBeGreaterThanOrEqual(DEFAULT_LAYOUT.gapX + 2 * DEFAULT_LAYOUT.margin - 1);
+        }
+      }
+    });
+
+    it('gives a label the cell less its margins', () => {
+      for (const lot of layoutLots([{ id: 1, side: LOT_MAX }, { id: 2, side: LOT_UNIT }], 900).lots) {
+        expect(lot.cell).toBeGreaterThanOrEqual(lot.side + 2 * DEFAULT_LAYOUT.margin);
+        expect(lot.label).toBe(lot.cell - 2 * DEFAULT_LAYOUT.margin);
       }
     });
 

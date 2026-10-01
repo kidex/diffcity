@@ -186,7 +186,7 @@ export function createFleetMap(): FleetMap {
 
     // Rebuild the drawing only when it changes: a live refetch that brings
     // the same data keeps the nodes (and any pointer or focus on them).
-    const signature = JSON.stringify([repo, place.side, place.cell]);
+    const signature = JSON.stringify([repo, place.side, place.label]);
     if (lot.dataset['signature'] === signature) return;
     lot.dataset['signature'] = signature;
 
@@ -211,7 +211,7 @@ export function createFleetMap(): FleetMap {
         ...(side >= 96 ? [svg('text', { class: 'count-label', x: centre, y: String(side / 2 + 16) }, 'unreviewed')] : []),
         ...statusPip(repo, side),
       ),
-      svg('text', { class: 'name', x: centre, y: String(side + DEPTH + 20) }, fitLabel(repo.name, place.cell / MONO_CHAR)),
+      svg('text', { class: 'name', x: centre, y: String(side + DEPTH + 20) }, fitLabel(repo.name, place.label / MONO_CHAR)),
       svg('text', { class: 'sub', x: centre, y: String(side + DEPTH + 37) }, subLabel(repo)),
     ];
     lot.replaceChildren(...children);

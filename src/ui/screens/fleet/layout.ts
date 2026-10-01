@@ -23,6 +23,8 @@ export interface LayoutOptions {
   padBottom: number;
   /** The narrowest cell: room for the name label under a small lot. */
   minCell: number;
+  /** Room kept free on each side of a lot inside its cell, so big neighbours never touch. */
+  margin: number;
   /** Space between cells in a row and between rows. */
   gapX: number;
   gapY: number;
@@ -35,6 +37,7 @@ export const DEFAULT_LAYOUT: LayoutOptions = {
   padX: 32,
   padBottom: 64,
   minCell: 156,
+  margin: 16,
   gapX: 20,
   gapY: 18,
   label: 48,
@@ -51,8 +54,10 @@ export interface LotPlacement {
   /** Top-left corner of the lot. */
   x: number;
   y: number;
-  /** Width of the cell the lot is centred in (the label may use all of it). */
+  /** Width of the cell the lot is centred in. */
   cell: number;
+  /** Width the name and sub-labels may use, centred under the lot: the cell less its margins. */
+  label: number;
 }
 
 export interface MapLayout {
@@ -65,7 +70,7 @@ export function layoutLots(lots: readonly LotInput[], width: number, options: La
   const inner = Math.max(options.minCell, width - 2 * options.padX);
   const rows: { cells: { lot: LotInput; cell: number }[]; width: number; tallest: number }[] = [];
   for (const lot of lots) {
-    const cell = Math.max(options.minCell, lot.side);
+    const cell = Math.max(options.minCell, lot.side + 2 * options.margin);
     let row = rows.at(-1);
     if (!row || row.width + options.gapX + cell > inner) {
       row = { cells: [], width: -options.gapX, tallest: 0 };
@@ -87,6 +92,7 @@ export function layoutLots(lots: readonly LotInput[], width: number, options: La
         x: Math.round(left + (cell - lot.side) / 2),
         y: Math.round(top + row.tallest - lot.side),
         cell,
+        label: cell - 2 * options.margin,
       });
       left += cell + options.gapX;
     }
