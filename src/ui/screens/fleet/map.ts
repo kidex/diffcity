@@ -8,7 +8,7 @@ import { routeHref } from '../../app/router.js';
 import { h, renderList, svg } from '../../shared/dom.js';
 import { lastAuditLabel, plural, relativeTime } from '../../shared/format.js';
 import type { AuditAge } from '../../shared/tokens.js';
-import { fitLabel, layoutLots, lotSide, type MapLayout } from './layout.js';
+import { fitLabel, layoutLots, lotSide, type LotPlacement, type MapLayout } from './layout.js';
 
 /**
  * The audit age every lot shows in phase 2: there are no audits yet, and the
@@ -90,15 +90,24 @@ export function createFleetMap(): FleetMap {
   let layout: MapLayout = { lots: [], height: 0 };
   let width = 0;
   let hot: number | null = null;
+  /** The repo whose hover card is shown (pointer or focus on its lot); list hover shows none. */
+  let tipFor: number | null = null;
   const hotListeners = new Set<(repoId: number | null) => void>();
 
+  /**
+   * The hover card, anchored to the lot it describes (pointer or keyboard):
+   * centred above the lot, else below its labels, else beside it, always
+   * inside the map and never over the lot or its labels.
+   */
   function showTip(repo: RepoSummary | undefined): void {
-    if (!repo) {
+    const place = repo ? layout.lots.find((lot) => lot.id === repo.id) : undefined;
+    if (!repo || !place) {
+      tipFor = null;
       tip.classList.remove('show');
+      delete tip.dataset['placement'];
       return;
     }
-    const place = layout.lots.find((lot) => lot.id === repo.id);
-    if (!place) return;
+    tipFor = repo.id;
     tip.replaceChildren(
       h('div', { class: 'f' }, repo.name),
       h('div', { class: 'p' }, repo.path),
@@ -109,29 +118,13 @@ export function createFleetMap(): FleetMap {
         h('span', null, h('b', null, repo.counts.branch), ' branch'),
         h('span', null, h('b', null, repo.counts.pr), ' PR'),
       ),
-      h(
-        'div',
-        { class: 'pins' },
-        repo.lastEventAt === null ? 'no events yet' : `last event ${relativeTime(repo.lastEventAt, now)}`,
-      ),
+      h('div', { class: 'pins' }, repo.lastEventAt === null ? 'no events yet' : `last event ${relativeTime(repo.lastEventAt, now)}`),
     );
-    // Beside the lot (right, or left when there is no room); a pointer moves
-    // it from there.
-    const tipWidth = 220;
-    const right = place.x + place.side + 16;
-    const left = right + tipWidth <= width - 8 ? right : Math.max(8, place.x - 16 - tipWidth);
+    const { left, top, placement } = tipPosition(place, tip.offsetWidth, tip.offsetHeight, width, layout.height);
     tip.style.left = `${String(left)}px`;
-    tip.style.top = `${String(place.y)}px`;
+    tip.style.top = `${String(top)}px`;
+    tip.dataset['placement'] = placement;
     tip.classList.add('show');
-  }
-
-  /** As in the mockup: the card follows the pointer, offset 14 px, clamped to the map. */
-  function followPointer(event: MouseEvent): void {
-    const box = element.getBoundingClientRect();
-    const x = event.clientX - box.left + 14;
-    const y = event.clientY - box.top + 14;
-    tip.style.left = `${String(Math.min(x, box.width - tip.offsetWidth - 8))}px`;
-    tip.style.top = `${String(Math.min(y, box.height - tip.offsetHeight - 8))}px`;
   }
 
   function paintHot(): void {
@@ -151,9 +144,6 @@ export function createFleetMap(): FleetMap {
     const lot = svg('a', { class: 'lot', 'data-testid': 'lot', 'data-repo-id': String(repo.id) });
     lot.addEventListener('mouseenter', () => {
       emitHot(repo.id);
-    });
-    lot.addEventListener('mousemove', (event) => {
-      followPointer(event);
     });
     lot.addEventListener('mouseleave', () => {
       emitHot(null);
@@ -226,6 +216,8 @@ export function createFleetMap(): FleetMap {
     canvas.setAttribute('height', String(layout.height));
     renderList<RepoSummary, SVGElement>(lots, repos, (repo) => String(repo.id), createLot, updateLot);
     paintHot();
+    // A live update may change the described repo or move its lot.
+    if (tipFor !== null) showTip(repos.find((repo) => repo.id === tipFor));
   }
 
   const observer = new ResizeObserver(() => {
@@ -258,6 +250,49 @@ export function createFleetMap(): FleetMap {
       hotListeners.clear();
     },
   };
+}
+
+/** Space between the hover card and what it must not cover, and the map edge it stays inside. */
+const TIP_GAP = 10;
+const TIP_EDGE = 8;
+/** How far the labels reach below the lot's side face (two lines of text). */
+const LABELS_BELOW = 44;
+
+export type TipPlacement = 'above' | 'below' | 'right' | 'left';
+
+/**
+ * Where the hover card goes for a lot: the first of above, below the labels,
+ * right and left that fits inside the map without covering the lot (lifted
+ * face and focus ring included) or its labels. When nothing fits (a tiny
+ * map), it goes below the labels, outside the map.
+ */
+export function tipPosition(
+  place: LotPlacement,
+  tipWidth: number,
+  tipHeight: number,
+  mapWidth: number,
+  mapHeight: number,
+): { left: number; top: number; placement: TipPlacement } {
+  const centre = place.x + place.side / 2;
+  const keepOut = {
+    left: Math.min(place.x - 4, centre - place.label / 2),
+    right: Math.max(place.x + place.side + 4, centre + place.label / 2),
+    top: place.y - 8,
+    bottom: place.y + place.side + DEPTH + LABELS_BELOW,
+  };
+  const clamp = (value: number, low: number, high: number): number => Math.max(low, Math.min(value, high));
+  const across = clamp(centre - tipWidth / 2, TIP_EDGE, mapWidth - tipWidth - TIP_EDGE);
+  const down = clamp(place.y, TIP_EDGE, mapHeight - tipHeight - TIP_EDGE);
+
+  const above = keepOut.top - TIP_GAP - tipHeight;
+  if (above >= TIP_EDGE) return { left: across, top: above, placement: 'above' };
+  const below = keepOut.bottom + TIP_GAP;
+  if (below + tipHeight <= mapHeight - TIP_EDGE) return { left: across, top: below, placement: 'below' };
+  const right = keepOut.right + TIP_GAP;
+  if (right + tipWidth <= mapWidth - TIP_EDGE) return { left: right, top: down, placement: 'right' };
+  const left = keepOut.left - TIP_GAP - tipWidth;
+  if (left >= TIP_EDGE) return { left, top: down, placement: 'left' };
+  return { left: across, top: below, placement: 'below' };
 }
 
 function subLabel(repo: RepoSummary): string {
