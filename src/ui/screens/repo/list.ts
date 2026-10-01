@@ -152,10 +152,23 @@ export function createChangeList(go: (href: string) => void): ChangeList {
     );
     parts.set(row, { kind, link, badges: badgeBox, event, where: whereBox, stats: statsBox });
     // The title is the keyboard target; a click anywhere on the row follows it.
-    row.addEventListener('click', (clicked) => {
+    // The link handles its own clicks, modified and middle ones included.
+    const open = (clicked: MouseEvent): void => {
       if (clicked.target instanceof Element && clicked.target.closest('a')) return;
+      // The end of a text-selection drag is not a click on the row.
+      const selection = row.ownerDocument.getSelection();
+      if (selection && !selection.isCollapsed && row.contains(selection.anchorNode)) return;
       const href = link.getAttribute('href');
-      if (href) go(href);
+      if (!href) return;
+      if (clicked.button === 1 || clicked.ctrlKey || clicked.metaKey || clicked.shiftKey) {
+        window.open(link.href, '_blank', 'noopener');
+      } else if (clicked.button === 0) {
+        go(href);
+      }
+    };
+    row.addEventListener('click', open);
+    row.addEventListener('auxclick', (clicked) => {
+      if (clicked.button === 1) open(clicked);
     });
     updateRow(row, change);
     return row;
