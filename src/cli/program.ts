@@ -65,11 +65,11 @@ export function buildProgram(io: CliIo = defaultIo): Command {
   program
     .command('track')
     .description('register a repo and ask the daemon to collect its changes')
-    .argument('[dir]', 'repo directory', '.')
-    .option('--agent', 'mark the current change as "agent worked, not reviewed"')
-    .action(async (dir: string, options: TrackCommandOptions) => {
+    .argument('[dir]', 'repo directory (default: the current directory, or cwd from the hook input with --agent)')
+    .option('--agent', 'mark the current change as "agent worked, not reviewed"; reads the Claude Code hook JSON from stdin')
+    .action(async (dir: string | undefined, options: TrackCommandOptions) => {
       const { runTrack } = await import('./track.js');
-      process.exitCode = await runTrack(dir, options, { io });
+      process.exitCode = await runTrack(dir, options, { io, env: io.env?.() ?? process.env, cwd: io.cwd?.() ?? process.cwd() });
     });
 
   program

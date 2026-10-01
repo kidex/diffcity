@@ -1,19 +1,114 @@
-// `diffcity track [<dir>] [--agent]` (SPEC.md section 3, ADR-016).
+// `diffcity track [<dir>] [--agent]` (SPEC.md section 3, 3a C2/C3, ADR-016, ADR-001).
 // The shell hook runs this on every repo entry, so the module stays light: it
-// may load the socket client and src/core/home, never the parser
-// (web-tree-sitter) or src/core/report. test/integration/cli/track-lazy-imports
-// guards that.
+// may load the socket client, src/core/home and the git identity probe, never
+// the parser (web-tree-sitter) or src/core/report.
+// test/integration/cli/track-lazy-imports guards that.
+
+import { resolve } from 'node:path';
+import { identifyRepo } from '../core/changes/identity.js';
+import { MAX_HOOK_INPUT_BYTES, parseAgentHookInput, type AgentHookInput } from '../core/changes/hook-input.js';
+import { ensureHome, homePaths, resolveHome } from '../core/home.js';
+import { requestWithAutostart, type SpawnDaemonOptions, type SpawnedDaemon } from '../daemon/client.js';
+import { readStdin } from './stdin.js';
 
 export interface TrackCommandOptions {
   agent?: boolean;
 }
 
-export interface TrackDeps {
-  io: { stderr: (text: string) => void };
+/** The process stdin as track sees it. */
+export interface TrackStdin {
+  isTTY: boolean;
+  /** Reads at most `maxBytes` + 1 bytes, so an oversized input is still recognised as such. */
+  read: (maxBytes: number) => Promise<string>;
 }
 
-/** Runs the command; resolves with the process exit code. Not implemented yet. */
-export function runTrack(_dir: string, _options: TrackCommandOptions, deps: TrackDeps): Promise<number> {
-  deps.io.stderr('diffcity track: not implemented yet\n');
-  return Promise.resolve(2);
+export interface TrackDeps {
+  io: { stdout: (text: string) => void; stderr: (text: string) => void };
+  env?: NodeJS.ProcessEnv;
+  /** Defaults to process.cwd(). */
+  cwd?: string;
+  /** Defaults to process.stdin. */
+  stdin?: TrackStdin;
+  /** Starts a detached daemon; defaults to spawnDaemon from the socket client. */
+  spawnDaemon?: (options: SpawnDaemonOptions) => SpawnedDaemon;
+  startTimeoutMs?: number;
+  now?: () => Date;
+}
+
+const processStdin: TrackStdin = {
+  get isTTY() {
+    return process.stdin.isTTY;
+  },
+  read: (maxBytes) => readStdin(process.stdin, maxBytes),
+};
+
+/**
+ * The Stop hook input, read only for --agent when stdin is not a TTY
+ * (SPEC.md section 3). An invalid input is reported and ignored: the agent
+ * mark still goes through for the default directory.
+ */
+async function readHookInput(stdin: TrackStdin, warn: (message: string) => void): Promise<AgentHookInput | null> {
+  if (stdin.isTTY) return null;
+  let text: string;
+  try {
+    text = await stdin.read(MAX_HOOK_INPUT_BYTES);
+  } catch (error) {
+    warn(`ignoring stdin: ${error instanceof Error ? error.message : String(error)}`);
+    return null;
+  }
+  const parsed = parseAgentHookInput(text);
+  if (!parsed.ok) {
+    warn(`ignoring stdin: ${parsed.error}`);
+    return null;
+  }
+  return parsed.input;
+}
+
+/** Runs the command; resolves with the process exit code (0 or 1). */
+export async function runTrack(dirArg: string | undefined, options: TrackCommandOptions, deps: TrackDeps): Promise<number> {
+  const { io } = deps;
+  const fail = (message: string): number => {
+    io.stderr(`diffcity track: ${message}\n`);
+    return 1;
+  };
+  const agent = options.agent === true;
+  const cwd = deps.cwd ?? process.cwd();
+
+  // The hook JSON carries the session (session_id, transcript_path) and the cwd
+  // that replaces the default <dir>. The v1 track request has no session
+  // fields, so only cwd is used until the protocol carries the session.
+  const hook = agent ? await readHookInput(deps.stdin ?? processStdin, (message) => { io.stderr(`diffcity track: ${message}\n`); }) : null;
+  const dir = dirArg !== undefined ? resolve(cwd, dirArg) : (hook?.cwd ?? cwd);
+
+  // Checked here so a directory outside a repo never starts a daemon.
+  try {
+    await identifyRepo(dir);
+  } catch (error) {
+    return fail(error instanceof Error ? error.message : String(error));
+  }
+
+  const env = deps.env ?? process.env;
+  let paths;
+  try {
+    paths = homePaths(resolveHome(env));
+    await ensureHome(paths.home);
+  } catch (error) {
+    return fail(error instanceof Error ? error.message : String(error));
+  }
+
+  const at = (deps.now?.() ?? new Date()).toISOString();
+  const result = await requestWithAutostart(
+    paths,
+    { v: 1, type: 'track', dir, agent, at },
+    {
+      env,
+      ...(deps.spawnDaemon === undefined ? {} : { spawn: deps.spawnDaemon }),
+      ...(deps.startTimeoutMs === undefined ? {} : { timeoutMs: deps.startTimeoutMs }),
+    },
+  );
+  if (!result.ok) return fail(result.error);
+  const { response } = result;
+  if (!response.ok) return fail(response.error);
+  io.stdout(`tracked ${response.repo.name}\n`);
+  return 0;
 }
