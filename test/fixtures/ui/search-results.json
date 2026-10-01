@@ -1,0 +1,30 @@
+[
+  {
+    "kind": "repo",
+    "label": "sample-shop",
+    "detail": "/work/sample-shop",
+    "repoId": 1
+  },
+  {
+    "kind": "change",
+    "label": "feature/order-discounts",
+    "detail": "sample-shop, Branch",
+    "repoId": 1,
+    "changeId": 11
+  },
+  {
+    "kind": "change",
+    "label": "PR #7 Refresh the session before it expires",
+    "detail": "sample-shop",
+    "repoId": 1,
+    "changeId": 12
+  },
+  {
+    "kind": "file",
+    "label": "src/orders/discounts.ts",
+    "detail": "sample-shop, feature/order-discounts",
+    "repoId": 1,
+    "changeId": 11,
+    "path": "src/orders/discounts.ts"
+  }
+]

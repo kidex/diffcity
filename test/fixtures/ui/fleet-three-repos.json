@@ -1,0 +1,47 @@
+[
+  {
+    "id": 1,
+    "name": "sample-shop",
+    "path": "/work/sample-shop",
+    "active": true,
+    "lastSeenAt": "2026-05-04T11:58:00.000Z",
+    "lastEventAt": "2026-05-04T11:19:00.000Z",
+    "counts": { "draft": 1, "branch": 2, "pr": 1 },
+    "unreviewed": 3,
+    "highFindings": 0,
+    "lastAudit": null,
+    "collecting": false,
+    "error": null,
+    "watch": "full"
+  },
+  {
+    "id": 2,
+    "name": "order-service",
+    "path": "/work/order-service",
+    "active": true,
+    "lastSeenAt": "2026-05-04T09:40:00.000Z",
+    "lastEventAt": "2026-05-04T09:12:00.000Z",
+    "counts": { "draft": 0, "branch": 1, "pr": 2 },
+    "unreviewed": 1,
+    "highFindings": 0,
+    "lastAudit": null,
+    "collecting": true,
+    "error": null,
+    "watch": "full"
+  },
+  {
+    "id": 3,
+    "name": "docs-site",
+    "path": "/work/docs-site",
+    "active": false,
+    "lastSeenAt": "2026-04-20T16:05:00.000Z",
+    "lastEventAt": "2026-04-20T15:47:00.000Z",
+    "counts": { "draft": 0, "branch": 1, "pr": 0 },
+    "unreviewed": 0,
+    "highFindings": 0,
+    "lastAudit": null,
+    "collecting": false,
+    "error": null,
+    "watch": "off"
+  }
+]
