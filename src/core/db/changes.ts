@@ -14,6 +14,7 @@ import type {
   ReviewState,
   SnapshotSummary,
 } from '../model/types.js';
+import type { ChangeArchive, ChangeFields, ChangePlan, ChangeUpdate } from '../changes/types.js';
 import { isoTime } from './time.js';
 
 interface ChangeRow {
@@ -42,40 +43,8 @@ interface ChangeSummaryRow extends ChangeRow {
   snapshotSummary: string | null;
 }
 
-/** The columns a reconcile plan sets; `id`, `repoId`, `updatedAt` and the archive columns belong to the store. */
-export type ChangeFields = Pick<
-  ChangeRecord,
-  | 'kind'
-  | 'ref'
-  | 'prNumber'
-  | 'head'
-  | 'headAvailable'
-  | 'dirty'
-  | 'worktreePath'
-  | 'base'
-  | 'title'
-  | 'ahead'
-  | 'behind'
-  | 'reviewState'
-  | 'lastEventType'
-  | 'lastEventAt'
->;
-
-/** An update to a live change: the columns given are replaced, the others kept. */
-export type ChangeUpdate = { id: number } & Partial<ChangeFields>;
-
-/** A live change leaving the list (ADR-019, SPEC.md section 3a L7). */
-export interface ChangeArchive {
-  id: number;
-  reason: ArchiveReason;
-}
-
-/** The outcome of reconciling one repo's sources with its changes (ADR-019). */
-export interface ChangePlan {
-  create: ChangeFields[];
-  update: ChangeUpdate[];
-  archive: ChangeArchive[];
-}
+// The plan types are canonical in src/core/changes (DC-26); re-exported for the db API.
+export type { ChangeArchive, ChangeFields, ChangePlan, ChangeUpdate };
 
 /** The rows applyPlan wrote, in plan order. */
 export interface AppliedPlan {
@@ -174,23 +143,26 @@ function columnValue(key: keyof ChangeFields, value: ChangeFields[keyof ChangeFi
   return value;
 }
 
-/** Every settable column, in insert order; also the whitelist for dynamic UPDATEs. */
-const FIELD_COLUMNS = [
-  'kind',
-  'ref',
-  'prNumber',
-  'head',
-  'headAvailable',
-  'dirty',
-  'worktreePath',
-  'base',
-  'title',
-  'ahead',
-  'behind',
-  'reviewState',
-  'lastEventType',
-  'lastEventAt',
-] as const satisfies readonly (keyof ChangeFields)[];
+/** Every settable column; a Record, so the compiler requires each column of ChangeFields. */
+const SETTABLE: Record<keyof ChangeFields, true> = {
+  kind: true,
+  ref: true,
+  prNumber: true,
+  head: true,
+  headAvailable: true,
+  dirty: true,
+  worktreePath: true,
+  base: true,
+  title: true,
+  ahead: true,
+  behind: true,
+  reviewState: true,
+  lastEventType: true,
+  lastEventAt: true,
+};
+
+/** The settable columns in insert order; also the whitelist for dynamic UPDATEs. */
+const FIELD_COLUMNS = Object.keys(SETTABLE) as (keyof ChangeFields)[];
 
 // The latest snapshot of a change is the one with the greatest computedAt (ADR-018).
 const SUMMARY_SELECT = `
