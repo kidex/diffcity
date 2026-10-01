@@ -308,6 +308,19 @@ describe('a partial clone', () => {
     expect(await markersSeen()).toEqual([]);
   });
 
+  it('fails instead of reporting a file as absent when the tree itself is missing', { timeout: 60_000 }, async () => {
+    const cloneDir = await partialClone('tree:0');
+    const change = await resolveChange(cloneDir, {
+      base: 'origin/main',
+      head: 'origin/feature',
+      runner: ghForbidden().runner,
+    });
+    await expect(readBefore(change, 'src/app.ts')).rejects.toBeInstanceOf(GitError);
+    await expect(readAfterBatch(change, ['src/util.ts'])).rejects.toBeInstanceOf(GitError);
+
+    expect(await markersSeen()).toEqual([]);
+  });
+
   it('refuses the transport even when lazy fetching is on and the repo allows it', { timeout: 60_000 }, async () => {
     // git before 2.44 ignores GIT_NO_LAZY_FETCH; the transport block must hold on its own,
     // also for subcommands that skip the config lookup, and against a repo-set protocol.file.allow.
