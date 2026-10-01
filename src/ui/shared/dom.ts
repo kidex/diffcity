@@ -50,8 +50,8 @@ export function replaceChildren(element: Element, ...children: (Child | Child[])
 /**
  * Renders `items` into `container` keyed by `key`: existing elements are kept
  * and updated, new ones created, missing ones removed, and the order follows
- * `items`. Keeps focus and scroll position across live updates. Works for
- * HTML and SVG children alike.
+ * `items`. Keeps focus and scroll position across live updates, also when
+ * the focused element itself moves. Works for HTML and SVG children alike.
  */
 export function renderList<T, E extends HTMLElement | SVGElement = HTMLElement>(
   container: Element,
@@ -66,6 +66,10 @@ export function renderList<T, E extends HTMLElement | SVGElement = HTMLElement>(
       existing.set(child.dataset['key'], child as E);
     }
   }
+  // Moving the focused element with insertBefore blurs it. moveBefore keeps
+  // it focused; where it is missing, focus is put back after the moves.
+  const active = container.ownerDocument.activeElement;
+  const focused = active !== null && container.contains(active) ? active : null;
   let cursor: Element | null = container.firstElementChild;
   for (const item of items) {
     const id = key(item);
@@ -77,8 +81,20 @@ export function renderList<T, E extends HTMLElement | SVGElement = HTMLElement>(
       element = create(item);
       element.dataset['key'] = id;
     }
-    if (element !== cursor) container.insertBefore(element, cursor);
+    if (element !== cursor) place(container, element, cursor);
     else cursor = cursor.nextElementSibling;
   }
   for (const stale of existing.values()) stale.remove();
+  if (focused instanceof HTMLElement || focused instanceof SVGElement) {
+    if (focused.isConnected && container.ownerDocument.activeElement !== focused) focused.focus({ preventScroll: true });
+  }
+}
+
+/** Inserts or moves `element` before `before`, with moveBefore when the browser has it and the element is already in the page. */
+function place(container: Element, element: Element, before: Element | null): void {
+  if (element.isConnected && container.isConnected && typeof container.moveBefore === 'function') {
+    container.moveBefore(element, before);
+  } else {
+    container.insertBefore(element, before);
+  }
 }
