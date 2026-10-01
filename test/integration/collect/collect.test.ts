@@ -8,7 +8,7 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { sendRequest } from '../../../src/daemon/client.js';
 import { getRuntime } from '../../../src/daemon/runtime.js';
-import { isolateGitConfig } from '../../helpers/git-env.js';
+import { fakeRunner, isolateGitConfig } from '../../helpers/git-env.js';
 import { waitFor } from '../../helpers/daemon.js';
 import { cleanupAfterEach, ghNotInstalled, ghWithPrs, sampleRepo, startTestDaemon } from './collect-helpers.js';
 
@@ -227,6 +227,33 @@ describe('collect/first-collect-refreshes-prs (C5)', () => {
     clock += 15 * 60 * 1000;
     await collector.request(response.repo.id, 'full', 'high');
     expect(gh.prListCalls()).toBe(3);
+  });
+
+  it('a gh pr list that times out is retried by the next collection, without waiting 15 minutes', async () => {
+    const repo = await sampleRepo();
+    await repo.branch('feature/checkout');
+    const tip = await repo.commit('add the checkout', { 'src/checkout/pay.ts': 'export const pay = 1;\n' });
+    await repo.checkout('main');
+    let slow = true;
+    const gh = fakeRunner((call) => {
+      if (call.args[0] !== 'pr' || call.args[1] !== 'list') throw new Error(`unexpected gh call: ${call.args.join(' ')}`);
+      if (slow) throw Object.assign(new Error('gh timed out'), { killed: true, signal: 'SIGTERM' });
+      return JSON.stringify([
+        { number: 12, title: 'Checkout flow', headRefName: 'feature/checkout', headRefOid: tip, baseRefName: 'main', isCrossRepository: false },
+      ]);
+    });
+    const test = await startTestDaemon({ gh: gh.runner, now: fixedNow });
+    const response = await test.track(repo.dir);
+    if (!response.ok) throw new Error(response.error);
+    await test.idle();
+    const db = test.collection.db();
+    expect(db.changes.listLive(response.repo.id).map((change) => change.kind)).toEqual(['branch']);
+    expect(db.repos.get(response.repo.id)?.collectError).toBeNull();
+
+    slow = false;
+    expect(await test.collection.collector().request(response.repo.id, 'refs', 'normal')).toEqual({ ok: true });
+    expect(gh.calls).toHaveLength(2);
+    expect(db.changes.listLiveSummaries(response.repo.id)).toEqual([expect.objectContaining({ kind: 'pr', prNumber: 12 })]);
   });
 
   it('without gh the PR step is skipped silently: no error on the repo', async () => {
