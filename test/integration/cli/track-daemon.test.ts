@@ -114,7 +114,7 @@ describe('track, scan and shell-init with the built CLI and a real daemon', () =
   it('shell-init prints the hook with this node and the built CLI', async () => {
     const run = await cli(['shell-init', 'fish']);
     expect(run.code).toBe(0);
-    expect(run.stdout).toContain(`${quoteFish(process.execPath)} ${quoteFish(CLI_DIST)} track $root`);
+    expect(run.stdout).toContain(`${quoteFish(process.execPath)} ${quoteFish(CLI_DIST)} track "$root"`);
   });
 
   it('cli/shell-init-unknown-shell: exit 1', async () => {

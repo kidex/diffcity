@@ -32,11 +32,11 @@ export function quoteFish(value: string): string {
   return `'${value.replaceAll('\\', '\\\\').replaceAll("'", "\\'")}'`;
 }
 
-const header = (shell: Shell, rcFile: string, install: string): string =>
+const header = (shell: Shell, rcFile: string, install: string, note = ''): string =>
   `# diffcity shell hook for ${shell}: runs \`diffcity track\` in the background when
 # the shell enters a git repo. Add to ${rcFile}:
 #   ${install}
-# Set DIFFCITY_DISABLE_HOOK=1 to turn it off.
+# Set DIFFCITY_DISABLE_HOOK=1 to turn it off.${note === '' ? '' : `\n# ${note}`}
 `;
 
 function zshScript({ node, cli }: HookCommand): string {
@@ -106,7 +106,9 @@ __diffcity_track
 }
 
 function fishScript({ node, cli }: HookCommand): string {
-  return `${header('fish', '~/.config/fish/config.fish', 'diffcity shell-init fish | source')}set -g __diffcity_root ''
+  // `string collect` keeps the parent path one element even when it contains a
+  // newline; a plain command substitution would split it into a list that never empties.
+  return `${header('fish', '~/.config/fish/config.fish', 'diffcity shell-init fish | source', 'Needs fish 3.1 or later (string collect).')}set -g __diffcity_root ''
 function __diffcity_pwd --on-variable PWD
     if test -n "$DIFFCITY_DISABLE_HOOK"; and test "$DIFFCITY_DISABLE_HOOK" != 0
         return 0
@@ -118,12 +120,12 @@ function __diffcity_pwd --on-variable PWD
             set root $dir
             break
         end
-        set dir (string replace -r '/[^/]*$' '' -- $dir)
+        set dir (string replace -r '/[^/]*$' '' -- "$dir" | string collect)
     end
     test "$root" = "$__diffcity_root"; and return 0
     set -g __diffcity_root $root
     test -z "$root"; and return 0
-    ${quoteFish(node)} ${quoteFish(cli)} track $root </dev/null >/dev/null 2>&1 &
+    ${quoteFish(node)} ${quoteFish(cli)} track "$root" </dev/null >/dev/null 2>&1 &
     disown $last_pid 2>/dev/null
 end
 __diffcity_pwd

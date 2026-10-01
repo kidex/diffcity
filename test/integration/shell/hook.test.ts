@@ -70,7 +70,18 @@ let temp: TempHome;
 let root: string;
 let log: string;
 let command: HookCommand;
-let dirs: { work: string; shop: string; shopDeep: string; orders: string; ordersDeep: string; plain: string };
+let dirs: {
+  work: string;
+  shop: string;
+  shopDeep: string;
+  /** Inside the shop repo, below a folder whose name has a newline. */
+  shopNewline: string;
+  orders: string;
+  ordersDeep: string;
+  plain: string;
+  /** Outside any repo, below a folder whose name has a newline. */
+  plainNewline: string;
+};
 const hookFile = (shell: Shell): string => join(root, `hook.${shell}`);
 
 beforeAll(async () => {
@@ -94,7 +105,9 @@ beforeAll(async () => {
     shopDeep: join(shop, 'src', 'a', 'b', 'c', 'd', 'e', 'f'),
     orders,
     ordersDeep: join(orders, 'lib', 'a', 'b', 'c', 'd', 'e', 'f'),
+    shopNewline: join(shop, 'odd\nfolder', 'inner'),
     plain: join(work, 'plain notes'),
+    plainNewline: join(work, 'plain notes', 'odd\nfolder', 'inner'),
   };
   // Only the `.git` entry matters to the hook: a directory, or a file as in a linked worktree.
   await mkdir(join(shop, '.git'), { recursive: true });
@@ -102,6 +115,8 @@ beforeAll(async () => {
   await mkdir(dirs.ordersDeep, { recursive: true });
   await writeFile(join(orders, '.git'), 'gitdir: /elsewhere/.git/worktrees/order-service\n');
   await mkdir(join(dirs.plain, 'inner'), { recursive: true });
+  await mkdir(dirs.shopNewline, { recursive: true });
+  await mkdir(dirs.plainNewline, { recursive: true });
 
   for (const shell of ['zsh', 'bash', 'fish'] as const) await writeFile(hookFile(shell), shellInitScript(shell, command));
 });
@@ -134,6 +149,8 @@ function loadLine(shell: Shell): string {
 /** Quotes a path for the driver script; fish takes the POSIX form for these paths (no backslashes). */
 const q = (path: string): string => quotePosix(path);
 
+const SHELL_RUN_LIMIT_MS = 10_000;
+
 interface ShellRun {
   code: number | null;
   stdout: string;
@@ -153,7 +170,10 @@ async function runShell(binary: ShellBinary, cwd: string, lines: string[], env: 
   child.stdout.setEncoding('utf8').on('data', (chunk: string) => (stdout += chunk));
   child.stderr.setEncoding('utf8').on('data', (chunk: string) => (stderr += chunk));
   child.stdin.end(`${[...prelude, ...lines, 'exit'].join('\n')}\n`);
+  // A hook that never returns would hang the shell: kill it so the test fails instead of timing out.
+  const watchdog = setTimeout(() => child.kill('SIGKILL'), SHELL_RUN_LIMIT_MS);
   const code = await new Promise<number | null>((resolve) => child.once('exit', resolve));
+  clearTimeout(watchdog);
   return { code, stdout, stderr };
 }
 
@@ -237,6 +257,18 @@ describe.each(SHELL_BINARIES)('$label hook', (binary) => {
     expect(dirs.orders).toMatch(/ .*'.*"/);
     expect(command.node).toMatch(/ .*'.*"/);
     expect(command.cli).toMatch(/ .*'.*"/);
+  });
+});
+
+describe.each(SHELL_BINARIES)('$label hook with a newline in a folder name', (binary) => {
+  const { shell } = binary;
+
+  it(`the walk passes a folder with a newline and returns (${binary.label})`, async () => {
+    await rm(log, { force: true });
+    const run = await runShell(binary, dirs.work, [loadLine(shell), `cd ${q(dirs.plainNewline)}`, `cd ${q(dirs.shopNewline)}`, 'echo walked']);
+    expect(run.code).toBe(0);
+    expect(run.stdout).toContain('walked');
+    expect(await settledCalls(1)).toEqual([call(dirs.shop)]);
   });
 });
 
@@ -334,14 +366,15 @@ describe('shell/hook-under-50ms', () => {
 
   it.skipIf(fishBin === undefined)('fish, measured with the time keyword', async () => {
     const lines = [loadLine('fish')];
-    for (let index = 0; index < CDS; index++) lines.push(`begin; time cd ${q(target(index))}; end 2>&1 | string match -r 'Executed in.*'`);
+    // fish writes the `time` report to its own stderr; a redirection on the timed command does not capture it.
+    for (let index = 0; index < CDS; index++) lines.push(`time cd ${q(target(index))}`);
     const child = spawn(fishBin ?? 'fish', ['--no-config'], { cwd: dirs.work, env: shellEnv(), stdio: ['pipe', 'pipe', 'pipe'] });
-    let stdout = '';
-    child.stdout.setEncoding('utf8').on('data', (chunk: string) => (stdout += chunk));
+    let stderr = '';
+    child.stderr.setEncoding('utf8').on('data', (chunk: string) => (stderr += chunk));
     child.stdin.end(`${lines.join('\n')}\n`);
     await new Promise((resolve) => child.once('exit', resolve));
     const unit: Record<string, number> = { micros: 0.001, millis: 1, secs: 1000, mins: 60_000 };
-    const values = [...stdout.matchAll(/Executed in\s+([\d.]+)\s+(micros|millis|secs|mins)/g)].map(
+    const values = [...stderr.matchAll(/Executed in\s+([\d.]+)\s+(micros|millis|secs|mins)/g)].map(
       (match) => Number(match[1]) * (unit[match[2] ?? 'millis'] ?? 1),
     );
     expectUnderBudget('fish', values);
