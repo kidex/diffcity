@@ -93,10 +93,15 @@ export function userVersion(db: Database): number {
 }
 
 /**
- * Brings `db` to SCHEMA_VERSION in a single immediate transaction; a no-op when
- * it is already there. Throws newerVersionMessage for a newer database.
+ * Brings `db` to SCHEMA_VERSION in a single immediate transaction. The version
+ * is read first without a transaction, so a current database takes no write
+ * lock at all; it is read again under the lock in case another connection
+ * migrated in between. Throws newerVersionMessage for a newer database.
  */
 export function migrate(db: Database): void {
+  const before = userVersion(db);
+  if (before > SCHEMA_VERSION) throw new Error(newerVersionMessage(before));
+  if (before === SCHEMA_VERSION) return;
   const apply = db.transaction(() => {
     const current = userVersion(db);
     if (current > SCHEMA_VERSION) throw new Error(newerVersionMessage(current));

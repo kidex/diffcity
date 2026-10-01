@@ -1,5 +1,9 @@
 // The diffcity database (SPEC.md section 4.2, ADR-018): openDb and the stores.
 // Opened only by the daemon's main thread, which is the single writer.
+//
+// Every write transaction is IMMEDIATE: a deferred transaction that reads and
+// then writes upgrades its lock without the busy handler and fails with
+// SQLITE_BUSY at once when another connection writes (DC-39).
 
 import type { Database } from 'better-sqlite3';
 import { createChangeStore, type ChangeStore } from './changes.js';
@@ -26,8 +30,8 @@ export interface Db {
   readonly snapshots: SnapshotStore;
   readonly events: EventStore;
   /**
-   * Runs `fn` in one transaction (a savepoint when nested, so applyPlan and
-   * event writes can be grouped); rolls back when it throws.
+   * Runs `fn` in one IMMEDIATE transaction (a savepoint when nested, so
+   * applyPlan and event writes can be grouped); rolls back when it throws.
    */
   transaction<T>(fn: () => T): T;
   /**
@@ -60,7 +64,7 @@ export function openDb(path: string): Db {
     changes: createChangeStore(db),
     snapshots: createSnapshotStore(db),
     events: createEventStore(db),
-    transaction: (fn) => db.transaction(fn)(),
+    transaction: (fn) => db.transaction(fn).immediate(),
     purgeArchived: (now) => purge(db, now),
     pragmas: () => readPragmas(db),
     close: () => {

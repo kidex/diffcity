@@ -270,7 +270,7 @@ export function createChangeStore(db: Database): ChangeStore {
     },
     listLive: (repoId) => live.all(repoId).map(toRecord),
     listArchived: (repoId) => archived.all(repoId).map(toRecord),
-    applyPlan: (repoId, plan, now) => apply(repoId, plan, isoTime(now, 'now')),
+    applyPlan: (repoId, plan, now) => apply.immediate(repoId, plan, isoTime(now, 'now')),
     getSummary: (id) => {
       const row = summaryById.get(id);
       return row === undefined ? null : toSummary(row);

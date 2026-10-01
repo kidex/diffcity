@@ -180,7 +180,7 @@ export function createRepoStore(db: Database): RepoStore {
   });
 
   return {
-    upsert: (input) => upsert(input),
+    upsert: (input) => upsert.immediate(input),
     get: (id) => {
       const row = byId.get(id);
       return row === undefined ? null : toRecord(row);

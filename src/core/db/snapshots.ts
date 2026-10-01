@@ -99,7 +99,7 @@ export function createSnapshotStore(db: Database): SnapshotStore {
   });
 
   return {
-    put: (snapshot) => put(snapshot),
+    put: (snapshot) => put.immediate(snapshot),
     latest: (changeId) => {
       const row = latest.get(changeId);
       return row === undefined ? null : toRecord(row);
