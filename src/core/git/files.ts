@@ -263,10 +263,31 @@ async function confinedWorktreePath(root: string, path: string): Promise<string 
   return join(realParent, basename(relPath));
 }
 
+/**
+ * Throws when `commit`'s tree lists `path` as a blob: the path exists but its
+ * object is not in the local store (a partial clone, which diffcity never
+ * fetches from). Reporting such a file as absent would silently be wrong.
+ */
+async function assertBlobAbsent(root: string, commit: string, path: string): Promise<void> {
+  const listing = await gitRaw(root, ['ls-tree', '-z', '--full-tree', commit, '--', path], {
+    env: { GIT_LITERAL_PATHSPECS: '1' },
+  });
+  if (listing.exitCode !== 0) return;
+  for (const entry of splitNul(listing.stdout.toString('utf8'))) {
+    const tab = entry.indexOf('\t');
+    const [, type] = entry.slice(0, tab).split(' ');
+    if (type === 'blob' && entry.slice(tab + 1) === path) {
+      throw new GitError('git-failed', `object of ${path} at ${commit} is not available locally (partial clone?)`);
+    }
+  }
+}
+
 async function readBlob(root: string, commit: string, path: string): Promise<Buffer | null> {
-  const result = await gitRaw(root, ['cat-file', 'blob', `${commit}:${checkRepoPath(path)}`]);
-  if (result.exitCode !== 0) return null;
-  return result.stdout;
+  const repoPath = checkRepoPath(path);
+  const result = await gitRaw(root, ['cat-file', 'blob', `${commit}:${repoPath}`]);
+  if (result.exitCode === 0) return result.stdout;
+  await assertBlobAbsent(root, commit, repoPath);
+  return null;
 }
 
 /** Content of `path` (repo-relative) in the before state, or null when it does not exist there. */
@@ -360,10 +381,14 @@ export async function readAfterBatch(change: ResolvedChange, paths: readonly str
   const input = batched.map(({ path }) => `${change.headCommit}:${path}\n`).join('');
   const result = await gitRaw(change.root, ['cat-file', '--batch'], { input });
   if (result.exitCode !== 0) throw new GitError('git-failed', `git cat-file --batch failed: ${result.stderr.trim()}`);
-  parseCatFileBatch(result.stdout, batched.length).forEach((bytes, i) => {
-    const entry = batched[i];
-    if (entry !== undefined) results[entry.index] = bytes;
-  });
+  const answers = parseCatFileBatch(result.stdout, batched.length);
+  await Promise.all(
+    batched.map(async ({ index, path }, i) => {
+      const bytes = answers[i] ?? null;
+      // A missing answer is either an absent path or a blob a partial clone lacks; readBlob tells them apart.
+      results[index] = bytes ?? (await readBlob(change.root, change.headCommit, path));
+    }),
+  );
   return results;
 }
 
