@@ -67,6 +67,10 @@ Global install (`npm i -g diffcity`) or `npx`. Defaults: the base is detected pe
 | `/code-review` from the editor | findings land on the current change and update its verdicts |
 | Every 15 min, per active repo | `gh pr list --json` (if `gh` is installed and authenticated) refreshes open PRs |
 
+- The shell hook calls `track` in the background only when you enter a repo (its root or any subfolder) or move to another repo; moving between folders of the same repo does nothing (ADR-016).
+- A repo is active (watched and polled for PRs) if you entered it, an agent worked in it, or you opened it in the UI in the last 7 days. Repos found by `scan` are registered inactive and collected once (ADR-020).
+- The 2 s debounce has a 10 s maximum wait, so the UI updates at least every 10 s while an agent keeps writing (ADR-020).
+
 ### Change list per repo
 
 Built dynamically from three sources, deduplicated on `head`:
@@ -78,6 +82,13 @@ Built dynamically from three sources, deduplicated on `head`:
 | Open PR | `gh pr list` (or a remote branch with an associated PR) | PR #N |
 
 Each change has: a title (first commit message or PR title), ahead/behind, touched files and symbols by status, aggregated verdicts, review state (`unreviewed`, `in-review`, `approved`), the last event (agent, commit, review) and its time. Merged or deleted changes move to the archive and remain viewable for 90 days.
+
+Clarifications approved by the PO (ADR-019):
+
+- Uncommitted changes on a branch that already has commits ahead belong to that branch's change, marked as having uncommitted changes. A separate Draft appears only on the base, on a branch with no commits ahead, or on a detached HEAD. Linked worktrees count as working trees of the same repo.
+- diffcity never runs `git fetch`. An open PR whose head commit is not available locally shows its title and number without counters until the user fetches.
+- Every change that disappears (merged, deleted, closed PR, cleaned draft) is archived, stays viewable for 90 days, then is deleted with its snapshots. A merged or closed change does not come back while its head stays the same.
+- An `approved` change returns to `unreviewed` when its head moves or its content changes.
 
 ---
 
@@ -264,7 +275,7 @@ A repo is "stale" when: 30 days have passed since the last audit, `npm audit` re
 |---|---|---|
 | 0 | Public repo, strict TS, vitest, eslint, CI on GitHub Actions, `design/mockup.html` in the repo, `docs/findings.md` with the format; complete `.claude/` (agents, skills, hooks, settings, CLAUDE.md) per section 10a; epics and tasks in Jira; base pages in Confluence | `npm test` green, `diffcity --help` works, a sample task passes through the full flow architect → dev → reviewer → tester → Done |
 | 1 | TS/JS semantic diff: git diff → before/after symbols → status, verdict, tier 1 | `diff --json` correct on 3 real changes, with fixture tests (add, mod, sig, del, new file, deleted file) |
-| 2 | Daemon + DB + collection: `up`, `shell-init`, `track`, `scan`, watcher, dynamic change list (draft/branch/PR), Fleet and Repo screens, SSE | you `cd` into any of your repos and within 5 seconds it appears in the UI with all its changes, with no manual command |
+| 2 | Daemon + DB + collection: `up`, `shell-init`, `track`, `scan`, watcher, dynamic change list (draft/branch/PR), Fleet and Repo screens, SSE | you `cd` into any of your repos and within 5 seconds it appears in the UI with all its changes (kind, title, ahead/behind; status and verdict counters on the test repo), with no manual command (ADR-023) |
 | 3 | Change screen: 3D city, hover, select, verdict and type filters, live update | the screen looks like the mockup on the 3 changes; it updates on its own when the agent writes code |
 | 4 | Execution path, reading panel, findings + SARIF import, slash command, Stop hook, Ask agent to fix / Mark as intended / Approve | `/code-review` from the editor puts the pins on the city with no manual steps |
 | 5 | `audit`, `status`, fleet map with audit age, self-contained HTML and PlantUML export, light theme, README with GIF | a 3-minute demo run end to end in front of the team |
