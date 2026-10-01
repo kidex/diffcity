@@ -199,12 +199,17 @@ export function createCollector(options: CollectorOptions): Collector {
     const cached = prCache.get(repoId);
     const stale = cached === undefined || now().getTime() - cached.at >= PR_CACHE_MAX_AGE_MS;
     if (cached !== undefined && !scope.prs && !(scope.full && stale)) return { prs: cached.prs, fresh: false };
-    let prs: GhPullRequest[] | null = null;
-    if (ghGate.usable(repoId)) {
-      const outcome = await fetchOpenPrs(identity.path, gh);
-      ghGate.record(repoId, outcome);
-      if (outcome.ok) prs = outcome.prs;
+    if (!ghGate.usable(repoId)) {
+      prCache.set(repoId, { prs: null, at: now().getTime() });
+      return { prs: null, fresh: false };
     }
+    const outcome = await fetchOpenPrs(identity.path, gh);
+    ghGate.record(repoId, outcome);
+    if (!outcome.ok && outcome.reason === 'timeout') {
+      // Unavailable for this run only: the cache keeps its age, so the next collection asks again.
+      return { prs: cached?.prs ?? null, fresh: false };
+    }
+    const prs = outcome.ok ? outcome.prs : null;
     prCache.set(repoId, { prs, at: now().getTime() });
     return { prs, fresh: prs !== null };
   }
