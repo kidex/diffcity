@@ -19,8 +19,24 @@ export interface ChangedFile {
 
 const GITLINK_MODE = '160000';
 
-/** Flags that keep git's diff output stable regardless of user config. */
-const DIFF_FLAGS = ['--no-color', '--no-ext-diff', '--no-relative', '--no-textconv', '-M', '--raw', '--numstat', '-z'];
+/**
+ * Flags that keep git's diff output stable regardless of user config, and keep
+ * git from running commands the repo names (DC-37): no external diff, no
+ * textconv, and no look inside submodules. Without --ignore-submodules=dirty a
+ * working tree diff runs `git status` in each submodule, which applies that
+ * submodule's own filters; a moved submodule pointer is still seen.
+ */
+const DIFF_FLAGS = [
+  '--no-color',
+  '--no-ext-diff',
+  '--no-relative',
+  '--no-textconv',
+  '--ignore-submodules=dirty',
+  '-M',
+  '--raw',
+  '--numstat',
+  '-z',
+];
 
 /** Git's own binary heuristic: a NUL byte in the first 8000 bytes. */
 const BINARY_SNIFF_BYTES = 8000;
