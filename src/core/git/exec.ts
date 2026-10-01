@@ -49,11 +49,8 @@ export const defaultRunner: CommandRunner = (file, args, options) =>
  * - core.fsmonitor: queried on every index read;
  * - core.hooksPath: `add` (and any index write) runs post-index-change; a
  *   hooks directory that cannot exist means no hook is ever found;
- * - protocol.allow: a partial clone fetches missing objects on demand through
- *   the repo's remote (uploadpack, core.sshCommand, credential.helper, ...).
- *   GIT_NO_LAZY_FETCH (gitEnv) stops the fetch on git 2.44+; refusing every
- *   transport also covers older git. Repo-set `protocol.<name>.allow` and
- *   filter drivers are overridden per call (see guard.ts).
+ * - filter drivers: overridden per call (see guard.ts);
+ * - transports: refused through the environment (see gitEnv).
  * - pager: never used without a terminal; --no-pager makes that explicit.
  * diff.external, diff.<driver>.command and diff.<driver>.textconv are turned
  * off by the diff flags (--no-ext-diff, --no-textconv).
@@ -64,8 +61,6 @@ const SAFE_CONFIG = [
   'core.fsmonitor=false',
   '-c',
   `core.hooksPath=${devNull}`,
-  '-c',
-  'protocol.allow=never',
 ];
 
 /** Big enough for any single source file or file list we read. */
@@ -93,7 +88,13 @@ export function gitEnv(): NodeJS.ProcessEnv {
   }
   env.GIT_OPTIONAL_LOCKS = '0';
   env.GIT_TERMINAL_PROMPT = '0';
+  // A partial clone fetches missing objects on demand through the repo's own
+  // remote settings (uploadpack, core.sshCommand, credential.helper, ...).
+  // GIT_NO_LAZY_FETCH stops that on git 2.44+. An empty GIT_ALLOW_PROTOCOL
+  // allows no transport at all, overriding any protocol.*.allow config, on
+  // every git version and for every subcommand: diffcity never talks to a remote.
   env.GIT_NO_LAZY_FETCH = '1';
+  env.GIT_ALLOW_PROTOCOL = '';
   return env;
 }
 
@@ -171,8 +172,8 @@ function spawnGit(cwd: string, args: readonly string[], env: NodeJS.ProcessEnv, 
 /**
  * Runs git and returns stdout as bytes plus the exit code; rejects only when git cannot be spawned.
  *
- * Unless the subcommand cannot run a filter driver, the repo's filter and
- * protocol settings are read first and overridden for this call (guard.ts),
+ * Unless the subcommand cannot run a filter driver, the repo's filter
+ * settings are read first and overridden for this call (guard.ts),
  * so a filter the repo configures never runs. When that lookup fails (a
  * broken config file, say) git is not run and the lookup's failure is returned.
  */

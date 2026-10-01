@@ -16,7 +16,7 @@ const TRUSTED_SCOPES = new Set(['system', 'global', 'command']);
 const FILTER_VARS = new Set(['clean', 'smudge', 'process', 'required']);
 
 /** The `git config --get-regexp` pattern whose entries configOverrides inspects. */
-export const GUARDED_CONFIG_PATTERN = '^(filter|protocol)\\.';
+export const GUARDED_CONFIG_PATTERN = '^filter\\.';
 
 export interface ScopedConfigEntry {
   scope: string;
@@ -61,24 +61,18 @@ function trustedValue(variable: string, value: string | null | undefined): strin
 
 /**
  * Overrides, as `[key, value]` pairs in order, for config entries listed in
- * scope order (as `git config --show-scope --get-regexp` prints them):
- * - every `filter.<name>.<clean|smudge|process|required>` set by the repo gets
- *   the user's own value back (the last one from a trusted scope), or an empty
- *   command / `false` when the user has none;
- * - every `protocol.<name>.allow` becomes `never`: diffcity never talks to a
- *   remote, and a repo could otherwise allow a dangerous transport (`ext::`)
- *   for the lazy fetch of a partial clone.
+ * scope order (as `git config --show-scope --get-regexp` prints them): every
+ * `filter.<name>.<clean|smudge|process|required>` set by the repo gets the
+ * user's own value back (the last one from a trusted scope), or an empty
+ * command / `false` when the user has none.
  */
 export function configOverrides(entries: readonly ScopedConfigEntry[]): [string, string][] {
   const filterKeys = new Map<string, { repoSet: boolean; trusted: string | null | undefined }>();
-  const protocols = new Set<string>();
   for (const entry of entries) {
     const parts = splitKey(entry.key);
     if (parts === null) continue;
     const [section, , variable] = parts;
-    if (section === 'protocol' && variable === 'allow') {
-      protocols.add(entry.key);
-    } else if (section === 'filter' && FILTER_VARS.has(variable)) {
+    if (section === 'filter' && FILTER_VARS.has(variable)) {
       const state = filterKeys.get(entry.key) ?? { repoSet: false, trusted: undefined };
       if (TRUSTED_SCOPES.has(entry.scope)) state.trusted = entry.value;
       else state.repoSet = true;
@@ -91,7 +85,6 @@ export function configOverrides(entries: readonly ScopedConfigEntry[]): [string,
     if (!state.repoSet) continue;
     overrides.push([key, trustedValue(splitKey(key)?.[2] ?? '', state.trusted)]);
   }
-  for (const key of protocols) overrides.push([key, 'never']);
   return overrides;
 }
 

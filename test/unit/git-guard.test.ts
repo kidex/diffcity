@@ -81,19 +81,11 @@ describe('configOverrides', () => {
     ]);
   });
 
-  it('refuses every named transport, from any scope', () => {
+  it('ignores keys outside filter drivers (transports are refused through GIT_ALLOW_PROTOCOL)', () => {
     const parsed = parseScopedConfig(
-      entries(
-        ['local', 'protocol.ext.allow', 'always'],
-        ['global', 'protocol.file.allow', 'user'],
-        ['local', 'protocol.version', '2'],
-        ['local', 'protocol.allow', 'always'],
-      ),
+      entries(['local', 'protocol.ext.allow', 'always'], ['local', 'filter.x.description', 'text']),
     );
-    expect(configOverrides(parsed)).toEqual([
-      ['protocol.ext.allow', 'never'],
-      ['protocol.file.allow', 'never'],
-    ]);
+    expect(configOverrides(parsed)).toEqual([]);
   });
 });
 
