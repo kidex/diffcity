@@ -6,7 +6,8 @@ import type { SearchResult } from '../../core/model/types.js';
 
 export type Route = { name: 'fleet' } | { name: 'repo'; id: number } | { name: 'change'; id: number };
 
-const ID = '([1-9][0-9]{0,15})';
+// At most 15 digits, so every id stays below 2^53 and survives Number().
+const ID = '([1-9][0-9]{0,14})';
 const PATTERNS: readonly [RegExp, 'repo' | 'change'][] = [
   [new RegExp(`^/repo/${ID}$`), 'repo'],
   [new RegExp(`^/change/${ID}$`), 'change'],

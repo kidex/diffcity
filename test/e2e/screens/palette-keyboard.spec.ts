@@ -136,6 +136,23 @@ test('Esc closes the palette and gives focus back', async ({ page }) => {
   await expect(page).toHaveURL(/#\/$/);
 });
 
+test('Tab and Shift+Tab keep focus inside the modal palette, and aria-expanded follows the list', async ({ page }) => {
+  await openHome(page);
+  await page.keyboard.press('ControlOrMeta+k');
+  await expect(input(page)).toHaveAttribute('aria-expanded', 'false');
+  await input(page).pressSequentially('order');
+  await expect(options(page)).toHaveCount(4);
+  await expect(input(page)).toHaveAttribute('aria-expanded', 'true');
+  await page.keyboard.press('Shift+Tab');
+  await expect(input(page)).toBeFocused();
+  await expect(dialog(page)).toBeVisible();
+  await page.keyboard.press('Tab');
+  await expect(input(page)).toBeFocused();
+  await input(page).fill('zzz');
+  await expect(page.getByText('No matches.')).toBeVisible();
+  await expect(input(page)).toHaveAttribute('aria-expanded', 'false');
+});
+
 test('no matches says so, and Enter does nothing', async ({ page }) => {
   await openHome(page);
   await page.keyboard.press('ControlOrMeta+k');

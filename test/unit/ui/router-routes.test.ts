@@ -22,6 +22,13 @@ describe('ui/router-routes', () => {
     },
   );
 
+  it('accepts an id of up to 15 digits and sends a longer one to Fleet', () => {
+    expect(parseRoute('#/change/999999999999999')).toEqual({ name: 'change', id: 999_999_999_999_999 });
+    expect(Number.isSafeInteger(999_999_999_999_999)).toBe(true);
+    expect(parseRoute('#/change/1000000000000000')).toEqual({ name: 'fleet' });
+    expect(parseRoute('#/repo/9007199254740993')).toEqual({ name: 'fleet' });
+  });
+
   it.each<[Route, string]>([
     [{ name: 'fleet' }, '#/'],
     [{ name: 'repo', id: 3 }, '#/repo/3'],

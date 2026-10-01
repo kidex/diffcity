@@ -29,7 +29,7 @@ export function mountPalette(api: Api, go: (route: Route) => void, doc: Document
   const input = h('input', {
     type: 'text',
     role: 'combobox',
-    'aria-expanded': 'true',
+    'aria-expanded': 'false',
     'aria-controls': listId,
     'aria-autocomplete': 'list',
     'aria-label': 'Search repos, branches and files',
@@ -101,6 +101,7 @@ export function mountPalette(api: Api, go: (route: Route) => void, doc: Document
       ),
     );
     list.hidden = results.length === 0;
+    input.setAttribute('aria-expanded', list.hidden ? 'false' : 'true');
     updateActiveDescendant();
   }
 
@@ -217,6 +218,12 @@ export function mountPalette(api: Api, go: (route: Route) => void, doc: Document
         close();
         return;
     }
+  });
+  // The dialog is modal: Tab and Shift+Tab keep focus on the search input.
+  backdrop.addEventListener('keydown', (event) => {
+    if (event.key !== 'Tab') return;
+    event.preventDefault();
+    input.focus();
   });
   backdrop.addEventListener('mousedown', (event) => {
     if (event.target === backdrop) close();
