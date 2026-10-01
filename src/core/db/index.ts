@@ -1,11 +1,14 @@
 // The diffcity database (SPEC.md section 4.2, ADR-018): openDb and the stores.
 // Opened only by the daemon's main thread, which is the single writer.
+// SQLite is Node's built-in node:sqlite, through driver.ts (ADR-025). The filter
+// for its ExperimentalWarning lives in warning.ts and is deliberately not
+// re-exported here: importing this module loads node:sqlite, which is too late.
 //
 // Every write transaction is IMMEDIATE: a deferred transaction that reads and
 // then writes upgrades its lock without the busy handler and fails with
 // SQLITE_BUSY at once when another connection writes (DC-39).
 
-import type { Database } from 'better-sqlite3';
+import type { Connection } from './driver.js';
 import { createChangeStore, type ChangeStore } from './changes.js';
 import { createEventStore, type EventStore } from './events.js';
 import { openConnection, readPragmas, type DbPragmas } from './open.js';
@@ -45,7 +48,7 @@ export interface Db {
   close(): void;
 }
 
-function purge(db: Database, now: string): number {
+function purge(db: Connection, now: string): number {
   return db
     .prepare<[string]>('DELETE FROM changes WHERE archivedAt IS NOT NULL AND archivedAt < ?')
     .run(retentionCutoff(now)).changes;
@@ -64,7 +67,7 @@ export function openDb(path: string): Db {
     changes: createChangeStore(db),
     snapshots: createSnapshotStore(db),
     events: createEventStore(db),
-    transaction: (fn) => db.transaction(fn).immediate(),
+    transaction: (fn) => db.transaction(fn, { immediate: true }),
     purgeArchived: (now) => purge(db, now),
     pragmas: () => readPragmas(db),
     close: () => {

@@ -1,9 +1,8 @@
 // openDb: pragmas, migrations through user_version and schema v1 (ADR-018).
 
-import Database from 'better-sqlite3';
 import { afterEach, describe, expect, it } from 'vitest';
 import { BUSY_TIMEOUT_MS, SCHEMA_VERSION, newerVersionMessage, openDb } from '../../../src/core/db/index.js';
-import { addRepo, tempDb, tempDbPath } from './db-helpers.js';
+import { addRepo, tempDb, tempDbPath, rawConnection } from './db-helpers.js';
 
 const cleanups: (() => void)[] = [];
 afterEach(() => {
@@ -24,7 +23,7 @@ interface MasterRow {
 
 /** The schema as SQLite stores it, read through a separate plain connection. */
 function readSchema(path: string): { version: number; master: MasterRow[]; columns: Record<string, string[]> } {
-  const raw = new Database(path, { readonly: true });
+  const raw = rawConnection(path, { readOnly: true });
   try {
     const master = raw
       .prepare<[], MasterRow>(
@@ -181,14 +180,14 @@ describe('migrations', () => {
   it('db/newer-version-refused: a newer user_version is a clear error and the file is left as it was', () => {
     const { path, remove } = tempDbPath();
     cleanups.push(remove);
-    const raw = new Database(path);
+    const raw = rawConnection(path);
     raw.pragma('user_version = 7');
     raw.close();
 
     expect(() => openDb(path)).toThrow(new Error(newerVersionMessage(7)));
     expect(newerVersionMessage(7)).toBe('database was created by a newer diffcity (v7); upgrade diffcity');
 
-    const check = new Database(path, { readonly: true });
+    const check = rawConnection(path, { readOnly: true });
     expect(check.pragma('user_version', { simple: true })).toBe(7);
     expect(check.pragma('journal_mode', { simple: true })).toBe('delete');
     expect(check.prepare("SELECT count(*) AS n FROM sqlite_master WHERE type = 'table'").get()).toEqual({ n: 0 });

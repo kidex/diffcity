@@ -9,10 +9,9 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { createInterface } from 'node:readline';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import Database from 'better-sqlite3';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { Db } from '../../../src/core/db/index.js';
-import { T0, addRepo, branchFields, daysAfter, sha, snapshotInput, tempDb, type TempDb } from '../../unit/db/db-helpers.js';
+import { T0, addRepo, branchFields, daysAfter, sha, snapshotInput, tempDb, type TempDb, rawConnection } from '../../unit/db/db-helpers.js';
 
 const repoRoot = fileURLToPath(new URL('../../../', import.meta.url));
 const distIndex = pathToFileURL(`${repoRoot}dist/core/db/index.js`).href;
@@ -110,7 +109,7 @@ describe('db concurrency (ADR-018: WAL + busy_timeout)', () => {
     await Promise.all(readers.map((reader) => reader.ready));
 
     // A second connection in the daemon's own process, as the HTTP API might hold.
-    const sameProcess = new Database(path, { readonly: true, timeout: 5000 });
+    const sameProcess = rawConnection(path, { readOnly: true });
     const sameProcessErrors: unknown[] = [];
     let sameProcessReads = 0;
 
@@ -144,7 +143,7 @@ describe('db concurrency (ADR-018: WAL + busy_timeout)', () => {
       expect(result.reads).toBeGreaterThan(0);
     }
     // The writes landed: snapshots exist and the database is consistent.
-    const check = new Database(path, { readonly: true });
+    const check = rawConnection(path, { readOnly: true });
     try {
       expect(check.pragma('integrity_check', { simple: true })).toBe('ok');
       expect(check.pragma('foreign_key_check')).toEqual([]);
@@ -159,9 +158,9 @@ describe('db concurrency (ADR-018: WAL + busy_timeout)', () => {
     const repo = addRepo(db);
     writeRound(db, repo.id, 5, 1024);
 
-    const reader = new Database(path, { readonly: true, timeout: 5000 });
+    const reader = rawConnection(path, { readOnly: true });
     const count = reader.prepare<[], { n: number }>('SELECT count(*) AS n FROM snapshots');
-    reader.exec('BEGIN');
+    reader.execScript('BEGIN');
     const before = count.get()?.n;
 
     const started = Date.now();
@@ -170,7 +169,7 @@ describe('db concurrency (ADR-018: WAL + busy_timeout)', () => {
 
     // Still inside the read transaction: the old snapshot.
     expect(count.get()?.n).toBe(before);
-    reader.exec('COMMIT');
+    reader.execScript('COMMIT');
     expect(count.get()?.n).toBeGreaterThan(before ?? 0);
     reader.close();
     // The writer never waited on the reader's lock (busy_timeout is 5 s).

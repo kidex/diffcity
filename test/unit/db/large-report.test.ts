@@ -1,11 +1,10 @@
 // A Report of several MB (ADR-011 keeps untouched files, ADR-018) is stored and
 // read back byte for byte, and summaries never touch it.
 
-import Database from 'better-sqlite3';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { Db } from '../../../src/core/db/index.js';
 import type { ChangeRecord } from '../../../src/core/model/types.js';
-import { T0, addRepo, branchFields, daysAfter, snapshotInput, tempDb, type TempDb } from './db-helpers.js';
+import { T0, addRepo, branchFields, daysAfter, snapshotInput, tempDb, type TempDb, rawConnection } from './db-helpers.js';
 
 let temp: TempDb;
 let db: Db;
@@ -54,7 +53,7 @@ describe('large reports', () => {
 
     // Byte for byte on disk, through a separate connection after the writer closed.
     db.close();
-    const raw = new Database(temp.path, { readonly: true });
+    const raw = rawConnection(temp.path, { readOnly: true });
     try {
       const row = raw
         .prepare<[number], { report: string; bytes: number }>(
@@ -83,7 +82,7 @@ describe('large reports', () => {
     db.snapshots.put(snapshotInput(change.id, change.head, { report, contentHash: 'big-1' }));
 
     // Break the stored report behind the store's back: summaries must still build.
-    const raw = new Database(temp.path);
+    const raw = rawConnection(temp.path);
     raw.prepare("UPDATE snapshots SET report = 'not json at all' WHERE changeId = ?").run(change.id);
     raw.close();
 

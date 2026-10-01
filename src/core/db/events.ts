@@ -2,7 +2,7 @@
 // is created or replaced with a different hash; `collect` events older than the
 // retention are pruned daily, the other types stay with their repo or change.
 
-import type { Database } from 'better-sqlite3';
+import type { Connection } from './driver.js';
 import type { EventRecord, EventType } from '../model/types.js';
 import { isoTime, jsonOrNull, parseJsonOrNull, retentionCutoff } from './time.js';
 
@@ -37,7 +37,7 @@ function toRecord(row: EventRow): EventRecord {
   };
 }
 
-export function createEventStore(db: Database): EventStore {
+export function createEventStore(db: Connection): EventStore {
   const insert = db.prepare<[number, number | null, EventType, string, string | null], EventRow>(
     'INSERT INTO events (repoId, changeId, type, at, payload) VALUES (?, ?, ?, ?, ?) RETURNING *',
   );

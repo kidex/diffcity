@@ -3,7 +3,7 @@
 // changes, so an archived ref can be reused. Summaries read the counters from
 // the latest snapshot's `summary` column, never from the report.
 
-import type { Database } from 'better-sqlite3';
+import type { Connection } from './driver.js';
 import type {
   ArchiveReason,
   ChangeKind,
@@ -199,7 +199,7 @@ SELECT c.*,
    ORDER BY s.computedAt DESC, s.id DESC LIMIT 1) AS snapshotSummary
 FROM changes c`;
 
-export function createChangeStore(db: Database): ChangeStore {
+export function createChangeStore(db: Connection): ChangeStore {
   const byId = db.prepare<[number], ChangeRow>('SELECT * FROM changes WHERE id = ?');
   const live = db.prepare<[number], ChangeRow>(
     'SELECT * FROM changes WHERE repoId = ? AND archivedAt IS NULL ORDER BY lastEventAt DESC, id DESC',
@@ -243,7 +243,7 @@ export function createChangeStore(db: Database): ChangeStore {
     return row;
   }
 
-  const apply = db.transaction((repoId: number, plan: ChangePlan, now: string): AppliedPlan => {
+  const apply = (repoId: number, plan: ChangePlan, now: string): AppliedPlan => {
     const archivedRows = plan.archive.map(({ id, reason }) => {
       liveChange(repoId, id);
       const row = archive.get(now, reason, now, id);
@@ -261,7 +261,7 @@ export function createChangeStore(db: Database): ChangeStore {
       updated: updatedRows.map(toRecord),
       archived: archivedRows.map(toRecord),
     };
-  });
+  };
 
   return {
     get: (id) => {
@@ -270,7 +270,10 @@ export function createChangeStore(db: Database): ChangeStore {
     },
     listLive: (repoId) => live.all(repoId).map(toRecord),
     listArchived: (repoId) => archived.all(repoId).map(toRecord),
-    applyPlan: (repoId, plan, now) => apply.immediate(repoId, plan, isoTime(now, 'now')),
+    applyPlan: (repoId, plan, now) => {
+      const at = isoTime(now, 'now');
+      return db.transaction(() => apply(repoId, plan, at), { immediate: true });
+    },
     getSummary: (id) => {
       const row = summaryById.get(id);
       return row === undefined ? null : toSummary(row);

@@ -2,7 +2,7 @@
 // PRAGMA user_version. Migration N (1-based) brings a database from version
 // N - 1 to N. Never edit a released migration; append a new one.
 
-import type { Database } from 'better-sqlite3';
+import type { Connection } from './driver.js';
 
 /** Schema v1, exactly as in ADR-018. */
 const V1 = `
@@ -88,7 +88,7 @@ export function newerVersionMessage(version: number): string {
   return `database was created by a newer diffcity (v${String(version)}); upgrade diffcity`;
 }
 
-export function userVersion(db: Database): number {
+export function userVersion(db: Connection): number {
   return Number(db.pragma('user_version', { simple: true }));
 }
 
@@ -98,17 +98,19 @@ export function userVersion(db: Database): number {
  * lock at all; it is read again under the lock in case another connection
  * migrated in between. Throws newerVersionMessage for a newer database.
  */
-export function migrate(db: Database): void {
+export function migrate(db: Connection): void {
   const before = userVersion(db);
   if (before > SCHEMA_VERSION) throw new Error(newerVersionMessage(before));
   if (before === SCHEMA_VERSION) return;
-  const apply = db.transaction(() => {
-    const current = userVersion(db);
-    if (current > SCHEMA_VERSION) throw new Error(newerVersionMessage(current));
-    for (let version = current + 1; version <= SCHEMA_VERSION; version += 1) {
-      db.exec(MIGRATIONS[version - 1] ?? '');
-    }
-    if (current < SCHEMA_VERSION) db.pragma(`user_version = ${String(SCHEMA_VERSION)}`);
-  });
-  apply.immediate();
+  db.transaction(
+    () => {
+      const current = userVersion(db);
+      if (current > SCHEMA_VERSION) throw new Error(newerVersionMessage(current));
+      for (let version = current + 1; version <= SCHEMA_VERSION; version += 1) {
+        db.execScript(MIGRATIONS[version - 1] ?? '');
+      }
+      if (current < SCHEMA_VERSION) db.pragma(`user_version = ${String(SCHEMA_VERSION)}`);
+    },
+    { immediate: true },
+  );
 }

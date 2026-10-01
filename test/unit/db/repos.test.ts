@@ -1,9 +1,8 @@
 // The repos store and the RepoSummary counters (ADR-017, ADR-018, SPEC.md sections 6 and 8).
 
-import Database from 'better-sqlite3';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { Db } from '../../../src/core/db/index.js';
-import { T0, addRepo, branchFields, daysAfter, sha, snapshotInput, tempDb, type TempDb } from './db-helpers.js';
+import { T0, addRepo, branchFields, daysAfter, sha, snapshotInput, tempDb, type TempDb, rawConnection } from './db-helpers.js';
 
 let temp: TempDb;
 let db: Db;
@@ -154,7 +153,7 @@ describe('repo summaries', () => {
     db.snapshots.put(snapshotInput(archived.id, archived.head));
     db.changes.applyPlan(repo.id, { create: [], update: [], archive: [{ id: archived.id, reason: 'deleted' }] }, T0);
 
-    const raw = new Database(temp.path);
+    const raw = rawConnection(temp.path);
     const add = raw.prepare<[number, string, string, string]>(
       'INSERT INTO findings (changeId, head, finding, state) VALUES (?, ?, ?, ?)',
     );
@@ -194,7 +193,7 @@ describe('repo summaries', () => {
 
   it('lastAudit exposes only its time', () => {
     const repo = addRepo(db);
-    const raw = new Database(temp.path);
+    const raw = rawConnection(temp.path);
     raw
       .prepare<[string, number]>('UPDATE repos SET lastAudit = ? WHERE id = ?')
       .run(JSON.stringify({ at: T0, commit: sha(), model: 'model-x', rulesetVersion: '1' }), repo.id);

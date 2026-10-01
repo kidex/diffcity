@@ -1,7 +1,7 @@
 // The repos table (ADR-018) and the RepoSummary DTO (ADR-017). Summaries are
 // built from SQL counters and never parse a report.
 
-import type { Database } from 'better-sqlite3';
+import type { Connection } from './driver.js';
 import type { LastAudit, RepoRecord, RepoSummary, WatchMode } from '../model/types.js';
 import { isoTime, jsonOrNull, parseJsonOrNull } from './time.js';
 
@@ -146,7 +146,7 @@ SELECT r.*,
      WHERE c.repoId = r.id AND c.archivedAt IS NULL) AS lastChangeEventAt
 FROM repos r`;
 
-export function createRepoStore(db: Database): RepoStore {
+export function createRepoStore(db: Connection): RepoStore {
   const byId = db.prepare<[number], RepoRow>('SELECT * FROM repos WHERE id = ?');
   const byCommonDir = db.prepare<[string], RepoRow>('SELECT * FROM repos WHERE gitCommonDir = ?');
   const all = db.prepare<[], RepoRow>('SELECT * FROM repos ORDER BY id');
@@ -166,7 +166,7 @@ export function createRepoStore(db: Database): RepoStore {
     if (result.changes === 0) throw new Error(`repo ${String(id)} not found`);
   }
 
-  const upsert = db.transaction((input: RepoInput): { repo: RepoRecord; created: boolean } => {
+  const upsert = (input: RepoInput): { repo: RepoRecord; created: boolean } => {
     const existing = byCommonDir.get(input.gitCommonDir);
     if (existing !== undefined) {
       const row = refresh.get(input.path, input.name, existing.id);
@@ -177,10 +177,10 @@ export function createRepoStore(db: Database): RepoStore {
     const row = insert.get(input.path, input.gitCommonDir, input.name, input.active ? 1 : 0, seenAt, seenAt);
     if (row === undefined) throw new Error(`repo ${input.gitCommonDir} was not inserted`);
     return { repo: toRecord(row), created: true };
-  });
+  };
 
   return {
-    upsert: (input) => upsert.immediate(input),
+    upsert: (input) => db.transaction(() => upsert(input), { immediate: true }),
     get: (id) => {
       const row = byId.get(id);
       return row === undefined ? null : toRecord(row);

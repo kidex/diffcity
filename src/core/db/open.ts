@@ -1,8 +1,9 @@
 // Opening the diffcity database (ADR-018). Only the daemon's main thread opens
 // it; workers and CLI commands never do, so there is a single writer.
 
-import Database from 'better-sqlite3';
-import type { Database as Connection } from 'better-sqlite3';
+import { existsSync } from 'node:fs';
+import { dirname } from 'node:path';
+import { Connection } from './driver.js';
 import { migrate, newerVersionMessage, SCHEMA_VERSION, userVersion } from './migrations.js';
 
 /** Milliseconds a statement waits for a lock held by another connection. */
@@ -24,7 +25,9 @@ export interface DbPragmas {
  * (ensureHome creates the diffcity home).
  */
 export function openConnection(path: string): Connection {
-  const db = new Database(path, { timeout: BUSY_TIMEOUT_MS });
+  // node:sqlite would only say "unable to open database file".
+  if (!existsSync(dirname(path))) throw new Error(`Cannot open database because the directory does not exist: ${path}`);
+  const db = new Connection(path);
   try {
     db.pragma(`busy_timeout = ${String(BUSY_TIMEOUT_MS)}`);
     // Checked before WAL is switched on, so a newer database is left exactly as it was.

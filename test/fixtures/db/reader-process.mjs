@@ -11,9 +11,9 @@
 // Readers print `ready` once open and loop until stdin closes; every mode ends
 // with one JSON line: { reads, errors, opened }.
 
-import { createRequire } from 'node:module';
-
 const [distIndex, dbPath, mode, arg] = process.argv.slice(2);
+// The driver next to the db index in dist/: a plain node:sqlite connection.
+const distDriver = new URL('driver.js', distIndex).href;
 const errors = [];
 let reads = 0;
 let opened = false;
@@ -27,17 +27,22 @@ function finish() {
   process.stdout.write(`${JSON.stringify({ reads, errors, opened })}\n`);
 }
 
-const require = createRequire(distIndex);
+/** A plain connection with the daemon's busy_timeout. */
+async function connect(options) {
+  const { Connection } = await import(distDriver);
+  const db = new Connection(dbPath, options);
+  db.pragma('busy_timeout = 5000');
+  return db;
+}
 
 if (mode === 'lock-holder') {
-  const Database = require('better-sqlite3');
-  const db = new Database(dbPath, { timeout: 5000 });
-  db.exec('BEGIN IMMEDIATE');
+  const db = await connect({});
+  db.execScript('BEGIN IMMEDIATE');
   opened = true;
   process.stdout.write('ready\n');
   setTimeout(() => {
     try {
-      db.exec('COMMIT');
+      db.execScript('COMMIT');
       db.close();
     } catch (error) {
       record(error);
@@ -65,18 +70,17 @@ if (mode === 'lock-holder') {
       };
       close = () => db.close();
     } else {
-      const Database = require('better-sqlite3');
-      const db = new Database(dbPath, { readonly: true, timeout: 5000 });
+      const db = await connect({ readOnly: true });
       const reports = db.prepare(
         'SELECT length(s.report) AS n FROM snapshots s JOIN changes c ON c.id = s.changeId WHERE c.repoId = ?',
       );
       const events = db.prepare('SELECT count(*) AS n FROM events WHERE repoId = ?');
       // A read transaction spanning several statements sees one consistent snapshot.
-      const readTx = db.transaction(() => {
-        reports.all(repoId);
-        events.get(repoId);
-      });
-      readOnce = () => readTx();
+      readOnce = () =>
+        db.transaction(() => {
+          reports.all(repoId);
+          events.get(repoId);
+        });
       close = () => db.close();
     }
     opened = true;

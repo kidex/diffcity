@@ -3,7 +3,7 @@
 // An identical contentHash writes nothing while that row is the latest; when it
 // is not (the change returned to an older head), only its computedAt is bumped.
 
-import type { Database } from 'better-sqlite3';
+import type { Connection } from './driver.js';
 import type { SnapshotRecord, SnapshotSummary } from '../model/types.js';
 import { isoTime } from './time.js';
 
@@ -55,7 +55,7 @@ function toRecord(row: SnapshotRow): SnapshotRecord {
 
 const LATEST = 'WHERE changeId = ? ORDER BY computedAt DESC, id DESC LIMIT 1';
 
-export function createSnapshotStore(db: Database): SnapshotStore {
+export function createSnapshotStore(db: Connection): SnapshotStore {
   const existingHash = db.prepare<[number, string], { id: number; contentHash: string }>(
     'SELECT id, contentHash FROM snapshots WHERE changeId = ? AND head = ?',
   );
@@ -74,7 +74,7 @@ export function createSnapshotStore(db: Database): SnapshotStore {
   const latest = db.prepare<[number], SnapshotRow>(`SELECT * FROM snapshots ${LATEST}`);
   const latestReport = db.prepare<[number], { report: string }>(`SELECT report FROM snapshots ${LATEST}`);
 
-  const put = db.transaction((snapshot: SnapshotInput): SnapshotPutResult => {
+  const put = (snapshot: SnapshotInput): SnapshotPutResult => {
     const existing = existingHash.get(snapshot.changeId, snapshot.head);
     if (existing?.contentHash === snapshot.contentHash) {
       if (latestId.get(snapshot.changeId)?.id === existing.id) return 'unchanged';
@@ -96,10 +96,10 @@ export function createSnapshotStore(db: Database): SnapshotStore {
     }
     replace.run(dirty, snapshot.report, summary, touched, snapshot.contentHash, computedAt, snapshot.changeId, snapshot.head);
     return 'replaced';
-  });
+  };
 
   return {
-    put: (snapshot) => put.immediate(snapshot),
+    put: (snapshot) => db.transaction(() => put(snapshot), { immediate: true }),
     latest: (changeId) => {
       const row = latest.get(changeId);
       return row === undefined ? null : toRecord(row);

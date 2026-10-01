@@ -2,11 +2,10 @@
 // change takes every snapshot (all heads), every finding and every event type
 // with it; repo-level events, live changes, recent archives and other repos stay.
 
-import Database from 'better-sqlite3';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { Db } from '../../../src/core/db/index.js';
 import type { EventType, RepoRecord } from '../../../src/core/model/types.js';
-import { addRepo, branchFields, daysAfter, sha, snapshotInput, tempDb, type TempDb } from './db-helpers.js';
+import { addRepo, branchFields, daysAfter, sha, snapshotInput, tempDb, type TempDb, rawConnection } from './db-helpers.js';
 
 const NOW = '2027-01-15T12:00:00.000Z';
 const EVENT_TYPES: EventType[] = ['collect', 'agent', 'commit', 'review', 'import', 'audit'];
@@ -34,7 +33,7 @@ function populatedChange(repo: RepoRecord, name: string, archivedAt: string | nu
   });
   for (const type of EVENT_TYPES) db.events.add({ repoId: repo.id, changeId: change.id, type, at: daysAfter(NOW, -1), payload: { name } });
 
-  const raw = new Database(temp.path);
+  const raw = rawConnection(temp.path);
   const addFinding = raw.prepare<[number, string, string]>(
     "INSERT INTO findings (changeId, head, finding, state) VALUES (?, ?, '{\"severity\":\"high\"}', ?)",
   );
@@ -49,7 +48,7 @@ function populatedChange(repo: RepoRecord, name: string, archivedAt: string | nu
 }
 
 function counts(changeId: number): Record<'snapshots' | 'findings' | 'events', number> {
-  const raw = new Database(temp.path, { readonly: true });
+  const raw = rawConnection(temp.path, { readOnly: true });
   try {
     const n = (table: string): number =>
       raw.prepare<[number], { n: number }>(`SELECT count(*) AS n FROM ${table} WHERE changeId = ?`).get(changeId)?.n ?? -1;
@@ -80,7 +79,7 @@ describe('purgeArchived cascade', () => {
     expect(db.events.listForRepo(shop.id).map((event) => event.id)).toContain(repoEvent.id);
     expect(db.repos.list().map((repo) => repo.name).sort()).toEqual(['other-shop', 'sample-shop']);
 
-    const raw = new Database(temp.path, { readonly: true });
+    const raw = rawConnection(temp.path, { readOnly: true });
     try {
       expect(raw.pragma('foreign_key_check')).toEqual([]);
     } finally {

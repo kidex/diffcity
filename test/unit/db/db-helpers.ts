@@ -5,6 +5,7 @@
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { Connection } from '../../../src/core/db/driver.js';
 import { openDb, type ChangeFields, type Db, type SnapshotInput } from '../../../src/core/db/index.js';
 import type { RepoRecord, SnapshotSummary } from '../../../src/core/model/types.js';
 
@@ -19,6 +20,17 @@ export interface TempDb {
 export function tempDbPath(): { path: string; remove: () => void } {
   const dir = mkdtempSync(join(tmpdir(), 'dc-db-'));
   return { path: join(dir, 'diffcity.db'), remove: () => { rmSync(dir, { recursive: true, force: true }); } };
+}
+
+/**
+ * A plain connection to a database file, outside the stores (no migrations,
+ * no foreign_keys), for reading tables directly or writing rows that have no
+ * store yet. busy_timeout defaults to 5000 ms, like the daemon's connection.
+ */
+export function rawConnection(path: string, options: { readOnly?: boolean; busyTimeoutMs?: number } = {}): Connection {
+  const raw = new Connection(path, { readOnly: options.readOnly ?? false });
+  raw.pragma(`busy_timeout = ${String(options.busyTimeoutMs ?? 5000)}`);
+  return raw;
 }
 
 export function tempDb(): TempDb {

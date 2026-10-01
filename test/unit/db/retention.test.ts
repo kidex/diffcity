@@ -1,11 +1,10 @@
 // Events, purgeArchived and the 90-day retention (ADR-018, ADR-019, SPEC.md section 3a L7).
 // Time is passed in as `now`, so the clock is fixed by the test.
 
-import Database from 'better-sqlite3';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { RETENTION_DAYS, type Db } from '../../../src/core/db/index.js';
 import type { RepoRecord } from '../../../src/core/model/types.js';
-import { T0, addRepo, branchFields, daysAfter, snapshotInput, tempDb, type TempDb } from './db-helpers.js';
+import { T0, addRepo, branchFields, daysAfter, snapshotInput, tempDb, type TempDb, rawConnection } from './db-helpers.js';
 
 let temp: TempDb;
 let db: Db;
@@ -23,7 +22,7 @@ afterEach(() => {
 const NOW = '2026-12-31T12:00:00.000Z';
 
 function count(table: string): number {
-  const raw = new Database(temp.path, { readonly: true });
+  const raw = rawConnection(temp.path, { readOnly: true });
   try {
     return raw.prepare<[], { n: number }>(`SELECT count(*) AS n FROM ${table}`).get()?.n ?? -1;
   } finally {
@@ -93,7 +92,7 @@ describe('purgeArchived', () => {
     const repoEvent = db.events.add({ repoId: repo.id, changeId: null, type: 'agent', at: T0, payload: null });
 
     // No findings store until phase 4: rows are written through a plain connection.
-    const raw = new Database(temp.path);
+    const raw = rawConnection(temp.path);
     const addFinding = raw.prepare<[number, string]>(
       `INSERT INTO findings (changeId, head, finding, state) VALUES (?, ?, '{"severity":"high"}', 'open')`,
     );

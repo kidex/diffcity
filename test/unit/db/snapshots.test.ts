@@ -1,10 +1,9 @@
 // The snapshots store: one row per (change, head), identical hash skipped, the latest by computedAt (ADR-018, SPEC.md 4.2).
 
-import Database from 'better-sqlite3';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { Db } from '../../../src/core/db/index.js';
 import type { ChangeRecord } from '../../../src/core/model/types.js';
-import { T0, addRepo, branchFields, daysAfter, sampleSummary, sha, snapshotInput, tempDb, type TempDb } from './db-helpers.js';
+import { T0, addRepo, branchFields, daysAfter, sampleSummary, sha, snapshotInput, tempDb, type TempDb, rawConnection } from './db-helpers.js';
 
 let temp: TempDb;
 let db: Db;
@@ -24,7 +23,7 @@ afterEach(() => {
 });
 
 function rowCount(): number {
-  const raw = new Database(temp.path, { readonly: true });
+  const raw = rawConnection(temp.path, { readOnly: true });
   try {
     return (raw.prepare<[], { n: number }>('SELECT count(*) AS n FROM snapshots').get()?.n) ?? -1;
   } finally {
