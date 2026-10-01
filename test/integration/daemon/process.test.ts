@@ -1,0 +1,153 @@
+// The daemon script from dist/ as a real process (ADR-015, ADR-016, ADR-017):
+// single instance, stale locks, shutdown cleanup, the relocated socket and
+// the HTTP surface. Every daemon is stopped in afterEach.
+
+import { spawnSync } from 'node:child_process';
+import { readFile, stat, writeFile, mkdir } from 'node:fs/promises';
+import { join } from 'node:path';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { homePaths, MAX_SOCKET_PATH_BYTES, type HomePaths } from '../../../src/core/home.js';
+import type { DaemonInfo, HealthResponse } from '../../../src/core/model/types.js';
+import { sendRequest } from '../../../src/daemon/client.js';
+import { isProcessAlive, readDaemonInfo } from '../../../src/daemon/files.js';
+import { tempHome, type TempHome } from '../../helpers/config.js';
+import { DaemonTracker, openSse, waitFor } from '../../helpers/daemon.js';
+
+let temp: TempHome;
+let paths: HomePaths;
+const daemons = new DaemonTracker();
+
+beforeEach(async () => {
+  temp = await tempHome();
+  paths = homePaths(temp.home);
+});
+afterEach(async () => {
+  await daemons.cleanup();
+  await temp.cleanup();
+});
+
+const ready = (): Promise<DaemonInfo> => waitFor(() => readDaemonInfo(paths).then((info) => info ?? undefined), 10_000, 'daemon.json');
+
+async function gone(file: string): Promise<boolean> {
+  return stat(file).then(
+    () => false,
+    () => true,
+  );
+}
+
+describe('daemon process', () => {
+  it('writes daemon.json once ready, with a socket that answers ping and an HTTP port', async () => {
+    const spawned = daemons.spawnDaemon(temp.env);
+    const info = await ready();
+    expect(info.pid).toBe(spawned.child.pid);
+    expect(info.port).toBeGreaterThan(0);
+    expect(info.socket).toBe(paths.socket);
+    expect(await readFile(paths.lock, 'utf8')).toBe(`${String(info.pid)}\n`);
+    expect(await sendRequest(info.socket, { v: 1, type: 'ping' })).toEqual({ ok: true, version: info.version, pid: info.pid, port: info.port });
+    expect((await stat(info.socket)).mode & 0o777).toBe(0o600);
+    expect((await stat(paths.home)).mode & 0o777).toBe(0o700);
+    expect(await readFile(paths.log, 'utf8')).toMatch(/ready on http:\/\/127\.0\.0\.1:\d+/);
+  });
+
+  it('daemon/lock-race: two simultaneous starts leave exactly one daemon', async () => {
+    const a = daemons.spawnDaemon(temp.env);
+    const b = daemons.spawnDaemon(temp.env);
+    const info = await ready();
+    const [winner, loser] = info.pid === a.child.pid ? [a, b] : [b, a];
+    expect(await loser.exited).toBe(0);
+    expect(loser.stdout()).toContain(`daemon already running at http://127.0.0.1:${String(info.port)}`);
+    expect(winner.child.exitCode).toBeNull();
+    expect(isProcessAlive(info.pid)).toBe(true);
+  });
+
+  it('daemon/stale-lock: a lock with a dead pid and a leftover socket are recovered', async () => {
+    const dead = spawnSync(process.execPath, ['-e', 'process.stdout.write(String(process.pid))'], { encoding: 'utf8' });
+    await mkdir(paths.home, { recursive: true, mode: 0o700 });
+    await writeFile(paths.lock, `${dead.stdout}\n`);
+    await writeFile(paths.socket, '');
+    const spawned = daemons.spawnDaemon(temp.env);
+    const info = await ready();
+    expect(info.pid).toBe(spawned.child.pid);
+    expect(await readFile(paths.lock, 'utf8')).toBe(`${String(info.pid)}\n`);
+    expect(await sendRequest(info.socket, { v: 1, type: 'ping' })).toMatchObject({ ok: true });
+  });
+
+  it.each(['shutdown request', 'SIGTERM', 'SIGINT'] as const)('daemon/shutdown-cleans-files: %s removes daemon.json, the socket and the lock', async (how) => {
+    const spawned = daemons.spawnDaemon(temp.env);
+    const info = await ready();
+    if (how === 'shutdown request') expect(await sendRequest(info.socket, { v: 1, type: 'shutdown' })).toEqual({ ok: true });
+    else spawned.child.kill(how);
+    expect(await spawned.exited).toBe(0);
+    for (const file of [paths.daemonJson, info.socket, paths.lock]) expect(await gone(file)).toBe(true);
+    expect(await readFile(paths.log, 'utf8')).toContain('daemon stopped');
+  });
+
+  it('daemon/long-home-socket-path: a long home puts the socket in the temporary directory', async () => {
+    const longHome = join(temp.root, 'a-rather-long-directory-name-for-the-socket-test', 'x'.repeat(60));
+    const env = { ...temp.env, DIFFCITY_HOME: longHome };
+    const longPaths = homePaths(longHome);
+    expect(Buffer.byteLength(join(longHome, 'daemon.sock'))).toBeGreaterThan(MAX_SOCKET_PATH_BYTES);
+    const spawned = daemons.spawnDaemon(env);
+    const info = await waitFor(() => readDaemonInfo(longPaths).then((value) => value ?? undefined), 10_000, 'daemon.json');
+    expect(info.socket).toBe(longPaths.socket);
+    expect(info.socket.startsWith(longHome)).toBe(false);
+    expect(await sendRequest(info.socket, { v: 1, type: 'shutdown' })).toEqual({ ok: true });
+    expect(await spawned.exited).toBe(0);
+    expect(await gone(info.socket)).toBe(true);
+  });
+
+  it('refuses an invalid --port', async () => {
+    const spawned = daemons.spawnDaemon(temp.env, ['--port', 'abc']);
+    expect(await spawned.exited).toBe(1);
+    expect(spawned.stderr()).toContain('invalid --port: abc');
+  });
+
+  it('the daemon keeps running after bad socket requests', async () => {
+    daemons.spawnDaemon(temp.env);
+    const info = await ready();
+    const { connect } = await import('node:net');
+    await new Promise<void>((resolve) => {
+      const socket = connect(info.socket);
+      socket.on('connect', () => socket.end('garbage\n'));
+      socket.on('close', () => {
+        resolve();
+      });
+      socket.resume();
+    });
+    expect(await sendRequest(info.socket, { v: 1, type: 'ping' })).toMatchObject({ ok: true });
+  });
+});
+
+describe('daemon HTTP', () => {
+  it('api/health answers over real HTTP on 127.0.0.1', async () => {
+    daemons.spawnDaemon(temp.env);
+    const info = await ready();
+    const response = await fetch(`http://127.0.0.1:${String(info.port)}/api/health`);
+    expect(response.status).toBe(200);
+    expect((await response.json()) as HealthResponse).toEqual({ version: info.version, pid: info.pid, startedAt: info.startedAt, collecting: 0 });
+  });
+
+  it('api/host-header-rejected: a foreign Host over real HTTP gets 421', async () => {
+    daemons.spawnDaemon(temp.env);
+    const info = await ready();
+    const { request } = await import('node:http');
+    const status = await new Promise<number | undefined>((resolve, reject) => {
+      const req = request({ host: '127.0.0.1', port: info.port, path: '/api/health', headers: { host: 'rebound.example' } }, (res) => {
+        res.resume();
+        resolve(res.statusCode);
+      });
+      req.on('error', reject);
+      req.end();
+    });
+    expect(status).toBe(421);
+  });
+
+  it('sse/hello-and-ping: /api/events sends hello on connect', async () => {
+    daemons.spawnDaemon(temp.env);
+    const info = await ready();
+    const sse = await openSse(info.port);
+    expect(sse.contentType).toMatch(/^text\/event-stream/);
+    expect(await sse.until('event: hello')).toContain(`data: ${JSON.stringify({ version: info.version, startedAt: info.startedAt })}`);
+    sse.close();
+  });
+});

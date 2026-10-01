@@ -12,6 +12,13 @@ import type { HomePaths } from '../core/home.js';
 import type { DaemonInfo, SocketRequest, SocketResponseFor } from '../core/model/types.js';
 import { readDaemonInfo } from './files.js';
 
+/** Exit code of the daemon script when its port is taken. */
+export const EXIT_PORT_IN_USE = 3;
+
+export function portInUseMessage(port: number): string {
+  return `port ${String(port)} is in use; pass --port`;
+}
+
 /** Default wait for one socket exchange. */
 export const CLIENT_TIMEOUT_MS = 5000;
 
