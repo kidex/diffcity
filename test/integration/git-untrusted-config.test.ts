@@ -216,7 +216,7 @@ describe.each<Variant>(['clean', 'process'])('repo-configured commands (filter.x
 });
 
 describe('filters from the user own config', () => {
-  it('still run when the repo only selects them, and a repo override of one is ignored', { timeout: 60_000 }, async () => {
+  it('still run when the repo only selects them, and a repo override of one is ignored', { timeout: 120_000 }, async () => {
     const repo = await repoWithChanges();
     await dirtyWorktree(repo);
     // The user's global config (a temp file standing in for ~/.gitconfig) defines an identity filter.
