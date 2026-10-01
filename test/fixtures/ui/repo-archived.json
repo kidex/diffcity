@@ -1,0 +1,166 @@
+[
+  {
+    "id": 21,
+    "repoId": 1,
+    "kind": "branch",
+    "ref": "branch:feature/gift-cards",
+    "prNumber": null,
+    "head": "4d5e6f708192a3b4c5d6e7f8091a2b3c4d5e6f70",
+    "headAvailable": true,
+    "dirty": false,
+    "base": "main",
+    "title": "Sell gift cards at checkout",
+    "ahead": 3,
+    "behind": 0,
+    "reviewState": "approved",
+    "agentUnreviewed": false,
+    "lastEvent": {
+      "type": "review",
+      "at": "2026-05-02T15:10:00.000Z"
+    },
+    "updatedAt": "2026-05-02T15:10:00.000Z",
+    "archivedAt": "2026-05-03T09:00:00.000Z",
+    "archiveReason": "merged",
+    "stats": {
+      "touchedFiles": 4,
+      "symbolsByStatus": {
+        "add": 6,
+        "mod": 2,
+        "sig": 0,
+        "del": 0,
+        "same": 1
+      },
+      "filesByVerdict": {
+        "eyes": 0,
+        "risky": 0,
+        "spec": 0,
+        "ok": 4,
+        "same": 1
+      },
+      "tier1Files": []
+    }
+  },
+  {
+    "id": 22,
+    "repoId": 1,
+    "kind": "pr",
+    "ref": "pr:5",
+    "prNumber": 5,
+    "head": "5e6f708192a3b4c5d6e7f8091a2b3c4d5e6f7081",
+    "headAvailable": true,
+    "dirty": false,
+    "base": "main",
+    "title": "Try a second currency format",
+    "ahead": 2,
+    "behind": 4,
+    "reviewState": "unreviewed",
+    "agentUnreviewed": false,
+    "lastEvent": {
+      "type": "commit",
+      "at": "2026-04-28T10:00:00.000Z"
+    },
+    "updatedAt": "2026-04-28T10:00:00.000Z",
+    "archivedAt": "2026-04-30T12:00:00.000Z",
+    "archiveReason": "closed",
+    "stats": {
+      "touchedFiles": 2,
+      "symbolsByStatus": {
+        "add": 1,
+        "mod": 1,
+        "sig": 0,
+        "del": 0,
+        "same": 0
+      },
+      "filesByVerdict": {
+        "eyes": 0,
+        "risky": 0,
+        "spec": 0,
+        "ok": 2,
+        "same": 0
+      },
+      "tier1Files": []
+    }
+  },
+  {
+    "id": 23,
+    "repoId": 1,
+    "kind": "draft",
+    "ref": "draft:.",
+    "prNumber": null,
+    "head": "6f708192a3b4c5d6e7f8091a2b3c4d5e6f708192",
+    "headAvailable": true,
+    "dirty": true,
+    "base": "main",
+    "title": "Uncommitted changes on main",
+    "ahead": 0,
+    "behind": 0,
+    "reviewState": "unreviewed",
+    "agentUnreviewed": false,
+    "lastEvent": {
+      "type": "agent",
+      "at": "2026-04-20T08:30:00.000Z"
+    },
+    "updatedAt": "2026-04-20T08:30:00.000Z",
+    "archivedAt": "2026-04-21T07:45:00.000Z",
+    "archiveReason": "clean",
+    "stats": {
+      "touchedFiles": 1,
+      "symbolsByStatus": {
+        "add": 0,
+        "mod": 1,
+        "sig": 0,
+        "del": 0,
+        "same": 0
+      },
+      "filesByVerdict": {
+        "eyes": 0,
+        "risky": 0,
+        "spec": 0,
+        "ok": 1,
+        "same": 0
+      },
+      "tier1Files": []
+    }
+  },
+  {
+    "id": 24,
+    "repoId": 1,
+    "kind": "branch",
+    "ref": "branch:spike/search-index",
+    "prNumber": null,
+    "head": "708192a3b4c5d6e7f8091a2b3c4d5e6f708192a3",
+    "headAvailable": true,
+    "dirty": false,
+    "base": "main",
+    "title": "Spike a search index",
+    "ahead": 5,
+    "behind": 9,
+    "reviewState": "unreviewed",
+    "agentUnreviewed": false,
+    "lastEvent": {
+      "type": "commit",
+      "at": "2026-04-10T16:20:00.000Z"
+    },
+    "updatedAt": "2026-04-10T16:20:00.000Z",
+    "archivedAt": "2026-04-12T11:00:00.000Z",
+    "archiveReason": "deleted",
+    "stats": {
+      "touchedFiles": 3,
+      "symbolsByStatus": {
+        "add": 4,
+        "mod": 0,
+        "sig": 0,
+        "del": 0,
+        "same": 0
+      },
+      "filesByVerdict": {
+        "eyes": 0,
+        "risky": 0,
+        "spec": 0,
+        "ok": 3,
+        "same": 0
+      },
+      "tier1Files": []
+    }
+  }
+]
