@@ -2,6 +2,10 @@
 // daemon from dist/, in a temporary DIFFCITY_HOME, with gh replaced by a stub
 // script on PATH. `track` on the socket for sample-shop (a Draft, a Branch and
 // a PR); within 5 s GET /api/repos/:id lists the three changes, each with stats.
+//
+// Runs in the vitest `timing` project (vitest.config.ts), one file at a time and
+// after every other test: beside other test files, the deadline would measure
+// the machine's load instead of the collector.
 
 import { execFileSync } from 'node:child_process';
 import { chmod, mkdir, readFile, writeFile } from 'node:fs/promises';

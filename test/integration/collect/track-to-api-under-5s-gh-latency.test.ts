@@ -3,6 +3,10 @@
 // delayed by 1.5 s to model the latency of a real gh talking to GitHub
 // (`gh auth status` and `gh pr list` both reach the network). Within 5 s of
 // `track`, GET /api/repos/:id still lists the three changes, each with stats.
+//
+// Runs in the vitest `timing` project (vitest.config.ts), one file at a time and
+// after every other test: beside other test files, the deadline would measure
+// the machine's load instead of the collector.
 
 import { execFileSync } from 'node:child_process';
 import { chmod, mkdir, readFile, writeFile } from 'node:fs/promises';
