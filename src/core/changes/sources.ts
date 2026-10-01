@@ -188,17 +188,42 @@ function parsePullRequests(stdout: string): GhPullRequest[] | null {
 }
 
 /**
+ * What `gh pr list` gave (C5, ADR-020): the open PRs, or why there are none.
+ * The call itself tells whether gh can be used, with no separate probe:
+ * - `missing`: gh is not installed (ENOENT);
+ * - `failed`: gh exited non-zero (not authenticated, no GitHub remote, an API
+ *   error) or answered something unreadable;
+ * - `timeout`: gh did not answer within GH_PR_TIMEOUT_MS.
+ */
+export type OpenPrsOutcome = { ok: true; prs: GhPullRequest[] } | { ok: false; reason: 'missing' | 'failed' | 'timeout' };
+
+function failureReason(error: unknown): 'missing' | 'failed' | 'timeout' {
+  if (typeof error !== 'object' || error === null) return 'failed';
+  const { code, killed } = error as { code?: unknown; killed?: unknown };
+  if (code === 'ENOENT') return 'missing';
+  if (killed === true || code === 'ETIMEDOUT') return 'timeout';
+  return 'failed';
+}
+
+/** Runs `gh pr list` once and classifies the outcome; never throws. */
+export async function fetchOpenPrs(root: string, runner: CommandRunner = defaultRunner): Promise<OpenPrsOutcome> {
+  let stdout: string;
+  try {
+    stdout = await runner('gh', GH_PR_LIST_ARGS, { cwd: root, timeoutMs: GH_PR_TIMEOUT_MS });
+  } catch (error) {
+    return { ok: false, reason: failureReason(error) };
+  }
+  const prs = parsePullRequests(stdout);
+  return prs === null ? { ok: false, reason: 'failed' } : { ok: true, prs };
+}
+
+/**
  * Open PRs from `gh pr list` (L3, C5), or null when gh is missing, failing,
  * slow or answers something unreadable: then PRs are "unavailable" and none is archived.
  */
 export async function listOpenPrs(root: string, runner: CommandRunner = defaultRunner): Promise<GhPullRequest[] | null> {
-  let stdout: string;
-  try {
-    stdout = await runner('gh', GH_PR_LIST_ARGS, { cwd: root, timeoutMs: GH_PR_TIMEOUT_MS });
-  } catch {
-    return null;
-  }
-  return parsePullRequests(stdout);
+  const outcome = await fetchOpenPrs(root, runner);
+  return outcome.ok ? outcome.prs : null;
 }
 
 /** `gh pr view <n> --json state`, or null when it cannot be confirmed. */

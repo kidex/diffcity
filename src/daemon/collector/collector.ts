@@ -6,6 +6,8 @@
 // 2. the sources (working trees, branches, PRs); gh goes through an injected
 //    CommandRunner and is consulted on the repo's first collection in this
 //    daemon, on `prs`, and on `full` once the PR cache is older than 15 min;
+//    `gh pr list` runs alongside the git reads, and its outcome alone says
+//    whether gh is usable (gh.ts);
 // 3. reconcile, against the live and archived changes;
 // 4. applyPlan, in one transaction with the `commit` events of new heads;
 // 5. snapshots, in the worker pool, only for changes whose head or dirty flag
@@ -29,14 +31,17 @@ import { realpath, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import {
   applyAgent,
-  collectSources,
   detectBase,
   identifyRepo,
-  listOpenPrs,
+  fetchOpenPrs,
+  listBranches,
+  listWorktrees,
+  readPrs,
   prBase,
   reconcile,
   reviewAfterSnapshot,
   worktreeContaining,
+  type Discovered,
   type GhPullRequest,
   type RepoIdentity,
   type WorktreeInfo,
@@ -55,7 +60,7 @@ import type {
 } from '../../core/model/types.js';
 import type { SnapshotJobInput } from '../../core/report/snapshot.js';
 import { errorMessage, type Logger } from '../log.js';
-import { createGhProbe, type GhProbe } from './gh.js';
+import { createGhGate, type GhGate } from './gh.js';
 import { createPool, type Pool } from './pool.js';
 import type { SnapshotPool } from './snapshot-pool.js';
 
@@ -129,7 +134,7 @@ export function createCollector(options: CollectorOptions): Collector {
   const { db, snapshots, broadcast, log } = options;
   const gh = options.gh ?? defaultRunner;
   const now = options.now ?? ((): Date => new Date());
-  const ghProbe: GhProbe = createGhProbe(gh, now);
+  const ghGate: GhGate = createGhGate(now);
 
   const identities = new Map<number, RepoIdentity>();
   const bases = new Map<number, { name: string; config: number | null }>();
@@ -184,12 +189,22 @@ export function createCollector(options: CollectorOptions): Collector {
     return base;
   }
 
-  /** Open PRs for this collection: refreshed or from the cache; null when gh is unavailable. */
+  /**
+   * Open PRs for this collection: from the cache, or from one `gh pr list`
+   * whose outcome also tells whether gh is usable (ADR-020, DC-49). Null when
+   * gh is unavailable: then reconcile keeps the stored PRs and archives none.
+   * Never rejects.
+   */
   async function openPrsFor(repoId: number, identity: RepoIdentity, scope: Wanted): Promise<{ prs: GhPullRequest[] | null; fresh: boolean }> {
     const cached = prCache.get(repoId);
     const stale = cached === undefined || now().getTime() - cached.at >= PR_CACHE_MAX_AGE_MS;
     if (cached !== undefined && !scope.prs && !(scope.full && stale)) return { prs: cached.prs, fresh: false };
-    const prs = (await ghProbe.available(identity.path)) ? await listOpenPrs(identity.path, gh) : null;
+    let prs: GhPullRequest[] | null = null;
+    if (ghGate.usable(repoId)) {
+      const outcome = await fetchOpenPrs(identity.path, gh);
+      ghGate.record(repoId, outcome);
+      if (outcome.ok) prs = outcome.prs;
+    }
     prCache.set(repoId, { prs, at: now().getTime() });
     return { prs, fresh: prs !== null };
   }
@@ -246,16 +261,35 @@ export function createCollector(options: CollectorOptions): Collector {
   /** Steps 1-4; returns the changes that need a snapshot. */
   async function listChanges(repo: RepoRecord, scope: Wanted): Promise<{ pending: ChangeRecord[]; base: ResolvedBase }> {
     const identity = await identityOf(repo);
-    // gh and the base are independent: their process spawns overlap.
-    const [base, openPrs] = await Promise.all([baseOf(repo, identity), openPrsFor(repo.id, identity, scope)]);
+    // gh reaches the network: it runs alongside the local git reads (base,
+    // working trees, branches), never before them. Reconcile waits for both,
+    // so a branch with an open PR folds into the PR change on the first run.
+    const openPrsPending = openPrsFor(repo.id, identity, scope);
+    const base = await baseOf(repo, identity);
     const live = db.changes.listLive(repo.id);
-    const discovered = await collectSources(identity, {
-      base,
-      openPrs: openPrs.prs,
-      // The state of a PR that left the list is asked only right after the list itself.
-      livePrNumbers: openPrs.fresh ? live.flatMap((change) => (change.prNumber === null ? [] : [change.prNumber])) : [],
-      runner: gh,
-    });
+    const [worktrees, refs, prs] = await Promise.all([
+      listWorktrees(identity, base),
+      listBranches(identity, base),
+      // The PRs' local details (heads, ahead/behind) follow the list as soon as it is in.
+      openPrsPending.then((openPrs) =>
+        readPrs(
+          identity,
+          base,
+          openPrs.prs,
+          // The state of a PR that left the list is asked only right after the list itself.
+          openPrs.fresh ? live.flatMap((change) => (change.prNumber === null ? [] : [change.prNumber])) : [],
+          gh,
+        ),
+      ),
+    ]);
+    const discovered: Discovered = {
+      repoPath: identity.path,
+      base: base.name,
+      worktrees,
+      branches: refs.branches,
+      localBranches: refs.localBranches,
+      prs,
+    };
     worktreesSeen.set(repo.id, discovered.worktrees);
     if (closing) return { pending: [], base };
 
