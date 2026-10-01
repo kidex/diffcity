@@ -17,6 +17,7 @@ import {
   resolveChange,
   type ResolvedChange,
 } from '../../src/core/git/index.js';
+import { gitRaw } from '../../src/core/git/exec.js';
 import { buildReport } from '../../src/core/report/build.js';
 import type { Report } from '../../src/core/report/types.js';
 import { ghForbidden, isolateGitConfig } from '../helpers/git-env.js';
@@ -240,21 +241,25 @@ describe('filters from the user own config', () => {
   });
 });
 
+/** A `--no-checkout` partial clone of a repoWithChanges whose upload-pack command is a marker script. */
+async function partialClone(filter: string, extraConfig = ''): Promise<string> {
+  const origin = await repoWithChanges();
+  await origin.git('config', 'uploadpack.allowFilter', 'true');
+  await origin.git('config', 'uploadpack.allowAnySHA1InWant', 'true');
+  const cloneDir = join(scratch, 'clone');
+  await origin.git('clone', '--quiet', '--no-checkout', `--filter=${filter}`, `file://${origin.dir}`, cloneDir);
+  // A fetch of a missing object would go through the repo's own upload-pack command.
+  const uploadPack = await markerScript('upload-pack', 'exec git-upload-pack "$@"');
+  await writeFile(join(cloneDir, '.git', 'config'), `[remote "origin"]\n\tuploadpack = ${uploadPack}\n${extraConfig}`, {
+    encoding: 'utf8',
+    flag: 'a',
+  });
+  return cloneDir;
+}
+
 describe('a partial clone', () => {
   it('never fetches a missing object, and says so instead of reporting the file as absent', { timeout: 60_000 }, async () => {
-    const origin = await repoWithChanges();
-    await origin.git('config', 'uploadpack.allowFilter', 'true');
-    await origin.git('config', 'uploadpack.allowAnySHA1InWant', 'true');
-    const cloneDir = join(scratch, 'clone');
-    await origin.git('clone', '--quiet', '--no-checkout', '--filter=blob:none', `file://${origin.dir}`, cloneDir);
-
-    // A fetch of the missing blob would go through the repo's own upload-pack command.
-    const uploadPack = await markerScript('upload-pack', 'exec git-upload-pack "$@"');
-    await writeFile(join(cloneDir, '.git', 'config'), `[remote "origin"]\n\tuploadpack = ${uploadPack}\n`, {
-      encoding: 'utf8',
-      flag: 'a',
-    });
-
+    const cloneDir = await partialClone('blob:none');
     const change = await resolveChange(cloneDir, {
       base: 'origin/main',
       head: 'origin/feature',
@@ -265,6 +270,17 @@ describe('a partial clone', () => {
     await expect(readBefore(change, 'src/absent.ts')).resolves.toBeNull();
     await expect(readAfterBatch(change, ['src/util.ts'])).rejects.toBeInstanceOf(GitError);
 
+    expect(await markersSeen()).toEqual([]);
+  });
+
+  it('refuses the transport even when lazy fetching is on and the repo allows it', { timeout: 60_000 }, async () => {
+    // git before 2.44 ignores GIT_NO_LAZY_FETCH; the transport block must hold on its own,
+    // also for subcommands that skip the config lookup, and against a repo-set protocol.file.allow.
+    const cloneDir = await partialClone('blob:none', '[protocol "file"]\n\tallow = always\n[protocol]\n\tallow = always\n');
+    const result = await gitRaw(cloneDir, ['cat-file', 'blob', 'origin/main:src/app.ts'], {
+      env: { GIT_NO_LAZY_FETCH: '0' },
+    });
+    expect(result.exitCode).not.toBe(0);
     expect(await markersSeen()).toEqual([]);
   });
 });
