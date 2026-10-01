@@ -63,6 +63,18 @@ export async function compareFile(file: FileChange): Promise<FileStatus> {
   return { status: fileStatus(file, before, after, symbols), symbols };
 }
 
+/**
+ * Symbols of a file that did not change between before and after, all `same`,
+ * with the same ids and order `compareFile` gives when both versions are
+ * `source`. Parses once. Empty for unsupported languages.
+ */
+export async function unchangedSymbols(path: string, source: string): Promise<Symbol[]> {
+  const language = languageForPath(path);
+  if (language === null) return [];
+  const { symbols } = await parseFile(source, language);
+  return compareSymbols(path, symbols, symbols);
+}
+
 function fileStatus(file: FileChange, before: ParsedFile | null, after: ParsedFile | null, symbols: Symbol[]): Status {
   const heaviest = heaviestStatus(symbols.map((s) => s.status));
   if (heaviest !== 'same') return heaviest;

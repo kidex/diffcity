@@ -78,6 +78,11 @@ export function parseDiffOutput(output: string): ChangedFile[] {
   return files;
 }
 
+/** Git's binary heuristic over file bytes: a NUL byte in the first 8000 bytes. */
+export function looksBinary(bytes: Uint8Array): boolean {
+  return bytes.subarray(0, BINARY_SNIFF_BYTES).includes(0);
+}
+
 /**
  * Binary flag of an untracked entry. Only regular files are opened (git's own
  * heuristic: a NUL byte in the first 8000 bytes). A symlink is stored by git as
@@ -92,7 +97,7 @@ async function isBinaryOnDisk(absPath: string): Promise<boolean> {
     try {
       const buffer = Buffer.alloc(BINARY_SNIFF_BYTES);
       const { bytesRead } = await handle.read(buffer, 0, BINARY_SNIFF_BYTES, 0);
-      return buffer.subarray(0, bytesRead).includes(0);
+      return looksBinary(buffer.subarray(0, bytesRead));
     } finally {
       await handle.close();
     }
@@ -258,35 +263,108 @@ async function confinedWorktreePath(root: string, path: string): Promise<string 
   return join(realParent, basename(relPath));
 }
 
-async function readBlob(root: string, commit: string, path: string): Promise<string | null> {
+async function readBlob(root: string, commit: string, path: string): Promise<Buffer | null> {
   const result = await gitRaw(root, ['cat-file', 'blob', `${commit}:${checkRepoPath(path)}`]);
   if (result.exitCode !== 0) return null;
-  return result.stdout.toString('utf8');
+  return result.stdout;
 }
 
 /** Content of `path` (repo-relative) in the before state, or null when it does not exist there. */
-export function readBefore(change: ResolvedChange, path: string): Promise<string | null> {
-  return readBlob(change.root, change.mergeBase, path);
+export async function readBefore(change: ResolvedChange, path: string): Promise<string | null> {
+  return (await readBlob(change.root, change.mergeBase, path))?.toString('utf8') ?? null;
+}
+
+/** Content of `path` (repo-relative) in the after state, or null when it does not exist there. */
+export async function readAfter(change: ResolvedChange, path: string): Promise<string | null> {
+  return (await readAfterBytes(change, path))?.toString('utf8') ?? null;
 }
 
 /**
- * Content of `path` (repo-relative) in the after state, or null when it does not exist there.
+ * Raw bytes of `path` (repo-relative) in the after state, or null when it does not exist there.
  * For the working tree this is the file on disk; a symlink reads as its target text, as git stores it.
  */
-export async function readAfter(change: ResolvedChange, path: string): Promise<string | null> {
+export async function readAfterBytes(change: ResolvedChange, path: string): Promise<Buffer | null> {
   if (!change.worktree) return readBlob(change.root, change.headCommit, path);
   const absPath = await confinedWorktreePath(change.root, path);
   if (absPath === null) return null;
   try {
     const stats = await lstat(absPath);
-    if (stats.isSymbolicLink()) return await readlink(absPath, 'utf8');
+    if (stats.isSymbolicLink()) return await readlink(absPath, { encoding: 'buffer' });
     if (!stats.isFile()) return null;
-    return await readFile(absPath, 'utf8');
+    return await readFile(absPath);
   } catch (error) {
     const code = (error as NodeJS.ErrnoException).code;
     if (code === 'ENOENT' || code === 'ENOTDIR') return null;
     throw error;
   }
+}
+
+/** Working tree files read at the same time by readAfterBatch. */
+const WORKTREE_READ_CONCURRENCY = 8;
+
+/**
+ * Parses `git cat-file --batch` output for `count` requests, in request order.
+ * Each answer is `<sha> <type> <size>\n<content>\n`, or `<name> missing\n` /
+ * `<name> ambiguous\n`. Only blobs are returned; anything else is null.
+ */
+function parseCatFileBatch(output: Buffer, count: number): (Buffer | null)[] {
+  const results: (Buffer | null)[] = [];
+  let offset = 0;
+  for (let i = 0; i < count; i++) {
+    const eol = output.indexOf(0x0a, offset);
+    if (eol < 0) throw new GitError('git-failed', 'unexpected end of git cat-file --batch output');
+    const header = output.toString('utf8', offset, eol);
+    offset = eol + 1;
+    if (header.endsWith(' missing') || header.endsWith(' ambiguous')) {
+      results.push(null);
+      continue;
+    }
+    const [, type, sizeText = ''] = header.split(' ');
+    const size = Number.parseInt(sizeText, 10);
+    if (!Number.isInteger(size) || size < 0 || offset + size > output.length) {
+      throw new GitError('git-failed', `unexpected git cat-file --batch header: ${header}`);
+    }
+    results.push(type === 'blob' ? output.subarray(offset, offset + size) : null);
+    offset += size + 1;
+  }
+  return results;
+}
+
+/**
+ * readAfterBytes for many paths, in input order. For a commit, one
+ * `git cat-file --batch` call reads every blob (paths containing a line break,
+ * which the batch protocol cannot carry, are read one by one). For the working
+ * tree, files are read from disk a few at a time. Callers bound `paths` so the
+ * answer fits comfortably in memory.
+ */
+export async function readAfterBatch(change: ResolvedChange, paths: readonly string[]): Promise<(Buffer | null)[]> {
+  if (change.worktree) {
+    const results: (Buffer | null)[] = [];
+    for (let i = 0; i < paths.length; i += WORKTREE_READ_CONCURRENCY) {
+      const group = paths.slice(i, i + WORKTREE_READ_CONCURRENCY);
+      results.push(...(await Promise.all(group.map((path) => readAfterBytes(change, path)))));
+    }
+    return results;
+  }
+
+  const batched: { index: number; path: string }[] = [];
+  const results = new Array<Buffer | null>(paths.length).fill(null);
+  await Promise.all(
+    paths.map(async (path, index) => {
+      if (/[\r\n]/.test(path)) results[index] = await readBlob(change.root, change.headCommit, path);
+      else batched.push({ index, path: checkRepoPath(path) });
+    }),
+  );
+  if (batched.length === 0) return results;
+
+  const input = batched.map(({ path }) => `${change.headCommit}:${path}\n`).join('');
+  const result = await gitRaw(change.root, ['cat-file', '--batch'], { input });
+  if (result.exitCode !== 0) throw new GitError('git-failed', `git cat-file --batch failed: ${result.stderr.trim()}`);
+  parseCatFileBatch(result.stdout, batched.length).forEach((bytes, i) => {
+    const entry = batched[i];
+    if (entry !== undefined) results[entry.index] = bytes;
+  });
+  return results;
 }
 
 /**

@@ -20,13 +20,10 @@ function runBuilt(args: string[]): SpawnSyncReturns<string> {
 }
 
 describe('diffcity --version from built dist/', () => {
+  // dist/ is built once by test/global-setup.ts.
   beforeAll(() => {
-    const build = spawnSync('npm', ['run', 'build'], { cwd: repoRoot, encoding: 'utf8', shell: process.platform === 'win32' });
-    if (build.status !== 0) {
-      throw new Error(`npm run build failed (${String(build.status)}):\n${build.stdout}\n${build.stderr}`);
-    }
     workDir = mkdtempSync(join(tmpdir(), 'diffcity-version-'));
-  }, 120_000);
+  });
 
   afterAll(() => {
     if (workDir) rmSync(workDir, { recursive: true, force: true });
