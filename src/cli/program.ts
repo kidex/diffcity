@@ -1,5 +1,10 @@
+// Command modules are loaded with import() inside their action, so a command
+// loads only what it needs: `track` runs from the shell hook on every repo
+// entry and must not pay for the parser that `diff` loads (ADR-016).
+
 import { Command } from 'commander';
-import { NOW_ENV, runDiff, type DiffCommandOptions } from './diff.js';
+import type { DiffCommandOptions } from './diff.js';
+import type { TrackCommandOptions } from './track.js';
 import { readVersion } from './version.js';
 
 export interface CliIo {
@@ -49,7 +54,10 @@ export function buildProgram(io: CliIo = defaultIo): Command {
     .description('register a repo and ask the daemon to collect its changes')
     .argument('[dir]', 'repo directory', '.')
     .option('--agent', 'mark the current change as "agent worked, not reviewed"')
-    .action(notImplemented(io, 'track'));
+    .action(async (dir: string, options: TrackCommandOptions) => {
+      const { runTrack } = await import('./track.js');
+      process.exitCode = await runTrack(dir, options, { io });
+    });
 
   program
     .command('scan')
@@ -64,6 +72,7 @@ export function buildProgram(io: CliIo = defaultIo): Command {
     .option('--base <ref>', 'base ref')
     .option('--head <ref>', 'head ref')
     .action(async (options: DiffCommandOptions) => {
+      const { NOW_ENV, runDiff } = await import('./diff.js');
       const cwd = io.cwd?.() ?? process.cwd();
       const env = io.env?.() ?? process.env;
       process.exitCode = await runDiff(options, { cwd, io, now: env[NOW_ENV] });

@@ -96,6 +96,9 @@ export async function loadConfig(repoRoot: string): Promise<DiffcityConfig> {
   const url = `${pathToFileURL(file).href}?mtime=${String(mtimeMs)}`;
   let mod: Record<string, unknown>;
   try {
+    // The user's own config file, never another diffcity layer; the URL is
+    // computed for the cache-busting query, so it cannot be a string literal.
+    // eslint-disable-next-line no-restricted-syntax
     mod = (await import(url)) as Record<string, unknown>;
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error);
