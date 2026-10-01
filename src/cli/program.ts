@@ -5,6 +5,7 @@
 import { Command } from 'commander';
 import type { DiffCommandOptions } from './diff.js';
 import type { TrackCommandOptions } from './track.js';
+import type { UpCommandOptions } from './up.js';
 import { readVersion } from './version.js';
 
 export interface CliIo {
@@ -40,8 +41,13 @@ export function buildProgram(io: CliIo = defaultIo): Command {
   program
     .command('up')
     .description('start the daemon and open the UI on localhost')
-    .option('--port <port>', 'port for the UI and API', '4321')
-    .action(notImplemented(io, 'up'));
+    .option('--port <port>', 'port for the UI and API (default: the last one used, else 4321; 0 picks a free port)')
+    .option('--no-open', 'do not open the browser')
+    .option('--foreground', 'run the daemon in this process, logging to stderr')
+    .action(async (options: UpCommandOptions) => {
+      const { runUp } = await import('./up.js');
+      process.exitCode = await runUp(options, { io, env: io.env?.() ?? process.env });
+    });
 
   program
     .command('shell-init')

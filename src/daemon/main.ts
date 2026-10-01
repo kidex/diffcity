@@ -6,7 +6,7 @@
 import { parseArgs } from 'node:util';
 import { isPort } from './files.js';
 import { createStreamLogger } from './log.js';
-import { runDaemon } from './run.js';
+import { daemonUrl, runDaemon } from './run.js';
 
 function parsePort(value: string | undefined): number | undefined {
   if (value === undefined) return undefined;
@@ -33,8 +33,11 @@ async function main(): Promise<number> {
   return runDaemon(
     { ...(port === undefined ? {} : { port }), ...(foreground ? { log: createStreamLogger(process.stderr) } : {}) },
     {
-      out: (text) => process.stdout.write(text),
       err: (text) => process.stderr.write(text),
+      onReady: (info, alreadyRunning) => {
+        const where = `${daemonUrl(info)} (pid ${String(info.pid)})`;
+        process.stdout.write(alreadyRunning ? `daemon already running at ${where}\n` : `diffcity daemon listening on ${where}\n`);
+      },
     },
   );
 }

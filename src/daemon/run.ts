@@ -8,12 +8,13 @@ import { startDaemon, type RunningDaemon, type StartDaemonOptions } from './daem
 import { errorMessage } from './log.js';
 
 export interface RunDaemonHooks {
-  /** Printed output (the URL, "already running"); stdout for the script. */
-  out: (text: string) => void;
-  /** Errors; stderr. */
+  /** Errors (the port message, a failed start); stderr. */
   err: (text: string) => void;
-  /** Called once the daemon is ready, or when another one already runs. */
-  onReady?: (info: DaemonInfo, alreadyRunning: boolean) => void | Promise<void>;
+  /**
+   * Called once the daemon is ready (`alreadyRunning` false), or when another
+   * daemon already holds the home. A throw is logged; the daemon keeps running.
+   */
+  onReady: (info: DaemonInfo, alreadyRunning: boolean) => void | Promise<void>;
 }
 
 export function daemonUrl(info: Pick<DaemonInfo, 'port'>): string {
@@ -35,15 +36,13 @@ export async function runDaemon(options: StartDaemonOptions, hooks: RunDaemonHoo
     return EXIT_PORT_IN_USE;
   }
   if (result.status === 'already-running') {
-    hooks.out(`daemon already running at ${daemonUrl(result.info)} (pid ${String(result.info.pid)})\n`);
-    await hooks.onReady?.(result.info, true);
+    await hooks.onReady(result.info, true);
     return 0;
   }
 
   const { daemon } = result;
   return untilStopped(daemon, async () => {
-    hooks.out(`diffcity daemon listening on ${daemonUrl(daemon.info)} (pid ${String(daemon.info.pid)})\n`);
-    await hooks.onReady?.(daemon.info, false);
+    await hooks.onReady(daemon.info, false);
   });
 }
 
