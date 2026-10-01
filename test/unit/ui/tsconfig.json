@@ -1,0 +1,7 @@
+{
+  // Unit tests for src/ui: they import browser modules, so they share the UI
+  // compiler options (DOM lib) instead of the Node ones.
+  "extends": "../../../src/ui/tsconfig.json",
+  "include": ["**/*.ts"],
+  "exclude": []
+}
