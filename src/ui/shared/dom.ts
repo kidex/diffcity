@@ -26,8 +26,8 @@ export function h<K extends keyof HTMLElementTagNameMap>(
   return element;
 }
 
-/** An SVG element (the brand mark, icons). */
-export function svg(tag: string, attrs: Record<string, string> = {}, ...children: SVGElement[]): SVGElement {
+/** An SVG element (the brand mark, icons, the Fleet map); strings become text nodes. */
+export function svg(tag: string, attrs: Record<string, string> = {}, ...children: (SVGElement | string)[]): SVGElement {
   const element = document.createElementNS('http://www.w3.org/2000/svg', tag);
   for (const [name, value] of Object.entries(attrs)) element.setAttribute(name, value);
   element.append(...children);
@@ -50,18 +50,21 @@ export function replaceChildren(element: Element, ...children: (Child | Child[])
 /**
  * Renders `items` into `container` keyed by `key`: existing elements are kept
  * and updated, new ones created, missing ones removed, and the order follows
- * `items`. Keeps focus and scroll position across live updates.
+ * `items`. Keeps focus and scroll position across live updates. Works for
+ * HTML and SVG children alike.
  */
-export function renderList<T>(
+export function renderList<T, E extends HTMLElement | SVGElement = HTMLElement>(
   container: Element,
   items: readonly T[],
   key: (item: T) => string,
-  create: (item: T) => HTMLElement,
-  update: (element: HTMLElement, item: T) => void = () => undefined,
+  create: (item: T) => E,
+  update: (element: E, item: T) => void = () => undefined,
 ): void {
-  const existing = new Map<string, HTMLElement>();
+  const existing = new Map<string, E>();
   for (const child of Array.from(container.children)) {
-    if (child instanceof HTMLElement && child.dataset['key'] !== undefined) existing.set(child.dataset['key'], child);
+    if ((child instanceof HTMLElement || child instanceof SVGElement) && child.dataset['key'] !== undefined) {
+      existing.set(child.dataset['key'], child as E);
+    }
   }
   let cursor: Element | null = container.firstElementChild;
   for (const item of items) {
