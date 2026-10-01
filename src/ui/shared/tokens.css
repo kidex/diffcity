@@ -1,0 +1,68 @@
+/*
+ * Design tokens, copied from the :root of design/mockup.html (dark by default,
+ * light under prefers-color-scheme: light or data-theme="light"). TypeScript
+ * never holds a colour: canvas and three.js read these through shared/tokens.ts.
+ *
+ * Added on top of the mockup:
+ * - --verdict-*: the mockup's VERDICT map, which hard-codes spec and same;
+ * - --audit-*: the Fleet audit-age colours (ADR-022), from the mockup's fleet
+ *   card (fresh = green bar, warn = amber bar, stale = red bar) plus "never".
+ */
+:root {
+  --bg: #12203A;
+  --bg-deep: #0D172B;
+  --panel: #172A4A;
+  --panel-2: #1D3358;
+  --line: #2A4068;
+  --line-soft: #223659;
+  --ink: #E9EFFA;
+  --ink-2: #B4C2DC;
+  --muted: #7F92B5;
+  --grid: #1B2D4E;
+  --plot: #16294A;
+  --plot-line: #2F4A7A;
+
+  --add: #6FD3A0;
+  --mod: #F4B94A;
+  --del: #F0705F;
+  --sig: #B69BFF;
+  --same: #2B4068;
+  --same-top: #35507F;
+  --tier: #FF8A5B;
+
+  --sev-high: #F0705F;
+  --sev-med: #F4B94A;
+  --sev-low: #7FB1FF;
+
+  --code-bg: #0F1D35;
+  --code-add: rgba(111,211,160,.16);
+  --code-del: rgba(240,112,95,.16);
+
+  --verdict-eyes: #FF8A5B;
+  --verdict-risky: #F0705F;
+  --verdict-spec: #FF7AC6;
+  --verdict-ok: #6FD3A0;
+  --verdict-same: #5A6F98;
+
+  --audit-fresh: #6FD3A0;
+  --audit-aging: #F4B94A;
+  --audit-stale: #F0705F;
+  --audit-never: #5A6F98;
+
+  --sans: "Sora", "Segoe UI", system-ui, -apple-system, sans-serif;
+  --mono: "IBM Plex Mono", "SFMono-Regular", Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    --bg: #EEF2F8; --bg-deep: #E3E9F3; --panel: #FFFFFF; --panel-2: #F4F7FC;
+    --line: #D3DCEA; --line-soft: #E3E9F2; --ink: #16223B; --ink-2: #3D4D6E;
+    --muted: #74829E; --grid: #E2E8F2; --plot: #F5F8FC; --plot-line: #C9D5E8;
+    --same: #C9D3E4; --same-top: #DCE4F0; --code-bg: #F7F9FD;
+  }
+}
+:root[data-theme="light"] {
+  --bg: #EEF2F8; --bg-deep: #E3E9F3; --panel: #FFFFFF; --panel-2: #F4F7FC;
+  --line: #D3DCEA; --line-soft: #E3E9F2; --ink: #16223B; --ink-2: #3D4D6E;
+  --muted: #74829E; --grid: #E2E8F2; --plot: #F5F8FC; --plot-line: #C9D5E8;
+  --same: #C9D3E4; --same-top: #DCE4F0; --code-bg: #F7F9FD;
+}

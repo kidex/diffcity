@@ -1,0 +1,82 @@
+// Mocks the daemon's JSON API with page.route() from the fixtures in
+// test/fixtures/ui/ (ADR-023). `/api/events` is left to the server: a route
+// mock cannot hold an SSE stream open.
+
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import type { Page, Route } from '@playwright/test';
+import type { ApiError, RepoDetail, RepoSummary, SearchResult } from '../../../src/core/model/types.js';
+
+const fixturesDir = fileURLToPath(new URL('../../fixtures/ui/', import.meta.url));
+
+const load = (name: string): unknown => JSON.parse(readFileSync(`${fixturesDir}${name}`, 'utf8'));
+
+/** The JSON fixtures in test/fixtures/ui/, with their DTO types. */
+export const fixtures = {
+  fleetThreeRepos: () => load('fleet-three-repos.json') as RepoSummary[],
+  repoMixedChanges: () => load('repo-mixed-changes.json') as RepoDetail,
+  searchResults: () => load('search-results.json') as SearchResult[],
+};
+
+export interface ApiData {
+  repos: RepoSummary[];
+  details: RepoDetail[];
+  /** The search answer for a query; the default returns search-results.json for any query. */
+  search: (query: string) => SearchResult[];
+}
+
+export interface MockedApi {
+  /** Every mocked request, in order. */
+  readonly requests: URL[];
+  count(pathname: string): number;
+}
+
+export function defaultApiData(): ApiData {
+  const results = fixtures.searchResults();
+  return {
+    repos: fixtures.fleetThreeRepos(),
+    details: [fixtures.repoMixedChanges()],
+    search: () => results,
+  };
+}
+
+const notFound = (message: string): ApiError => ({ error: { code: 'not-found', message } });
+
+export async function mockApi(page: Page, overrides: Partial<ApiData> = {}): Promise<MockedApi> {
+  const data = { ...defaultApiData(), ...overrides };
+  const requests: URL[] = [];
+
+  const answer = async (route: Route, body: unknown, status = 200): Promise<void> => {
+    await route.fulfill({ status, json: body });
+  };
+
+  await page.route(
+    (url) => url.pathname.startsWith('/api/') && url.pathname !== '/api/events',
+    async (route) => {
+      const url = new URL(route.request().url());
+      requests.push(url);
+      const path = url.pathname;
+      let match: RegExpExecArray | null;
+      if (path === '/api/repos') return answer(route, data.repos);
+      if ((match = /^\/api\/repos\/(\d+)$/.exec(path))) {
+        const id = Number(match[1]);
+        const detail = data.details.find((candidate) => candidate.repo.id === id);
+        const repo = data.repos.find((candidate) => candidate.id === id);
+        if (detail) return answer(route, detail);
+        return repo ? answer(route, { repo, changes: [] }) : answer(route, notFound('repo not found'), 404);
+      }
+      if ((match = /^\/api\/changes\/(\d+)$/.exec(path))) {
+        const id = Number(match[1]);
+        const change = data.details.flatMap((detail) => detail.changes).find((candidate) => candidate.id === id);
+        return change ? answer(route, change) : answer(route, notFound('change not found'), 404);
+      }
+      if (path === '/api/search') return answer(route, data.search(url.searchParams.get('q') ?? ''));
+      return answer(route, notFound(`no mock for ${path}`), 404);
+    },
+  );
+
+  return {
+    requests,
+    count: (pathname) => requests.filter((url) => url.pathname === pathname).length,
+  };
+}

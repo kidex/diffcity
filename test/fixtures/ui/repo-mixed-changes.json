@@ -1,0 +1,156 @@
+{
+  "repo": {
+    "id": 1,
+    "name": "sample-shop",
+    "path": "/work/sample-shop",
+    "active": true,
+    "lastSeenAt": "2026-05-04T11:58:00.000Z",
+    "lastEventAt": "2026-05-04T11:19:00.000Z",
+    "counts": {
+      "draft": 1,
+      "branch": 2,
+      "pr": 1
+    },
+    "unreviewed": 3,
+    "highFindings": 0,
+    "lastAudit": null,
+    "collecting": false,
+    "error": null,
+    "watch": "full"
+  },
+  "changes": [
+    {
+      "id": 11,
+      "repoId": 1,
+      "kind": "branch",
+      "ref": "branch:feature/order-discounts",
+      "prNumber": null,
+      "head": "3f2a9c41d0b7e6a5c4d3e2f1a0b9c8d7e6f5a4b3",
+      "headAvailable": true,
+      "dirty": false,
+      "base": "main",
+      "title": "Add percentage discounts to orders",
+      "ahead": 2,
+      "behind": 0,
+      "reviewState": "unreviewed",
+      "agentUnreviewed": true,
+      "lastEvent": {
+        "type": "agent",
+        "at": "2026-05-04T11:19:00.000Z"
+      },
+      "updatedAt": "2026-05-04T11:19:30.000Z",
+      "archivedAt": null,
+      "archiveReason": null,
+      "stats": {
+        "touchedFiles": 6,
+        "symbolsByStatus": {
+          "add": 10,
+          "mod": 8,
+          "sig": 1,
+          "del": 1,
+          "same": 14
+        },
+        "filesByVerdict": {
+          "eyes": 2,
+          "risky": 0,
+          "spec": 1,
+          "ok": 0,
+          "same": 3
+        },
+        "tier1Files": [
+          "src/payments/charge.ts",
+          "src/auth/session.ts"
+        ]
+      }
+    },
+    {
+      "id": 10,
+      "repoId": 1,
+      "kind": "draft",
+      "ref": "draft:.",
+      "prNumber": null,
+      "head": "9b8a7c6d5e4f3a2b1c0d9e8f7a6b5c4d3e2f1a0b",
+      "headAvailable": true,
+      "dirty": true,
+      "base": "main",
+      "title": "Uncommitted changes on main",
+      "ahead": 0,
+      "behind": 0,
+      "reviewState": "unreviewed",
+      "agentUnreviewed": false,
+      "lastEvent": {
+        "type": "collect",
+        "at": "2026-05-04T10:52:00.000Z"
+      },
+      "updatedAt": "2026-05-04T10:52:10.000Z",
+      "archivedAt": null,
+      "archiveReason": null,
+      "stats": {
+        "touchedFiles": 2,
+        "symbolsByStatus": {
+          "add": 1,
+          "mod": 2,
+          "sig": 0,
+          "del": 0,
+          "same": 5
+        },
+        "filesByVerdict": {
+          "eyes": 0,
+          "risky": 0,
+          "spec": 0,
+          "ok": 0,
+          "same": 2
+        },
+        "tier1Files": []
+      }
+    },
+    {
+      "id": 12,
+      "repoId": 1,
+      "kind": "pr",
+      "ref": "pr:7",
+      "prNumber": 7,
+      "head": "c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6a7b8c9d0",
+      "headAvailable": false,
+      "dirty": false,
+      "base": "main",
+      "title": "Refresh the session before it expires",
+      "ahead": null,
+      "behind": null,
+      "reviewState": "unreviewed",
+      "agentUnreviewed": false,
+      "lastEvent": {
+        "type": "collect",
+        "at": "2026-05-04T09:30:00.000Z"
+      },
+      "updatedAt": "2026-05-04T09:30:05.000Z",
+      "archivedAt": null,
+      "archiveReason": null,
+      "stats": null
+    },
+    {
+      "id": 13,
+      "repoId": 1,
+      "kind": "branch",
+      "ref": "branch:fix/cart-rounding",
+      "prNumber": null,
+      "head": "0a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b",
+      "headAvailable": true,
+      "dirty": false,
+      "base": "main",
+      "title": "Round cart totals once",
+      "ahead": 1,
+      "behind": 3,
+      "reviewState": "unreviewed",
+      "agentUnreviewed": false,
+      "lastEvent": {
+        "type": "commit",
+        "at": "2026-05-04T08:05:00.000Z"
+      },
+      "updatedAt": "2026-05-04T08:05:02.000Z",
+      "archivedAt": null,
+      "archiveReason": null,
+      "stats": null
+    }
+  ]
+}

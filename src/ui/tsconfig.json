@@ -1,0 +1,15 @@
+{
+  // The browser UI (ADR-022): the same strict options as the Node code, with
+  // the DOM lib and Vite's client types (CSS and asset imports). Checked by
+  // `npm run typecheck`; Vite builds it, tsc never emits it.
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "types": ["vite/client"],
+    "noEmit": true
+  },
+  "include": ["**/*.ts"],
+  "exclude": []
+}
