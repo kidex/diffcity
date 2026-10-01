@@ -4,6 +4,7 @@
 
 import { expect, test } from '@playwright/test';
 import { mockApi } from '../../support/mock-api.js';
+import { emitSse, tagClient } from '../../support/sse.js';
 
 test.use({ timezoneId: 'UTC' });
 
@@ -42,4 +43,24 @@ test('an empty archive says so', async ({ page }) => {
   await page.goto('/#/repo/1');
   await page.getByTestId('archive-toggle').click();
   await expect(page.getByTestId('list-empty')).toHaveText('Nothing archived in the last 90 days.');
+});
+
+test('a failed archive fetch says so until the next successful refetch', async ({ page }, testInfo) => {
+  await mockApi(page);
+  let failing = true;
+  await page.route('**/api/repos/1/changes?archived=1', async (route) => {
+    if (failing) await route.fulfill({ status: 500, json: { error: { code: 'internal', message: 'boom' } } });
+    else await route.fallback();
+  });
+  await tagClient(page, testInfo.testId);
+  await page.goto('/#/repo/1');
+  await expect(page.getByTestId('daemon')).toHaveAttribute('data-state', 'connected');
+  await page.getByTestId('archive-toggle').click();
+  await expect(page.getByTestId('list-empty')).toHaveText('Can’t load the archive right now.');
+  await expect(page.getByTestId('change-row')).toHaveCount(0);
+
+  failing = false;
+  await emitSse(page, testInfo.testId, 'changes', { repoId: 1 });
+  await expect(page.getByTestId('change-row')).toHaveCount(4);
+  await expect(page.getByTestId('list-empty')).toBeHidden();
 });
