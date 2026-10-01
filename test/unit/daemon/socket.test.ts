@@ -10,7 +10,7 @@ import type { SocketRequest } from '../../../src/core/model/types.js';
 import { sendRequest } from '../../../src/daemon/client.js';
 import { createStreamLogger } from '../../../src/daemon/log.js';
 import { parseRequest, MAX_REQUEST_BYTES, REQUEST_TIMEOUT_MS } from '../../../src/daemon/socket/protocol.js';
-import { createSocketServer, type SocketServer } from '../../../src/daemon/socket/server.js';
+import { createSocketServer, RESPONSE_LINGER_MS, type SocketServer } from '../../../src/daemon/socket/server.js';
 import { PassThrough } from 'node:stream';
 
 let dir: string;
@@ -27,7 +27,7 @@ afterEach(async () => {
   await rm(dir, { recursive: true, force: true });
 });
 
-async function start(options: { timeoutMs?: number } = {}): Promise<string> {
+async function start(options: { timeoutMs?: number; lingerMs?: number } = {}): Promise<string> {
   const path = join(dir, 'daemon.sock');
   server = createSocketServer({
     path,
@@ -239,6 +239,52 @@ describe('socket server', () => {
 describe('sendRequest', () => {
   it('rejects with ENOENT when nothing listens', async () => {
     await expect(sendRequest(join(dir, 'missing.sock'), { v: 1, type: 'ping' })).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+});
+
+describe('socket server, half-open clients', () => {
+  /**
+   * A client that keeps its side open after the response, then writes once
+   * 300 ms later: the write fails (EPIPE/ECONNRESET) only if the server has
+   * destroyed the connection by then.
+   */
+  async function writeAfterResponse(path: string): Promise<{ received: string; writeError: string | null }> {
+    return new Promise((resolve) => {
+      const socket = connect({ path, allowHalfOpen: true });
+      let text = '';
+      socket.setEncoding('utf8');
+      socket.on('data', (chunk: string) => (text += chunk));
+      socket.on('error', (error: NodeJS.ErrnoException) => {
+        resolve({ received: text, writeError: error.code ?? 'error' });
+      });
+      socket.on('end', () => {
+        setTimeout(() => {
+          socket.write('late\n');
+          setTimeout(() => {
+            socket.destroy();
+            resolve({ received: text, writeError: null });
+          }, 300);
+        }, 300);
+      });
+      socket.write('{"v":1,"type":"ping"}\n');
+    });
+  }
+
+  it('destroys a connection whose client never closes its side after the response', async () => {
+    const path = await start({ lingerMs: 50 });
+    const { received, writeError } = await writeAfterResponse(path);
+    expect(JSON.parse(received)).toMatchObject({ ok: true });
+    expect(writeError).toMatch(/^(EPIPE|ECONNRESET)$/);
+  });
+
+  it('keeps a half-open connection until the linger ends', async () => {
+    const path = await start({ lingerMs: 5000 });
+    const { writeError } = await writeAfterResponse(path);
+    expect(writeError).toBeNull();
+  });
+
+  it('lingers 2 s by default', () => {
+    expect(RESPONSE_LINGER_MS).toBe(2000);
   });
 });
 

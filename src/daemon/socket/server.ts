@@ -35,7 +35,15 @@ export interface SocketServerOptions {
   shutdown: () => void;
   timeoutMs?: number;
   maxBytes?: number;
+  /** Defaults to RESPONSE_LINGER_MS. */
+  lingerMs?: number;
 }
+
+/**
+ * After the response, a client that keeps its side open is cut off this long
+ * after the server's end(), so half-open connections do not pile up.
+ */
+export const RESPONSE_LINGER_MS = 2000;
 
 export interface SocketServer {
   readonly handlers: SocketHandlerRegistry;
@@ -57,6 +65,7 @@ const notSupported = (type: PluggableRequestType): SocketResponse => ({
 export function createSocketServer(options: SocketServerOptions): SocketServer {
   const timeoutMs = options.timeoutMs ?? REQUEST_TIMEOUT_MS;
   const maxBytes = options.maxBytes ?? MAX_REQUEST_BYTES;
+  const lingerMs = options.lingerMs ?? RESPONSE_LINGER_MS;
   const handlerMap: HandlerMap = {};
   const connections = new Set<Socket>();
 
@@ -86,6 +95,7 @@ export function createSocketServer(options: SocketServerOptions): SocketServer {
     let buffered = Buffer.alloc(0);
     let answered = false;
     let received = false;
+    let linger: NodeJS.Timeout | undefined;
 
     const respond = (response: SocketResponse, after?: () => void): void => {
       if (answered) return;
@@ -93,6 +103,10 @@ export function createSocketServer(options: SocketServerOptions): SocketServer {
       clearTimeout(timer);
       if (socket.destroyed) return;
       socket.end(`${JSON.stringify(response)}\n`, after);
+      linger = setTimeout(() => {
+        socket.destroy();
+      }, lingerMs);
+      linger.unref();
     };
 
     const timer = setTimeout(() => {
@@ -145,6 +159,7 @@ export function createSocketServer(options: SocketServerOptions): SocketServer {
     });
     socket.on('close', () => {
       clearTimeout(timer);
+      clearTimeout(linger);
       connections.delete(socket);
     });
   }
