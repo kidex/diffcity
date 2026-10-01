@@ -17,7 +17,7 @@ export function lotSide(unreviewed: number): number {
 }
 
 export interface LayoutOptions {
-  /** Room around the lots: top (the title), sides, bottom (the legend). */
+  /** Room around the lots: top (the title), sides, bottom (the gap above the legend, which follows the map). */
   padTop: number;
   padX: number;
   padBottom: number;
@@ -35,7 +35,7 @@ export interface LayoutOptions {
 export const DEFAULT_LAYOUT: LayoutOptions = {
   padTop: 104,
   padX: 32,
-  padBottom: 64,
+  padBottom: 20,
   minCell: 156,
   margin: 16,
   gapX: 20,
