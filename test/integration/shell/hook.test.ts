@@ -1,14 +1,14 @@
 // The shell hooks printed by `diffcity shell-init` (SPEC.md section 3a C1,
 // ADR-016, Q1), run in real shells: zsh, bash (3.2, the macOS default, and any
-// bash >= 5 found) and fish (skipped when missing). `node` is replaced by a
-// stub script that logs its arguments, so no daemon is involved. Every path in
+// bash >= 5 found) and fish (skipped when missing). `node` and the CLI are
+// replaced by a stub that logs its arguments, so no daemon is involved. Every path in
 // the fixture contains spaces and quotes.
 
 import { execFileSync, spawn } from 'node:child_process';
-import { chmod, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { delimiter, join } from 'node:path';
+import { delimiter, dirname, join } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { quotePosix, shellInitScript, type HookCommand, type Shell } from '../../../src/cli/shell-init.js';
@@ -89,11 +89,17 @@ beforeAll(async () => {
   root = await realpath(await mkdtemp(join(tmpdir(), `dc-shell it's "q" `)));
   const bin = join(root, `bin dir $HOME`);
   await mkdir(bin);
+  // `node` is /bin/sh under an awkward name and the "CLI" is a sh script, so the
+  // hook runs `<sh> <script> track <root>`. A freshly written executable with a
+  // shebang would go through the macOS provenance check on every exec, which
+  // under load delays the calls by seconds.
   const node = join(bin, `it's "node"`);
-  // Logs `<arg>\t<arg>\t...` in one write, so lines from concurrent stubs never interleave.
-  await writeFile(node, '#!/bin/sh\nline=\nfor a; do line="$line$a\t"; done\nprintf \'%s\\n\' "$line" >> "$DIFFCITY_STUB_LOG"\n');
-  await chmod(node, 0o755);
-  command = { node, cli: join(root, `lib \`x\``, `"cli" it's.js`) };
+  await symlink('/bin/sh', node);
+  const cli = join(root, `lib \`x\``, `"cli" it's.js`);
+  await mkdir(dirname(cli));
+  // Logs `<script>\t<arg>\t...` in one write, so lines from concurrent stubs never interleave.
+  await writeFile(cli, 'line="$0\t"\nfor a; do line="$line$a\t"; done\nprintf \'%s\\n\' "$line" >> "$DIFFCITY_STUB_LOG"\n');
+  command = { node, cli };
   log = join(root, 'calls.log');
 
   const work = join(root, 'work');
@@ -149,7 +155,8 @@ function loadLine(shell: Shell): string {
 /** Quotes a path for the driver script; fish takes the POSIX form for these paths (no backslashes). */
 const q = (path: string): string => quotePosix(path);
 
-const SHELL_RUN_LIMIT_MS = 10_000;
+/** A shell that runs longer is killed; loaded machines can take seconds just to launch one. Stays well under the 60 s test timeout. */
+const SHELL_RUN_LIMIT_MS = 25_000;
 
 interface ShellRun {
   code: number | null;
@@ -190,7 +197,7 @@ async function readCalls(): Promise<string[][]> {
  * would show up. Sorted: background calls may land in any order.
  */
 async function settledCalls(count: number): Promise<string[][]> {
-  const deadline = Date.now() + 10_000;
+  const deadline = Date.now() + 20_000;
   while ((await readCalls()).length < count && Date.now() < deadline) await sleep(25);
   await sleep(400);
   return sortCalls(await readCalls());
