@@ -138,13 +138,15 @@ export function mountRepo(element: HTMLElement, context: DataContext, repoId: nu
   // ---------- list ----------
   const list = createChangeList(go);
   const listTitle = h('h2', { id: `changes-title-${String(repoId)}` });
-  const listTotal = h('span', { class: 'cnt' });
+  // The visible counter is terse ("3 of 6"); screen readers get the sentence.
+  const listTotal = h('span', { class: 'cnt', 'aria-hidden': 'true', 'data-testid': 'change-count' });
+  const listTotalText = h('span', { class: 'sr-only', 'data-testid': 'change-count-text' });
   const listNote = h('p');
   const listStatus = h('p', { class: 'list-status', role: 'status', 'data-testid': 'list-empty' });
   const listSection = h(
     'section',
     { class: 'changes', 'aria-labelledby': listTitle.id },
-    h('header', null, h('div', { class: 'heading' }, listTitle, listTotal), listNote),
+    h('header', null, h('div', { class: 'heading' }, listTitle, listTotal, listTotalText), listNote),
     list.element,
     listStatus,
   );
@@ -203,7 +205,8 @@ export function mountRepo(element: HTMLElement, context: DataContext, repoId: nu
     }
     const total = isFiltered(filters) ? `${String(rows.length)} of ${String(all.length)}` : String(all.length);
     listTotal.textContent = total;
-    listTotal.setAttribute('aria-label', isFiltered(filters) ? `${String(rows.length)} of ${plural(all.length, 'change')} shown` : plural(all.length, 'change'));
+    const noun = showArchive ? 'archived change' : 'change';
+    listTotalText.textContent = isFiltered(filters) ? `${String(rows.length)} of ${plural(all.length, noun)} shown` : plural(all.length, noun);
     list.render(rows, now, showArchive);
 
     let message = '';
