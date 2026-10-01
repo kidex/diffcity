@@ -82,6 +82,8 @@ export function mountFleet(element: HTMLElement, context: DataContext): () => vo
   let failed = false;
   let controller: AbortController | null = null;
   let shown: FleetState | null = null;
+  /** Set on unmount: a trailing coalesced refetch then does nothing (an answer in flight is aborted). */
+  let disposed = false;
 
   function state(): FleetState {
     if (repos === null) return failed ? 'unreachable' : 'loading';
@@ -118,6 +120,7 @@ export function mountFleet(element: HTMLElement, context: DataContext): () => vo
   }
 
   async function load(): Promise<void> {
+    if (disposed) return;
     controller?.abort();
     const current = new AbortController();
     controller = current;
@@ -135,6 +138,7 @@ export function mountFleet(element: HTMLElement, context: DataContext): () => vo
   }
 
   const reload = (): void => {
+    if (disposed) return;
     refetch.request(REFETCH_KEY, () => void load());
   };
 
@@ -147,6 +151,7 @@ export function mountFleet(element: HTMLElement, context: DataContext): () => vo
   reload();
 
   return () => {
+    disposed = true;
     for (const stop of stops) stop();
     clearInterval(clock);
     controller?.abort();
