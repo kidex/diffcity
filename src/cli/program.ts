@@ -60,7 +60,10 @@ export function buildProgram(io: CliIo = defaultIo): Command {
     .command('shell-init')
     .description('print the shell hook that tracks repos on cd')
     .argument('[shell]', 'zsh, bash or fish', 'zsh')
-    .action(notImplemented(io, 'shell-init'));
+    .action(async (shell: string) => {
+      const { runShellInit } = await import('./shell-init.js');
+      process.exitCode = runShellInit(shell, { io });
+    });
 
   program
     .command('track')
