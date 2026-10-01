@@ -1,0 +1,458 @@
+[
+  {
+    "id": 100,
+    "name": "atlas-gateway",
+    "path": "/work/atlas-gateway",
+    "active": true,
+    "lastSeenAt": "2026-05-04T12:00:00.000Z",
+    "lastEventAt": "2026-05-04T12:00:00.000Z",
+    "counts": {
+      "draft": 0,
+      "branch": 0,
+      "pr": 1
+    },
+    "unreviewed": 0,
+    "highFindings": 2,
+    "lastAudit": null,
+    "collecting": false,
+    "error": null,
+    "watch": "full"
+  },
+  {
+    "id": 101,
+    "name": "beacon-ui",
+    "path": "/work/beacon-ui",
+    "active": true,
+    "lastSeenAt": "2026-05-04T11:00:00.000Z",
+    "lastEventAt": "2026-05-04T10:30:00.000Z",
+    "counts": {
+      "draft": 1,
+      "branch": 2,
+      "pr": 0
+    },
+    "unreviewed": 1,
+    "highFindings": 0,
+    "lastAudit": null,
+    "collecting": false,
+    "error": null,
+    "watch": "full"
+  },
+  {
+    "id": 102,
+    "name": "cobalt-jobs",
+    "path": "/work/cobalt-jobs",
+    "active": true,
+    "lastSeenAt": "2026-05-04T10:00:00.000Z",
+    "lastEventAt": "2026-05-04T09:00:00.000Z",
+    "counts": {
+      "draft": 2,
+      "branch": 4,
+      "pr": 0
+    },
+    "unreviewed": 2,
+    "highFindings": 0,
+    "lastAudit": null,
+    "collecting": false,
+    "error": null,
+    "watch": "full"
+  },
+  {
+    "id": 103,
+    "name": "delta-ledger",
+    "path": "/work/delta-ledger",
+    "active": false,
+    "lastSeenAt": "2026-05-04T09:00:00.000Z",
+    "lastEventAt": "2026-05-04T07:30:00.000Z",
+    "counts": {
+      "draft": 0,
+      "branch": 1,
+      "pr": 0
+    },
+    "unreviewed": 3,
+    "highFindings": 0,
+    "lastAudit": null,
+    "collecting": false,
+    "error": null,
+    "watch": "full"
+  },
+  {
+    "id": 104,
+    "name": "ember-auth",
+    "path": "/work/ember-auth",
+    "active": true,
+    "lastSeenAt": "2026-05-04T08:00:00.000Z",
+    "lastEventAt": "2026-05-04T06:00:00.000Z",
+    "counts": {
+      "draft": 1,
+      "branch": 3,
+      "pr": 1
+    },
+    "unreviewed": 5,
+    "highFindings": 0,
+    "lastAudit": null,
+    "collecting": true,
+    "error": null,
+    "watch": "full"
+  },
+  {
+    "id": 105,
+    "name": "fable-cms",
+    "path": "/work/fable-cms",
+    "active": true,
+    "lastSeenAt": "2026-05-04T07:00:00.000Z",
+    "lastEventAt": "2026-05-04T04:30:00.000Z",
+    "counts": {
+      "draft": 2,
+      "branch": 0,
+      "pr": 0
+    },
+    "unreviewed": 8,
+    "highFindings": 0,
+    "lastAudit": null,
+    "collecting": false,
+    "error": null,
+    "watch": "full"
+  },
+  {
+    "id": 106,
+    "name": "garnet-search",
+    "path": "/work/garnet-search",
+    "active": true,
+    "lastSeenAt": "2026-05-04T06:00:00.000Z",
+    "lastEventAt": null,
+    "counts": {
+      "draft": 0,
+      "branch": 2,
+      "pr": 0
+    },
+    "unreviewed": 13,
+    "highFindings": 2,
+    "lastAudit": null,
+    "collecting": false,
+    "error": null,
+    "watch": "full"
+  },
+  {
+    "id": 107,
+    "name": "harbor-cache",
+    "path": "/work/harbor-cache",
+    "active": true,
+    "lastSeenAt": "2026-05-04T05:00:00.000Z",
+    "lastEventAt": "2026-05-04T01:30:00.000Z",
+    "counts": {
+      "draft": 1,
+      "branch": 4,
+      "pr": 0
+    },
+    "unreviewed": 0,
+    "highFindings": 0,
+    "lastAudit": null,
+    "collecting": false,
+    "error": null,
+    "watch": "git-only"
+  },
+  {
+    "id": 108,
+    "name": "iris-mailer",
+    "path": "/work/iris-mailer",
+    "active": false,
+    "lastSeenAt": "2026-05-04T04:00:00.000Z",
+    "lastEventAt": "2026-05-04T00:00:00.000Z",
+    "counts": {
+      "draft": 2,
+      "branch": 1,
+      "pr": 1
+    },
+    "unreviewed": 0,
+    "highFindings": 0,
+    "lastAudit": null,
+    "collecting": false,
+    "error": null,
+    "watch": "full"
+  },
+  {
+    "id": 109,
+    "name": "juniper-ml",
+    "path": "/work/juniper-ml",
+    "active": true,
+    "lastSeenAt": "2026-05-04T03:00:00.000Z",
+    "lastEventAt": "2026-05-03T22:30:00.000Z",
+    "counts": {
+      "draft": 0,
+      "branch": 3,
+      "pr": 0
+    },
+    "unreviewed": 1,
+    "highFindings": 0,
+    "lastAudit": null,
+    "collecting": false,
+    "error": null,
+    "watch": "full"
+  },
+  {
+    "id": 110,
+    "name": "kestrel-cli",
+    "path": "/work/kestrel-cli",
+    "active": true,
+    "lastSeenAt": "2026-05-04T02:00:00.000Z",
+    "lastEventAt": "2026-05-03T21:00:00.000Z",
+    "counts": {
+      "draft": 1,
+      "branch": 0,
+      "pr": 0
+    },
+    "unreviewed": 2,
+    "highFindings": 0,
+    "lastAudit": null,
+    "collecting": false,
+    "error": "git exited with code 128",
+    "watch": "full"
+  },
+  {
+    "id": 111,
+    "name": "lumen-docs",
+    "path": "/work/lumen-docs",
+    "active": true,
+    "lastSeenAt": "2026-05-04T01:00:00.000Z",
+    "lastEventAt": "2026-05-03T19:30:00.000Z",
+    "counts": {
+      "draft": 2,
+      "branch": 2,
+      "pr": 0
+    },
+    "unreviewed": 3,
+    "highFindings": 0,
+    "lastAudit": null,
+    "collecting": false,
+    "error": null,
+    "watch": "full"
+  },
+  {
+    "id": 112,
+    "name": "maple-orders",
+    "path": "/work/maple-orders",
+    "active": true,
+    "lastSeenAt": "2026-05-04T00:00:00.000Z",
+    "lastEventAt": "2026-05-03T18:00:00.000Z",
+    "counts": {
+      "draft": 0,
+      "branch": 4,
+      "pr": 1
+    },
+    "unreviewed": 5,
+    "highFindings": 2,
+    "lastAudit": null,
+    "collecting": false,
+    "error": null,
+    "watch": "full"
+  },
+  {
+    "id": 113,
+    "name": "nimbus-queue",
+    "path": "/work/nimbus-queue",
+    "active": false,
+    "lastSeenAt": "2026-05-03T23:00:00.000Z",
+    "lastEventAt": null,
+    "counts": {
+      "draft": 1,
+      "branch": 1,
+      "pr": 0
+    },
+    "unreviewed": 8,
+    "highFindings": 0,
+    "lastAudit": null,
+    "collecting": true,
+    "error": null,
+    "watch": "full"
+  },
+  {
+    "id": 114,
+    "name": "onyx-billing",
+    "path": "/work/onyx-billing",
+    "active": true,
+    "lastSeenAt": "2026-05-03T22:00:00.000Z",
+    "lastEventAt": "2026-05-03T15:00:00.000Z",
+    "counts": {
+      "draft": 2,
+      "branch": 3,
+      "pr": 0
+    },
+    "unreviewed": 13,
+    "highFindings": 0,
+    "lastAudit": null,
+    "collecting": false,
+    "error": null,
+    "watch": "full"
+  },
+  {
+    "id": 115,
+    "name": "prism-analytics",
+    "path": "/work/prism-analytics",
+    "active": true,
+    "lastSeenAt": "2026-05-03T21:00:00.000Z",
+    "lastEventAt": "2026-05-03T13:30:00.000Z",
+    "counts": {
+      "draft": 0,
+      "branch": 0,
+      "pr": 0
+    },
+    "unreviewed": 0,
+    "highFindings": 0,
+    "lastAudit": null,
+    "collecting": false,
+    "error": null,
+    "watch": "git-only"
+  },
+  {
+    "id": 116,
+    "name": "quartz-scheduler",
+    "path": "/work/quartz-scheduler",
+    "active": true,
+    "lastSeenAt": "2026-05-03T20:00:00.000Z",
+    "lastEventAt": "2026-05-03T12:00:00.000Z",
+    "counts": {
+      "draft": 1,
+      "branch": 2,
+      "pr": 1
+    },
+    "unreviewed": 0,
+    "highFindings": 0,
+    "lastAudit": null,
+    "collecting": false,
+    "error": null,
+    "watch": "full"
+  },
+  {
+    "id": 117,
+    "name": "raven-notifications",
+    "path": "/work/raven-notifications",
+    "active": true,
+    "lastSeenAt": "2026-05-03T19:00:00.000Z",
+    "lastEventAt": "2026-05-03T10:30:00.000Z",
+    "counts": {
+      "draft": 2,
+      "branch": 4,
+      "pr": 0
+    },
+    "unreviewed": 1,
+    "highFindings": 0,
+    "lastAudit": null,
+    "collecting": false,
+    "error": null,
+    "watch": "full"
+  },
+  {
+    "id": 118,
+    "name": "sable-uploads",
+    "path": "/work/sable-uploads",
+    "active": false,
+    "lastSeenAt": "2026-05-03T18:00:00.000Z",
+    "lastEventAt": "2026-05-03T09:00:00.000Z",
+    "counts": {
+      "draft": 0,
+      "branch": 1,
+      "pr": 0
+    },
+    "unreviewed": 2,
+    "highFindings": 2,
+    "lastAudit": null,
+    "collecting": false,
+    "error": null,
+    "watch": "full"
+  },
+  {
+    "id": 119,
+    "name": "tidal-sync",
+    "path": "/work/tidal-sync",
+    "active": true,
+    "lastSeenAt": "2026-05-03T17:00:00.000Z",
+    "lastEventAt": "2026-05-03T07:30:00.000Z",
+    "counts": {
+      "draft": 1,
+      "branch": 3,
+      "pr": 0
+    },
+    "unreviewed": 3,
+    "highFindings": 0,
+    "lastAudit": null,
+    "collecting": false,
+    "error": null,
+    "watch": "full"
+  },
+  {
+    "id": 120,
+    "name": "umber-reports",
+    "path": "/work/umber-reports",
+    "active": true,
+    "lastSeenAt": "2026-05-03T16:00:00.000Z",
+    "lastEventAt": null,
+    "counts": {
+      "draft": 2,
+      "branch": 0,
+      "pr": 1
+    },
+    "unreviewed": 5,
+    "highFindings": 0,
+    "lastAudit": null,
+    "collecting": false,
+    "error": null,
+    "watch": "full"
+  },
+  {
+    "id": 121,
+    "name": "vortex-edge",
+    "path": "/work/vortex-edge",
+    "active": true,
+    "lastSeenAt": "2026-05-03T15:00:00.000Z",
+    "lastEventAt": "2026-05-03T04:30:00.000Z",
+    "counts": {
+      "draft": 0,
+      "branch": 2,
+      "pr": 0
+    },
+    "unreviewed": 8,
+    "highFindings": 0,
+    "lastAudit": null,
+    "collecting": false,
+    "error": "git exited with code 128",
+    "watch": "full"
+  },
+  {
+    "id": 122,
+    "name": "willow-forms",
+    "path": "/work/willow-forms",
+    "active": true,
+    "lastSeenAt": "2026-05-03T14:00:00.000Z",
+    "lastEventAt": "2026-05-03T03:00:00.000Z",
+    "counts": {
+      "draft": 1,
+      "branch": 4,
+      "pr": 0
+    },
+    "unreviewed": 13,
+    "highFindings": 0,
+    "lastAudit": null,
+    "collecting": true,
+    "error": null,
+    "watch": "full"
+  },
+  {
+    "id": 123,
+    "name": "an-extremely-long-repository-name-for-the-overflow-check",
+    "path": "/work/an-extremely-long-repository-name-for-the-overflow-check",
+    "active": false,
+    "lastSeenAt": "2026-05-03T13:00:00.000Z",
+    "lastEventAt": "2026-05-03T01:30:00.000Z",
+    "counts": {
+      "draft": 2,
+      "branch": 1,
+      "pr": 0
+    },
+    "unreviewed": 0,
+    "highFindings": 0,
+    "lastAudit": null,
+    "collecting": false,
+    "error": null,
+    "watch": "git-only"
+  }
+]

@@ -122,6 +122,29 @@ describe('ui/fleet-layout', () => {
     });
   });
 
+  describe('spacing guard', () => {
+    it('keeps a positive margin and gaps in the default layout', () => {
+      expect(DEFAULT_LAYOUT.margin).toBeGreaterThan(0);
+      expect(DEFAULT_LAYOUT.gapX).toBeGreaterThan(0);
+      expect(DEFAULT_LAYOUT.gapY).toBeGreaterThan(0);
+      expect(DEFAULT_LAYOUT.padX).toBeGreaterThan(0);
+    });
+
+    it('leaves room around the largest lot inside its cell', () => {
+      for (const lot of layoutLots([{ id: 1, side: LOT_MAX }, { id: 2, side: LOT_MAX }], 1440).lots) {
+        expect(lot.cell - lot.side).toBeGreaterThan(0);
+        expect(lot.label).toBeLessThan(lot.cell);
+      }
+    });
+
+    it('keeps two largest neighbours apart in a row', () => {
+      const [left, right] = layoutLots([{ id: 1, side: LOT_MAX }, { id: 2, side: LOT_MAX }], 1440).lots;
+      if (!left || !right) throw new Error('two lots expected');
+      expect(right.y).toBe(left.y);
+      expect(right.x - (left.x + left.side)).toBeGreaterThan(0);
+    });
+  });
+
   describe('labels', () => {
     it('keeps a name that fits', () => {
       expect(fitLabel('sample-shop', 20)).toBe('sample-shop');

@@ -17,6 +17,7 @@ export const fixtures = {
   fleetIndicators: () => load('fleet-indicators.json') as RepoSummary[],
   fleetNewRepo: () => load('fleet-new-repo.json') as RepoSummary,
   fleetEmpty: () => load('fleet-empty.json') as RepoSummary[],
+  fleetManyRepos: () => load('fleet-many-repos.json') as RepoSummary[],
   repoMixedChanges: () => load('repo-mixed-changes.json') as RepoDetail,
   searchResults: () => load('search-results.json') as SearchResult[],
 };
