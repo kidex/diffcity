@@ -241,6 +241,41 @@ describe('filters from the user own config', () => {
   });
 });
 
+describe('a submodule', () => {
+  it('is not looked into, so its own repo filters never run', { timeout: 120_000 }, async () => {
+    const lib = await createRepo({ name: 'sample-lib', files: { 'src/pad.ts': UTIL } });
+    repos.push(lib);
+    const repo = await repoWithChanges();
+    await repo.git('-c', 'protocol.file.allow=always', 'submodule', 'add', '--quiet', lib.dir, 'vendor/lib');
+    await repo.commit('vendor lib');
+
+    // The submodule's own config and attributes select a filter; its working tree is dirty.
+    const clean = await markerScript('submodule-clean', 'echo "export const tampered = true;"');
+    await repo.git('-C', 'vendor/lib', 'config', 'filter.x.clean', clean);
+    await repo.git('-C', 'vendor/lib', 'config', 'filter.x.required', 'true');
+    const attributes = await repo.git('-C', 'vendor/lib', 'rev-parse', '--path-format=absolute', '--git-path', 'info/attributes');
+    await mkdir(join(attributes, '..'), { recursive: true });
+    await writeFile(attributes, '*.ts filter=x\n', 'utf8');
+    const future = new Date(Date.now() + 60_000);
+    await utimes(join(repo.dir, 'vendor/lib/src/pad.ts'), future, future);
+    await writeFile(join(repo.dir, 'vendor/lib/src/extra.ts'), FRESH, 'utf8');
+    expect(await markersSeen()).toEqual([]);
+
+    const change = await resolveChange(repo.dir, { base: 'main', runner: ghForbidden().runner });
+    expect((await changedFiles(change)).map((file) => file.path)).toEqual(['.gitmodules', 'src/app.ts']);
+    expect(await listHeadFiles(change)).toEqual(['.gitmodules', 'src/app.ts', 'src/moved.ts', 'src/util.ts']);
+    const report = await buildReport({ repoDir: repo.dir, base: 'main', now: NOW, runner: ghForbidden().runner });
+    expect(filesOf(report)).toEqual({
+      '.gitmodules': 'add',
+      'src/app.ts': 'sig',
+      'src/moved.ts': 'same',
+      'src/util.ts': 'same',
+    });
+
+    expect(await markersSeen()).toEqual([]);
+  });
+});
+
 /** A `--no-checkout` partial clone of a repoWithChanges whose upload-pack command is a marker script. */
 async function partialClone(filter: string, extraConfig = ''): Promise<string> {
   const origin = await repoWithChanges();
