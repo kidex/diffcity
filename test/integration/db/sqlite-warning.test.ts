@@ -6,14 +6,15 @@ import { execFile } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { promisify } from 'node:util';
 import { describe, expect, it } from 'vitest';
+import { tempHome } from '../../helpers/config.js';
 
 const run = promisify(execFile);
 const repoRoot = fileURLToPath(new URL('../../../', import.meta.url));
 const distWarning = pathToFileURL(`${repoRoot}dist/core/db/warning.js`).href;
 const distDb = pathToFileURL(`${repoRoot}dist/core/db/index.js`).href;
 
-async function stderrOf(script: string): Promise<string> {
-  const { stderr } = await run(process.execPath, ['--input-type=module', '-e', script], { env: process.env });
+async function stderrOf(script: string, env: NodeJS.ProcessEnv = process.env): Promise<string> {
+  const { stderr } = await run(process.execPath, ['--input-type=module', '-e', script], { env });
   return stderr;
 }
 
@@ -40,5 +41,32 @@ describe('suppressSqliteExperimentalWarning', () => {
   it('without it, loading the db prints the SQLite warning (so the filter is what removes it)', async () => {
     const stderr = await stderrOf(afterLoad);
     expect(stderr).toMatch(/ExperimentalWarning: SQLite is an experimental feature/);
+  });
+
+  it('daemon order: suppress, then dynamic import and a real open/write/read prints nothing on stderr', async () => {
+    const temp = await tempHome();
+    try {
+      const dbPath = `${temp.home}/diffcity.db`;
+      const stderr = await stderrOf(
+        `
+        const { mkdirSync } = await import('node:fs');
+        const { suppressSqliteExperimentalWarning } = await import(${JSON.stringify(distWarning)});
+        suppressSqliteExperimentalWarning();
+        const { openDb } = await import(${JSON.stringify(distDb)});
+        mkdirSync(${JSON.stringify(temp.home)}, { recursive: true });
+        const db = openDb(${JSON.stringify(dbPath)});
+        if (db.pragmas().journalMode !== 'wal') throw new Error('not wal');
+        db.transaction(() => db.purgeArchived('2026-01-01T00:00:00.000Z'));
+        db.close();
+        const again = openDb(${JSON.stringify(dbPath)});
+        again.close();
+        await new Promise((resolve) => setImmediate(resolve));
+      `,
+        temp.env,
+      );
+      expect(stderr).toBe('');
+    } finally {
+      await temp.cleanup();
+    }
   });
 });
