@@ -33,6 +33,7 @@ import {
   detectBase,
   identifyRepo,
   listOpenPrs,
+  prBase,
   reconcile,
   reviewAfterSnapshot,
   worktreeContaining,
@@ -137,6 +138,9 @@ export function createCollector(options: CollectorOptions): Collector {
   const wanted = new Map<number, Wanted>();
   const inFlight = new Map<number, number>();
   const runs = new Set<Promise<CollectOutcome>>();
+  /** Sequence number of the most recently started run of each repo. */
+  const latestRun = new Map<number, number>();
+  let runCounter = 0;
   let closing = false;
 
   const sources: Pool<{ repoId: number }, Run> = createPool({
@@ -198,15 +202,22 @@ export function createCollector(options: CollectorOptions): Collector {
     return scope.full || (change.worktreePath !== null && scope.worktrees.has(change.worktreePath));
   }
 
-  function snapshotInput(repo: RepoRecord, change: ChangeRecord): SnapshotJobInput {
+  /**
+   * The snapshot job of a change. Drafts and branches use the repo base; a PR
+   * uses its own base as the local repo knows it (prBase: the local branch,
+   * origin's, else the repo base), since gh's baseRefName need not exist locally.
+   */
+  async function snapshotInput(repo: RepoRecord, change: ChangeRecord, repoBase: ResolvedBase): Promise<SnapshotJobInput> {
     const at = now().toISOString();
-    if (change.dirty && change.worktreePath !== null) return { repoDir: change.worktreePath, base: change.base, now: at };
-    return { repoDir: repo.path, base: change.base, head: change.head, now: at };
+    const base = change.kind === 'pr' ? (await prBase(repo.path, change.base, repoBase)).ref : repoBase.name;
+    if (change.dirty && change.worktreePath !== null) return { repoDir: change.worktreePath, base, now: at };
+    return { repoDir: repo.path, base, head: change.head, now: at };
   }
 
   /** Computes and stores one snapshot; true when the change list moved (review state or last event). */
-  async function snapshotChange(repo: RepoRecord, change: ChangeRecord, priority: CollectPriority): Promise<boolean> {
-    const computed = await snapshots.submit(`${String(repo.id)}:${String(change.id)}`, priority, snapshotInput(repo, change));
+  async function snapshotChange(repo: RepoRecord, change: ChangeRecord, repoBase: ResolvedBase, priority: CollectPriority): Promise<boolean> {
+    const input = await snapshotInput(repo, change, repoBase);
+    const computed = await snapshots.submit(`${String(repo.id)}:${String(change.id)}`, priority, input);
     if (closing) return false;
     const at = now();
     const iso = at.toISOString();
@@ -233,7 +244,7 @@ export function createCollector(options: CollectorOptions): Collector {
   }
 
   /** Steps 1-4; returns the changes that need a snapshot. */
-  async function listChanges(repo: RepoRecord, scope: Wanted): Promise<ChangeRecord[]> {
+  async function listChanges(repo: RepoRecord, scope: Wanted): Promise<{ pending: ChangeRecord[]; base: ResolvedBase }> {
     const identity = await identityOf(repo);
     // gh and the base are independent: their process spawns overlap.
     const [base, openPrs] = await Promise.all([baseOf(repo, identity), openPrsFor(repo.id, identity, scope)]);
@@ -246,7 +257,7 @@ export function createCollector(options: CollectorOptions): Collector {
       runner: gh,
     });
     worktreesSeen.set(repo.id, discovered.worktrees);
-    if (closing) return [];
+    if (closing) return { pending: [], base };
 
     const at = now();
     const iso = at.toISOString();
@@ -264,14 +275,23 @@ export function createCollector(options: CollectorOptions): Collector {
       broadcast({ event: 'repo', data: { repoId: repo.id } });
       broadcast({ event: 'changes', data: { repoId: repo.id } });
     }
-    return db.changes.listLive(repo.id).filter((change) => needsSnapshot(change, scope));
+    return { pending: db.changes.listLive(repo.id).filter((change) => needsSnapshot(change, scope)), base };
   }
 
-  /** Records the end of a collection: the repo's error, the SSE signals. */
-  function finish(repo: RepoRecord, errors: readonly string[], listMoved: boolean): CollectOutcome {
+  /**
+   * Records the end of a collection: the repo's error, the SSE signals. Runs of
+   * one repo can finish out of order (a run's snapshots outlive the next run's
+   * start), so only the most recently started run writes collectError and the
+   * final `collect`; a superseded run only reports to its own callers.
+   */
+  function finish(repo: RepoRecord, run: number, errors: readonly string[], listMoved: boolean): CollectOutcome {
     if (closing) return { ok: false, error: 'the daemon is shutting down' };
     const repoId = repo.id;
     const error = errors.length === 0 ? null : errors.join('; ');
+    if (latestRun.get(repoId) !== run) {
+      if (listMoved) broadcast({ event: 'changes', data: { repoId } });
+      return error === null ? { ok: true } : { ok: false, error };
+    }
     const previous = db.repos.get(repoId)?.collectError ?? null;
     if (previous !== error) db.repos.setCollectError(repoId, error);
     if (listMoved) broadcast({ event: 'changes', data: { repoId } });
@@ -286,15 +306,21 @@ export function createCollector(options: CollectorOptions): Collector {
   }
 
   /** Step 5 and the end of the collection; runs after the sources slot is released. */
-  async function storeSnapshots(repo: RepoRecord, pending: readonly ChangeRecord[], priority: CollectPriority): Promise<CollectOutcome> {
+  async function storeSnapshots(
+    repo: RepoRecord,
+    pending: readonly ChangeRecord[],
+    base: ResolvedBase,
+    priority: CollectPriority,
+    run: number,
+  ): Promise<CollectOutcome> {
     const errors: string[] = [];
     let listMoved = false;
-    const results = await Promise.allSettled(pending.map((change) => snapshotChange(repo, change, priority)));
+    const results = await Promise.allSettled(pending.map((change) => snapshotChange(repo, change, base, priority)));
     for (const [index, result] of results.entries()) {
       if (result.status === 'fulfilled') listMoved ||= result.value;
       else errors.push(`snapshot of ${pending[index]?.ref ?? 'a change'}: ${errorMessage(result.reason)}`);
     }
-    return finish(repo, errors, listMoved);
+    return finish(repo, run, errors, listMoved);
   }
 
   /**
@@ -305,13 +331,15 @@ export function createCollector(options: CollectorOptions): Collector {
   async function runSources(repoId: number, scope: Wanted): Promise<Run> {
     const repo = db.repos.get(repoId);
     if (repo === null) return { done: Promise.resolve({ ok: false, error: `repo ${String(repoId)} not found` }) };
+    const run = ++runCounter;
+    latestRun.set(repoId, run);
     broadcast({ event: 'collect', data: { repoId, state: 'started' } });
     let done: Promise<CollectOutcome>;
     const started = performance.now();
     try {
-      const pending = await listChanges(repo, scope);
+      const { pending, base } = await listChanges(repo, scope);
       const listed = performance.now();
-      done = storeSnapshots(repo, pending, scope.priority).then((outcome) => {
+      done = storeSnapshots(repo, pending, base, scope.priority, run).then((outcome) => {
         if (pending.length > 0 || !outcome.ok) {
           const end = performance.now();
           log.info(
@@ -325,7 +353,7 @@ export function createCollector(options: CollectorOptions): Collector {
       // The identity and base are looked up afresh next time (a moved or deleted repo).
       identities.delete(repoId);
       bases.delete(repoId);
-      done = Promise.resolve().then(() => finish(repo, [errorMessage(error)], false));
+      done = Promise.resolve().then(() => finish(repo, run, [errorMessage(error)], false));
     }
     const guarded = done.catch((error: unknown): CollectOutcome => {
       // A failure while recording the outcome (the database closed under us, say).

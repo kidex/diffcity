@@ -11,6 +11,7 @@ export {
   listBranches,
   listOpenPrs,
   listWorktrees,
+  prBase,
   prState,
   readPrs,
 } from './sources.js';

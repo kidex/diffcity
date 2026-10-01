@@ -219,20 +219,28 @@ async function hasCommit(root: string, oid: string): Promise<boolean> {
   return (await gitRaw(root, ['cat-file', '-e', `${oid}^{commit}`])).exitCode === 0;
 }
 
-/** The PR base as a local commit: the branch, else origin's, else the repo base. */
-async function prBaseCommit(root: string, baseRefName: string, repoBase: ResolvedBase): Promise<string> {
-  for (const ref of [`refs/heads/${baseRefName}`, `refs/remotes/origin/${baseRefName}`]) {
-    const result = await gitRaw(root, ['rev-parse', '--verify', '--quiet', `${ref}^{commit}`]);
-    if (result.exitCode === 0) return result.stdout.toString('utf8').trim();
+/**
+ * The base of a PR as the local repo knows it, never fetched: the local branch
+ * `<baseRefName>`, else `origin/<baseRefName>`, else the repo base. `ref` is a
+ * commit-ish to pass as `--base` (a snapshot's base), `commit` its sha.
+ */
+export async function prBase(root: string, baseRefName: string, repoBase: ResolvedBase): Promise<{ ref: string; commit: string }> {
+  const candidates = [
+    { ref: baseRefName, full: `refs/heads/${baseRefName}` },
+    { ref: `origin/${baseRefName}`, full: `refs/remotes/origin/${baseRefName}` },
+  ];
+  for (const { ref, full } of candidates) {
+    const result = await gitRaw(root, ['rev-parse', '--verify', '--quiet', `${full}^{commit}`]);
+    if (result.exitCode === 0) return { ref, commit: result.stdout.toString('utf8').trim() };
   }
-  return repoBase.commit;
+  return { ref: repoBase.commit, commit: repoBase.commit };
 }
 
 /** Completes a gh PR with what the local repo knows; never fetches (Q3). */
 async function localPrInfo(root: string, pr: GhPullRequest, base: ResolvedBase): Promise<PrInfo> {
   const headAvailable = await hasCommit(root, pr.headRefOid);
   if (!headAvailable) return { ...pr, headAvailable, ahead: null, behind: null, committedAt: null };
-  const baseCommit = await prBaseCommit(root, pr.baseRefName, base);
+  const baseCommit = (await prBase(root, pr.baseRefName, base)).commit;
   const [counts, committedAt] = await Promise.all([
     aheadBehind(root, baseCommit, pr.headRefOid),
     committerDate(root, pr.headRefOid),

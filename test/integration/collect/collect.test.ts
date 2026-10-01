@@ -160,6 +160,9 @@ describe('collect/track-agent-marks (C3)', () => {
     expect(change).toMatchObject({ kind: 'branch', dirty: true });
     db.changes.applyPlan(first.repo.id, { create: [], update: [{ id: change.id, reviewState: 'approved' }], archive: [] }, new Date().toISOString());
 
+    // The agent changed the working tree again: the agent collection stores a new
+    // snapshot (a `collect` last event), and the agent mark must still come last.
+    await repo.write({ 'src/cart/line.ts': 'export const line = 1;\nexport const extra = 2;\n' });
     const at = '2031-05-06T07:08:09.000Z';
     await test.track(join(repo.dir, 'src', 'cart'), true, at);
     await waitFor(() => db.events.listForRepo(first.repo.id).some((event) => event.type === 'agent'), 20_000, 'the agent event');
@@ -170,6 +173,7 @@ describe('collect/track-agent-marks (C3)', () => {
       lastEvent: { type: 'agent', at },
     });
     const agentEvents = db.events.listForRepo(first.repo.id).filter((event) => event.type === 'agent');
+    expect(db.events.listForRepo(first.repo.id).filter((event) => event.type === 'collect' && event.changeId === change.id)).toHaveLength(2);
     expect(agentEvents).toEqual([expect.objectContaining({ changeId: change.id, at, payload: { worktree: await realpath(repo.dir) } })]);
   });
 
@@ -235,6 +239,42 @@ describe('collect/first-collect-refreshes-prs (C5)', () => {
     await test.idle();
     expect(test.collection.db().repos.get(response.repo.id)?.collectError).toBeNull();
     expect(test.collection.db().changes.listLive(response.repo.id).map((change) => change.kind)).toEqual(['branch']);
+  });
+});
+
+describe('collect/pr-base-not-local', () => {
+  it('a PR whose base is not a local branch is snapshotted against origin, else the repo base', async () => {
+    const repo = await sampleRepo();
+    const mainTip = await repo.head();
+    // `develop` exists only as a remote-tracking ref; `release/2026` exists nowhere.
+    await repo.git('update-ref', 'refs/remotes/origin/develop', mainTip);
+    await repo.branch('feature/checkout');
+    const checkout = await repo.commit('add the checkout', { 'src/checkout/pay.ts': 'export const pay = 1;\n' });
+    await repo.checkout('main');
+    await repo.branch('feature/refunds');
+    const refunds = await repo.commit('add refunds', { 'src/refunds.ts': 'export const refund = 0;\n' });
+    await repo.checkout('main');
+    const pr = (number: number, head: string, baseRefName: string) => ({
+      number,
+      title: `PR ${String(number)}`,
+      headRefName: number === 1 ? 'feature/checkout' : 'feature/refunds',
+      headRefOid: head,
+      baseRefName,
+      isCrossRepository: false,
+    });
+    const gh = ghWithPrs(() => [pr(1, checkout, 'develop'), pr(2, refunds, 'release/2026')]);
+    const test = await startTestDaemon({ gh: gh.runner });
+    const response = await test.track(repo.dir);
+    if (!response.ok) throw new Error(response.error);
+    await test.idle();
+    const db = test.collection.db();
+    expect(db.repos.get(response.repo.id)?.collectError).toBeNull();
+    const changes = db.changes.listLiveSummaries(response.repo.id);
+    expect(changes.map((change) => [change.kind, change.base]).sort()).toEqual([
+      ['pr', 'develop'],
+      ['pr', 'release/2026'],
+    ]);
+    for (const change of changes) expect(change.stats?.touchedFiles).toBe(1);
   });
 });
 
