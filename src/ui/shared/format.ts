@@ -145,3 +145,7 @@ export function shortDate(iso: string, timeZone?: string): string {
 export function shortSha(sha: string): string {
   return sha.slice(0, 7);
 }
+
+/** Why a PR without its head commit has no counters (ADR-019: diffcity never fetches). */
+export const HEAD_NOT_FETCHED = 'head not fetched locally';
+export const HEAD_NOT_FETCHED_TITLE = 'diffcity never runs git fetch. Fetch the pull request to see what it changes.';

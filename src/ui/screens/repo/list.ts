@@ -11,6 +11,8 @@ import {
   ARCHIVE_REASON_LABEL,
   CHANGED_STATUSES,
   EVENT_LABEL,
+  HEAD_NOT_FETCHED,
+  HEAD_NOT_FETCHED_TITLE,
   kindLabel,
   plural,
   refName,
@@ -87,12 +89,8 @@ function stats(change: ChangeSummary): (Node | string)[] {
     return [
       h(
         'span',
-        {
-          class: 'note not-fetched',
-          'data-testid': 'head-not-fetched',
-          title: 'diffcity never runs git fetch. Fetch the pull request to see what it changes.',
-        },
-        'head not fetched locally',
+        { class: 'note not-fetched', 'data-testid': 'head-not-fetched', title: HEAD_NOT_FETCHED_TITLE },
+        HEAD_NOT_FETCHED,
       ),
     ];
   }

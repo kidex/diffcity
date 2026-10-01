@@ -12,7 +12,16 @@ import { ApiRequestError } from '../data/api.js';
 import type { DataContext } from '../data/context.js';
 import { mountChange } from '../screens/change/index.js';
 import { h, replaceChildren } from '../shared/dom.js';
-import { aheadBehind, ARCHIVE_REASON_LABEL, kindLabel, refName, REVIEW_STATE_LABEL, shortDate } from '../shared/format.js';
+import {
+  aheadBehind,
+  ARCHIVE_REASON_LABEL,
+  HEAD_NOT_FETCHED,
+  HEAD_NOT_FETCHED_TITLE,
+  kindLabel,
+  refName,
+  REVIEW_STATE_LABEL,
+  shortDate,
+} from '../shared/format.js';
 import { routeHref } from './router.js';
 
 type Loaded = { change: ChangeSummary; report: Report | null } | { error: 'missing' | 'unreachable' };
@@ -69,6 +78,15 @@ export function mountChangeRoute(element: HTMLElement, context: DataContext, cha
     stage.dataset['state'] = 'ready';
     repoId = loaded.change.repoId;
     replaceChildren(stage, header(loaded.change), body);
+    if (loaded.report === null && !loaded.change.headAvailable) {
+      // No snapshot can exist until the user fetches the head (ADR-019), so
+      // this is not "computing": say why there is nothing to show.
+      replaceChildren(
+        body,
+        h('p', { class: 'change-empty not-fetched', 'data-testid': 'head-not-fetched', title: HEAD_NOT_FETCHED_TITLE }, HEAD_NOT_FETCHED),
+      );
+      return;
+    }
     unmountScreen = mountChange(body, { report: loaded.report });
   }
 
