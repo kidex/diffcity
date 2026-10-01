@@ -2,9 +2,12 @@
 // `track` and `register` go through a handler registry that the collection
 // (DC-29) fills, and answer with an explicit error until then.
 
-import { chmod, rm } from 'node:fs/promises';
+import { randomBytes } from 'node:crypto';
+import { chmod, rename, rm } from 'node:fs/promises';
 import { createServer, type Server, type Socket } from 'node:net';
+import { dirname, join } from 'node:path';
 import type { SocketRequest, SocketResponse, SocketResponseFor, SocketSuccessResponses } from '../../core/model/types.js';
+import { fileIdentity, type BoundFile } from '../files.js';
 import { errorMessage, type Logger } from '../log.js';
 import { MAX_REQUEST_BYTES, parseRequest, REQUEST_TIMEOUT_MS } from './protocol.js';
 
@@ -36,10 +39,12 @@ export interface SocketServerOptions {
 
 export interface SocketServer {
   readonly handlers: SocketHandlerRegistry;
-  /** Removes a leftover file at the path, listens, and sets mode 0600. */
+  /** Listens with mode 0600, replacing any leftover file at the path. */
   listen(): Promise<void>;
   /** Stops accepting connections, ends open ones and removes nothing (the daemon removes the file). */
   close(): Promise<void>;
+  /** The socket file this server bound (device and inode), or null before listen. */
+  bound(): BoundFile | null;
 }
 
 type HandlerMap = { [T in PluggableRequestType]?: SocketHandler<T> };
@@ -145,11 +150,20 @@ export function createSocketServer(options: SocketServerOptions): SocketServer {
   }
 
   let server: Server | null = null;
+  let boundFile: BoundFile | null = null;
 
   return {
     handlers,
+    bound: () => boundFile,
     async listen() {
-      await rm(options.path, { force: true });
+      // libuv unlinks a Unix socket by path when the server closes, whatever
+      // file is there by then. So the server binds a short temporary name in
+      // the same directory and the file is renamed into place: close() only
+      // ever unlinks the temporary name, and the rename atomically replaces a
+      // socket left by a dead daemon. The name is shorter than daemon.sock, so
+      // it fits the socket path limit whenever the final path does.
+      const temp = join(dirname(options.path), `.dc${randomBytes(3).toString('hex')}`);
+      await rm(temp, { force: true });
       // Half-open, so a client that ends its side right after the request still gets the response.
       const created = createServer({ allowHalfOpen: true }, serve);
       server = created;
@@ -164,7 +178,7 @@ export function createSocketServer(options: SocketServerOptions): SocketServer {
       try {
         await new Promise<void>((resolve, reject) => {
           created.once('error', reject);
-          created.listen(options.path, () => {
+          created.listen(temp, () => {
             created.off('error', reject);
             resolve();
           });
@@ -172,7 +186,10 @@ export function createSocketServer(options: SocketServerOptions): SocketServer {
       } finally {
         if (previousMask !== null) process.umask(previousMask);
       }
-      await chmod(options.path, 0o600);
+      await chmod(temp, 0o600);
+      const identity = await fileIdentity(temp);
+      await rename(temp, options.path);
+      boundFile = identity === null ? null : { ...identity, path: options.path };
     },
     async close() {
       const current = server;

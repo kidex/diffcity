@@ -206,13 +206,39 @@ export async function resolvePort(paths: HomePaths, explicit: number | undefined
   return (await readState(paths))?.port ?? DEFAULT_PORT;
 }
 
+/** The socket file a daemon bound, identified by device and inode. */
+export interface BoundFile {
+  path: string;
+  dev: number;
+  ino: number;
+}
+
+/** The identity of the file at `path` now, or null if there is none. */
+export async function fileIdentity(path: string): Promise<BoundFile | null> {
+  try {
+    const info = await stat(path);
+    return { path, dev: info.dev, ino: info.ino };
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
+    throw error;
+  }
+}
+
+/** Removes `bound.path` only while it is still the same file (same dev and inode). */
+export async function removeBoundFile(bound: BoundFile): Promise<void> {
+  const current = await fileIdentity(bound.path);
+  if (current !== null && current.dev === bound.dev && current.ino === bound.ino) await rm(bound.path, { force: true });
+}
+
 /**
  * Shutdown cleanup (ADR-015), in order: daemon.json, the socket, then the lock.
- * daemon.json and the lock are removed only while they still belong to `pid`.
+ * Each is removed only while it still belongs to this daemon: daemon.json and
+ * the lock by `pid`, the socket by the identity recorded after listen (null
+ * when it never listened).
  */
-export async function removeDaemonFiles(paths: HomePaths, socket: string, pid: number): Promise<void> {
+export async function removeDaemonFiles(paths: HomePaths, socket: BoundFile | null, pid: number): Promise<void> {
   const info = await readDaemonInfo(paths);
   if (info === null || info.pid === pid) await rm(paths.daemonJson, { force: true });
-  await rm(socket, { force: true });
+  if (socket !== null) await removeBoundFile(socket);
   await releaseLock(paths, pid);
 }

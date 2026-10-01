@@ -156,7 +156,7 @@ export async function startDaemon(options: StartDaemonOptions = {}): Promise<Sta
       await step('closing the socket server', () => socketServer.close());
       await step('closing the HTTP server', () => http.close());
       await stopPlugins(setUp);
-      await step('removing the daemon files', () => removeDaemonFiles(paths, paths.socket, pid));
+      await step('removing the daemon files', () => removeDaemonFiles(paths, socketServer.bound(), pid));
       log.info('daemon stopped');
       if (ownsLog) log.close();
       resolveClosed();

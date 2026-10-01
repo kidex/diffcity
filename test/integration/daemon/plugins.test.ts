@@ -137,6 +137,21 @@ describe('daemon plugins', () => {
     expect(await readFile(paths.lock, 'utf8')).toBe(`${String(process.pid)}\n`);
   });
 
+  it('a socket file bound by another daemon survives this daemon shutdown', async () => {
+    const daemon = await start([]);
+    // Another process replaced the socket file with its own.
+    const { rm } = await import('node:fs/promises');
+    await rm(paths.socket);
+    const other = createServer();
+    await new Promise<void>((resolve) => other.listen(paths.socket, resolve));
+    try {
+      await daemon.shutdown('test');
+      expect((await stat(paths.socket)).isSocket()).toBe(true);
+    } finally {
+      await new Promise((resolve) => other.close(resolve));
+    }
+  });
+
   it('a busy port reports port-in-use and releases the lock', async () => {
     const blocker: Server = createServer();
     await new Promise<void>((resolve) => blocker.listen(0, '127.0.0.1', resolve));

@@ -205,6 +205,28 @@ describe('socket server', () => {
     expect(shutdowns).toBe(1);
   });
 
+  it('close() leaves a socket file that another server bound at the same path', async () => {
+    const path = await start();
+    const { rm: remove } = await import('node:fs/promises');
+    const { createServer } = await import('node:net');
+    await remove(path);
+    const other = createServer();
+    await new Promise<void>((resolve) => other.listen(path, resolve));
+    try {
+      await server?.close();
+      server = undefined;
+      expect((await stat(path)).isSocket()).toBe(true);
+    } finally {
+      await new Promise((resolve) => other.close(resolve));
+    }
+  });
+
+  it('bound() reports the device and inode of the socket file', async () => {
+    const path = await start();
+    const info = await stat(path);
+    expect(server?.bound()).toEqual({ path, dev: info.dev, ino: info.ino });
+  });
+
   it('replaces a stale socket file left by a dead daemon', async () => {
     const path = join(dir, 'daemon.sock');
     const { writeFile } = await import('node:fs/promises');

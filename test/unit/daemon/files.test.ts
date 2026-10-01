@@ -9,6 +9,7 @@ import { homePaths, type HomePaths } from '../../../src/core/home.js';
 import {
   acquireLock,
   DEFAULT_PORT,
+  fileIdentity,
   isProcessAlive,
   readDaemonInfo,
   readState,
@@ -171,18 +172,34 @@ describe('daemon.json and state.json', () => {
     expect(await resolvePort(paths, 0)).toBe(0);
   });
 
-  it('removeDaemonFiles removes daemon.json, the socket and the lock, tolerating missing ones', async () => {
+  it('removeDaemonFiles removes daemon.json, the socket it bound and the lock, tolerating missing ones', async () => {
     await writeDaemonInfo(paths, info);
     await writeFile(paths.lock, '1\n');
-    await removeDaemonFiles(paths, paths.socket, 1);
-    for (const file of [paths.daemonJson, paths.lock]) await expect(stat(file)).rejects.toThrow(/ENOENT/);
+    await writeFile(paths.socket, '');
+    const bound = await fileIdentity(paths.socket);
+    await removeDaemonFiles(paths, bound, 1);
+    for (const file of [paths.daemonJson, paths.lock, paths.socket]) await expect(stat(file)).rejects.toThrow(/ENOENT/);
+    await removeDaemonFiles(paths, bound, 1);
   });
 
-  it("removeDaemonFiles leaves another daemon's daemon.json and lock alone", async () => {
+  it("removeDaemonFiles leaves another daemon's daemon.json, socket and lock alone", async () => {
+    await writeFile(paths.socket, '');
+    const bound = await fileIdentity(paths.socket);
+    // Another daemon replaced the socket file: same path, a different inode.
+    await rm(paths.socket);
+    await writeFile(join(root, 'filler'), '');
+    await writeFile(paths.socket, 'other');
     await writeDaemonInfo(paths, { ...info, pid: 2 });
     await writeFile(paths.lock, '2\n');
-    await removeDaemonFiles(paths, paths.socket, 1);
+    await removeDaemonFiles(paths, bound, 1);
     expect(await readDaemonInfo(paths)).toEqual({ ...info, pid: 2 });
     expect(await readFile(paths.lock, 'utf8')).toBe('2\n');
+    expect(await readFile(paths.socket, 'utf8')).toBe('other');
+  });
+
+  it('removeDaemonFiles without a bound socket leaves the socket path alone', async () => {
+    await writeFile(paths.socket, 'other');
+    await removeDaemonFiles(paths, null, 1);
+    expect(await readFile(paths.socket, 'utf8')).toBe('other');
   });
 });
