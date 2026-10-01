@@ -8,22 +8,18 @@ import { ensureHome, homePaths, resolveHome, type HomePaths } from '../core/home
 import type { DaemonInfo } from '../core/model/types.js';
 import { readVersion } from '../core/version.js';
 import {
+  DAEMON_START_TIMEOUT_MS,
   EXIT_PORT_IN_USE,
   findRunningDaemon,
-  OWNER_WAIT_MS,
   portInUseMessage,
   spawnDaemon as defaultSpawnDaemon,
-  waitForDaemon,
+  startDaemon,
 } from '../daemon/client.js';
 import { isPort, resolvePort, writeState } from '../daemon/files.js';
 import { openBrowser } from './open.js';
 
-/**
- * How long `up` waits for a detached daemon to write daemon.json: longer than
- * the daemon's own wait for a live lock owner (OWNER_WAIT_MS) before it takes
- * the lock over, plus 10 s to start.
- */
-export const UP_START_TIMEOUT_MS = OWNER_WAIT_MS + 10_000;
+/** How long `up` waits for a detached daemon to write daemon.json (DAEMON_START_TIMEOUT_MS). */
+export const UP_START_TIMEOUT_MS = DAEMON_START_TIMEOUT_MS;
 
 export interface UpCommandOptions {
   port?: string;
@@ -116,28 +112,23 @@ export async function runUp(options: UpCommandOptions, deps: UpDeps): Promise<nu
 
   if (options.foreground === true) return runForeground(port, env, io, report);
 
-  const spawned = (deps.spawnDaemon ?? defaultSpawnDaemon)({ paths, port, env });
   const timeoutMs = deps.startTimeoutMs ?? UP_START_TIMEOUT_MS;
-  const started = Date.now();
-  let ready = await waitForDaemon(paths, { timeoutMs, stop: spawned.exited });
-  if (ready === null) {
-    const exitCode = await Promise.race([spawned.exited, Promise.resolve('running' as const)]);
-    if (exitCode === 0) {
-      // Another daemon won the lock; it answered our daemon before this one exited.
-      ready = await waitForDaemon(paths, { timeoutMs: Math.max(0, timeoutMs - (Date.now() - started)) });
-    } else if (exitCode === EXIT_PORT_IN_USE) {
-      io.stderr(`${portInUseMessage(port)}\n`);
-      return 1;
-    } else if (exitCode !== 'running') {
-      io.stderr(`diffcity up: the daemon exited with code ${String(exitCode)}; see ${paths.log}\n`);
-      return 1;
+  const started = await startDaemon({ paths, port, env, spawn: deps.spawnDaemon ?? defaultSpawnDaemon, timeoutMs });
+  if (!started.ok) {
+    switch (started.reason) {
+      case 'port-in-use':
+        io.stderr(`${portInUseMessage(port)}\n`);
+        break;
+      case 'exited':
+        io.stderr(`diffcity up: the daemon exited with code ${String(started.exitCode)}; see ${paths.log}\n`);
+        break;
+      case 'timeout':
+        io.stderr(`diffcity up: the daemon did not start within ${String(timeoutMs / 1000)} s; see ${paths.log}\n`);
+        break;
     }
-  }
-  if (ready === null) {
-    io.stderr(`diffcity up: the daemon did not start within ${String(timeoutMs / 1000)} s; see ${paths.log}\n`);
     return 1;
   }
-  return report(ready.info, ready.version, true);
+  return report(started.info, started.version, true);
 }
 
 /** --foreground: the daemon runs in this process, logging to stderr, until SIGTERM, SIGINT or `shutdown`. */
