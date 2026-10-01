@@ -127,7 +127,8 @@ beforeAll(async () => {
   for (const shell of ['zsh', 'bash', 'fish'] as const) await writeFile(hookFile(shell), shellInitScript(shell, command));
 });
 afterAll(async () => {
-  await rm(root, { recursive: true, force: true });
+  // A backgrounded track from the last shell can still be appending to its log here.
+  await rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
   await temp.cleanup();
 });
 
