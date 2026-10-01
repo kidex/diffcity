@@ -328,6 +328,57 @@ describe('reconcile: change identity, last event and review state (ADR-019)', ()
   });
 });
 
+describe('reconcile: which live change survives when two reach the same head (ADR-019)', () => {
+  const zeta = (): ReturnType<typeof record> => record({ id: 1, ref: 'branch:zeta', head: A, reviewState: 'unreviewed' });
+  const alpha = (): ReturnType<typeof record> =>
+    record({ id: 2, ref: 'branch:alpha', head: B, reviewState: 'in-review', worktreePath: REPO });
+
+  it('a new PR from the checked-out alpha at the shared head continues alpha, not the older zeta', () => {
+    const plan = reconcile(
+      [zeta(), alpha()],
+      [],
+      discovered({
+        worktrees: [worktree({ head: C, branch: 'alpha' })],
+        branches: [branch('zeta', C), branch('alpha', C)],
+        prs: { available: true, open: [pr(12, C, { headRefName: 'alpha' })], states: {} },
+      }),
+      NOW,
+    );
+    expect(plan.create).toEqual([]);
+    // alpha keeps its id and its in-review state (unchanged, so not in the update).
+    expect(plan.update).toMatchObject([{ id: 2, kind: 'pr', ref: 'pr:12', prNumber: 12, head: C }]);
+    expect(plan.update[0]).not.toHaveProperty('reviewState');
+    expect(plan.archive).toEqual([{ id: 1, reason: 'merged' }]);
+  });
+
+  it("the PR's head branch wins over the checked-out branch", () => {
+    const plan = reconcile(
+      [zeta(), alpha()],
+      [],
+      discovered({
+        worktrees: [worktree({ head: C, branch: 'alpha' })],
+        branches: [branch('zeta', C), branch('alpha', C)],
+        prs: { available: true, open: [pr(12, C, { headRefName: 'zeta' })], states: {} },
+      }),
+      NOW,
+    );
+    expect(plan.update).toMatchObject([{ id: 1, ref: 'pr:12' }]);
+    expect(plan.archive).toEqual([{ id: 2, reason: 'merged' }]);
+  });
+
+  it('without a PR, the checked-out branch keeps its identity before the alphabetical order and the id', () => {
+    const plan = reconcile(
+      [record({ id: 1, ref: 'branch:alpha', head: A }), record({ id: 2, ref: 'branch:zeta', head: B, reviewState: 'in-review' })],
+      [],
+      discovered({ worktrees: [worktree({ head: C, branch: 'zeta' })], branches: [branch('alpha', C), branch('zeta', C)] }),
+      NOW,
+    );
+    expect(plan.update).toMatchObject([{ id: 2, head: C }]);
+    expect(plan.update[0]).not.toHaveProperty('ref');
+    expect(plan.archive).toEqual([{ id: 1, reason: 'merged' }]);
+  });
+});
+
 describe('reconcile: archive (L7)', () => {
   it('changes/archive-pr-merged (L7): a PR missing from the open list and MERGED is archived as merged', () => {
     const live = record({ id: 3, kind: 'pr', ref: 'pr:12', prNumber: 12, head: B });

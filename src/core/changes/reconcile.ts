@@ -98,24 +98,42 @@ function compareRefs(a: string, b: string): number {
   return a < b ? -1 : 1;
 }
 
-function pickWinner(candidates: readonly Candidate[], checkedOut: ReadonlySet<string>): Candidate {
+/** Candidate precedence inside a group (L4): `pr > branch`, then checked out in a working tree, then the first ref. */
+function precedence(checkedOut: ReadonlySet<string>): (a: Candidate, b: Candidate) => number {
   const rank = (candidate: Candidate): number =>
     candidate.checkoutName !== null && checkedOut.has(candidate.checkoutName) ? 0 : 1;
-  const sorted = [...candidates].sort(
-    (a, b) => KIND_RANK[a.kind] - KIND_RANK[b.kind] || rank(a) - rank(b) || compareRefs(a.ref, b.ref),
-  );
-  const winner = sorted[0];
+  return (a, b) => KIND_RANK[a.kind] - KIND_RANK[b.kind] || rank(a) - rank(b) || compareRefs(a.ref, b.ref);
+}
+
+function pickWinner(candidates: readonly Candidate[], checkedOut: ReadonlySet<string>): Candidate {
+  const winner = [...candidates].sort(precedence(checkedOut))[0];
   if (winner === undefined) throw new Error('a group always has a candidate');
   return winner;
 }
 
-/** The live change a group continues: the one with the winner's ref, else the strongest kind, else the oldest. */
-function pickMatch(matches: readonly ChangeRecord[], winner: Candidate): ChangeRecord | null {
+interface Match {
+  candidate: Candidate;
+  change: ChangeRecord;
+}
+
+/**
+ * The live change a group continues when several live changes reached its head:
+ * the one with the winner's ref; else the branch the winner was opened from
+ * (its head branch); else the first by candidate precedence; else the oldest.
+ */
+function pickMatch(matches: readonly Match[], winner: Candidate, checkedOut: ReadonlySet<string>): ChangeRecord | null {
+  const isWinner = (match: Match): number => (match.candidate.ref === winner.ref ? 0 : 1);
+  const isHeadBranch = (match: Match): number =>
+    match.candidate.kind === 'branch' && match.candidate.checkoutName === winner.checkoutName ? 0 : 1;
+  const byPrecedence = precedence(checkedOut);
   const sorted = [...matches].sort(
     (a, b) =>
-      Number(b.ref === winner.ref) - Number(a.ref === winner.ref) || KIND_RANK[a.kind] - KIND_RANK[b.kind] || a.id - b.id,
+      isWinner(a) - isWinner(b) ||
+      isHeadBranch(a) - isHeadBranch(b) ||
+      byPrecedence(a.candidate, b.candidate) ||
+      a.change.id - b.change.id,
   );
-  return sorted[0] ?? null;
+  return sorted[0]?.change ?? null;
 }
 
 function laterOf(a: string, b: string): string {
@@ -238,12 +256,12 @@ export function reconcile(
   const groups: Group[] = [];
   for (const [head, members] of byHead) {
     const winner = pickWinner(members, checkedOut);
-    const matches = members.flatMap((candidate) => {
+    const matches = members.flatMap((candidate): Match[] => {
       const change = liveByRef.get(candidate.ref);
-      return change === undefined ? [] : [change];
+      return change === undefined ? [] : [{ candidate, change }];
     });
-    const match = pickMatch(matches, winner);
-    for (const change of matches) {
+    const match = pickMatch(matches, winner, checkedOut);
+    for (const { change } of matches) {
       matched.add(change.id);
       // Two live changes reached the same head: the group continues one; the other was merged into it.
       if (change !== match) archive(change, 'merged');
