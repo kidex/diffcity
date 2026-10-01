@@ -70,6 +70,28 @@ describe('snapshots', () => {
     expect(rowCount()).toBe(1);
   });
 
+  it('db/latest-snapshot: back on an older head with identical content (A -> B -> A), A is the latest again', () => {
+    const headA = change.head;
+    const headB = sha();
+    expect(db.snapshots.put(snapshotInput(change.id, headA, { contentHash: 'hash-a', computedAt: T0 }))).toBe('created');
+    expect(
+      db.snapshots.put(snapshotInput(change.id, headB, { contentHash: 'hash-b', computedAt: daysAfter(T0, 1) })),
+    ).toBe('created');
+    const before = db.snapshots.latest(change.id);
+    expect(before?.head).toBe(headB);
+
+    const back = daysAfter(T0, 2);
+    expect(db.snapshots.put(snapshotInput(change.id, headA, { contentHash: 'hash-a', computedAt: back }))).toBe('replaced');
+
+    expect(db.snapshots.latest(change.id)).toMatchObject({ head: headA, contentHash: 'hash-a', computedAt: back });
+    expect(rowCount()).toBe(2);
+    // Now A is the latest, so the same put again writes nothing.
+    expect(
+      db.snapshots.put(snapshotInput(change.id, headA, { contentHash: 'hash-a', computedAt: daysAfter(T0, 3) })),
+    ).toBe('unchanged');
+    expect(db.snapshots.latest(change.id)?.computedAt).toBe(back);
+  });
+
   it('db/latest-snapshot: the latest is the greatest computedAt, whatever the write order', () => {
     const newest = snapshotInput(change.id, sha(), { computedAt: daysAfter(T0, 2), report: '{"n":"newest"}' });
     db.snapshots.put(newest);

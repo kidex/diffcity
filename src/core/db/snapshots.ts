@@ -1,6 +1,7 @@
 // The snapshots table (ADR-018): one row per (changeId, head); the latest by
-// computedAt is the one shown. A recompute on the same head replaces the row,
-// unless its contentHash is identical, in which case nothing is written.
+// computedAt is the one shown. A recompute on the same head replaces the row.
+// An identical contentHash writes nothing while that row is the latest; when it
+// is not (the change returned to an older head), only its computedAt is bumped.
 
 import type { Database } from 'better-sqlite3';
 import type { SnapshotRecord, SnapshotSummary } from '../model/types.js';
@@ -23,7 +24,9 @@ export type SnapshotInput = Omit<SnapshotRecord, 'id'>;
 
 /**
  * What put did: `created` a row for a new head, `replaced` the row of the same
- * head with a different hash, or nothing (`unchanged`) for an identical hash.
+ * head (a different hash, or an identical hash on a row that was not the latest,
+ * whose computedAt is bumped), or nothing (`unchanged`) for an identical hash on
+ * the latest row.
  * Only `created` and `replaced` warrant a `collect` event and an SSE `snapshot`.
  */
 export type SnapshotPutResult = 'created' | 'replaced' | 'unchanged';
@@ -53,9 +56,11 @@ function toRecord(row: SnapshotRow): SnapshotRecord {
 const LATEST = 'WHERE changeId = ? ORDER BY computedAt DESC, id DESC LIMIT 1';
 
 export function createSnapshotStore(db: Database): SnapshotStore {
-  const existingHash = db.prepare<[number, string], { contentHash: string }>(
-    'SELECT contentHash FROM snapshots WHERE changeId = ? AND head = ?',
+  const existingHash = db.prepare<[number, string], { id: number; contentHash: string }>(
+    'SELECT id, contentHash FROM snapshots WHERE changeId = ? AND head = ?',
   );
+  const latestId = db.prepare<[number], { id: number }>(`SELECT id FROM snapshots ${LATEST}`);
+  const touch = db.prepare<[string, number]>('UPDATE snapshots SET computedAt = ? WHERE id = ?');
   // json_valid runs in SQLite, so a report of several MB is checked without a JS parse.
   const isJson = db.prepare<[string], { valid: number }>('SELECT json_valid(?) AS valid');
   const insert = db.prepare<[number, string, number, string, string, string, string, string]>(
@@ -71,7 +76,13 @@ export function createSnapshotStore(db: Database): SnapshotStore {
 
   const put = db.transaction((snapshot: SnapshotInput): SnapshotPutResult => {
     const existing = existingHash.get(snapshot.changeId, snapshot.head);
-    if (existing?.contentHash === snapshot.contentHash) return 'unchanged';
+    if (existing?.contentHash === snapshot.contentHash) {
+      if (latestId.get(snapshot.changeId)?.id === existing.id) return 'unchanged';
+      // The change came back to an older head with identical content (A -> B -> A):
+      // only computedAt moves, so that row becomes the latest again.
+      touch.run(isoTime(snapshot.computedAt, 'computedAt'), existing.id);
+      return 'replaced';
+    }
     if (isJson.get(snapshot.report)?.valid !== 1) {
       throw new Error(`snapshot report for change ${String(snapshot.changeId)} is not valid JSON`);
     }
