@@ -40,12 +40,15 @@ export class DaemonTracker {
   private readonly homes = new Set<string>();
   private readonly children = new Set<ChildProcess>();
 
-  /** Runs `node <script> ...args` with `env` (which must carry a temporary DIFFCITY_HOME). */
-  spawn(script: string, args: string[], env: NodeJS.ProcessEnv, cwd?: string): Spawned {
+  /**
+   * Runs `node [...nodeArgs] <script> ...args` with `env` (which must carry a
+   * temporary DIFFCITY_HOME).
+   */
+  spawn(script: string, args: string[], env: NodeJS.ProcessEnv, cwd?: string, nodeArgs: string[] = []): Spawned {
     const home = env[HOME_ENV];
     if (home === undefined) throw new Error('spawned processes need DIFFCITY_HOME in env');
     this.homes.add(home);
-    const child = spawn(process.execPath, [script, ...args], { env, cwd, stdio: ['ignore', 'pipe', 'pipe'] });
+    const child = spawn(process.execPath, [...nodeArgs, script, ...args], { env, cwd, stdio: ['ignore', 'pipe', 'pipe'] });
     this.children.add(child);
     let out = '';
     let err = '';

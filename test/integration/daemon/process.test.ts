@@ -82,6 +82,18 @@ describe('daemon process', () => {
     expect(await readFile(paths.log, 'utf8')).toContain('daemon stopped');
   });
 
+  it('shuts down promptly with an SSE client still connected', async () => {
+    const spawned = daemons.spawnDaemon(temp.env);
+    const info = await ready();
+    const sse = await openSse(info.port);
+    await sse.until('event: hello');
+    const started = Date.now();
+    await sendRequest(info.socket, { v: 1, type: 'shutdown' });
+    expect(await spawned.exited).toBe(0);
+    expect(Date.now() - started).toBeLessThan(3000);
+    sse.close();
+  });
+
   it('daemon/long-home-socket-path: a long home puts the socket in the temporary directory', async () => {
     const longHome = join(temp.root, 'a-rather-long-directory-name-for-the-socket-test', 'x'.repeat(60));
     const env = { ...temp.env, DIFFCITY_HOME: longHome };

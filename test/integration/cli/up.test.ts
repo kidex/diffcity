@@ -5,6 +5,8 @@
 
 import { mkdir, readFile, rm, stat } from 'node:fs/promises';
 import { createServer, type Server } from 'node:net';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { homePaths, type HomePaths } from '../../../src/core/home.js';
 import type { DaemonInfo } from '../../../src/core/model/types.js';
@@ -13,7 +15,7 @@ import { runUp } from '../../../src/cli/up.js';
 import { sendRequest, spawnDaemon } from '../../../src/daemon/client.js';
 import { isProcessAlive, readDaemonInfo, writeDaemonInfo } from '../../../src/daemon/files.js';
 import { tempHome, type TempHome } from '../../helpers/config.js';
-import { DAEMON_MAIN_DIST, DaemonTracker, waitFor } from '../../helpers/daemon.js';
+import { CLI_DIST, DAEMON_MAIN_DIST, DaemonTracker, waitFor } from '../../helpers/daemon.js';
 
 let temp: TempHome;
 let paths: HomePaths;
@@ -177,6 +179,23 @@ describe('diffcity up', () => {
     const result = await up(['--foreground', '--port', String(port), '--no-open']);
     expect(result.code).toBe(1);
     expect(result.stderr).toContain(`port ${String(port)} is in use; pass --port\n`);
+  });
+});
+
+describe('up stays light', () => {
+  const loadsFastify = (url: string): boolean => url.includes('/node_modules/fastify/') || url.includes('/node_modules/@fastify/');
+  const loadsServer = (url: string): boolean => url.endsWith('/dist/daemon/daemon.js') || url.endsWith('/dist/daemon/http/server.js');
+
+  it('up without --foreground loads neither Fastify nor the daemon server', async () => {
+    const recorder = fileURLToPath(new URL('../../helpers/import-recorder.mjs', import.meta.url));
+    const log = join(temp.root, 'imports.log');
+    const env = { ...temp.env, DIFFCITY_TEST_IMPORT_LOG: log };
+    const run = daemons.spawn(CLI_DIST, ['up', '--port', '0', '--no-open'], env, temp.userHome, ['--import', recorder]);
+    expect(await run.exited).toBe(0);
+    const urls = (await readFile(log, 'utf8')).split('\n').filter((line) => line !== '');
+    expect(urls.some((url) => url.endsWith('/dist/cli/up.js'))).toBe(true);
+    expect(urls.filter(loadsFastify)).toEqual([]);
+    expect(urls.filter(loadsServer)).toEqual([]);
   });
 });
 
