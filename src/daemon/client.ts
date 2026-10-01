@@ -19,6 +19,13 @@ export function portInUseMessage(port: number): string {
   return `port ${String(port)} is in use; pass --port`;
 }
 
+/**
+ * How long a starting daemon gives a live lock owner to answer `ping` before
+ * it takes the lock as stale (a reused pid). Callers that wait for a daemon
+ * they spawned must wait longer than this.
+ */
+export const OWNER_WAIT_MS = 10_000;
+
 /** Default wait for one socket exchange. */
 export const CLIENT_TIMEOUT_MS = 5000;
 

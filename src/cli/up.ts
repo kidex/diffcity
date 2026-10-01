@@ -10,6 +10,7 @@ import { readVersion } from '../core/version.js';
 import {
   EXIT_PORT_IN_USE,
   findRunningDaemon,
+  OWNER_WAIT_MS,
   portInUseMessage,
   spawnDaemon as defaultSpawnDaemon,
   waitForDaemon,
@@ -17,8 +18,12 @@ import {
 import { isPort, resolvePort, writeState } from '../daemon/files.js';
 import { openBrowser } from './open.js';
 
-/** How long `up` waits for a detached daemon to write daemon.json. */
-export const UP_START_TIMEOUT_MS = 10_000;
+/**
+ * How long `up` waits for a detached daemon to write daemon.json: longer than
+ * the daemon's own wait for a live lock owner (OWNER_WAIT_MS) before it takes
+ * the lock over, plus 10 s to start.
+ */
+export const UP_START_TIMEOUT_MS = OWNER_WAIT_MS + 10_000;
 
 export interface UpCommandOptions {
   port?: string;

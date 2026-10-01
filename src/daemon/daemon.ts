@@ -8,7 +8,7 @@ import type { AddressInfo } from 'node:net';
 import { ensureHome, homePaths, resolveHome } from '../core/home.js';
 import type { DaemonInfo } from '../core/model/types.js';
 import { readVersion } from '../core/version.js';
-import { findRunningDaemon, waitForDaemon } from './client.js';
+import { findRunningDaemon, OWNER_WAIT_MS, waitForDaemon } from './client.js';
 import { acquireLock, isProcessAlive, releaseLock, removeDaemonFiles, resolvePort, writeDaemonInfo } from './files.js';
 import { buildHttpServer, HTTP_HOST } from './http/server.js';
 import { createFileLogger, errorMessage, type Logger } from './log.js';
@@ -23,8 +23,7 @@ export const DEFAULT_UI_DIR = fileURLToPath(new URL('../../dist/ui/', import.met
 /** How long a shutdown waits for the servers and the plugins to stop before it is forced. */
 export const SHUTDOWN_TIMEOUT_MS = 10_000;
 
-/** How long a live lock owner is given to answer `ping` before its lock is taken as stale. */
-export const OWNER_WAIT_MS = 10_000;
+export { OWNER_WAIT_MS } from './client.js';
 
 export interface StartDaemonOptions {
   env?: NodeJS.ProcessEnv;

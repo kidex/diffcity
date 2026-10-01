@@ -3,7 +3,7 @@
 // daemon is stopped in afterEach. No test opens a real browser: spawned runs
 // pass --no-open, in-process runs inject openUrl.
 
-import { mkdir, readFile, rm, stat } from 'node:fs/promises';
+import { mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { createServer, type Server } from 'node:net';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -11,8 +11,8 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { homePaths, type HomePaths } from '../../../src/core/home.js';
 import type { DaemonInfo } from '../../../src/core/model/types.js';
 import { readVersion } from '../../../src/core/version.js';
-import { runUp } from '../../../src/cli/up.js';
-import { sendRequest, spawnDaemon } from '../../../src/daemon/client.js';
+import { runUp, UP_START_TIMEOUT_MS } from '../../../src/cli/up.js';
+import { OWNER_WAIT_MS, sendRequest, spawnDaemon } from '../../../src/daemon/client.js';
 import { isProcessAlive, readDaemonInfo, writeDaemonInfo } from '../../../src/daemon/files.js';
 import { tempHome, type TempHome } from '../../helpers/config.js';
 import { CLI_DIST, DAEMON_MAIN_DIST, DaemonTracker, waitFor } from '../../helpers/daemon.js';
@@ -153,6 +153,22 @@ describe('diffcity up', () => {
     expect(info?.pid).not.toBe(999_999);
     expect(result.stdout).toBe(`http://127.0.0.1:${String(info?.port)}\n`);
   });
+
+  it('waits past the owner wait: a lock held by a live non-daemon process is taken over and up succeeds', async () => {
+    expect(UP_START_TIMEOUT_MS).toBe(OWNER_WAIT_MS + 10_000);
+    // A live process whose pid sits in the lock but never answers ping (a reused pid).
+    const holder = daemons.spawn('-e', ['setInterval(() => undefined, 1000)'], temp.env);
+    await mkdir(paths.home, { recursive: true, mode: 0o700 });
+    await writeFile(paths.lock, `${String(holder.child.pid)}\n`);
+    const started = Date.now();
+    const result = await up(['--port', '0', '--no-open']);
+    expect(result.stderr).toBe('');
+    expect(result.code).toBe(0);
+    expect(Date.now() - started).toBeGreaterThanOrEqual(OWNER_WAIT_MS);
+    const info = await readDaemonInfo(paths);
+    expect(result.stdout).toBe(`http://127.0.0.1:${String(info?.port)}\n`);
+    holder.child.kill('SIGKILL');
+  }, 60_000);
 
   it.each(['abc', '-1', '65536', '1.5'])('refuses --port %s', async (port) => {
     const result = await up(['--port', port, '--no-open']);
