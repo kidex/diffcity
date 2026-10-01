@@ -1,6 +1,7 @@
 // e2e/fleet/focus-kept (ADR-022: "keeps focus and scroll position across live
 // updates"): a live refetch or the relative-time clock updates the Fleet in
-// place, so the keyboard user's focus stays where it was.
+// place, and a reorder moves the focused lot or row without blurring it, so
+// the keyboard user's focus stays where it was.
 
 import { expect, test, type Page } from '@playwright/test';
 import { fixtures, mockApi } from '../../support/mock-api.js';
@@ -47,3 +48,54 @@ test('a focused row link keeps focus when the clock redraws relative times', asy
   await expect(event).toHaveText('42 min ago');
   await expect(link).toBeFocused();
 });
+
+for (const browser of ['with moveBefore', 'without moveBefore'] as const) {
+  test(`a focused lot keeps focus when SSE moves it to first (${browser})`, async ({ page }, testInfo) => {
+    // Older browsers have no Element.moveBefore: renderList then moves with
+    // insertBefore and puts focus back.
+    if (browser === 'without moveBefore') await page.addInitScript('delete Element.prototype.moveBefore');
+    const repos = fixtures.fleetThreeRepos();
+    await mockApi(page, { repos });
+    await tagClient(page, testInfo.testId);
+    await page.goto('/#/');
+    await expect(page.getByTestId('daemon')).toHaveAttribute('data-state', 'connected');
+    expect(await page.evaluate<boolean>('typeof Element.prototype.moveBefore === "function"')).toBe(browser === 'with moveBefore');
+
+    const lot = page.locator('[data-testid="lot"][data-repo-id="3"]');
+    await expect(page.getByTestId('lot').last()).toHaveAttribute('data-repo-id', '3');
+    await lot.focus();
+    await expect(lot).toBeFocused();
+
+    // docs-site gets a new event: the daemon now lists it first.
+    const docs = repos.splice(2, 1)[0];
+    if (!docs) throw new Error('fleet-three-repos.json has no third repo');
+    repos.unshift({ ...docs, lastEventAt: '2026-05-04T11:59:00.000Z', unreviewed: 2 });
+    await emitSse(page, testInfo.testId, 'repo', { repoId: docs.id });
+
+    await expect(page.getByTestId('lot').first()).toHaveAttribute('data-repo-id', '3');
+    await expect(page.getByTestId('repo-row').first()).toContainText('docs-site');
+    await expect(lot).toBeFocused();
+    await expect(lot).toHaveClass(/hot/);
+  });
+
+  test(`a focused row link keeps focus when SSE moves its row to first (${browser})`, async ({ page }, testInfo) => {
+    if (browser === 'without moveBefore') await page.addInitScript('delete Element.prototype.moveBefore');
+    const repos = fixtures.fleetThreeRepos();
+    await mockApi(page, { repos });
+    await tagClient(page, testInfo.testId);
+    await page.goto('/#/');
+    await expect(page.getByTestId('daemon')).toHaveAttribute('data-state', 'connected');
+
+    const link = page.getByTestId('repo-row').getByRole('link', { name: 'docs-site', exact: true });
+    await link.focus();
+    await expect(link).toBeFocused();
+
+    const docs = repos.splice(2, 1)[0];
+    if (!docs) throw new Error('fleet-three-repos.json has no third repo');
+    repos.unshift({ ...docs, lastEventAt: '2026-05-04T11:59:00.000Z' });
+    await emitSse(page, testInfo.testId, 'repo', { repoId: docs.id });
+
+    await expect(page.getByTestId('repo-row').first()).toContainText('docs-site');
+    await expect(link).toBeFocused();
+  });
+}
