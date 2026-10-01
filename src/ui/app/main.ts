@@ -37,7 +37,7 @@ function mountScreen(route: Route): void {
   mounted = route;
   switch (route.name) {
     case 'fleet':
-      unmount = mountFleet(view);
+      unmount = mountFleet(view, context);
       break;
     case 'repo':
       unmount = mountRepo(view, route.id);

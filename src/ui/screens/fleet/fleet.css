@@ -1,0 +1,169 @@
+/*
+ * Fleet screen. Built from the mockup's tokens and components: the map is the
+ * mockup's .city backdrop with its ground grid, title and .legend; a lot is
+ * the scene's lot (--plot face, --plot-line edge) tinted by its audit-age
+ * token; the hover card is the mockup's .tip; the list rows behave like the
+ * reading panel's .step (hover background, --sig left rule).
+ */
+
+/* audit age → the colour every lot, gradient stop and legend swatch uses */
+.audit-fresh { --lot: var(--audit-fresh); }
+.audit-aging { --lot: var(--audit-aging); }
+.audit-stale { --lot: var(--audit-stale); }
+.audit-never { --lot: var(--audit-never); }
+
+.stage.fleet { display: flex; flex-direction: column; }
+
+/* ---------- map ---------- */
+.fleet-map { position: relative; margin: 0; flex: 0 0 auto; min-height: 320px; }
+.fleet-map::before {
+  content: ""; position: absolute; inset: 0; pointer-events: none;
+  background-image:
+    linear-gradient(var(--grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+  background-size: 28px 28px;
+  background-position: center top;
+  opacity: .7;
+  -webkit-mask-image: radial-gradient(ellipse 70% 75% at 50% 52%, #000 35%, transparent 100%);
+  mask-image: radial-gradient(ellipse 70% 75% at 50% 52%, #000 35%, transparent 100%);
+}
+.fleet-map > .title { position: absolute; left: 22px; top: 18px; padding: 0; pointer-events: none; z-index: 1; }
+.fleet-svg { position: relative; display: block; width: 100%; overflow: visible; }
+
+.lot { cursor: pointer; outline: none; transition: transform .45s cubic-bezier(.2, .7, .2, 1), opacity .2s ease; }
+.lot.inactive { opacity: .5; }
+.lot .shadow {
+  fill: var(--bg-deep); opacity: .55; filter: blur(7px);
+  transition: opacity .18s ease, transform .18s ease;
+}
+.lot .side { fill: color-mix(in srgb, var(--lot) 30%, var(--bg-deep)); }
+.lot .face { transition: transform .18s ease; }
+.lot .top { stroke: none; }
+.face-hi { stop-color: color-mix(in srgb, var(--lot) 26%, var(--panel-2)); }
+.face-lo { stop-color: color-mix(in srgb, var(--lot) 10%, var(--plot)); }
+.lot .texture { fill: url(#fleet-plot); opacity: .45; }
+.fleet-svg .plot-line { fill: none; stroke: var(--plot-line); stroke-width: 1; opacity: .5; }
+.lot .edge { fill: none; stroke: color-mix(in srgb, var(--lot) 80%, transparent); stroke-width: 1.5; transition: stroke .18s ease; }
+.lot .ring { fill: none; stroke: var(--sig); stroke-width: 2; opacity: 0; }
+.lot .count { fill: var(--ink); font-family: var(--sans); font-weight: 600; letter-spacing: -.02em; text-anchor: middle; }
+.lot .count.zero { fill: var(--muted); }
+.lot .count-label { fill: var(--muted); font-family: var(--sans); font-size: 11px; text-anchor: middle; }
+.lot .name { fill: var(--ink); font-family: var(--mono); font-size: 12.5px; font-weight: 500; text-anchor: middle; }
+.lot .sub { fill: var(--muted); font-family: var(--sans); font-size: 11.5px; text-anchor: middle; }
+.lot.error .sub { fill: var(--del); }
+.lot.collecting .sub { fill: var(--sig); }
+
+.lot:hover .face, .lot.hot .face, .lot:focus-visible .face { transform: translateY(-3px); }
+.lot:hover .shadow, .lot.hot .shadow, .lot:focus-visible .shadow { opacity: .85; transform: translateY(3px); }
+.lot:hover .edge, .lot.hot .edge, .lot:focus-visible .edge { stroke: var(--ink-2); }
+.lot:focus-visible .ring { opacity: 1; }
+
+.pip-collecting circle { fill: var(--sig); }
+.pip-collecting .pulse { transform-box: fill-box; transform-origin: center; animation: fleet-pulse 1.6s ease-out infinite; }
+.pip-error circle { fill: var(--del); }
+.pip-error text { fill: var(--bg-deep); font-family: var(--sans); font-size: 11px; font-weight: 700; text-anchor: middle; }
+@keyframes fleet-pulse { from { transform: scale(1); opacity: .7; } to { transform: scale(2.8); opacity: 0; } }
+
+/* the mockup's hover card */
+.fleet-map .tip {
+  position: absolute; pointer-events: none; opacity: 0; transform: translateY(4px);
+  transition: opacity .12s ease, transform .12s ease;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+  padding: 10px 12px; width: 220px; box-shadow: 0 14px 40px rgba(0,0,0,.35);
+  font-size: 12.5px; z-index: 5;
+}
+.fleet-map .tip.show { opacity: 1; transform: translateY(0); }
+.fleet-map .tip .f { font-family: var(--mono); font-size: 12px; color: var(--ink); }
+.fleet-map .tip .p { color: var(--muted); font-size: 11.5px; margin-bottom: 6px; font-family: var(--mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fleet-map .tip .row { display: flex; gap: 10px; color: var(--ink-2); }
+.fleet-map .tip .row b { font-weight: 600; color: var(--ink); }
+.fleet-map .tip .pins { margin-top: 6px; color: var(--muted); }
+
+/* the mockup's legend */
+.fleet-map .legend { position: absolute; left: 22px; bottom: 18px; display: flex; gap: 14px; flex-wrap: wrap; align-items: center; color: var(--ink-2); font-size: 12.5px; }
+.fleet-map .legend span { display: inline-flex; align-items: center; gap: 6px; }
+.fleet-map .legend .g { display: inline-flex; gap: 12px; padding-right: 12px; margin-right: 2px; border-right: 1px solid var(--line); }
+.fleet-map .legend .legend-title { color: var(--muted); }
+.fleet-map .legend i { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
+.fleet-map .legend i.audit { background: var(--lot); }
+.fleet-map .legend i.size {
+  width: 14px; height: 14px; border: 1.5px solid var(--plot-line);
+  background: linear-gradient(var(--plot-line), var(--plot-line)) left bottom / 7px 7px no-repeat;
+}
+.fleet-map .legend i.dim { background: var(--audit-never); opacity: .5; }
+
+/* ---------- list ---------- */
+.fleet-list { flex: 1 0 auto; background: var(--panel); border-top: 1px solid var(--line); }
+.fleet-list header { padding: 18px 22px 12px; }
+.fleet-list h2 { margin: 0; font-size: 16px; font-weight: 600; letter-spacing: -.01em; }
+.fleet-list h2 .cnt { margin-left: 8px; color: var(--muted); font-weight: 400; font-size: 13px; }
+.fleet-list header p { margin: 4px 0 0; color: var(--muted); font-size: 12.5px; }
+.fleet-list table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.fleet-list th[scope="col"] {
+  text-align: right; font-weight: 500; font-size: 12px; color: var(--muted);
+  padding: 8px 14px; border-bottom: 1px solid var(--line-soft); white-space: nowrap;
+}
+.fleet-list th[scope="col"][data-col="repo"],
+.fleet-list th[scope="col"][data-col="audit"],
+.fleet-list th[scope="col"][data-col="event"] { text-align: left; }
+.fleet-list th[scope="col"]:first-child { padding-left: 22px; }
+.fleet-list th[scope="col"]:last-child, .fleet-list td:last-child { padding-right: 22px; }
+.fleet-list tbody tr { cursor: pointer; transition: background .15s ease, opacity .2s ease; }
+.fleet-list tbody tr > * { padding: 12px 14px; border-bottom: 1px solid var(--line-soft); vertical-align: middle; text-align: left; font-weight: 400; }
+.fleet-list tbody tr > :first-child { padding-left: 22px; transition: box-shadow .15s ease; }
+.fleet-list tbody tr:hover, .fleet-list tbody tr.hot, .fleet-list tbody tr:focus-within { background: color-mix(in srgb, var(--panel-2) 70%, transparent); }
+/* the reading panel's .step.on rule, drawn as a shadow so the row line runs to the edge */
+.fleet-list tbody tr.hot > :first-child, .fleet-list tbody tr:focus-within > :first-child { box-shadow: inset 3px 0 0 var(--sig); }
+.fleet-list tbody tr.inactive { opacity: .55; }
+.fleet-list tbody tr.inactive:hover, .fleet-list tbody tr.inactive.hot { opacity: .8; }
+
+.fleet-list .name-line { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.fleet-list .name { font-family: var(--mono); font-size: 13px; font-weight: 500; color: var(--ink); text-decoration: none; }
+.fleet-list .name:hover { text-decoration: underline; text-decoration-color: var(--plot-line); text-underline-offset: 3px; }
+.fleet-list .path { margin-top: 2px; color: var(--muted); font-family: var(--mono); font-size: 11.5px; }
+.fleet-list .note { display: block; margin-top: 4px; color: var(--muted); font-size: 12px; }
+.fleet-list .note.error { color: var(--del); max-width: 60ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fleet-list .tag.collecting { display: inline-flex; align-items: center; gap: 6px; color: var(--sig); background: color-mix(in srgb, var(--sig) 16%, transparent); }
+.fleet-list .tag.collecting i { width: 6px; height: 6px; border-radius: 50%; background: var(--sig); animation: daemon-pulse 1.2s ease-in-out infinite; }
+
+.fleet-list td.num { text-align: right; font-family: var(--mono); font-variant-numeric: tabular-nums; color: var(--ink); }
+.fleet-list td.num.zero { color: var(--muted); }
+.fleet-list td.num.strong:not(.zero) { font-weight: 600; }
+.fleet-list td.num.high { color: var(--sev-high); font-weight: 600; }
+.fleet-list td.when { color: var(--ink-2); white-space: nowrap; }
+.fleet-list td.when.never, .fleet-list td.when .none { color: var(--muted); }
+
+@media (max-width: 760px) {
+  .fleet-list [data-col="draft"], .fleet-list [data-col="branch"], .fleet-list [data-col="pr"], .fleet-list [data-col="audit"] { display: none; }
+  .fleet-map > .title p { display: none; }
+}
+
+/* ---------- loading, empty, unreachable ---------- */
+.fleet-hero { position: relative; flex: 1 0 auto; padding-bottom: 40px; }
+.fleet-status { margin: 0; padding: 24px 22px; color: var(--muted); font-size: 13px; }
+.fleet-empty { margin: 10vh auto 0; max-width: 480px; padding: 0 22px; text-align: center; }
+.fleet-empty h2 { margin: 0; font-size: 18px; font-weight: 600; letter-spacing: -.01em; }
+.fleet-empty p { margin: 6px auto 0; color: var(--muted); font-size: 13px; max-width: 46ch; }
+.empty-lot {
+  position: relative; width: 96px; height: 96px; margin: 0 auto 24px; border-radius: 14px;
+  border: 1.5px dashed var(--plot-line);
+  background:
+    linear-gradient(var(--grid) 1px, transparent 1px) 0 0 / 12px 12px,
+    linear-gradient(90deg, var(--grid) 1px, transparent 1px) 0 0 / 12px 12px,
+    color-mix(in srgb, var(--audit-never) 10%, var(--plot));
+  box-shadow: 0 16px 30px -12px color-mix(in srgb, var(--bg-deep) 90%, transparent);
+}
+.empty-lot span::before, .empty-lot span::after {
+  content: ""; position: absolute; left: 50%; top: 50%; background: var(--muted); border-radius: 1px;
+}
+.empty-lot span::before { width: 18px; height: 2px; translate: -50% -50%; }
+.empty-lot span::after { width: 2px; height: 18px; translate: -50% -50%; }
+.fleet-empty .cmd {
+  display: inline-flex; align-items: center; gap: 10px; margin-top: 20px;
+  padding: 7px 7px 7px 14px; border-radius: 10px;
+  background: var(--code-bg); border: 1px solid var(--line);
+  font-family: var(--mono); font-size: 14px;
+}
+.fleet-empty .cmd .prompt { color: var(--muted); }
+.fleet-empty .cmd code { color: var(--ink); font-family: var(--mono); }
+.fleet-empty .copy { padding: 4px 10px; font-size: 12px; }
