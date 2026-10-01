@@ -9,8 +9,8 @@ export default defineConfig({
     // Points DIFFCITY_HOME and HOME at a fresh temporary directory for each test file (ADR-015).
     setupFiles: ['test/setup/home.ts'],
     // Integration tests spawn many git processes; under parallel load they exceed the 5 s default.
-    testTimeout: 30_000,
+    testTimeout: 60_000,
     // Shared-repo beforeAll hooks spawn as many git processes as a test does.
-    hookTimeout: 30_000,
+    hookTimeout: 60_000,
   },
 });
