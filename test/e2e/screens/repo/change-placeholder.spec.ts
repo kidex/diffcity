@@ -83,3 +83,9 @@ test('an archived change opens from the archive', async ({ page }) => {
   await expect(page).toHaveURL(/#\/change\/21$/);
   await expect(page.getByTestId('change-head')).toContainText('Merged');
 });
+
+test('the header keeps its bottom padding over the stage title rule', async ({ page }) => {
+  await mockApi(page);
+  await page.goto('/#/change/11');
+  await expect(page.getByTestId('change-head')).toHaveCSS('padding-bottom', '16px');
+});
