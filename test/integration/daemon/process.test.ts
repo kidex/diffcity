@@ -2,9 +2,10 @@
 // single instance, stale locks, shutdown cleanup, the relocated socket and
 // the HTTP surface. Every daemon is stopped in afterEach.
 
-import { spawnSync } from 'node:child_process';
-import { readFile, stat, writeFile, mkdir } from 'node:fs/promises';
+import { spawn, spawnSync } from 'node:child_process';
+import { mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { homePaths, MAX_SOCKET_PATH_BYTES, type HomePaths } from '../../../src/core/home.js';
 import type { DaemonInfo, HealthResponse } from '../../../src/core/model/types.js';
@@ -73,29 +74,43 @@ describe('daemon process', () => {
   });
 
   it('daemon/stale-lock-race: separate processes racing for a stale lock, exactly one acquires it', async () => {
-    const { execFile } = await import('node:child_process');
-    const { fileURLToPath } = await import('node:url');
     const dist = (path: string): string => fileURLToPath(new URL(`../../../dist/${path}`, import.meta.url));
-    // Each racer tries the lock, prints the result, and holds it for a moment before exiting.
+    const release = join(temp.root, 'release');
+    // Each racer tries the lock, prints the result, and stays alive (holding a
+    // won lock) until the test has every result: an exited winner would make
+    // a late racer's takeover legitimate.
     const script = [
+      `import { existsSync } from 'node:fs';`,
       `import { acquireLock } from ${JSON.stringify(dist('daemon/files.js'))};`,
       `import { homePaths } from ${JSON.stringify(dist('core/home.js'))};`,
       `const result = await acquireLock(homePaths(process.env.DIFFCITY_HOME), { pid: process.pid });`,
-      'process.stdout.write(JSON.stringify(result));',
-      'await new Promise((resolve) => setTimeout(resolve, 300));',
+      'process.stdout.write(JSON.stringify(result) + "\\n");',
+      `while (!existsSync(${JSON.stringify(release)})) await new Promise((resolve) => setTimeout(resolve, 10));`,
     ].join('\n');
-    const race = (): Promise<{ acquired: boolean }> =>
-      new Promise((resolve, reject) => {
-        execFile(process.execPath, ['--input-type=module', '-e', script], { env: temp.env }, (error, stdout) => {
-          if (error !== null) reject(new Error(`racer failed: ${error.message}`));
-          else resolve(JSON.parse(stdout) as { acquired: boolean });
+    const race = (): { result: Promise<{ acquired: boolean }>; exited: Promise<number | null> } => {
+      const child = spawn(process.execPath, ['--input-type=module', '-e', script], { env: temp.env, stdio: ['ignore', 'pipe', 'inherit'] });
+      let out = '';
+      const result = new Promise<{ acquired: boolean }>((resolve, reject) => {
+        child.stdout.setEncoding('utf8').on('data', (chunk: string) => {
+          out += chunk;
+          if (out.includes('\n')) resolve(JSON.parse(out) as { acquired: boolean });
+        });
+        child.once('exit', (code) => {
+          reject(new Error(`racer exited with ${String(code)} before reporting`));
         });
       });
+      const exited = new Promise<number | null>((resolve) => child.once('exit', resolve));
+      return { result, exited };
+    };
     await mkdir(paths.home, { recursive: true, mode: 0o700 });
     for (let run = 0; run < 15; run++) {
+      await rm(release, { force: true });
       const dead = spawnSync(process.execPath, ['-e', 'process.stdout.write(String(process.pid))'], { encoding: 'utf8' });
       await writeFile(paths.lock, `${dead.stdout}\n`);
-      const results = await Promise.all([race(), race(), race()]);
+      const racers = [race(), race(), race()];
+      const results = await Promise.all(racers.map((racer) => racer.result));
+      await writeFile(release, '');
+      await Promise.all(racers.map((racer) => racer.exited));
       expect(results.filter((result) => result.acquired), `run ${String(run)}`).toHaveLength(1);
     }
   });
@@ -120,6 +135,33 @@ describe('daemon process', () => {
     expect(await spawned.exited).toBe(0);
     expect(Date.now() - started).toBeLessThan(3000);
     sse.close();
+  });
+
+  describe('shutdown deadline', () => {
+    const fixture = fileURLToPath(new URL('../../fixtures/daemon/hanging-stop.mjs', import.meta.url));
+
+    it('a plugin stop that hangs past the deadline: exit 1, files removed', async () => {
+      const spawned = daemons.spawn(fixture, ['300'], temp.env);
+      await waitFor(() => spawned.stdout().includes('ready'), 10_000, 'ready');
+      const started = Date.now();
+      spawned.child.kill('SIGTERM');
+      expect(await spawned.exited).toBe(1);
+      expect(Date.now() - started).toBeLessThan(5000);
+      for (const file of [paths.daemonJson, paths.socket, paths.lock]) expect(await gone(file)).toBe(true);
+      expect(await readFile(paths.log, 'utf8')).toMatch(/did not stop within 300 ms/);
+    });
+
+    it('a second signal forces the exit at once', async () => {
+      const spawned = daemons.spawn(fixture, ['60000'], temp.env);
+      await waitFor(() => spawned.stdout().includes('ready'), 10_000, 'ready');
+      spawned.child.kill('SIGTERM');
+      await waitFor(async () => (await readFile(paths.log, 'utf8')).includes('shutting down'), 5000, 'the shutdown to start');
+      const started = Date.now();
+      spawned.child.kill('SIGINT');
+      expect(await spawned.exited).toBe(1);
+      expect(Date.now() - started).toBeLessThan(3000);
+      for (const file of [paths.daemonJson, paths.socket, paths.lock]) expect(await gone(file)).toBe(true);
+    });
   });
 
   it('daemon/long-home-socket-path: a long home puts the socket in the temporary directory', async () => {

@@ -102,6 +102,85 @@ describe('daemon plugins', () => {
     for (const file of [paths.daemonJson, paths.lock, paths.socket]) await expect(stat(file)).rejects.toThrow(/ENOENT/);
   });
 
+  it('a plugin stop that hangs is abandoned at the deadline; the files are still removed', async () => {
+    const result = await startDaemon({
+      env: temp.env,
+      port: 0,
+      log: quietLog(),
+      stopTimeoutMs: 200,
+      plugins: [{ name: 'hanging', stop: () => new Promise<void>(() => undefined) }],
+    });
+    if (result.status !== 'started') throw new Error('not started');
+    const started = Date.now();
+    await result.daemon.shutdown('test');
+    expect(Date.now() - started).toBeLessThan(2000);
+    expect(result.daemon.forced).toBe(true);
+    for (const file of [paths.daemonJson, paths.lock, paths.socket]) await expect(stat(file)).rejects.toThrow(/ENOENT/);
+  });
+
+  it('forceShutdown() ends a shutdown that is waiting on a plugin stop', async () => {
+    const result = await startDaemon({
+      env: temp.env,
+      port: 0,
+      log: quietLog(),
+      stopTimeoutMs: 60_000,
+      plugins: [{ name: 'hanging', stop: () => new Promise<void>(() => undefined) }],
+    });
+    if (result.status !== 'started') throw new Error('not started');
+    const shutdown = result.daemon.shutdown('first signal');
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    await result.daemon.forceShutdown('second signal');
+    await shutdown;
+    expect(result.daemon.forced).toBe(true);
+    for (const file of [paths.daemonJson, paths.lock, paths.socket]) await expect(stat(file)).rejects.toThrow(/ENOENT/);
+  });
+
+  it('a graceful shutdown is not forced', async () => {
+    const daemon = await start([]);
+    await daemon.shutdown('test');
+    expect(daemon.forced).toBe(false);
+  });
+
+  it('stop runs once for every plugin whose setup ran, even when its start never did', async () => {
+    const events: string[] = [];
+    const plugin = (name: string, failSetup = false): DaemonPlugin => ({
+      name,
+      setup: () => {
+        events.push(`${name}.setup`);
+        if (failSetup) throw new Error(`${name} setup failed`);
+      },
+      start: () => {
+        events.push(`${name}.start`);
+      },
+      stop: () => {
+        events.push(`${name}.stop`);
+      },
+    });
+    await expect(
+      startDaemon({ env: temp.env, port: 0, log: quietLog(), plugins: [plugin('a'), plugin('b', true), plugin('c')] }),
+    ).rejects.toThrow(/b setup failed/);
+    expect(events).toEqual(['a.setup', 'b.setup', 'b.stop', 'a.stop']);
+  });
+
+  it('a failing plugin start stops every plugin once, started or not', async () => {
+    const events: string[] = [];
+    const plugin = (name: string, failStart = false): DaemonPlugin => ({
+      name,
+      start: () => {
+        events.push(`${name}.start`);
+        if (failStart) throw new Error(`${name} start failed`);
+      },
+      stop: () => {
+        events.push(`${name}.stop`);
+      },
+    });
+    await expect(
+      startDaemon({ env: temp.env, port: 0, log: quietLog(), plugins: [plugin('a', true), plugin('b')] }),
+    ).rejects.toThrow(/a start failed/);
+    expect(events).toEqual(['a.start', 'b.stop', 'a.stop']);
+    for (const file of [paths.daemonJson, paths.lock, paths.socket]) await expect(stat(file)).rejects.toThrow(/ENOENT/);
+  });
+
   it('a failing plugin setup aborts the start and leaves no files', async () => {
     await expect(
       startDaemon({

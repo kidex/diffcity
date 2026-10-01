@@ -44,7 +44,16 @@ export interface DaemonPlugin {
   /**
    * On shutdown, in reverse plugin order, after the servers stopped accepting
    * requests and before daemon.json, the socket and the lock are removed.
-   * Errors are logged and do not stop the other plugins.
+   *
+   * Called at most once, for every plugin whose `setup` was called, including
+   * when `setup` itself threw, when `start` never ran (a later plugin's setup
+   * failed, or the port was taken) or when `start` threw. A stop must therefore
+   * release only what was actually acquired and tolerate never having started.
+   *
+   * Errors are logged and do not stop the other plugins. The servers and all
+   * stops share a deadline (SHUTDOWN_TIMEOUT_MS, 10 s), and a second SIGTERM or
+   * SIGINT stops waiting at once: a stop still pending then is abandoned and the
+   * process exits with code 1.
    */
   stop?(context: DaemonContext): void | Promise<void>;
 }

@@ -46,7 +46,14 @@ export function buildProgram(io: CliIo = defaultIo): Command {
     .option('--foreground', 'run the daemon in this process, logging to stderr')
     .action(async (options: UpCommandOptions) => {
       const { runUp } = await import('./up.js');
-      process.exitCode = await runUp(options, { io, env: io.env?.() ?? process.env });
+      const code = await runUp(options, { io, env: io.env?.() ?? process.env });
+      process.exitCode = code;
+      // A foreground daemon has stopped: exit even if a forced shutdown left a plugin's handles open.
+      if (options.foreground === true) {
+        process.stdout.write('', () => {
+          process.stderr.write('', () => process.exit(code));
+        });
+      }
     });
 
   program

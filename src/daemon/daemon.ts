@@ -20,6 +20,9 @@ import { createSseHub } from './sse.js';
 /** The built UI: dist/ui at the package root, from both src/daemon/ and dist/daemon/. */
 export const DEFAULT_UI_DIR = fileURLToPath(new URL('../../dist/ui/', import.meta.url));
 
+/** How long a shutdown waits for the servers and the plugins to stop before it is forced. */
+export const SHUTDOWN_TIMEOUT_MS = 10_000;
+
 /** How long a live lock owner is given to answer `ping` before its lock is taken as stale. */
 export const OWNER_WAIT_MS = 10_000;
 
@@ -32,13 +35,23 @@ export interface StartDaemonOptions {
   plugins?: readonly DaemonPlugin[];
   uiDir?: string;
   ownerWaitMs?: number;
+  /** Defaults to SHUTDOWN_TIMEOUT_MS. */
+  stopTimeoutMs?: number;
 }
 
 export interface RunningDaemon {
   readonly info: DaemonInfo;
   readonly context: DaemonContext;
-  /** Graceful shutdown; idempotent. */
+  /**
+   * Graceful shutdown; idempotent. The servers and the plugins get
+   * `stopTimeoutMs` to stop; past that the shutdown is forced. daemon.json, the
+   * socket and the lock are removed either way.
+   */
   shutdown(reason: string): Promise<void>;
+  /** Stops waiting for the servers and the plugins (a second signal): removes the files and resolves `closed`. */
+  forceShutdown(reason: string): Promise<void>;
+  /** True once a shutdown was forced, by the deadline or by forceShutdown(). */
+  readonly forced: boolean;
   /** Resolves once a shutdown has finished. */
   readonly closed: Promise<void>;
 }
@@ -83,6 +96,13 @@ export async function startDaemon(options: StartDaemonOptions = {}): Promise<Sta
   let port = 0;
   let collecting = (): number => 0;
   let shutdownPromise: Promise<void> | null = null;
+  let forced = false;
+  let forceNow = (): void => undefined;
+  const forceRequested = new Promise<string>((resolve) => {
+    forceNow = () => {
+      resolve('forced');
+    };
+  });
   let resolveClosed = (): void => undefined;
   const closed = new Promise<void>((resolve) => {
     resolveClosed = resolve;
@@ -129,8 +149,12 @@ export async function startDaemon(options: StartDaemonOptions = {}): Promise<Sta
     port: () => port,
   });
 
+  // stop runs at most once per plugin, for every plugin whose setup was called.
+  const stopped = new Set<DaemonPlugin>();
   const stopPlugins = async (started: readonly DaemonPlugin[]): Promise<void> => {
     for (const plugin of [...started].reverse()) {
+      if (stopped.has(plugin)) continue;
+      stopped.add(plugin);
       try {
         await plugin.stop?.(context);
       } catch (error) {
@@ -150,12 +174,29 @@ export async function startDaemon(options: StartDaemonOptions = {}): Promise<Sta
     };
     shutdownPromise ??= (async () => {
       log.info(`shutting down: ${reason}`);
-      await step('closing SSE', () => {
-        sse.close();
-      });
-      await step('closing the socket server', () => socketServer.close());
-      await step('closing the HTTP server', () => http.close());
-      await stopPlugins(setUp);
+      const stopTimeoutMs = options.stopTimeoutMs ?? SHUTDOWN_TIMEOUT_MS;
+      let deadline: NodeJS.Timeout | undefined;
+      const outcome = await Promise.race([
+        (async () => {
+          await step('closing SSE', () => {
+            sse.close();
+          });
+          await step('closing the socket server', () => socketServer.close());
+          await step('closing the HTTP server', () => http.close());
+          await stopPlugins(setUp);
+          return 'stopped';
+        })(),
+        new Promise<string>((resolve) => {
+          deadline = setTimeout(() => {
+            resolve('timeout');
+          }, stopTimeoutMs);
+        }),
+        forceRequested,
+      ]);
+      clearTimeout(deadline);
+      if (outcome === 'timeout') log.error(`the daemon did not stop within ${String(stopTimeoutMs)} ms; forcing the exit`);
+      if (outcome === 'forced') log.warn('shutdown forced; not waiting for the plugins to stop');
+      forced = outcome !== 'stopped';
       await step('removing the daemon files', () => removeDaemonFiles(paths, socketServer.bound(), pid));
       log.info('daemon stopped');
       if (ownsLog) log.close();
@@ -188,7 +229,21 @@ export async function startDaemon(options: StartDaemonOptions = {}): Promise<Sta
     log.info(`daemon v${version} ready on http://${HTTP_HOST}:${String(port)} (pid ${String(pid)}, socket ${paths.socket})`);
 
     for (const plugin of plugins) await plugin.start?.(context);
-    return { status: 'started', daemon: { info, context, shutdown, closed } };
+    const daemon: RunningDaemon = {
+      info,
+      context,
+      shutdown,
+      forceShutdown: async (reason) => {
+        log.warn(`forcing the shutdown: ${reason}`);
+        forceNow();
+        await shutdown(reason);
+      },
+      get forced() {
+        return forced;
+      },
+      closed,
+    };
+    return { status: 'started', daemon };
   } catch (error) {
     log.error(`daemon failed to start: ${errorMessage(error)}`);
     await shutdown('start failed');

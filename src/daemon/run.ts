@@ -21,7 +21,11 @@ export function daemonUrl(info: Pick<DaemonInfo, 'port'>): string {
   return `http://127.0.0.1:${String(info.port)}`;
 }
 
-/** Resolves with the process exit code once the daemon has stopped (or did not start). */
+/**
+ * Resolves with the process exit code once the daemon has stopped (or did not
+ * start): 1 when the shutdown was forced. The caller exits the process with it,
+ * since a forced shutdown may leave a plugin's handles open.
+ */
 export async function runDaemon(options: StartDaemonOptions, hooks: RunDaemonHooks): Promise<number> {
   let result;
   try {
@@ -48,8 +52,13 @@ export async function runDaemon(options: StartDaemonOptions, hooks: RunDaemonHoo
 
 async function untilStopped(daemon: RunningDaemon, ready: () => Promise<void>): Promise<number> {
   let exitCode = 0;
+  let signals = 0;
+  // The first SIGTERM/SIGINT shuts down gracefully (up to the deadline); a
+  // second one stops waiting for the plugins.
   const onSignal = (signal: NodeJS.Signals): void => {
-    void daemon.shutdown(signal);
+    signals++;
+    if (signals === 1) void daemon.shutdown(signal);
+    else void daemon.forceShutdown(`second signal (${signal})`);
   };
   const onCrash = (error: unknown): void => {
     exitCode = 1;
@@ -74,5 +83,6 @@ async function untilStopped(daemon: RunningDaemon, ready: () => Promise<void>): 
     process.off('uncaughtException', onCrash);
     process.off('unhandledRejection', onCrash);
   }
-  return exitCode;
+  // A forced shutdown left a plugin running: the caller must exit the process.
+  return daemon.forced ? 1 : exitCode;
 }
