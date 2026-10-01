@@ -130,7 +130,7 @@ interface Finding {
 }
 ```
 
-### 4.2 Database (`~/.config/diffcity/diffcity.db`, SQLite via better-sqlite3)
+### 4.2 Database (`~/.config/diffcity/diffcity.db`, SQLite via Node's built-in `node:sqlite`, no native build; ADR-025)
 
 | Table | Contents |
 |---|---|
