@@ -49,6 +49,8 @@ export function mountRepo(element: HTMLElement, context: DataContext, repoId: nu
 
   let detail: RepoDetail | null = null;
   let archivedChanges: ChangeSummary[] | null = null;
+  /** The last archive fetch failed; cleared by the next successful one. */
+  let archiveFailed = false;
   let showArchive = false;
   let filters: RepoFilters = NO_FILTERS;
   let failed: 'missing' | 'unreachable' | null = null;
@@ -205,7 +207,8 @@ export function mountRepo(element: HTMLElement, context: DataContext, repoId: nu
     list.render(rows, now, showArchive);
 
     let message = '';
-    if (source === null) message = 'Loading the archive…';
+    if (showArchive && archiveFailed) message = 'Can’t load the archive right now.';
+    else if (source === null) message = 'Loading the archive…';
     else if (all.length === 0) message = showArchive ? 'Nothing archived in the last 90 days.' : 'No changes yet. Drafts, branches and pull requests appear here as soon as diffcity sees them.';
     else if (rows.length === 0) message = 'No change matches these filters.';
     listStatus.textContent = message;
@@ -289,9 +292,11 @@ export function mountRepo(element: HTMLElement, context: DataContext, repoId: nu
       (signal) => api.archivedChanges(repoId, signal),
       (value) => {
         archivedChanges = value;
+        archiveFailed = false;
       },
       () => {
-        archivedChanges ??= [];
+        // Keep any archive already shown; say the refresh failed.
+        archiveFailed = true;
       },
     );
   }
