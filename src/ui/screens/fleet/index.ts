@@ -66,6 +66,8 @@ export function mountFleet(element: HTMLElement, context: DataContext): () => vo
   });
   list.onHot((id) => {
     map.setHot(id);
+    // A keyboard-focused lot keeps the highlight over a hovered row.
+    list.setHot(map.current);
   });
 
   const title = h(

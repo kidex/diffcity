@@ -25,8 +25,10 @@ const MONO_CHAR = 7.6;
 export interface FleetMap {
   readonly element: HTMLElement;
   render(repos: readonly RepoSummary[], now: number): void;
-  /** Highlights the lot of `repoId` (hover on its list row); null clears. */
+  /** Highlights the lot of `repoId` (hover on its list row); null clears. A focused lot keeps the highlight. */
   setHot(repoId: number | null): void;
+  /** The highlighted repo: the keyboard-focused lot when there is one, else the hovered lot or row. */
+  readonly current: number | null;
   /** Called when a lot is hovered or focused (null when it is left). */
   onHot(listener: (repoId: number | null) => void): void;
   dispose(): void;
@@ -90,6 +92,9 @@ export function createFleetMap(): FleetMap {
   let layout: MapLayout = { lots: [], height: 0 };
   let width = 0;
   let hot: number | null = null;
+  /** The lot holding keyboard focus; it wins over any pointer hover. */
+  let focused: number | null = null;
+  const current = (): number | null => focused ?? hot;
   /** The repo whose hover card is shown (pointer or focus on its lot); list hover shows none. */
   let tipFor: number | null = null;
   const hotListeners = new Set<(repoId: number | null) => void>();
@@ -129,15 +134,16 @@ export function createFleetMap(): FleetMap {
 
   function paintHot(): void {
     for (const lot of lots.children) {
-      if (lot instanceof SVGElement) lot.classList.toggle('hot', Number(lot.dataset['repoId']) === hot);
+      if (lot instanceof SVGElement) lot.classList.toggle('hot', Number(lot.dataset['repoId']) === current());
     }
   }
 
   function emitHot(repoId: number | null): void {
     hot = repoId;
     paintHot();
-    showTip(repos.find((repo) => repo.id === hot));
-    for (const listener of hotListeners) listener(repoId);
+    const shown = current();
+    showTip(repos.find((repo) => repo.id === shown));
+    for (const listener of hotListeners) listener(shown);
   }
 
   function createLot(repo: RepoSummary): SVGElement {
@@ -149,9 +155,11 @@ export function createFleetMap(): FleetMap {
       emitHot(null);
     });
     lot.addEventListener('focus', () => {
-      emitHot(Number(lot.dataset['repoId']));
+      focused = Number(lot.dataset['repoId']);
+      emitHot(focused);
     });
     lot.addEventListener('blur', () => {
+      focused = null;
       emitHot(null);
     });
     updateLot(lot, repo);
@@ -171,7 +179,7 @@ export function createFleetMap(): FleetMap {
     lot.classList.toggle('inactive', !repo.active);
     lot.classList.toggle('collecting', repo.collecting);
     lot.classList.toggle('error', repo.error !== null);
-    lot.classList.toggle('hot', repo.id === hot);
+    lot.classList.toggle('hot', repo.id === current());
     lot.style.transform = `translate(${String(place.x)}px, ${String(place.y)}px)`;
 
     // Rebuild the drawing only when it changes: a live refetch that brings
@@ -235,12 +243,16 @@ export function createFleetMap(): FleetMap {
       repos = next;
       now = at;
       if (hot !== null && !repos.some((repo) => repo.id === hot)) hot = null;
+      if (focused !== null && !repos.some((repo) => repo.id === focused)) focused = null;
       width = Math.round(element.clientWidth) || width || 960;
       relayout();
     },
     setHot(repoId) {
       hot = repoId;
       paintHot();
+    },
+    get current() {
+      return current();
     },
     onHot(listener) {
       hotListeners.add(listener);
