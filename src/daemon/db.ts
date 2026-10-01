@@ -25,8 +25,10 @@ export function getDb(context: DaemonContext): Promise<Db> {
   if (db === undefined) {
     db = open(context.paths.db);
     opened.set(context, db);
-    db.catch(() => {
-      opened.delete(context);
+    const pending = db;
+    // Only this open's own entry is dropped: a close and a new getDb may have replaced it meanwhile.
+    pending.catch(() => {
+      if (opened.get(context) === pending) opened.delete(context);
     });
   }
   return db;

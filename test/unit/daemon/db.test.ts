@@ -57,6 +57,20 @@ describe('getDb', () => {
     await expect(dbPlugin.stop?.(context())).resolves.toBeUndefined();
   });
 
+  it('a failing open still in flight does not drop the Db opened after a close', async () => {
+    // getDb reads context.paths on each open, so the first open fails and the reopen succeeds.
+    const ctx = { paths: homePaths(join(dir, 'missing', 'home')) };
+    const failing = getDb(ctx as unknown as DaemonContext);
+    const closing = closeDb(ctx as unknown as DaemonContext);
+    ctx.paths = homePaths(dir);
+    const reopened = getDb(ctx as unknown as DaemonContext);
+    await expect(failing).rejects.toThrow(/directory does not exist/);
+    await closing;
+    const db = await reopened;
+    expect(await getDb(ctx as unknown as DaemonContext)).toBe(db);
+    await closeDb(ctx as unknown as DaemonContext);
+  });
+
   it('a failed open rejects and is retried on the next call', async () => {
     const ctx = context(join(dir, 'missing', 'home'));
     await expect(getDb(ctx)).rejects.toThrow(/directory does not exist/);
