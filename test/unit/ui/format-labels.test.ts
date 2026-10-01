@@ -1,7 +1,21 @@
 // ui/format-labels (SPEC.md section 3a): Draft / Branch / PR #N and relative times.
 
 import { describe, expect, it } from 'vitest';
-import { aheadBehind, changeName, kindLabel, lastAuditLabel, plural, relativeTime } from '../../../src/ui/shared/format.js';
+import {
+  aheadBehind,
+  ARCHIVE_REASON_LABEL,
+  changeName,
+  EVENT_LABEL,
+  kindLabel,
+  lastAuditLabel,
+  plural,
+  refName,
+  relativeTime,
+  shortDate,
+  shortSha,
+  VERDICT_LABEL,
+  VERDICTS,
+} from '../../../src/ui/shared/format.js';
 
 const NOW = Date.parse('2026-05-04T12:00:00.000Z');
 const ago = (ms: number): string => new Date(NOW - ms).toISOString();
@@ -78,5 +92,34 @@ describe('ui/format-labels', () => {
   it('shows ahead and behind, and nothing when the head is not available', () => {
     expect(aheadBehind({ ahead: 2, behind: 1 })).toBe('2 ahead, 1 behind');
     expect(aheadBehind({ ahead: null, behind: null })).toBe('');
+  });
+
+  it('labels the verdicts as SPEC.md section 5.2, in its order', () => {
+    expect(VERDICTS.map((verdict) => VERDICT_LABEL[verdict])).toEqual([
+      'Needs your eyes',
+      'Risky',
+      'Outside the spec',
+      'Reviewed, fine',
+      'Untouched',
+    ]);
+  });
+
+  it('names where a change lives from its ref', () => {
+    expect(refName({ kind: 'branch', ref: 'branch:feature/order-discounts', prNumber: null })).toBe('feature/order-discounts');
+    expect(refName({ kind: 'pr', ref: 'pr:7', prNumber: 7 })).toBe('#7');
+    expect(refName({ kind: 'draft', ref: 'draft:.', prNumber: null })).toBe('main working tree');
+    expect(refName({ kind: 'draft', ref: 'draft:../sample-shop-hotfix', prNumber: null })).toBe('../sample-shop-hotfix');
+  });
+
+  it('labels the last event and the archive reason', () => {
+    expect(EVENT_LABEL.agent).toBe('Agent worked');
+    expect(EVENT_LABEL.commit).toBe('Commit');
+    expect(ARCHIVE_REASON_LABEL).toEqual({ merged: 'Merged', deleted: 'Branch deleted', closed: 'PR closed', clean: 'Draft cleaned' });
+  });
+
+  it('shows a date and a short sha', () => {
+    expect(shortDate('2026-05-02T09:00:00.000Z', 'UTC')).toBe('2 May 2026');
+    expect(shortDate('not a date')).toBe('not a date');
+    expect(shortSha('3f2a9c41d0b7e6a5c4d3e2f1a0b9c8d7e6f5a4b3')).toBe('3f2a9c4');
   });
 });
