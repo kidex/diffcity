@@ -1,0 +1,1751 @@
+{
+  "repo": {
+    "id": 1,
+    "name": "sample-shop-with-a-rather-long-repository-name",
+    "path": "/work/sample-shop-with-a-rather-long-repository-name",
+    "active": true,
+    "lastSeenAt": "2026-05-04T11:58:00.000Z",
+    "lastEventAt": "2026-05-04T11:19:00.000Z",
+    "counts": {
+      "draft": 15,
+      "branch": 15,
+      "pr": 14
+    },
+    "unreviewed": 3,
+    "highFindings": 0,
+    "lastAudit": null,
+    "collecting": false,
+    "error": null,
+    "watch": "full"
+  },
+  "changes": [
+    {
+      "id": 100,
+      "repoId": 1,
+      "kind": "draft",
+      "ref": "draft:../sample-shop-wt-0",
+      "prNumber": null,
+      "head": "64aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "headAvailable": true,
+      "dirty": true,
+      "base": "release/2026-spring-catalogue-overhaul",
+      "title": "Rework the loyalty points ledger so expired points are swept nightly and the customer statement shows each sweep with its reason (0)",
+      "ahead": 0,
+      "behind": 0,
+      "reviewState": "unreviewed",
+      "agentUnreviewed": true,
+      "lastEvent": {
+        "type": "agent",
+        "at": "2026-05-04T12:00:00.000Z"
+      },
+      "updatedAt": "2026-05-04T12:00:05.000Z",
+      "archivedAt": null,
+      "archiveReason": null,
+      "stats": {
+        "touchedFiles": 1,
+        "symbolsByStatus": {
+          "add": 0,
+          "mod": 0,
+          "sig": 0,
+          "del": 0,
+          "same": 40
+        },
+        "filesByVerdict": {
+          "eyes": 0,
+          "risky": 2,
+          "spec": 0,
+          "ok": 0,
+          "same": 3
+        },
+        "tier1Files": [
+          "src/payments/charge.ts"
+        ]
+      }
+    },
+    {
+      "id": 101,
+      "repoId": 1,
+      "kind": "branch",
+      "ref": "branch:feature/topic-1",
+      "prNumber": null,
+      "head": "65aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "headAvailable": true,
+      "dirty": false,
+      "base": "main",
+      "title": "Change number 1 to the sample shop",
+      "ahead": 7,
+      "behind": 3,
+      "reviewState": "unreviewed",
+      "agentUnreviewed": false,
+      "lastEvent": {
+        "type": "commit",
+        "at": "2026-05-04T11:23:00.000Z"
+      },
+      "updatedAt": "2026-05-04T11:23:05.000Z",
+      "archivedAt": null,
+      "archiveReason": null,
+      "stats": {
+        "touchedFiles": 14,
+        "symbolsByStatus": {
+          "add": 11,
+          "mod": 5,
+          "sig": 1,
+          "del": 2,
+          "same": 40
+        },
+        "filesByVerdict": {
+          "eyes": 1,
+          "risky": 0,
+          "spec": 1,
+          "ok": 1,
+          "same": 3
+        },
+        "tier1Files": []
+      }
+    },
+    {
+      "id": 102,
+      "repoId": 1,
+      "kind": "pr",
+      "ref": "pr:402",
+      "prNumber": 402,
+      "head": "66aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "headAvailable": false,
+      "dirty": false,
+      "base": "main",
+      "title": "Change number 2 to the sample shop",
+      "ahead": 14,
+      "behind": 6,
+      "reviewState": "unreviewed",
+      "agentUnreviewed": false,
+      "lastEvent": {
+        "type": "collect",
+        "at": "2026-05-04T10:46:00.000Z"
+      },
+      "updatedAt": "2026-05-04T10:46:05.000Z",
+      "archivedAt": null,
+      "archiveReason": null,
+      "stats": {
+        "touchedFiles": 27,
+        "symbolsByStatus": {
+          "add": 22,
+          "mod": 10,
+          "sig": 2,
+          "del": 4,
+          "same": 40
+        },
+        "filesByVerdict": {
+          "eyes": 2,
+          "risky": 0,
+          "spec": 0,
+          "ok": 0,
+          "same": 3
+        },
+        "tier1Files": []
+      }
+    },
+    {
+      "id": 103,
+      "repoId": 1,
+      "kind": "draft",
+      "ref": "draft:.",
+      "prNumber": null,
+      "head": "67aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "headAvailable": true,
+      "dirty": true,
+      "base": "main",
+      "title": "Change number 3 to the sample shop",
+      "ahead": 0,
+      "behind": 0,
+      "reviewState": "in-review",
+      "agentUnreviewed": false,
+      "lastEvent": {
+        "type": "review",
+        "at": "2026-05-04T10:09:00.000Z"
+      },
+      "updatedAt": "2026-05-04T10:09:05.000Z",
+      "archivedAt": null,
+      "archiveReason": null,
+      "stats": null
+    },
+    {
+      "id": 104,
+      "repoId": 1,
+      "kind": "branch",
+      "ref": "branch:feature/rework-the-loyalty-points-ledger-so-that-expired-points-are-swept-nightly-4",
+      "prNumber": null,
+      "head": "68aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "headAvailable": true,
+      "dirty": false,
+      "base": "release/2026-spring-catalogue-overhaul",
+      "title": "Rework the loyalty points ledger so expired points are swept nightly and the customer statement shows each sweep with its reason (4)",
+      "ahead": 28,
+      "behind": 12,
+      "reviewState": "in-review",
+      "agentUnreviewed": false,
+      "lastEvent": {
+        "type": "import",
+        "at": "2026-05-04T09:32:00.000Z"
+      },
+      "updatedAt": "2026-05-04T09:32:05.000Z",
+      "archivedAt": null,
+      "archiveReason": null,
+      "stats": {
+        "touchedFiles": 53,
+        "symbolsByStatus": {
+          "add": 44,
+          "mod": 20,
+          "sig": 0,
+          "del": 8,
+          "same": 40
+        },
+        "filesByVerdict": {
+          "eyes": 1,
+          "risky": 0,
+          "spec": 0,
+          "ok": 0,
+          "same": 3
+        },
+        "tier1Files": []
+      }
+    },
+    {
+      "id": 105,
+      "repoId": 1,
+      "kind": "pr",
+      "ref": "pr:405",
+      "prNumber": 405,
+      "head": "69aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "headAvailable": true,
+      "dirty": false,
+      "base": "main",
+      "title": "Change number 5 to the sample shop",
+      "ahead": 35,
+      "behind": 15,
+      "reviewState": "in-review",
+      "agentUnreviewed": false,
+      "lastEvent": {
+        "type": "audit",
+        "at": "2026-05-04T08:55:00.000Z"
+      },
+      "updatedAt": "2026-05-04T08:55:05.000Z",
+      "archivedAt": null,
+      "archiveReason": null,
+      "stats": {
+        "touchedFiles": 66,
+        "symbolsByStatus": {
+          "add": 55,
+          "mod": 25,
+          "sig": 1,
+          "del": 10,
+          "same": 40
+        },
+        "filesByVerdict": {
+          "eyes": 2,
+          "risky": 2,
+          "spec": 1,
+          "ok": 1,
+          "same": 3
+        },
+        "tier1Files": []
+      }
+    },
+    {
+      "id": 106,
+      "repoId": 1,
+      "kind": "draft",
+      "ref": "draft:../sample-shop-wt-6",
+      "prNumber": null,
+      "head": "6aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "headAvailable": true,
+      "dirty": true,
+      "base": "main",
+      "title": "Change number 6 to the sample shop",
+      "ahead": 0,
+      "behind": 0,
+      "reviewState": "approved",
+      "agentUnreviewed": false,
+      "lastEvent": {
+        "type": "agent",
+        "at": "2026-05-04T08:18:00.000Z"
+      },
+      "updatedAt": "2026-05-04T08:18:05.000Z",
+      "archivedAt": null,
+      "archiveReason": null,
+      "stats": {
+        "touchedFiles": 79,
+        "symbolsByStatus": {
+          "add": 66,
+          "mod": 30,
+          "sig": 2,
+          "del": 12,
+          "same": 40
+        },
+        "filesByVerdict": {
+          "eyes": 0,
+          "risky": 0,
+          "spec": 0,
+          "ok": 0,
+          "same": 3
+        },
+        "tier1Files": [
+          "src/payments/charge.ts"
+        ]
+      }
+    },
+    {
+      "id": 107,
+      "repoId": 1,
+      "kind": "branch",
+      "ref": "branch:feature/topic-7",
+      "prNumber": null,
+      "head": "6baaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "headAvailable": true,
+      "dirty": false,
+      "base": "main",
+      "title": "Change number 7 to the sample shop",
+      "ahead": 49,
+      "behind": 21,
+      "reviewState": "approved",
+      "agentUnreviewed": false,
+      "lastEvent": {
+        "type": "commit",
+        "at": "2026-05-04T07:41:00.000Z"
+      },
+      "updatedAt": "2026-05-04T07:41:05.000Z",
+      "archivedAt": null,
+      "archiveReason": null,
+      "stats": {
+        "touchedFiles": 92,
+        "symbolsByStatus": {
+          "add": 77,
+          "mod": 35,
+          "sig": 3,
+          "del": 14,
+          "same": 40
+        },
+        "filesByVerdict": {
+          "eyes": 1,
+          "risky": 0,
+          "spec": 0,
+          "ok": 1,
+          "same": 3
+        },
+        "tier1Files": []
+      }
+    },
+    {
+      "id": 108,
+      "repoId": 1,
+      "kind": "pr",
+      "ref": "pr:408",
+      "prNumber": 408,
+      "head": "6caaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "headAvailable": true,
+      "dirty": false,
+      "base": "release/2026-spring-catalogue-overhaul",
+      "title": "Rework the loyalty points ledger so expired points are swept nightly and the customer statement shows each sweep with its reason (8)",
+      "ahead": 56,
+      "behind": 24,
+      "reviewState": "approved",
+      "agentUnreviewed": false,
+      "lastEvent": {
+        "type": "collect",
+        "at": "2026-05-04T07:04:00.000Z"
+      },
+      "updatedAt": "2026-05-04T07:04:05.000Z",
+      "archivedAt": null,
+      "archiveReason": null,
+      "stats": {
+        "touchedFiles": 105,
+        "symbolsByStatus": {
+          "add": 88,
+          "mod": 40,
+          "sig": 0,
+          "del": 16,
+          "same": 40
+        },
+        "filesByVerdict": {
+          "eyes": 2,
+          "risky": 0,
+          "spec": 0,
+          "ok": 0,
+          "same": 3
+        },
+        "tier1Files": []
+      }
+    },
+    {
+      "id": 109,
+      "repoId": 1,
+      "kind": "draft",
+      "ref": "draft:.",
+      "prNumber": null,
+      "head": "6daaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "headAvailable": true,
+      "dirty": true,
+      "base": "main",
+      "title": "Change number 9 to the sample shop",
+      "ahead": 0,
+      "behind": 0,
+      "reviewState": "unreviewed",
+      "agentUnreviewed": false,
+      "lastEvent": {
+        "type": "review",
+        "at": "2026-05-04T06:27:00.000Z"
+      },
+      "updatedAt": "2026-05-04T06:27:05.000Z",
+      "archivedAt": null,
+      "archiveReason": null,
+      "stats": {
+        "touchedFiles": 118,
+        "symbolsByStatus": {
+          "add": 99,
+          "mod": 45,
+          "sig": 1,
+          "del": 18,
+          "same": 40
+        },
+        "filesByVerdict": {
+          "eyes": 0,
+          "risky": 0,
+          "spec": 1,
+          "ok": 1,
+          "same": 3
+        },
+        "tier1Files": [
+          "src/payments/charge.ts"
+        ]
+      }
+    },
+    {
+      "id": 110,
+      "repoId": 1,
+      "kind": "branch",
+      "ref": "branch:feature/topic-10",
+      "prNumber": null,
+      "head": "6eaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "headAvailable": true,
+      "dirty": false,
+      "base": "main",
+      "title": "Change number 10 to the sample shop",
+      "ahead": 70,
+      "behind": 30,
+      "reviewState": "unreviewed",
+      "agentUnreviewed": false,
+      "lastEvent": {
+        "type": "import",
+        "at": "2026-05-04T05:50:00.000Z"
+      },
+      "updatedAt": "2026-05-04T05:50:05.000Z",
+      "archivedAt": null,
+      "archiveReason": null,
+      "stats": null
+    },
+    {
+      "id": 111,
+      "repoId": 1,
+      "kind": "pr",
+      "ref": "pr:411",
+      "prNumber": 411,
+      "head": "6faaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "headAvailable": true,
+      "dirty": false,
+      "base": "main",
+      "title": "Change number 11 to the sample shop",
+      "ahead": 77,
+      "behind": 33,
+      "reviewState": "unreviewed",
+      "agentUnreviewed": false,
+      "lastEvent": {
+        "type": "audit",
+        "at": "2026-05-04T05:13:00.000Z"
+      },
+      "updatedAt": "2026-05-04T05:13:05.000Z",
+      "archivedAt": null,
+      "archiveReason": null,
+      "stats": {
+        "touchedFiles": 144,
+        "symbolsByStatus": {
+          "add": 121,
+          "mod": 55,
+          "sig": 3,
+          "del": 22,
+          "same": 40
+        },
+        "filesByVerdict": {
+          "eyes": 2,
+          "risky": 0,
+          "spec": 0,
+          "ok": 1,
+          "same": 3
+        },
+        "tier1Files": []
+      }
+    },
+    {
+      "id": 112,
+      "repoId": 1,
+      "kind": "draft",
+      "ref": "draft:../sample-shop-wt-12",
+      "prNumber": null,
+      "head": "70aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "headAvailable": true,
+      "dirty": true,
+      "base": "release/2026-spring-catalogue-overhaul",
+      "title": "Rework the loyalty points ledger so expired points are swept nightly and the customer statement shows each sweep with its reason (12)",
+      "ahead": 0,
+      "behind": 0,
+      "reviewState": "in-review",
+      "agentUnreviewed": false,
+      "lastEvent": {
+        "type": "agent",
+        "at": "2026-05-04T04:36:00.000Z"
+      },
+      "updatedAt": "2026-05-04T04:36:05.000Z",
+      "archivedAt": null,
+      "archiveReason": null,
+      "stats": {
+        "touchedFiles": 157,
+        "symbolsByStatus": {
+          "add": 132,
+          "mod": 60,
+          "sig": 0,
+          "del": 24,
+          "same": 40
+        },
+        "filesByVerdict": {
+          "eyes": 0,
+          "risky": 0,
+          "spec": 0,
+          "ok": 0,
+          "same": 3
+        },
+        "tier1Files": [
+          "src/payments/charge.ts"
+        ]
+      }
+    },
+    {
+      "id": 113,
+      "repoId": 1,
+      "kind": "branch",
+      "ref": "branch:feature/topic-13",
+      "prNumber": null,
+      "head": "71aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "headAvailable": true,
+      "dirty": false,
+      "base": "main",
+      "title": "Change number 13 to the sample shop",
+      "ahead": 91,
+      "behind": 39,
+      "reviewState": "in-review",
+      "agentUnreviewed": false,
+      "lastEvent": {
+        "type": "commit",
+        "at": "2026-05-04T03:59:00.000Z"
+      },
+      "updatedAt": "2026-05-04T03:59:05.000Z",
+      "archivedAt": null,
+      "archiveReason": null,
+      "stats": {
+        "touchedFiles": 170,
+        "symbolsByStatus": {
+          "add": 143,
+          "mod": 65,
+          "sig": 1,
+          "del": 26,
+          "same": 40
+        },
+        "filesByVerdict": {
+          "eyes": 1,
+          "risky": 0,
+          "spec": 1,
+          "ok": 1,
+          "same": 3
+        },
+        "tier1Files": []
+      }
+    },
+    {
+      "id": 114,
+      "repoId": 1,
+      "kind": "pr",
+      "ref": "pr:414",
+      "prNumber": 414,
+      "head": "72aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "headAvailable": true,
+      "dirty": false,
+      "base": "main",
+      "title": "Change number 14 to the sample shop",
+      "ahead": 98,
+      "behind": 1,
+      "reviewState": "in-review",
+      "agentUnreviewed": false,
+      "lastEvent": {
+        "type": "collect",
+        "at": "2026-05-04T03:22:00.000Z"
+      },
+      "updatedAt": "2026-05-04T03:22:05.000Z",
+      "archivedAt": null,
+      "archiveReason": null,
+      "stats": {
+        "touchedFiles": 183,
+        "symbolsByStatus": {
+          "add": 154,
+          "mod": 70,
+          "sig": 2,
+          "del": 28,
+          "same": 40
+        },
+        "filesByVerdict": {
+          "eyes": 2,
+          "risky": 0,
+          "spec": 0,
+          "ok": 0,
+          "same": 3
+        },
+        "tier1Files": []
+      }
+    },
+    {
+      "id": 115,
+      "repoId": 1,
+      "kind": "draft",
+      "ref": "draft:.",
+      "prNumber": null,
+      "head": "73aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "headAvailable": true,
+      "dirty": true,
+      "base": "main",
+      "title": "Change number 15 to the sample shop",
+      "ahead": 0,
+      "behind": 0,
+      "reviewState": "approved",
+      "agentUnreviewed": false,
+      "lastEvent": {
+        "type": "review",
+        "at": "2026-05-04T02:45:00.000Z"
+      },
+      "updatedAt": "2026-05-04T02:45:05.000Z",
+      "archivedAt": null,
+      "archiveReason": null,
+      "stats": {
+        "touchedFiles": 196,
+        "symbolsByStatus": {
+          "add": 165,
+          "mod": 75,
+          "sig": 3,
+          "del": 0,
+          "same": 40
+        },
+        "filesByVerdict": {
+          "eyes": 0,
+          "risky": 2,
+          "spec": 0,
+          "ok": 1,
+          "same": 3
+        },
+        "tier1Files": [
+          "src/payments/charge.ts"
+        ]
+      }
+    },
+    {
+      "id": 116,
+      "repoId": 1,
+      "kind": "branch",
+      "ref": "branch:feature/rework-the-loyalty-points-ledger-so-that-expired-points-are-swept-nightly-16",
+      "prNumber": null,
+      "head": "74aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "headAvailable": true,
+      "dirty": false,
+      "base": "release/2026-spring-catalogue-overhaul",
+      "title": "Rework the loyalty points ledger so expired points are swept nightly and the customer statement shows each sweep with its reason (16)",
+      "ahead": 112,
+      "behind": 7,
+      "reviewState": "approved",
+      "agentUnreviewed": false,
+      "lastEvent": {
+        "type": "import",
+        "at": "2026-05-04T02:08:00.000Z"
+      },
+      "updatedAt": "2026-05-04T02:08:05.000Z",
+      "archivedAt": null,
+      "archiveReason": null,
+      "stats": {
+        "touchedFiles": 209,
+        "symbolsByStatus": {
+          "add": 176,
+          "mod": 80,
+          "sig": 0,
+          "del": 2,
+          "same": 40
+        },
+        "filesByVerdict": {
+          "eyes": 1,
+          "risky": 0,
+          "spec": 0,
+          "ok": 0,
+          "same": 3
+        },
+        "tier1Files": []
+      }
+    },
+    {
+      "id": 117,
+      "repoId": 1,
+      "kind": "pr",
+      "ref": "pr:417",
+      "prNumber": 417,
+      "head": "75aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "headAvailable": false,
+      "dirty": false,
+      "base": "main",
+      "title": "Change number 17 to the sample shop",
+      "ahead": 119,
+      "behind": 10,
+      "reviewState": "approved",
+      "agentUnreviewed": false,
+      "lastEvent": {
+        "type": "audit",
+        "at": "2026-05-04T01:31:00.000Z"
+      },
+      "updatedAt": "2026-05-04T01:31:05.000Z",
+      "archivedAt": null,
+      "archiveReason": null,
+      "stats": null
+    },
+    {
+      "id": 118,
+      "repoId": 1,
+      "kind": "draft",
+      "ref": "draft:../sample-shop-wt-18",
+      "prNumber": null,
+      "head": "76aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "headAvailable": true,
+      "dirty": true,
+      "base": "main",
+      "title": "Change number 18 to the sample shop",
+      "ahead": 0,
+      "behind": 0,
+      "reviewState": "unreviewed",
+      "agentUnreviewed": true,
+      "lastEvent": {
+        "type": "agent",
+        "at": "2026-05-04T00:54:00.000Z"
+      },
+      "updatedAt": "2026-05-04T00:54:05.000Z",
+      "archivedAt": null,
+      "archiveReason": null,
+      "stats": {
+        "touchedFiles": 235,
+        "symbolsByStatus": {
+          "add": 198,
+          "mod": 0,
+          "sig": 2,
+          "del": 6,
+          "same": 40
+        },
+        "filesByVerdict": {
+          "eyes": 0,
+          "risky": 0,
+          "spec": 0,
+          "ok": 0,
+          "same": 3
+        },
+        "tier1Files": [
+          "src/payments/charge.ts"
+        ]
+      }
+    },
+    {
+      "id": 119,
+      "repoId": 1,
+      "kind": "branch",
+      "ref": "branch:feature/topic-19",
+      "prNumber": null,
+      "head": "77aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "headAvailable": true,
+      "dirty": false,
+      "base": "main",
+      "title": "Change number 19 to the sample shop",
+      "ahead": 3,
+      "behind": 16,
+      "reviewState": "unreviewed",
+      "agentUnreviewed": false,
+      "lastEvent": {
+        "type": "commit",
+        "at": "2026-05-04T00:17:00.000Z"
+      },
+      "updatedAt": "2026-05-04T00:17:05.000Z",
+      "archivedAt": null,
+      "archiveReason": null,
+      "stats": {
+        "touchedFiles": 248,
+        "symbolsByStatus": {
+          "add": 209,
+          "mod": 5,
+          "sig": 3,
+          "del": 8,
+          "same": 40
+        },
+        "filesByVerdict": {
+          "eyes": 1,
+          "risky": 0,
+          "spec": 0,
+          "ok": 1,
+          "same": 3
+        },
+        "tier1Files": []
+      }
+    },
+    {
+      "id": 120,
+      "repoId": 1,
+      "kind": "pr",
+      "ref": "pr:420",
+      "prNumber": 420,
+      "head": "78aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "headAvailable": true,
+      "dirty": false,
+      "base": "release/2026-spring-catalogue-overhaul",
+      "title": "Rework the loyalty points ledger so expired points are swept nightly and the customer statement shows each sweep with its reason (20)",
+      "ahead": 10,
+      "behind": 19,
+      "reviewState": "unreviewed",
+      "agentUnreviewed": false,
+      "lastEvent": {
+        "type": "collect",
+        "at": "2026-05-03T23:40:00.000Z"
+      },
+      "updatedAt": "2026-05-03T23:40:05.000Z",
+      "archivedAt": null,
+      "archiveReason": null,
+      "stats": {
+        "touchedFiles": 11,
+        "symbolsByStatus": {
+          "add": 220,
+          "mod": 10,
+          "sig": 0,
+          "del": 10,
+          "same": 40
+        },
+        "filesByVerdict": {
+          "eyes": 2,
+          "risky": 2,
+          "spec": 0,
+          "ok": 0,
+          "same": 3
+        },
+        "tier1Files": []
+      }
+    },
+    {
+      "id": 121,
+      "repoId": 1,
+      "kind": "draft",
+      "ref": "draft:.",
+      "prNumber": null,
+      "head": "79aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "headAvailable": true,
+      "dirty": true,
+      "base": "main",
+      "title": "Change number 21 to the sample shop",
+      "ahead": 0,
+      "behind": 0,
+      "reviewState": "in-review",
+      "agentUnreviewed": false,
+      "lastEvent": {
+        "type": "review",
+        "at": "2026-05-03T23:03:00.000Z"
+      },
+      "updatedAt": "2026-05-03T23:03:05.000Z",
+      "archivedAt": null,
+      "archiveReason": null,
+      "stats": {
+        "touchedFiles": 24,
+        "symbolsByStatus": {
+          "add": 231,
+          "mod": 15,
+          "sig": 1,
+          "del": 12,
+          "same": 40
+        },
+        "filesByVerdict": {
+          "eyes": 0,
+          "risky": 0,
+          "spec": 1,
+          "ok": 1,
+          "same": 3
+        },
+        "tier1Files": [
+          "src/payments/charge.ts"
+        ]
+      }
+    },
+    {
+      "id": 122,
+      "repoId": 1,
+      "kind": "branch",
+      "ref": "branch:feature/topic-22",
+      "prNumber": null,
+      "head": "7aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "headAvailable": true,
+      "dirty": false,
+      "base": "main",
+      "title": "Change number 22 to the sample shop",
+      "ahead": 24,
+      "behind": 25,
+      "reviewState": "in-review",
+      "agentUnreviewed": false,
+      "lastEvent": {
+        "type": "import",
+        "at": "2026-05-03T22:26:00.000Z"
+      },
+      "updatedAt": "2026-05-03T22:26:05.000Z",
+      "archivedAt": null,
+      "archiveReason": null,
+      "stats": {
+        "touchedFiles": 37,
+        "symbolsByStatus": {
+          "add": 242,
+          "mod": 20,
+          "sig": 2,
+          "del": 14,
+          "same": 40
+        },
+        "filesByVerdict": {
+          "eyes": 1,
+          "risky": 0,
+          "spec": 0,
+          "ok": 0,
+          "same": 3
+        },
+        "tier1Files": []
+      }
+    },
+    {
+      "id": 123,
+      "repoId": 1,
+      "kind": "pr",
+      "ref": "pr:423",
+      "prNumber": 423,
+      "head": "7baaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "headAvailable": true,
+      "dirty": false,
+      "base": "main",
+      "title": "Change number 23 to the sample shop",
+      "ahead": 31,
+      "behind": 28,
+      "reviewState": "in-review",
+      "agentUnreviewed": false,
+      "lastEvent": {
+        "type": "audit",
+        "at": "2026-05-03T21:49:00.000Z"
+      },
+      "updatedAt": "2026-05-03T21:49:05.000Z",
+      "archivedAt": null,
+      "archiveReason": null,
+      "stats": {
+        "touchedFiles": 50,
+        "symbolsByStatus": {
+          "add": 253,
+          "mod": 25,
+          "sig": 3,
+          "del": 16,
+          "same": 40
+        },
+        "filesByVerdict": {
+          "eyes": 2,
+          "risky": 0,
+          "spec": 0,
+          "ok": 1,
+          "same": 3
+        },
+        "tier1Files": []
+      }
+    },
+    {
+      "id": 124,
+      "repoId": 1,
+      "kind": "draft",
+      "ref": "draft:../sample-shop-wt-24",
+      "prNumber": null,
+      "head": "7caaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "headAvailable": true,
+      "dirty": true,
+      "base": "release/2026-spring-catalogue-overhaul",
+      "title": "Rework the loyalty points ledger so expired points are swept nightly and the customer statement shows each sweep with its reason (24)",
+      "ahead": 0,
+      "behind": 0,
+      "reviewState": "approved",
+      "agentUnreviewed": false,
+      "lastEvent": {
+        "type": "agent",
+        "at": "2026-05-03T21:12:00.000Z"
+      },
+      "updatedAt": "2026-05-03T21:12:05.000Z",
+      "archivedAt": null,
+      "archiveReason": null,
+      "stats": null
+    },
+    {
+      "id": 125,
+      "repoId": 1,
+      "kind": "branch",
+      "ref": "branch:feature/topic-25",
+      "prNumber": null,
+      "head": "7daaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "headAvailable": true,
+      "dirty": false,
+      "base": "main",
+      "title": "Change number 25 to the sample shop",
+      "ahead": 45,
+      "behind": 34,
+      "reviewState": "approved",
+      "agentUnreviewed": false,
+      "lastEvent": {
+        "type": "commit",
+        "at": "2026-05-03T20:35:00.000Z"
+      },
+      "updatedAt": "2026-05-03T20:35:05.000Z",
+      "archivedAt": null,
+      "archiveReason": null,
+      "stats": {
+        "touchedFiles": 76,
+        "symbolsByStatus": {
+          "add": 275,
+          "mod": 35,
+          "sig": 1,
+          "del": 20,
+          "same": 40
+        },
+        "filesByVerdict": {
+          "eyes": 1,
+          "risky": 2,
+          "spec": 1,
+          "ok": 1,
+          "same": 3
+        },
+        "tier1Files": []
+      }
+    },
+    {
+      "id": 126,
+      "repoId": 1,
+      "kind": "pr",
+      "ref": "pr:426",
+      "prNumber": 426,
+      "head": "7eaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "headAvailable": true,
+      "dirty": false,
+      "base": "main",
+      "title": "Change number 26 to the sample shop",
+      "ahead": 52,
+      "behind": 37,
+      "reviewState": "approved",
+      "agentUnreviewed": false,
+      "lastEvent": {
+        "type": "collect",
+        "at": "2026-05-03T19:58:00.000Z"
+      },
+      "updatedAt": "2026-05-03T19:58:05.000Z",
+      "archivedAt": null,
+      "archiveReason": null,
+      "stats": {
+        "touchedFiles": 89,
+        "symbolsByStatus": {
+          "add": 286,
+          "mod": 40,
+          "sig": 2,
+          "del": 22,
+          "same": 40
+        },
+        "filesByVerdict": {
+          "eyes": 2,
+          "risky": 0,
+          "spec": 0,
+          "ok": 0,
+          "same": 3
+        },
+        "tier1Files": []
+      }
+    },
+    {
+      "id": 127,
+      "repoId": 1,
+      "kind": "draft",
+      "ref": "draft:.",
+      "prNumber": null,
+      "head": "7faaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "headAvailable": true,
+      "dirty": true,
+      "base": "main",
+      "title": "Change number 27 to the sample shop",
+      "ahead": 0,
+      "behind": 0,
+      "reviewState": "unreviewed",
+      "agentUnreviewed": false,
+      "lastEvent": {
+        "type": "review",
+        "at": "2026-05-03T19:21:00.000Z"
+      },
+      "updatedAt": "2026-05-03T19:21:05.000Z",
+      "archivedAt": null,
+      "archiveReason": null,
+      "stats": {
+        "touchedFiles": 102,
+        "symbolsByStatus": {
+          "add": 297,
+          "mod": 45,
+          "sig": 3,
+          "del": 24,
+          "same": 40
+        },
+        "filesByVerdict": {
+          "eyes": 0,
+          "risky": 0,
+          "spec": 0,
+          "ok": 1,
+          "same": 3
+        },
+        "tier1Files": [
+          "src/payments/charge.ts"
+        ]
+      }
+    },
+    {
+      "id": 128,
+      "repoId": 1,
+      "kind": "branch",
+      "ref": "branch:feature/rework-the-loyalty-points-ledger-so-that-expired-points-are-swept-nightly-28",
+      "prNumber": null,
+      "head": "80aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "headAvailable": true,
+      "dirty": false,
+      "base": "release/2026-spring-catalogue-overhaul",
+      "title": "Rework the loyalty points ledger so expired points are swept nightly and the customer statement shows each sweep with its reason (28)",
+      "ahead": 66,
+      "behind": 2,
+      "reviewState": "unreviewed",
+      "agentUnreviewed": false,
+      "lastEvent": {
+        "type": "import",
+        "at": "2026-05-03T18:44:00.000Z"
+      },
+      "updatedAt": "2026-05-03T18:44:05.000Z",
+      "archivedAt": null,
+      "archiveReason": null,
+      "stats": {
+        "touchedFiles": 115,
+        "symbolsByStatus": {
+          "add": 308,
+          "mod": 50,
+          "sig": 0,
+          "del": 26,
+          "same": 40
+        },
+        "filesByVerdict": {
+          "eyes": 1,
+          "risky": 0,
+          "spec": 0,
+          "ok": 0,
+          "same": 3
+        },
+        "tier1Files": []
+      }
+    },
+    {
+      "id": 129,
+      "repoId": 1,
+      "kind": "pr",
+      "ref": "pr:429",
+      "prNumber": 429,
+      "head": "81aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "headAvailable": true,
+      "dirty": false,
+      "base": "main",
+      "title": "Change number 29 to the sample shop",
+      "ahead": 73,
+      "behind": 5,
+      "reviewState": "unreviewed",
+      "agentUnreviewed": false,
+      "lastEvent": {
+        "type": "audit",
+        "at": "2026-05-03T18:07:00.000Z"
+      },
+      "updatedAt": "2026-05-03T18:07:05.000Z",
+      "archivedAt": null,
+      "archiveReason": null,
+      "stats": {
+        "touchedFiles": 128,
+        "symbolsByStatus": {
+          "add": 319,
+          "mod": 55,
+          "sig": 1,
+          "del": 28,
+          "same": 40
+        },
+        "filesByVerdict": {
+          "eyes": 2,
+          "risky": 0,
+          "spec": 1,
+          "ok": 1,
+          "same": 3
+        },
+        "tier1Files": []
+      }
+    },
+    {
+      "id": 130,
+      "repoId": 1,
+      "kind": "draft",
+      "ref": "draft:../sample-shop-wt-30",
+      "prNumber": null,
+      "head": "82aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "headAvailable": true,
+      "dirty": true,
+      "base": "main",
+      "title": "Change number 30 to the sample shop",
+      "ahead": 0,
+      "behind": 0,
+      "reviewState": "in-review",
+      "agentUnreviewed": false,
+      "lastEvent": {
+        "type": "agent",
+        "at": "2026-05-03T17:30:00.000Z"
+      },
+      "updatedAt": "2026-05-03T17:30:05.000Z",
+      "archivedAt": null,
+      "archiveReason": null,
+      "stats": {
+        "touchedFiles": 141,
+        "symbolsByStatus": {
+          "add": 330,
+          "mod": 60,
+          "sig": 2,
+          "del": 0,
+          "same": 40
+        },
+        "filesByVerdict": {
+          "eyes": 0,
+          "risky": 2,
+          "spec": 0,
+          "ok": 0,
+          "same": 3
+        },
+        "tier1Files": [
+          "src/payments/charge.ts"
+        ]
+      }
+    },
+    {
+      "id": 131,
+      "repoId": 1,
+      "kind": "branch",
+      "ref": "branch:feature/topic-31",
+      "prNumber": null,
+      "head": "83aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "headAvailable": true,
+      "dirty": false,
+      "base": "main",
+      "title": "Change number 31 to the sample shop",
+      "ahead": 87,
+      "behind": 11,
+      "reviewState": "in-review",
+      "agentUnreviewed": false,
+      "lastEvent": {
+        "type": "commit",
+        "at": "2026-05-03T16:53:00.000Z"
+      },
+      "updatedAt": "2026-05-03T16:53:05.000Z",
+      "archivedAt": null,
+      "archiveReason": null,
+      "stats": null
+    },
+    {
+      "id": 132,
+      "repoId": 1,
+      "kind": "pr",
+      "ref": "pr:432",
+      "prNumber": 432,
+      "head": "84aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "headAvailable": false,
+      "dirty": false,
+      "base": "release/2026-spring-catalogue-overhaul",
+      "title": "Rework the loyalty points ledger so expired points are swept nightly and the customer statement shows each sweep with its reason (32)",
+      "ahead": 94,
+      "behind": 14,
+      "reviewState": "in-review",
+      "agentUnreviewed": false,
+      "lastEvent": {
+        "type": "collect",
+        "at": "2026-05-03T16:16:00.000Z"
+      },
+      "updatedAt": "2026-05-03T16:16:05.000Z",
+      "archivedAt": null,
+      "archiveReason": null,
+      "stats": {
+        "touchedFiles": 167,
+        "symbolsByStatus": {
+          "add": 352,
+          "mod": 70,
+          "sig": 0,
+          "del": 4,
+          "same": 40
+        },
+        "filesByVerdict": {
+          "eyes": 2,
+          "risky": 0,
+          "spec": 0,
+          "ok": 0,
+          "same": 3
+        },
+        "tier1Files": []
+      }
+    },
+    {
+      "id": 133,
+      "repoId": 1,
+      "kind": "draft",
+      "ref": "draft:.",
+      "prNumber": null,
+      "head": "85aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "headAvailable": true,
+      "dirty": true,
+      "base": "main",
+      "title": "Change number 33 to the sample shop",
+      "ahead": 0,
+      "behind": 0,
+      "reviewState": "approved",
+      "agentUnreviewed": false,
+      "lastEvent": {
+        "type": "review",
+        "at": "2026-05-03T15:39:00.000Z"
+      },
+      "updatedAt": "2026-05-03T15:39:05.000Z",
+      "archivedAt": null,
+      "archiveReason": null,
+      "stats": {
+        "touchedFiles": 180,
+        "symbolsByStatus": {
+          "add": 363,
+          "mod": 75,
+          "sig": 1,
+          "del": 6,
+          "same": 40
+        },
+        "filesByVerdict": {
+          "eyes": 0,
+          "risky": 0,
+          "spec": 1,
+          "ok": 1,
+          "same": 3
+        },
+        "tier1Files": [
+          "src/payments/charge.ts"
+        ]
+      }
+    },
+    {
+      "id": 134,
+      "repoId": 1,
+      "kind": "branch",
+      "ref": "branch:feature/topic-34",
+      "prNumber": null,
+      "head": "86aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "headAvailable": true,
+      "dirty": false,
+      "base": "main",
+      "title": "Change number 34 to the sample shop",
+      "ahead": 108,
+      "behind": 20,
+      "reviewState": "approved",
+      "agentUnreviewed": false,
+      "lastEvent": {
+        "type": "import",
+        "at": "2026-05-03T15:02:00.000Z"
+      },
+      "updatedAt": "2026-05-03T15:02:05.000Z",
+      "archivedAt": null,
+      "archiveReason": null,
+      "stats": {
+        "touchedFiles": 193,
+        "symbolsByStatus": {
+          "add": 374,
+          "mod": 80,
+          "sig": 2,
+          "del": 8,
+          "same": 40
+        },
+        "filesByVerdict": {
+          "eyes": 1,
+          "risky": 0,
+          "spec": 0,
+          "ok": 0,
+          "same": 3
+        },
+        "tier1Files": []
+      }
+    },
+    {
+      "id": 135,
+      "repoId": 1,
+      "kind": "pr",
+      "ref": "pr:435",
+      "prNumber": 435,
+      "head": "87aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "headAvailable": true,
+      "dirty": false,
+      "base": "main",
+      "title": "Change number 35 to the sample shop",
+      "ahead": 115,
+      "behind": 23,
+      "reviewState": "approved",
+      "agentUnreviewed": false,
+      "lastEvent": {
+        "type": "audit",
+        "at": "2026-05-03T14:25:00.000Z"
+      },
+      "updatedAt": "2026-05-03T14:25:05.000Z",
+      "archivedAt": null,
+      "archiveReason": null,
+      "stats": {
+        "touchedFiles": 206,
+        "symbolsByStatus": {
+          "add": 385,
+          "mod": 85,
+          "sig": 3,
+          "del": 10,
+          "same": 40
+        },
+        "filesByVerdict": {
+          "eyes": 2,
+          "risky": 2,
+          "spec": 0,
+          "ok": 1,
+          "same": 3
+        },
+        "tier1Files": []
+      }
+    },
+    {
+      "id": 136,
+      "repoId": 1,
+      "kind": "draft",
+      "ref": "draft:../sample-shop-wt-36",
+      "prNumber": null,
+      "head": "88aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "headAvailable": true,
+      "dirty": true,
+      "base": "release/2026-spring-catalogue-overhaul",
+      "title": "Rework the loyalty points ledger so expired points are swept nightly and the customer statement shows each sweep with its reason (36)",
+      "ahead": 0,
+      "behind": 0,
+      "reviewState": "unreviewed",
+      "agentUnreviewed": true,
+      "lastEvent": {
+        "type": "agent",
+        "at": "2026-05-03T13:48:00.000Z"
+      },
+      "updatedAt": "2026-05-03T13:48:05.000Z",
+      "archivedAt": null,
+      "archiveReason": null,
+      "stats": {
+        "touchedFiles": 219,
+        "symbolsByStatus": {
+          "add": 396,
+          "mod": 0,
+          "sig": 0,
+          "del": 12,
+          "same": 40
+        },
+        "filesByVerdict": {
+          "eyes": 0,
+          "risky": 0,
+          "spec": 0,
+          "ok": 0,
+          "same": 3
+        },
+        "tier1Files": [
+          "src/payments/charge.ts"
+        ]
+      }
+    },
+    {
+      "id": 137,
+      "repoId": 1,
+      "kind": "branch",
+      "ref": "branch:feature/topic-37",
+      "prNumber": null,
+      "head": "89aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "headAvailable": true,
+      "dirty": false,
+      "base": "main",
+      "title": "Change number 37 to the sample shop",
+      "ahead": 129,
+      "behind": 29,
+      "reviewState": "unreviewed",
+      "agentUnreviewed": false,
+      "lastEvent": {
+        "type": "commit",
+        "at": "2026-05-03T13:11:00.000Z"
+      },
+      "updatedAt": "2026-05-03T13:11:05.000Z",
+      "archivedAt": null,
+      "archiveReason": null,
+      "stats": {
+        "touchedFiles": 232,
+        "symbolsByStatus": {
+          "add": 407,
+          "mod": 5,
+          "sig": 1,
+          "del": 14,
+          "same": 40
+        },
+        "filesByVerdict": {
+          "eyes": 1,
+          "risky": 0,
+          "spec": 1,
+          "ok": 1,
+          "same": 3
+        },
+        "tier1Files": []
+      }
+    },
+    {
+      "id": 138,
+      "repoId": 1,
+      "kind": "pr",
+      "ref": "pr:438",
+      "prNumber": 438,
+      "head": "8aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "headAvailable": true,
+      "dirty": false,
+      "base": "main",
+      "title": "Change number 38 to the sample shop",
+      "ahead": 6,
+      "behind": 32,
+      "reviewState": "unreviewed",
+      "agentUnreviewed": false,
+      "lastEvent": {
+        "type": "collect",
+        "at": "2026-05-03T12:34:00.000Z"
+      },
+      "updatedAt": "2026-05-03T12:34:05.000Z",
+      "archivedAt": null,
+      "archiveReason": null,
+      "stats": null
+    },
+    {
+      "id": 139,
+      "repoId": 1,
+      "kind": "draft",
+      "ref": "draft:.",
+      "prNumber": null,
+      "head": "8baaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "headAvailable": true,
+      "dirty": true,
+      "base": "main",
+      "title": "Change number 39 to the sample shop",
+      "ahead": 0,
+      "behind": 0,
+      "reviewState": "in-review",
+      "agentUnreviewed": false,
+      "lastEvent": {
+        "type": "review",
+        "at": "2026-05-03T11:57:00.000Z"
+      },
+      "updatedAt": "2026-05-03T11:57:05.000Z",
+      "archivedAt": null,
+      "archiveReason": null,
+      "stats": {
+        "touchedFiles": 8,
+        "symbolsByStatus": {
+          "add": 429,
+          "mod": 15,
+          "sig": 3,
+          "del": 18,
+          "same": 40
+        },
+        "filesByVerdict": {
+          "eyes": 0,
+          "risky": 0,
+          "spec": 0,
+          "ok": 1,
+          "same": 3
+        },
+        "tier1Files": [
+          "src/payments/charge.ts"
+        ]
+      }
+    },
+    {
+      "id": 140,
+      "repoId": 1,
+      "kind": "branch",
+      "ref": "branch:feature/rework-the-loyalty-points-ledger-so-that-expired-points-are-swept-nightly-40",
+      "prNumber": null,
+      "head": "8caaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "headAvailable": true,
+      "dirty": false,
+      "base": "release/2026-spring-catalogue-overhaul",
+      "title": "Rework the loyalty points ledger so expired points are swept nightly and the customer statement shows each sweep with its reason (40)",
+      "ahead": 20,
+      "behind": 38,
+      "reviewState": "in-review",
+      "agentUnreviewed": false,
+      "lastEvent": {
+        "type": "import",
+        "at": "2026-05-03T11:20:00.000Z"
+      },
+      "updatedAt": "2026-05-03T11:20:05.000Z",
+      "archivedAt": null,
+      "archiveReason": null,
+      "stats": {
+        "touchedFiles": 21,
+        "symbolsByStatus": {
+          "add": 440,
+          "mod": 20,
+          "sig": 0,
+          "del": 20,
+          "same": 40
+        },
+        "filesByVerdict": {
+          "eyes": 1,
+          "risky": 2,
+          "spec": 0,
+          "ok": 0,
+          "same": 3
+        },
+        "tier1Files": []
+      }
+    },
+    {
+      "id": 141,
+      "repoId": 1,
+      "kind": "pr",
+      "ref": "pr:441",
+      "prNumber": 441,
+      "head": "8daaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "headAvailable": true,
+      "dirty": false,
+      "base": "main",
+      "title": "Change number 41 to the sample shop",
+      "ahead": 27,
+      "behind": 0,
+      "reviewState": "in-review",
+      "agentUnreviewed": false,
+      "lastEvent": {
+        "type": "audit",
+        "at": "2026-05-03T10:43:00.000Z"
+      },
+      "updatedAt": "2026-05-03T10:43:05.000Z",
+      "archivedAt": null,
+      "archiveReason": null,
+      "stats": {
+        "touchedFiles": 34,
+        "symbolsByStatus": {
+          "add": 451,
+          "mod": 25,
+          "sig": 1,
+          "del": 22,
+          "same": 40
+        },
+        "filesByVerdict": {
+          "eyes": 2,
+          "risky": 0,
+          "spec": 1,
+          "ok": 1,
+          "same": 3
+        },
+        "tier1Files": []
+      }
+    },
+    {
+      "id": 142,
+      "repoId": 1,
+      "kind": "draft",
+      "ref": "draft:../sample-shop-wt-42",
+      "prNumber": null,
+      "head": "8eaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "headAvailable": true,
+      "dirty": true,
+      "base": "main",
+      "title": "Change number 42 to the sample shop",
+      "ahead": 0,
+      "behind": 0,
+      "reviewState": "approved",
+      "agentUnreviewed": false,
+      "lastEvent": {
+        "type": "agent",
+        "at": "2026-05-03T10:06:00.000Z"
+      },
+      "updatedAt": "2026-05-03T10:06:05.000Z",
+      "archivedAt": null,
+      "archiveReason": null,
+      "stats": {
+        "touchedFiles": 47,
+        "symbolsByStatus": {
+          "add": 462,
+          "mod": 30,
+          "sig": 2,
+          "del": 24,
+          "same": 40
+        },
+        "filesByVerdict": {
+          "eyes": 0,
+          "risky": 0,
+          "spec": 0,
+          "ok": 0,
+          "same": 3
+        },
+        "tier1Files": [
+          "src/payments/charge.ts"
+        ]
+      }
+    },
+    {
+      "id": 143,
+      "repoId": 1,
+      "kind": "branch",
+      "ref": "branch:feature/topic-43",
+      "prNumber": null,
+      "head": "8faaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "headAvailable": true,
+      "dirty": false,
+      "base": "main",
+      "title": "Change number 43 to the sample shop",
+      "ahead": 41,
+      "behind": 6,
+      "reviewState": "approved",
+      "agentUnreviewed": false,
+      "lastEvent": {
+        "type": "commit",
+        "at": "2026-05-03T09:29:00.000Z"
+      },
+      "updatedAt": "2026-05-03T09:29:05.000Z",
+      "archivedAt": null,
+      "archiveReason": null,
+      "stats": {
+        "touchedFiles": 60,
+        "symbolsByStatus": {
+          "add": 473,
+          "mod": 35,
+          "sig": 3,
+          "del": 26,
+          "same": 40
+        },
+        "filesByVerdict": {
+          "eyes": 1,
+          "risky": 0,
+          "spec": 0,
+          "ok": 1,
+          "same": 3
+        },
+        "tier1Files": []
+      }
+    }
+  ]
+}

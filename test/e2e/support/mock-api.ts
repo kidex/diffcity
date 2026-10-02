@@ -5,7 +5,8 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import type { Page, Route } from '@playwright/test';
-import type { ApiError, RepoDetail, RepoSummary, SearchResult } from '../../../src/core/model/types.js';
+import type { ApiError, ChangeSummary, RepoDetail, RepoSummary, SearchResult } from '../../../src/core/model/types.js';
+import type { Report } from '../../../src/core/report/types.js';
 
 const fixturesDir = fileURLToPath(new URL('../../fixtures/ui/', import.meta.url));
 
@@ -19,12 +20,20 @@ export const fixtures = {
   fleetEmpty: () => load('fleet-empty.json') as RepoSummary[],
   fleetManyRepos: () => load('fleet-many-repos.json') as RepoSummary[],
   repoMixedChanges: () => load('repo-mixed-changes.json') as RepoDetail,
+  repoEmpty: () => load('repo-empty.json') as RepoDetail,
+  repoLongList: () => load('repo-long-list.json') as RepoDetail,
+  repoArchived: () => load('repo-archived.json') as ChangeSummary[],
+  reportOrderDiscounts: () => load('report-order-discounts.json') as Report,
   searchResults: () => load('search-results.json') as SearchResult[],
 };
 
 export interface ApiData {
   repos: RepoSummary[];
   details: RepoDetail[];
+  /** Archived changes per repo id, for `GET /api/repos/:id/changes?archived=1`. */
+  archived: Record<number, ChangeSummary[]>;
+  /** Reports per change id; a change without one answers 404 `no-snapshot`. */
+  reports: Record<number, Report>;
   /** The search answer for a query; the default returns search-results.json for any query. */
   search: (query: string) => SearchResult[];
 }
@@ -40,6 +49,8 @@ export function defaultApiData(): ApiData {
   return {
     repos: fixtures.fleetThreeRepos(),
     details: [fixtures.repoMixedChanges()],
+    archived: { 1: fixtures.repoArchived() },
+    reports: { 11: fixtures.reportOrderDiscounts() },
     search: () => results,
   };
 }
@@ -69,10 +80,20 @@ export async function mockApi(page: Page, overrides: Partial<ApiData> = {}): Pro
         if (detail) return answer(route, detail);
         return repo ? answer(route, { repo, changes: [] }) : answer(route, notFound('repo not found'), 404);
       }
+      if ((match = /^\/api\/repos\/(\d+)\/changes$/.exec(path))) {
+        if (url.searchParams.get('archived') !== '1') return answer(route, notFound('only ?archived=1 is listed'), 404);
+        return answer(route, data.archived[Number(match[1])] ?? []);
+      }
       if ((match = /^\/api\/changes\/(\d+)$/.exec(path))) {
         const id = Number(match[1]);
-        const change = data.details.flatMap((detail) => detail.changes).find((candidate) => candidate.id === id);
+        const change = [...data.details.flatMap((detail) => detail.changes), ...Object.values(data.archived).flat()].find(
+          (candidate) => candidate.id === id,
+        );
         return change ? answer(route, change) : answer(route, notFound('change not found'), 404);
+      }
+      if ((match = /^\/api\/changes\/(\d+)\/report$/.exec(path))) {
+        const report = data.reports[Number(match[1])];
+        return report ? answer(route, report) : answer(route, { error: { code: 'no-snapshot', message: 'no snapshot yet' } }, 404);
       }
       if (path === '/api/search') return answer(route, data.search(url.searchParams.get('q') ?? ''));
       return answer(route, notFound(`no mock for ${path}`), 404);

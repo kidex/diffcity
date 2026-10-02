@@ -84,13 +84,16 @@ function api(url, res) {
     if (!repo) return notFound(res, 'repo not found');
     return json(res, 200, { repo, changes: repo.id === detail.repo.id ? detail.changes : [] });
   }
-  if ((match = /^\/api\/repos\/(\d+)\/changes$/.exec(path))) return json(res, 200, []);
+  if ((match = /^\/api\/repos\/(\d+)\/changes$/.exec(path))) {
+    return json(res, 200, Number(match[1]) === detail.repo.id ? fixture('repo-archived.json') : []);
+  }
   if ((match = /^\/api\/changes\/(\d+)$/.exec(path))) {
-    const change = detail.changes.find((candidate) => candidate.id === Number(match[1]));
+    const change = [...detail.changes, ...fixture('repo-archived.json')].find((candidate) => candidate.id === Number(match[1]));
     return change ? json(res, 200, change) : notFound(res, 'change not found');
   }
-  if (/^\/api\/changes\/\d+\/report$/.test(path)) {
-    return json(res, 404, { error: { code: 'no-snapshot', message: 'the stub has no snapshots' } });
+  if ((match = /^\/api\/changes\/(\d+)\/report$/.exec(path))) {
+    if (Number(match[1]) === 11) return json(res, 200, fixture('report-order-discounts.json'));
+    return json(res, 404, { error: { code: 'no-snapshot', message: 'the stub has a snapshot for change 11 only' } });
   }
   if (path === '/api/search') {
     const query = (url.searchParams.get('q') ?? '').toLowerCase();
