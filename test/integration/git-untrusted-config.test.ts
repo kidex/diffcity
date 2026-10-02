@@ -44,6 +44,16 @@ async function markerScript(name: string, behaviour: string): Promise<string> {
   return path;
 }
 
+/**
+ * Like markerScript, but returns a command that runs the script through `sh`. Used for the
+ * commands that really run (the user's own filters): git runs a filter once per file, and on
+ * macOS each direct exec of a freshly written file pays a slow provenance check.
+ */
+async function shMarkerScript(name: string, behaviour: string): Promise<string> {
+  const path = await markerScript(name, behaviour);
+  return `sh '${path.replaceAll("'", "'\\''")}'`;
+}
+
 async function markersSeen(): Promise<string[]> {
   return (await readdir(markers)).sort();
 }
@@ -221,7 +231,7 @@ describe('filters from the user own config', () => {
     const repo = await repoWithChanges();
     await dirtyWorktree(repo);
     // The user's global config (a temp file standing in for ~/.gitconfig) defines an identity filter.
-    const trusted = await markerScript('trusted-clean', 'cat');
+    const trusted = await shMarkerScript('trusted-clean', 'cat');
     const globalConfig = join(scratch, 'home', '.gitconfig');
     await writeFile(globalConfig, `[filter "user"]\n\tclean = ${trusted}\n`, 'utf8');
     vi.stubEnv('GIT_CONFIG_GLOBAL', globalConfig);

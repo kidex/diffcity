@@ -88,6 +88,16 @@ async function markerScript(name: string, behaviour: string): Promise<string> {
   return path;
 }
 
+/**
+ * Like markerScript, but returns a command that runs the script through `sh`. Used for the
+ * commands that really run (the user's own filters): git runs a filter once per file, and on
+ * macOS each direct exec of a freshly written file pays a slow provenance check.
+ */
+async function shMarkerScript(name: string, behaviour: string): Promise<string> {
+  const path = await markerScript(name, behaviour);
+  return `sh '${path.replaceAll("'", "'\\''")}'`;
+}
+
 async function markersSeen(): Promise<string[]> {
   return (await readdir(markers)).sort();
 }
@@ -308,7 +318,7 @@ describe('e2e: a benign repo selecting a filter from the user global config', ()
 
   it('applies the user filter: its marker runs and the filtered line is not a change', { timeout: 120_000 }, async () => {
     const repo = await benignRepo();
-    const userClean = await markerScript('user-clean', "sed '/local-only/d'");
+    const userClean = await shMarkerScript('user-clean', "sed '/local-only/d'");
     await writeFile(join(home, '.gitconfig'), `[filter "user"]\n\tclean = ${userClean}\n\trequired = true\n`, 'utf8');
 
     const result = await runCli(repo.dir, ['diff', '--json']);
