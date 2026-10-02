@@ -4,7 +4,7 @@ A local, all-in-one visual code review app for code written by AI agents. It run
 
 The name `diffcity` is final: the npm package `diffcity` and the GitHub repo `kidex/diffcity` are both available.
 
-`design/mockup.html` is the mandatory visual reference. The generated report must look and behave like the mockup.
+`design/mockup.html` is the mandatory reference for layout, information and behaviour: the change screen has every element, counter, label, filter and interaction of the mockup. The city's visual style is "Night data city" (ADR-026): dark glass towers on a grid, floors as light strips in their status colour, a verdict-coloured outline per tower, holographic verdict tags, a pulsing reading path, restrained bloom.
 
 ---
 
@@ -38,6 +38,8 @@ Division of labour: the AI writes the line-by-line comments (imported as finding
 | Self-contained HTML export of a change (phase 5): the same change screen, with the `Report` embedded and three.js inlined, like `design/mockup.html` | |
 | Claude Code session context on the change screen (phase 4): the user's prompts, the agent's `AskUserQuestion` questions with the answers, the agents that ran (each subagent with its type, description, order, duration and final report) and a summary of the agent's activity (tool calls by kind, files edited); read locally, redacted, never exported unless asked | Session context for agents other than Claude Code |
 | Approve → integrate (phase 5): after Approve, explicit merge into the base, push of the branch, and open or update of the PR via `gh`; off by default, each action confirmed with its exact command, never force | Auto-merge, rebase, squash, force-push |
+| Review marks per file and symbol (Checked, Looks good, Needs rewrite) with a markdown review summary (phase 3); send the review to the agent that wrote the change (phase 4) | |
+| Review rules whose violations become findings: file size and import layering (phase 4), CI pipeline status and CVEs in added or upgraded npm dependencies (phase 5) | |
 
 ---
 
@@ -49,6 +51,7 @@ diffcity stop                                          # stop the daemon
 diffcity up [--port 4321]                              # start the daemon and open the UI (localhost); start without a repo
 diffcity shell-init [zsh|bash|fish]                    # print the shell hook; add to .zshrc: eval "$(diffcity shell-init zsh)"
 diffcity track [<dir>] [--agent]                       # register the current repo and ask the daemon to collect; --agent marks the change as "agent worked, not reviewed" and links the Claude Code session from the hook JSON on stdin
+diffcity trust [<dir>] [--revoke]                      # let the daemon load this repo's diffcity.config.js
 diffcity scan <dir>                                    # discover repos (folders with .git) under a folder and register them
 diffcity diff --json [--base] [--head]                 # semantic diff of the current change, for AI and other tools
 diffcity import <findings.json|*.sarif.json> [--open]  # anchor findings to symbols and attach them to the current change; --open opens the change in the UI
@@ -113,6 +116,7 @@ interface Report {
   packages: Package[];
   steps: Step[];            // execution path
   findings: Finding[];
+  checks?: RuleCheck[];     // one per configured rule (phase 4)
   summary: { files: number; byStatus: Record<Status, number>; byVerdict: Record<Verdict, number>; tier1Files: string[]; };
 }
 interface Package { id: string; path: string; tier1: boolean; files: File[]; }
@@ -129,13 +133,14 @@ interface Symbol {
 interface Step { order: number; symbolId: string; fileId: string; why: string; diff: DiffLine[]; }
 interface DiffLine { kind: 'ctx' | 'add' | 'del'; text: string; }
 interface Finding {
-  id: string; source: string;                 // 'claude' | 'semgrep' | 'eslint' | ...
+  id: string; source: string;                 // 'claude' | 'semgrep' | 'eslint' | 'rule:<id>' | ...
   severity: 'high' | 'med' | 'low';
-  category: 'security' | 'correctness' | 'scope' | 'style' | 'tests';
-  file: string; line: number; symbolId?: string;   // symbolId is resolved on import
+  category: 'security' | 'correctness' | 'scope' | 'style' | 'tests' | 'architecture';
+  file: string; line: number; symbolId?: string;   // symbolId is resolved on import; file '' and line 0 for a change-level finding
   title: string; message: string; fix?: string;
   state: 'open' | 'intended' | 'fixed';
 }
+interface RuleCheck { ruleId: string; kind: 'file-size' | 'layers' | 'pipeline' | 'cve'; state: 'passed' | 'violations' | 'not-checked' | 'pending' | 'error'; reason?: string; findings: number; checkedAt: string; }
 ```
 
 ### 4.2 Database (`~/.config/diffcity/diffcity.db`, SQLite via Node's built-in `node:sqlite`, no native build; ADR-025)
@@ -144,10 +149,13 @@ interface Finding {
 |---|---|
 | repos | path, name, base, active, tier1Paths, lastAudit (at, commit, model, rulesetVersion), lastSeenAt |
 | changes | repoId, kind (draft/branch/pr), ref, head, base, title, ahead, behind, reviewState, approvedHead, approvedAt, lastEvent, updatedAt, archivedAt |
-| snapshots | changeId, head, serialized `Report` (JSON), computedAt; one per head, the latest is the one shown |
+| snapshots | changeId, head, mergeBase, serialized `Report` (JSON), content fingerprints per file and symbol, computedAt; one per head, the latest is the one shown |
 | findings | changeId, head, serialized `Finding`, state |
+| review_marks | changeId, target (file or symbol id), mark (checked / good / rewrite), note, line range, fingerprint, state (current / outdated); review_notes: changeId, note |
 | events | repoId, changeId, type (collect/agent/commit/review/import/audit/integrate), at, payload |
 | sessions | repoId, sessionId, transcriptPath, cwd, title, firstAt, lastAt, digest (redacted, size-capped JSON; never the transcript), parsedBytes; linked to changes many-to-many through change_sessions (changeId, firstHead, lastHead) |
+
+User settings live in `~/.config/diffcity/settings.json` (JSON, never read from a repo): trusted repos, rules, agent launch, integrate, tool paths.
 
 A change's report (`Report` from 4.1) keeps the same structure; it is computed in the daemon and served to the UI over the API.
 
@@ -183,7 +191,7 @@ A file's status = the "heaviest" status among its symbols, in the order sig > ad
 
 Evaluation follows the table order; the first matching rule wins, except that an untouched file is always `same`, checked first, even inside a tier 1 zone (ADR-009, as in the mockup).
 
-### 5.3 Tier 1 zones (default, overridable in `diffcity.config.js`)
+### 5.3 Tier 1 zones (default, overridable in `diffcity.config.js`; the daemon applies a repo's config only after `diffcity trust`)
 
 Paths containing: `auth`, `guard`, `security`, `session`, `payment`, `billing`, `migration`, `schema`, `infra`, `k8s`, `terraform`, `Dockerfile`, `.env`, `secrets`.
 
@@ -207,6 +215,7 @@ If `.diffcity/spec.md` exists (or the `--spec` argument is given), touched files
 - SARIF 2.1: `results[]` → `Finding` (ruleId → title, level → severity, physicalLocation → file/line, tool.driver.name → source).
 - Anchoring: the line maps to the symbol whose `range` contains it, in the `after` version. Findings without a symbol stay at file level.
 - Simple dedup: same `symbolId` + `category` + normalized title → a single entry with the list of sources.
+- Rule findings (`source: "rule:<id>"`) are anchored the same way. A finding with no file (`file: ""`, for example a failed CI check without annotations) belongs to the change: it shows in the top bar and the Findings tab and changes no file verdict.
 
 ---
 
@@ -218,26 +227,30 @@ A Node daemon (Fastify) serves the UI on `localhost:4321` plus a JSON API and SS
 |---|---|
 | Fleet (home) | all repos as lots on an overview map: colour is audit age, size is the number of unreviewed changes; below the map, the repo list with counters (draft/branch/PR, high findings, last audit); click enters the repo |
 | Repo | the dynamic change list (section 3a), sorted by last event, with state badges and aggregated verdicts; filters by kind and reviewState; "Audit now" button |
-| Change | the 3D city and the reading panel, identical to the mockup (table below); live update while the agent keeps writing code |
+| Change | the 3D city and the reading panel, with the mockup's layout, information and behaviour in the "Night data city" style (table below); live update while the agent keeps writing code |
 | Top bar, on every screen | fleet / repo / change breadcrumb, daemon indicator, quick search (Cmd+K) by repo, branch or file |
 
 ### The change screen
 
-| Area | Behaviour (identical to the mockup) |
+| Area | Behaviour (as in the mockup, Night data city style) |
 |---|---|
 | Top bar | repo, branch vs base, counters of files and symbols by status, "N files need your eyes" badge, Export PlantUML and Approve buttons (disabled until every tier 1 file has been selected); after Approve, an Integrate menu (Merge into base, Push branch, Open/update PR; phase 5) |
-| 3D city | lots = packages (tier 1 with a dotted orange outline), buildings = files with an inset, floors = symbols coloured by status, `del` floors as a dotted red skeleton, file name label on the roof of touched buildings, verdict badge above, roof pins for findings (colour by severity), dotted ground path with numbered discs |
+| 3D city | lots = packages (tier 1 with a dotted orange outline), buildings = files with an inset, floors = symbols coloured by status, `del` floors as a dotted red skeleton, file name label on the roof of touched buildings, verdict badge above, roof pins for findings (colour by severity), dotted ground path with numbered discs; critical floors (changed floors of eyes, risky or tier 1 files, floors with an open high finding) pulse in their verdict colour, a static glow under prefers-reduced-motion; an X marker for each rule finding; a check mark on reviewed files and floors |
 | Camera | drag to orbit, scroll to zoom, R to reset, short intro animation (disabled under prefers-reduced-motion) |
-| Filters | row 1: verdicts (Needs your eyes, Risky, Outside the spec, Reviewed fine, Untouched) with counters; row 2: change type (Added, Modified, Signature changed, Removed) with counters, plus "Show everything". Filters combine (AND). A type filter dims floors of other types and buildings with no matching floors. Clicking an active filter turns it off |
+| Filters | row 1: verdicts (Needs your eyes, Risky, Outside the spec, Reviewed fine, Untouched) with counters; row 2: change type (Added, Modified, Signature changed, Removed) with counters, plus "Show everything". Filters combine (AND). A type filter dims floors of other types and buildings with no matching floors. Clicking an active filter turns it off; a third row, Rules, with a counter per rule, shown only when the change has rule findings; Hide checked hides files and floors with a current review mark |
 | Hover | tooltip with verdict, file, package, counters by status, the floor under the cursor, number of findings |
-| Click building | selects, highlights, scrolls the panel to the matching stop |
+| Click building | selects, highlights and opens the file view in the right panel: the file's stops in the reading path, then the read-only diff of the file, or of the clicked floor's symbol, with syntax highlighting, line numbers, folded unchanged regions and N / Shift+N for the next and previous hunk; Esc returns to the tabs |
 | Right panel | tabs: Execution order, Findings, Outside the spec, Symbols, Session; each stop shows the symbol, file, file verdict, status tag, `why`, inline diff, findings with source, and the "Ask agent to fix" / "Mark as intended" buttons; J/K navigate. Session (phase 4) shows one card per Claude Code session linked to the change: title and time range, the user's prompts, the agent's questions with the answers, the agents that ran (type, description, order, duration, final report), activity by kind and the edited files (click selects the building); hidden when there is no session data |
+| Review marks | per file and per symbol: Checked (C), Looks good (G), Needs rewrite (W, with a note and an optional line range), undo (U); stored by the daemon per change; a mark becomes outdated, and counts as unchecked, when its file's or symbol's content changes in a new snapshot; the HUD shows "N of M files that need your eyes checked"; Review summary renders the needs-rewrite notes as markdown to copy (phase 3) or to send to the agent (phase 4) |
+| Rule checks | one chip per configured rule: passed, N violations, pending, or not checked with the reason; a rule that could not run is never shown as passed |
 | Fleet (card) | bottom-right card with the last audit of the other repos, red above 30 days or with new CVEs; click goes to the fleet screen |
 | Theme | dark by default, light under prefers-color-scheme: light; colours as tokens on :root |
 
-"Ask agent to fix" writes the finding to `.diffcity/fix-queue.json` in the repo; the slash command picks it up. "Mark as intended" sets `state: 'intended'` in the DB and removes it from the verdict computation. "Approve" sets `reviewState: 'approved'` on the change, records the approved head, and unlocks only after every tier 1 file has been opened in the panel.
+"Ask agent to fix" writes the finding to `.diffcity/fix-queue.json` in the repo; the slash command picks it up. "Mark as intended" sets `state: 'intended'` in the DB and removes it from the verdict computation. "Approve" sets `reviewState: 'approved'` on the change, records the approved head, and unlocks only after every touched tier 1 file has a current review mark.
 
 Integrate (phase 5) is off by default and enabled per repo in the user's diffcity settings, never by the repo. Each action opens a confirmation that shows the exact command, and runs only after it is confirmed. The daemon refuses when the change is not approved, when its head has moved since approval, when it has uncommitted changes, or when it is a Draft. It never force-pushes, rebases or squashes. Commands run without a shell, and their output is shown in the dialog.
+
+Send review to the agent (phase 4) is off by default and enabled per repo in the user's diffcity settings, never by the repo. It shows the exact command and the full summary and runs only after confirmation: `claude --resume <session_id> -p` in the change's working tree with the summary on stdin, or a new `claude -p` session there when no session of that working tree is known. It never passes a permission-bypass flag, runs without a shell, and is logged.
 
 ---
 
@@ -267,6 +280,10 @@ The hook does not open the browser; the UI updates live over SSE.
 
 Claude Code passes the hook JSON (`session_id`, `transcript_path`, `cwd`, `hook_event_name`) on stdin, and `track --agent` forwards it to the daemon, so the command stays the same. The daemon reads the transcript only if it lies under the Claude Code projects directory and is named after `session_id`. It stores only a redacted, size-capped digest, never the transcript.
 
+### 7.3 Send review to the agent
+
+Send review to the agent (phase 4) is off by default and enabled per repo in the user's diffcity settings, never by the repo. It shows the exact command and the full summary and runs only after confirmation: `claude --resume <session_id> -p` in the change's working tree with the summary on stdin, or a new `claude -p` session there when no session of that working tree is known. It never passes a permission-bypass flag, runs without a shell, and is logged. The session id comes from the Stop hook input that `track --agent` forwards (§3).
+
 ---
 
 ## 8. Full audit
@@ -289,9 +306,9 @@ A repo is "stale" when: 30 days have passed since the last audit, `npm audit` re
 | 0 | Public repo, strict TS, vitest, eslint, CI on GitHub Actions, `design/mockup.html` in the repo, `docs/findings.md` with the format; complete `.claude/` (agents, skills, hooks, settings, CLAUDE.md) per section 10a; epics and tasks in Jira; base pages in Confluence | `npm test` green, `diffcity --help` works, a sample task passes through the full flow architect → dev → reviewer → tester → Done |
 | 1 | TS/JS semantic diff: git diff → before/after symbols → status, verdict, tier 1 | `diff --json` correct on 3 real changes, with fixture tests (add, mod, sig, del, new file, deleted file) |
 | 2 | Daemon + DB + collection: `up`, `shell-init`, `track`, `scan`, watcher, dynamic change list (draft/branch/PR), Fleet and Repo screens, SSE | you `cd` into any of your repos and within 5 seconds it appears in the UI with all its changes (kind, title, ahead/behind; status and verdict counters on the test repo), with no manual command (ADR-023) |
-| 3 | Change screen: 3D city, hover, select, verdict and type filters, live update | the screen looks like the mockup on the 3 changes; it updates on its own when the agent writes code |
-| 4 | Execution path, reading panel, findings + SARIF import, slash command, Stop hook with session context (Session tab: prompts, agent questions and answers, agents that ran, activity summary), Ask agent to fix / Mark as intended / Approve | `/code-review` from the editor puts the pins on the city with no manual steps; after a Claude Code session in a repo, its change shows that session and the agents that ran in the Session tab with no manual steps, with secrets redacted, and the HTML export and `diff --json` contain no session data |
-| 5 | `audit`, `status`, fleet map with audit age, self-contained HTML and PlantUML export, light theme, approve → integrate (merge into base, push branch, open/update PR via `gh`), README with GIF | a 3-minute demo run end to end in front of the team, including an approved change merged or opened as a PR from the change screen after confirmation; integrate is refused for a change that is not approved or whose head moved, and no force path exists |
+| 3 | Change screen: 3D city in the Night data city style, hover, select, verdict, type and rule filters, file view with the diff, review marks and summary, pulsing critical floors, live update | the screen has the mockup's layout, information and behaviour on the 3 changes; it updates on its own when the agent writes code; it renders from a Report alone; review marks survive a reload and become outdated when their code changes; it holds 60 fps at a pixel ratio of 2 on a 3200×2000 canvas on the reference city |
+| 4 | Execution path, reading panel, findings + SARIF import, slash command, Stop hook with session context (Session tab: prompts, agent questions and answers, agents that ran, activity summary), Ask agent to fix / Mark as intended / Approve, send review to the agent, review rules (file size, layering) | `/code-review` from the editor puts the pins on the city with no manual steps; after a Claude Code session in a repo, its change shows that session and the agents that ran in the Session tab with no manual steps, with secrets redacted, and the HTML export and `diff --json` contain no session data |
+| 5 | `audit`, `status`, fleet map with audit age, self-contained HTML and PlantUML export, light theme, approve → integrate (merge into base, push branch, open/update PR via `gh`), README with GIF, review rules for CI pipeline and CVEs | a 3-minute demo run end to end in front of the team, including an approved change merged or opened as a PR from the change screen after confirmation; integrate is refused for a change that is not approved or whose head moved, and no force path exists |
 
 Each phase closes with a `v0.<phase>.0` tag and a CHANGELOG entry.
 
@@ -308,6 +325,7 @@ Each phase closes with a `v0.<phase>.0` tag and a CHANGELOG entry.
 - Conventional commits (`feat:`, `fix:`, `test:`), one commit per logical step.
 - All computation (diff, verdict, path, findings anchoring) lives in `src/core` and runs in the daemon; the UI receives a ready-made `Report` and only does rendering, filters, hover and selection. The change screen renders from a `Report` alone, so it also works without the daemon (HTML export).
 - Collection runs in worker threads so the UI and API stay responsive on large repos.
+- External tools (gh, npm, semgrep, gitleaks, claude) run through one hardened runner: absolute binaries outside any repo, argument arrays, an environment allow-list with the git guards, timeouts and output caps; a tool that cannot run gives "not checked", never a pass (ADR-032).
 
 ---
 
