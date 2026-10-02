@@ -6,7 +6,8 @@
 .change-head .back:hover { color: var(--ink); }
 .change-head .name-line { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
 .stage .change-head p.meta { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; max-width: none; margin-top: 6px; }
-.change-head .meta code { font-family: var(--mono); font-size: 12px; color: var(--ink-2); }
+.change-head .meta code { font-family: var(--mono); font-size: 12px; color: var(--ink-2); min-width: 0; overflow-wrap: anywhere; }
+.change-head h1 { min-width: 0; overflow-wrap: anywhere; }
 .change-body { flex: 1 0 auto; background: var(--panel); border-top: 1px solid var(--line); }
 /* loading and error messages: the stage title's look, always shown */
 .change-message { padding: 18px 22px 0; }
