@@ -6,8 +6,8 @@
  * fleet card (--line border, 12 px radius) with the .step's --sig rule on
  * focus; status counters are the top bar's .stat with swatches; the verdict
  * counters asking for a look are solid tiles in the verdict colours, the
- * others quiet text; the agent badge is the .tier pill; the "Audit now"
- * hint is its .tip card. Text on a solid accent uses
+ * others quiet text; the agent badge is the .tier pill; the "Audit now" and
+ * "Show closed changes" hints are its .tip card. Text on a solid accent uses
  * --on-accent, and row text avoids --muted, so both schemes pass WCAG AA.
  */
 
@@ -40,6 +40,14 @@
   font-size: 12.5px; color: var(--ink-2); white-space: nowrap;
 }
 .has-tip:hover .hint-tip, .has-tip:focus-within .hint-tip { opacity: 1; transform: translateY(0); }
+/*
+ * Hidden at once when left, so only the hint in use is in the accessibility
+ * tree; shown on hover and on keyboard focus, not left over after a click.
+ */
+.hint-tip.on-demand { visibility: hidden; }
+.has-tip .hint-tip.on-demand { opacity: 0; transform: translateY(4px); }
+.has-tip:hover .hint-tip.on-demand, .has-tip:has(:focus-visible) .hint-tip.on-demand { visibility: visible; opacity: 1; transform: translateY(0); }
+
 /* ---------- filters (the mockup's two chip rows) ---------- */
 .repo .filters { display: flex; flex-direction: column; gap: 8px; padding: 14px 22px 18px; }
 .repo .filters .chip { cursor: pointer; }
@@ -49,6 +57,16 @@
 .repo .chip[data-value="unreviewed"] i { background: var(--muted); }
 .repo .chip[data-value="in-review"] i { background: var(--sig); }
 .repo .chip[data-value="approved"] i { background: var(--add); }
+
+/* the archive's own bar: a tinted strip, so the swap from the open filters shows */
+.repo .filters.closed {
+  flex-direction: row; flex-wrap: wrap; align-items: center; gap: 10px 16px;
+  margin: 14px 22px 18px; padding: 10px 14px; border-radius: 10px;
+  background: color-mix(in srgb, var(--sig) 10%, var(--panel)); border: 1px dashed color-mix(in srgb, var(--sig) 55%, var(--line));
+}
+.repo .filters.closed .closed-note { margin: 0; display: inline-flex; align-items: center; gap: 8px; color: var(--ink); font-size: 13px; }
+.repo .filters.closed .chip.clear { color: var(--ink-2); }
+.repo .filters.closed .closed-note i { width: 8px; height: 8px; border-radius: 2px; background: var(--sig); }
 
 /* ---------- list (the reading panel) ---------- */
 .repo .changes { flex: 1 0 auto; background: var(--panel); border-top: 1px solid var(--line); }

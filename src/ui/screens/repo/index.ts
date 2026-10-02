@@ -1,6 +1,8 @@
 // Repo (SPEC.md section 6): the dynamic change list of one repo (section 3a),
 // newest event first as the API orders it, with state badges, aggregated
 // verdicts, the kind and review-state filters and the "Audit now" button.
+// "Show closed changes" swaps the list for the archive (merged, deleted,
+// closed or cleaned changes, read-only) and its own kind filter.
 // Data comes from `GET /api/repos/:id` (and `?archived=1` for the archive);
 // SSE `hello`, `repo`, `changes`, `snapshot` and `collect` for this repo
 // refetch it (ADR-017), coalesced per 250 ms.
@@ -11,7 +13,7 @@ import type { ChangeKind, ChangeSummary, RepoDetail, ReviewState } from '../../.
 import { ApiRequestError } from '../../data/api.js';
 import type { DataContext } from '../../data/context.js';
 import { h, replaceChildren } from '../../shared/dom.js';
-import { KIND_FILTER_LABEL, KINDS, plural, REVIEW_STATE_LABEL, REVIEW_STATES } from '../../shared/format.js';
+import { CLOSED_CHANGES_HINT, KIND_FILTER_LABEL, KINDS, plural, REVIEW_STATE_LABEL, REVIEW_STATES } from '../../shared/format.js';
 import { applyFilters, filterCounts, isFiltered, NO_FILTERS, toggleKind, toggleReview, type RepoFilters } from './filters.js';
 import { createChangeList } from './list.js';
 
@@ -19,6 +21,10 @@ import { createChangeList } from './list.js';
 const CLOCK_MS = 30_000;
 
 export const AUDIT_TOOLTIP = 'Audit arrives in a later version';
+
+/** The archive toggle names what a click does: open it, or go back. */
+export const SHOW_CLOSED = 'Show closed changes';
+export const BACK_TO_OPEN = 'Back to open changes';
 
 type RepoState = 'loading' | 'ready' | 'missing' | 'unreachable';
 
@@ -71,12 +77,14 @@ export function mountRepo(element: HTMLElement, context: DataContext, repoId: nu
   const name = h('h1');
   const path = h('p', { class: 'path' });
   const indicators = h('span', { class: 'indicators' });
+  // Out of the accessibility tree until shown; aria-describedby still reads it.
+  const archiveTip = h('span', { class: 'hint-tip on-demand', role: 'tooltip', id: `archive-tip-${String(repoId)}` }, CLOSED_CHANGES_HINT);
   const archiveToggle = h(
     'button',
     {
       type: 'button',
       class: 'btn archive-toggle',
-      'aria-pressed': 'false',
+      'aria-describedby': archiveTip.id,
       'data-testid': 'archive-toggle',
       onclick: () => {
         showArchive = !showArchive;
@@ -85,7 +93,7 @@ export function mountRepo(element: HTMLElement, context: DataContext, repoId: nu
         render();
       },
     },
-    'Archive',
+    SHOW_CLOSED,
   );
   // aria-disabled, not disabled: the button stays focusable, so the keyboard
   // reaches it and its tooltip, and a click does nothing.
@@ -108,7 +116,7 @@ export function mountRepo(element: HTMLElement, context: DataContext, repoId: nu
     'div',
     { class: 'repo-head' },
     h('div', { class: 'title' }, h('div', { class: 'name-line' }, name, indicators), path),
-    h('div', { class: 'actions' }, archiveToggle, h('span', { class: 'has-tip' }, audit, auditTip)),
+    h('div', { class: 'actions' }, h('span', { class: 'has-tip' }, archiveToggle, archiveTip), h('span', { class: 'has-tip' }, audit, auditTip)),
   );
 
   // ---------- filters ----------
@@ -124,25 +132,50 @@ export function mountRepo(element: HTMLElement, context: DataContext, repoId: nu
       render();
     }),
   );
-  const clear = h(
-    'button',
-    {
-      type: 'button',
-      class: 'chip clear',
-      'data-testid': 'show-everything',
-      onclick: () => {
-        filters = NO_FILTERS;
-        render();
+  const clearButton = (testId: string, label: string): HTMLButtonElement =>
+    h(
+      'button',
+      {
+        type: 'button',
+        class: 'chip clear',
+        'data-testid': testId,
+        onclick: () => {
+          filters = NO_FILTERS;
+          render();
+        },
       },
-    },
-    'Show everything',
-  );
+      label,
+    );
   const filterBar = h(
     'div',
-    { class: 'filters' },
+    { class: 'filters', 'data-testid': 'open-filters' },
     h('div', { class: 'chips kinds', role: 'group', 'aria-label': 'Filter by kind' }, kindChips.map((c) => c.button)),
-    h('div', { class: 'chips reviews', role: 'group', 'aria-label': 'Filter by review state' }, reviewChips.map((c) => c.button), clear),
+    h(
+      'div',
+      { class: 'chips reviews', role: 'group', 'aria-label': 'Filter by review state' },
+      reviewChips.map((c) => c.button),
+      clearButton('show-everything', 'Show everything'),
+    ),
   );
+  // The archive has its own bar: closed changes have no review to filter by.
+  const closedKindChips = KINDS.map((kind) =>
+    chip(kind, KIND_FILTER_LABEL[kind], 'kind', () => {
+      filters = toggleKind(filters, kind);
+      render();
+    }),
+  );
+  const archiveBar = h(
+    'div',
+    { class: 'filters closed', 'data-testid': 'closed-filters' },
+    h('p', { class: 'closed-note' }, h('i', { 'aria-hidden': 'true' }), 'Read-only: closed changes are kept for reference and can’t be reviewed.'),
+    h(
+      'div',
+      { class: 'chips' },
+      h('div', { class: 'chips kinds', role: 'group', 'aria-label': 'Filter by kind' }, closedKindChips.map((c) => c.button)),
+      clearButton('show-all-closed', 'Show all closed'),
+    ),
+  );
+  const filterSlot = h('div', { class: 'filter-slot' });
 
   // ---------- list ----------
   const list = createChangeList(go);
@@ -215,35 +248,42 @@ export function mountRepo(element: HTMLElement, context: DataContext, repoId: nu
       replaceChildren(indicators, tags);
     }
 
-    archiveToggle.setAttribute('aria-pressed', String(showArchive));
+    const toggleText = showArchive ? BACK_TO_OPEN : SHOW_CLOSED;
+    if (archiveToggle.textContent !== toggleText) archiveToggle.textContent = toggleText;
+    archiveToggle.dataset['showing'] = showArchive ? 'closed' : 'open';
     archiveToggle.classList.toggle('on', showArchive);
     stage.classList.toggle('archive', showArchive);
+    const bar = showArchive ? archiveBar : filterBar;
+    if (filterSlot.firstElementChild !== bar) {
+      // Only when the view changes, so a focused chip survives live updates.
+      replaceChildren(filterSlot, bar);
+    }
 
     const source = showArchive ? archivedChanges : repo.changes;
     const all = source ?? [];
     const counts = filterCounts(all);
-    paintChips<ChangeKind>(kindChips, filters.kind, counts.kind);
+    paintChips<ChangeKind>(showArchive ? closedKindChips : kindChips, filters.kind, counts.kind);
     paintChips<ReviewState>(reviewChips, filters.review, counts.review);
 
     const rows = applyFilters(all, filters);
     if (showArchive) {
-      listTitle.textContent = 'Archive';
-      listNote.textContent = 'Merged, deleted or closed changes stay here for 90 days. Read-only.';
+      listTitle.textContent = 'Closed changes';
+      listNote.textContent = `${CLOSED_CHANGES_HINT}.`;
     } else {
-      listTitle.textContent = 'Changes';
+      listTitle.textContent = 'Open changes';
       listNote.textContent = 'Drafts, branches and pull requests, latest activity first.';
     }
     const total = isFiltered(filters) ? `${String(rows.length)} of ${String(all.length)}` : String(all.length);
     listTotal.textContent = total;
-    const noun = showArchive ? 'archived change' : 'change';
+    const noun = showArchive ? 'closed change' : 'change';
     listTotalText.textContent = isFiltered(filters) ? `${String(rows.length)} of ${plural(all.length, noun)} shown` : plural(all.length, noun);
     list.render(rows, now, showArchive);
     restoreFocus();
 
     let message = '';
-    if (showArchive && archiveFailed) message = 'Can’t load the archive right now.';
-    else if (source === null) message = 'Loading the archive…';
-    else if (all.length === 0) message = showArchive ? 'Nothing archived in the last 90 days.' : 'No changes yet. Drafts, branches and pull requests appear here as soon as diffcity sees them.';
+    if (showArchive && archiveFailed) message = 'Can’t load the closed changes right now.';
+    else if (source === null) message = 'Loading the closed changes…';
+    else if (all.length === 0) message = showArchive ? 'No change closed in the last 90 days.' : 'No changes yet. Drafts, branches and pull requests appear here as soon as diffcity sees them.';
     else if (rows.length === 0) message = 'No change matches these filters.';
     listStatus.textContent = message;
     listStatus.hidden = message === '';
@@ -282,7 +322,7 @@ export function mountRepo(element: HTMLElement, context: DataContext, repoId: nu
           );
           break;
         case 'ready':
-          replaceChildren(stage, head, filterBar, listSection);
+          replaceChildren(stage, head, filterSlot, listSection);
           break;
       }
     }

@@ -158,3 +158,6 @@ export const ATTENTION_VERDICTS: readonly Verdict[] = ['eyes', 'risky', 'spec'];
 
 /** The verdicts that ask for nothing: shown quietly after the attention ones. */
 export const QUIET_VERDICTS: readonly Verdict[] = ['ok', 'same'];
+
+/** What the Repo archive holds (SPEC.md section 3a, ADR-019). */
+export const CLOSED_CHANGES_HINT = 'Merged, deleted, closed or cleaned changes, kept for 90 days';
