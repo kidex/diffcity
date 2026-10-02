@@ -126,4 +126,12 @@ describe('snapshots', () => {
     expect(() => db.snapshots.put(snapshotInput(9999, change.head))).toThrow(/FOREIGN KEY constraint failed/);
     expect(rowCount()).toBe(0);
   });
+
+  it('an unchanged put (same content hash) leaves mergeBase and fingerprints as stored (ADR-028)', () => {
+    db.snapshots.put(snapshotInput(change.id, change.head, { fingerprints: '{"files":{},"symbols":{}}' }));
+    const result = db.snapshots.put(snapshotInput(change.id, change.head, { fingerprints: '{"files":{"a":{"before":null,"after":"x"}},"symbols":{}}', mergeBase: 'd'.repeat(40) }));
+    expect(result).toBe('unchanged');
+    expect(db.snapshots.latestFingerprints(change.id)).toBe('{"files":{},"symbols":{}}');
+    expect(db.snapshots.latest(change.id)?.mergeBase).toBe('c'.repeat(40));
+  });
 });

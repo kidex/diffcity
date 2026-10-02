@@ -151,7 +151,7 @@ const sseEvents: SseEvent[] = [
   { event: 'repo', data: { repoId: 1 } },
   { event: 'changes', data: { repoId: 1 } },
   { event: 'snapshot', data: { repoId: 1, changeId: 7, head: HEAD } },
-  { event: 'review', data: { repoId: 1, changeId: 7, reviewState: 'in-review' } },
+  { event: 'review', data: { repoId: 1, changeId: 7 } },
   { event: 'collect', data: { repoId: 1, state: 'started' } },
   { event: 'collect', data: { repoId: 1, state: 'done' } },
   { event: 'collect', data: { repoId: 1, state: 'error', error: 'git failed' } },

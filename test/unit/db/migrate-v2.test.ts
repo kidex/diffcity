@@ -50,21 +50,74 @@ describe('schema v2', () => {
     raw.close();
   });
 
-  it('db/migrate-v1-to-v2: review marks and notes cascade with their change and marks are unique per target', () => {
+  it('db/migrate-v1-to-v2: review_marks has the ADR-028 columns, constraints and index', () => {
+    const path = v1Database();
+    openDb(path).close();
+    const raw = rawConnection(path, { readOnly: true });
+    const columns = raw.prepare<[], { name: string }>('PRAGMA table_info(review_marks)').all().map((c) => c.name);
+    expect(columns).toEqual([
+      'id', 'changeId', 'targetKind', 'targetId', 'filePath', 'mark', 'note', 'lineSide', 'lineStart', 'lineEnd',
+      'fingerprint', 'snapshotId', 'state', 'outdatedAt', 'createdAt', 'updatedAt',
+    ]);
+    const notes = raw.prepare<[], { name: string }>('PRAGMA table_info(review_notes)').all().map((c) => c.name);
+    expect(notes).toEqual(['changeId', 'note', 'updatedAt']);
+    const sql = raw.prepare<[], { name: string; sql: string }>("SELECT name, sql FROM sqlite_master WHERE name IN ('review_marks','review_marks_change')").all();
+    const text = sql.map((r) => r.sql).join('\n');
+    expect(text).toContain("CHECK (targetKind IN ('file','symbol'))");
+    expect(text).toContain("CHECK (mark IN ('checked','good','rewrite'))");
+    expect(text).toContain("CHECK (lineSide IN ('old','new'))");
+    expect(text).toContain("CHECK (state IN ('current','outdated'))");
+    expect(text).toContain('UNIQUE (changeId, targetKind, targetId)');
+    expect(text).toContain('REFERENCES snapshots(id) ON DELETE SET NULL');
+    expect(text).toContain('CREATE INDEX review_marks_change ON review_marks(changeId, state)');
+    raw.close();
+  });
+
+  it('db/migrate-v1-to-v2: marks enforce their constraints and cascade with the change', () => {
     const path = v1Database();
     openDb(path).close();
     const raw = rawConnection(path);
     raw.pragma('foreign_keys = ON');
-    const mark = raw.prepare("INSERT INTO review_marks (changeId, kind, target, fingerprint, markedAt) VALUES (1, 'file', 'src/a.ts', 'f', ?)");
-    mark.run(T0);
-    expect(() => mark.run(T0)).toThrow(/UNIQUE/);
-    expect(() =>
-      raw.prepare("INSERT INTO review_marks (changeId, kind, target, fingerprint, markedAt) VALUES (1, 'dir', 'src', 'f', ?)").run(T0),
-    ).toThrow(/CHECK/);
-    raw.prepare("INSERT INTO review_notes (changeId, path, line, body, createdAt, updatedAt) VALUES (1, 'src/a.ts', NULL, 'why?', ?, ?)").run(T0, T0);
+    const insert = (fields: string, values: string): void => {
+      raw.prepare(
+        `INSERT INTO review_marks (changeId, targetKind, targetId, filePath, fingerprint, createdAt, updatedAt, ${fields})
+         VALUES (1, 'file', 'src/a.ts', 'src/a.ts', 'f', '${T0}', '${T0}', ${values})`,
+      ).run();
+    };
+    insert('mark', "'checked'");
+    expect(() => { insert('mark', "'good'"); }).toThrow(/UNIQUE/);
+    raw.prepare('DELETE FROM review_marks').run();
+    expect(() => { insert('mark', "'rewrite'"); }).toThrow(/CHECK/);
+    expect(() => { insert('mark, note', "'rewrite', ''"); }).toThrow(/CHECK/);
+    expect(() => { insert('mark, note', `'rewrite', '${'x'.repeat(2001)}'`); }).toThrow(/CHECK/);
+    insert('mark, note', "'rewrite', 'split this'");
+    raw.prepare('DELETE FROM review_marks').run();
+    expect(() => { insert('mark, lineStart, lineEnd', "'checked', 3, 4"); }).toThrow(/CHECK/);
+    expect(() => { insert('mark, lineSide, lineStart, lineEnd', "'checked', 'new', 5, 4"); }).toThrow(/CHECK/);
+    expect(() => { insert('mark, lineSide, lineStart, lineEnd', "'checked', 'left', 1, 1"); }).toThrow(/CHECK/);
+    insert('mark, lineSide, lineStart, lineEnd', "'good', 'old', 3, 4");
+    expect(() => { insert('mark, state', "'checked', 'stale'"); }).toThrow(/CHECK/);
+    raw.prepare("INSERT INTO review_notes (changeId, note, updatedAt) VALUES (1, 'overall fine', ?)").run(T0);
+    expect(() => raw.prepare("INSERT INTO review_notes (changeId, note, updatedAt) VALUES (1, 'again', ?)").run(T0)).toThrow(/UNIQUE|PRIMARY/);
+    expect(() => raw.prepare('UPDATE review_notes SET note = ? WHERE changeId = 1').run('x'.repeat(4001))).toThrow(/CHECK/);
     raw.prepare('DELETE FROM changes WHERE id = 1').run();
     expect(raw.prepare('SELECT count(*) AS n FROM review_marks').get()).toEqual({ n: 0 });
     expect(raw.prepare('SELECT count(*) AS n FROM review_notes').get()).toEqual({ n: 0 });
+    raw.close();
+  });
+
+  it('db/migrate-v1-to-v2: deleting a snapshot nulls the snapshotId of its marks', () => {
+    const path = v1Database();
+    openDb(path).close();
+    const raw = rawConnection(path);
+    raw.pragma('foreign_keys = ON');
+    const snapshotId = (raw.prepare<[], { id: number }>('SELECT id FROM snapshots').get() ?? { id: -1 }).id;
+    raw.prepare(
+      `INSERT INTO review_marks (changeId, targetKind, targetId, filePath, mark, fingerprint, snapshotId, createdAt, updatedAt)
+       VALUES (1, 'file', 'src/a.ts', 'src/a.ts', 'checked', 'f', ?, ?, ?)`,
+    ).run(snapshotId, T0, T0);
+    raw.prepare('DELETE FROM snapshots').run();
+    expect(raw.prepare('SELECT snapshotId, state FROM review_marks').get()).toEqual({ snapshotId: null, state: 'current' });
     raw.close();
   });
 

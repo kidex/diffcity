@@ -121,20 +121,22 @@ describe('migrations', () => {
       review_marks: [
         'id INTEGER PK',
         'changeId INTEGER NOT NULL',
-        'kind TEXT NOT NULL',
-        'target TEXT NOT NULL',
+        'targetKind TEXT NOT NULL',
+        'targetId TEXT NOT NULL',
+        'filePath TEXT NOT NULL',
+        'mark TEXT NOT NULL',
+        'note TEXT',
+        'lineSide TEXT',
+        'lineStart INTEGER',
+        'lineEnd INTEGER',
         'fingerprint TEXT NOT NULL',
-        'markedAt TEXT NOT NULL',
-      ],
-      review_notes: [
-        'id INTEGER PK',
-        'changeId INTEGER NOT NULL',
-        'path TEXT NOT NULL',
-        'line INTEGER',
-        'body TEXT NOT NULL',
+        'snapshotId INTEGER',
+        "state TEXT NOT NULL = 'current'",
+        'outdatedAt TEXT',
         'createdAt TEXT NOT NULL',
         'updatedAt TEXT NOT NULL',
       ],
+      review_notes: ['changeId INTEGER PK', 'note TEXT NOT NULL', 'updatedAt TEXT NOT NULL'],
       findings: [
         'id INTEGER PK',
         'changeId INTEGER NOT NULL',
@@ -159,7 +161,7 @@ describe('migrations', () => {
       changes_live_ref: 'CREATE UNIQUE INDEX changes_live_ref ON changes(repoId, ref) WHERE archivedAt IS NULL',
       changes_repo_event: 'CREATE INDEX changes_repo_event ON changes(repoId, archivedAt, lastEventAt)',
       events_repo_at: 'CREATE INDEX events_repo_at ON events(repoId, at)',
-      review_notes_change: 'CREATE INDEX review_notes_change ON review_notes(changeId)',
+      review_marks_change: 'CREATE INDEX review_marks_change ON review_marks(changeId, state)',
     });
   });
 
