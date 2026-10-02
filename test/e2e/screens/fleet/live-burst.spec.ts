@@ -8,6 +8,13 @@ import type { RepoSummary } from '../../../../src/core/model/types.js';
 import { fixtures, mockApi } from '../../support/mock-api.js';
 import { emitSse, tagClient } from '../../support/sse.js';
 
+// The last event's refetch runs at most one coalescing interval (250 ms) after
+// the burst, then a round trip and a render. A runner that is still busy with
+// the specs before it can hold the page for seconds, so convergence on the
+// last data waits longer than the 5 s default; it still fails if the card
+// never reaches the last data.
+const SETTLE = { timeout: 20_000 };
+
 const tip = (page: Page) => page.locator('.fleet-map .tip');
 
 function collectErrors(page: Page): string[] {
@@ -40,10 +47,10 @@ test('a burst while a lot is hovered keeps its card and ends on the last data', 
     await emitSse(page, testInfo.testId, draft % 2 === 0 ? 'repo' : 'collect', draft % 2 === 0 ? { repoId: 2 } : { repoId: 2, state: 'started' });
     await expect(tip(page)).toHaveClass(/show/);
   }
-  await expect(tip(page).locator('.row b').first()).toHaveText('20');
+  await expect(tip(page).locator('.row b').first()).toHaveText('20', SETTLE);
   await expect(tip(page).locator('.f')).toHaveText('order-service');
   await expect(lot).toHaveClass(/hot/);
-  await expect(page.getByTestId('repo-row').filter({ hasText: 'order-service' }).locator('[data-col="draft"]')).toHaveText('20');
+  await expect(page.getByTestId('repo-row').filter({ hasText: 'order-service' }).locator('[data-col="draft"]')).toHaveText('20', SETTLE);
   expect(errors).toEqual([]);
 });
 
@@ -71,9 +78,9 @@ test('a burst that resizes, reorders and adds lots keeps keyboard focus and the 
   await expect(lot).toHaveClass(/hot/);
   await expect(tip(page)).toHaveClass(/show/);
   await expect(tip(page).locator('.f')).toHaveText('docs-site');
-  await expect(tip(page).locator('.row b').nth(2)).toHaveText('15');
+  await expect(tip(page).locator('.row b').nth(2)).toHaveText('15', SETTLE);
   const expected = repos.find((repo) => repo.id === 3);
-  await expect(lot.locator('.count')).toHaveText(String(expected?.unreviewed));
-  await expect(page.getByTestId('lot')).toHaveCount(repos.length);
+  await expect(lot.locator('.count')).toHaveText(String(expected?.unreviewed), SETTLE);
+  await expect(page.getByTestId('lot')).toHaveCount(repos.length, SETTLE);
   expect(errors).toEqual([]);
 });
