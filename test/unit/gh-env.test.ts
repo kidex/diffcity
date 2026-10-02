@@ -42,4 +42,30 @@ describe('ghEnv', () => {
       GIT_CONFIG_VALUE_3: devNull,
     });
   });
+
+  it.each([
+    ['non-numeric', 'abc'],
+    ['empty', ''],
+    ['zero', '0'],
+    ['negative', '-3'],
+  ])('starts the pairs at index 0 when the existing GIT_CONFIG_COUNT is %s', (_label, count) => {
+    const env = ghEnv({
+      GIT_CONFIG_COUNT: count,
+      GIT_CONFIG_KEY_0: 'user.name',
+      GIT_CONFIG_VALUE_0: 'stale-zero',
+      GIT_CONFIG_KEY_1: 'color.ui',
+      GIT_CONFIG_VALUE_1: 'stale-one',
+      GIT_CONFIG_KEY_2: 'user.email',
+      GIT_CONFIG_VALUE_2: 'stale-two',
+    });
+    expect(env.GIT_CONFIG_COUNT).toBe('2');
+    expect(env).toMatchObject({
+      GIT_CONFIG_KEY_0: 'core.fsmonitor',
+      GIT_CONFIG_VALUE_0: 'false',
+      GIT_CONFIG_KEY_1: 'core.hooksPath',
+      GIT_CONFIG_VALUE_1: devNull,
+    });
+    // Git reads only indexes below the count, so the leftover index 2 is never read.
+    expect(Number(env.GIT_CONFIG_COUNT)).toBeLessThanOrEqual(2);
+  });
 });

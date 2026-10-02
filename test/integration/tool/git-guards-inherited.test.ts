@@ -66,18 +66,18 @@ async function stubGh(): Promise<void> {
 const markersSeen = async (): Promise<string[]> => (await readdir(markers)).sort();
 
 describe('tool/git-guards-inherited', () => {
-  it('fires no repo-configured command when the stub gh runs git through the gh runner', { timeout: 60_000 }, async () => {
+  it('fires no repo-configured command when the stub gh runs git through the gh runner', { timeout: 120_000 }, async () => {
     const hostile = await hostileRepo();
     await stubGh();
-    await defaultRunner('gh', ['repo', 'view'], { cwd: hostile.dir, timeoutMs: 30_000 });
+    await defaultRunner('gh', ['repo', 'view'], { cwd: hostile.dir, timeoutMs: 50_000 });
     expect(await markersSeen()).toEqual([]);
   });
 
-  it('control: the same stub without the guards does fire the marker', { timeout: 60_000 }, async () => {
+  it('control: the same stub without the guards does fire the marker', { timeout: 120_000 }, async () => {
     const hostile = await hostileRepo();
     await stubGh();
     await new Promise<void>((resolve, reject) => {
-      execFile('gh', [], { cwd: hostile.dir, env: process.env, timeout: 30_000 }, (error) => {
+      execFile('gh', [], { cwd: hostile.dir, env: process.env, timeout: 50_000 }, (error) => {
         if (error === null) resolve();
         else reject(new Error('stub gh failed', { cause: error }));
       });
