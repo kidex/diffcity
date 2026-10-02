@@ -15,7 +15,7 @@ import type { CollectorPort, CollectScope, RepoRecord, WatchMode } from '../../c
 import type { Clock } from '../clock.js';
 import { errorMessage, type Logger } from '../log.js';
 import { createDebouncer, type Debouncer } from './debounce.js';
-import { createRepoWatcher, type RepoWatcher } from './repo-watcher.js';
+import { createRepoWatcher, type RepoWatcher, type WorktreeBackend } from './repo-watcher.js';
 
 export interface WatchEvent {
   repoId: number;
@@ -29,6 +29,8 @@ export interface WatchersOptions {
   log: Logger;
   /** Directory budget per working tree; defaults to DIR_BUDGET. */
   budget?: number;
+  /** Working tree backend; defaults to DEFAULT_WORKTREE_BACKEND (recursive fs.watch on macOS). */
+  backend?: WorktreeBackend;
   debounceMs?: number;
   maxWaitMs?: number;
   /** A repo's watch mode changed (it went `git-only`). */
@@ -113,6 +115,7 @@ export function createWatchers(options: WatchersOptions): Watchers {
         commonDir: repo.gitCommonDir,
         log,
         ...(options.budget === undefined ? {} : { budget: options.budget }),
+        ...(options.backend === undefined ? {} : { backend: options.backend }),
         onGit: (path) => {
           push(repo.id, 'refs', path);
         },

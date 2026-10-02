@@ -2,20 +2,29 @@
 //
 // - git: one chokidar instance on the git common dir, filtered to HEAD,
 //   packed-refs, refs/** and the HEAD of each linked worktree (gitIgnoreMatcher);
-// - working trees: one chokidar instance per working tree, at most
-//   MAX_WORKTREES, ignoring `.git`, `node_modules`, what git ignores and the
-//   linked worktrees nested inside it. The ignored set is recomputed after each
-//   collection (syncWorktrees) and on any `.gitignore` event.
+// - working trees: one watcher per working tree, at most MAX_WORKTREES,
+//   ignoring `.git`, `node_modules`, what git ignores and the linked worktrees
+//   nested inside it. The ignored set is recomputed after each collection
+//   (syncWorktrees) and on any `.gitignore` event.
+//
+// The working tree backend depends on the platform (ADR-020 amendment):
+//
+// - macOS: one recursive `fs.watch` per working tree, a single FSEvents stream
+//   that holds no descriptor per file or directory; events are filtered by the
+//   same ignore matcher. chokidar would open one kqueue descriptor per file.
+// - elsewhere: chokidar, which skips the ignored directories entirely (one
+//   inotify watch per watched directory on Linux).
 //
 // Budget: a working tree with more than DIR_BUDGET directories to watch is not
-// watched, and the repo reports `git-only`. The directories are counted before
-// chokidar starts (countWatchedDirs stops at the budget), so a huge tree never
-// registers its watchers at all, and counted again after `ready`. A watcher
-// error for exhausted resources (EMFILE, ENFILE, ENOSPC) also falls back to
-// `git-only` for that working tree: on macOS chokidar holds one descriptor per
-// watched file. The git watcher always stays.
+// watched, and the repo reports `git-only`, on both backends. The directories
+// are counted before the watcher starts (countWatchedDirs stops at the budget),
+// so a huge tree never registers its watchers at all; chokidar's are counted
+// again after `ready`. A watcher error for exhausted resources (EMFILE, ENFILE,
+// ENOSPC) also falls back to `git-only` for that working tree, on both
+// backends. The git watcher always stays.
 
-import { basename } from 'node:path';
+import { watch as fsWatch, type FSWatcher as NativeWatcher } from 'node:fs';
+import { basename, join } from 'node:path';
 import { watch, type FSWatcher } from 'chokidar';
 import { countWatchedDirs, gitIgnoreMatcher, ignoreMatcher, listIgnored, type IgnoredSet } from '../../core/watch/index.js';
 import { errorMessage, type Logger } from '../log.js';
@@ -31,12 +40,20 @@ const EXHAUSTED = new Set(['EMFILE', 'ENFILE', 'ENOSPC']);
 
 const EMPTY: IgnoredSet = { dirs: new Set(), files: new Set() };
 
+/** How a working tree is watched: one recursive fs.watch (FSEvents), or chokidar. */
+export type WorktreeBackend = 'recursive' | 'chokidar';
+
+/** `recursive` on macOS, `chokidar` elsewhere (ADR-020 amendment). */
+export const DEFAULT_WORKTREE_BACKEND: WorktreeBackend = process.platform === 'darwin' ? 'recursive' : 'chokidar';
+
 export interface RepoWatcherOptions {
   repoId: number;
   /** Realpath of the git common dir. */
   commonDir: string;
   log: Logger;
   budget?: number;
+  /** Defaults to DEFAULT_WORKTREE_BACKEND. */
+  backend?: WorktreeBackend;
   /** A change under refs, packed-refs or a HEAD. */
   onGit(path: string): void;
   /** A change in the working tree at `worktree`. */
@@ -82,6 +99,7 @@ interface WorktreeWatcherOptions {
   /** Every other working tree of the repo, for the nested ones. */
   others: () => readonly string[];
   budget: number;
+  backend: WorktreeBackend;
   log: Logger;
   onEvent(path: string): void;
   /** The working tree cannot be watched (over budget or out of resources); the watcher has closed. */
@@ -92,6 +110,7 @@ function createWorktreeWatcher(options: WorktreeWatcherOptions): WorktreeWatcher
   const { root, budget, log } = options;
   let ignored = ignoreMatcher(root, EMPTY, options.others());
   let watcher: FSWatcher | null = null;
+  let native: NativeWatcher | null = null;
   /** Directories unwatched because they became ignored; watched again if they stop being ignored. */
   const unwatched = new Set<string>();
   let closed = false;
@@ -154,15 +173,51 @@ function createWorktreeWatcher(options: WorktreeWatcherOptions): WorktreeWatcher
     if (closed) return;
     closed = true;
     signalClosed();
+    closeAll();
     const current = watcher;
     watcher = null;
     await current?.close();
     options.onGiveUp(reason);
   }
 
+  /** Closes the recursive watcher, if any (synchronous). */
+  function closeAll(): void {
+    native?.close();
+    native = null;
+  }
+
+  const onError = (error: unknown): void => {
+    const code = errorCode(error);
+    log.warn(`watch: ${root}: ${errorMessage(error)}`);
+    if (code !== undefined && EXHAUSTED.has(code)) void giveUp(`out of watch resources (${code})`);
+  };
+
+  const onPath = (path: string): void => {
+    if (isClosed() || isIgnored(path)) return;
+    if (basename(path) === '.gitignore') void refresh();
+    options.onEvent(path);
+  };
+
+  /** The macOS backend: one FSEvents stream for the whole tree, filtered here. */
+  function startRecursive(dirs: number): void {
+    let created: NativeWatcher;
+    try {
+      created = fsWatch(root, { recursive: true, persistent: true }, (_event, filename) => {
+        if (filename === null) return;
+        onPath(join(root, filename));
+      });
+    } catch (error) {
+      onError(error);
+      return;
+    }
+    native = created;
+    created.on('error', onError);
+    log.info(`watching ${root}: ${String(dirs)} directories, one recursive fs.watch`);
+  }
+
   return {
     get running() {
-      return watcher !== null && !closed;
+      return (watcher !== null || native !== null) && !closed;
     },
     async start() {
       await refresh();
@@ -173,18 +228,16 @@ function createWorktreeWatcher(options: WorktreeWatcherOptions): WorktreeWatcher
         await giveUp(`more than ${String(budget)} directories`);
         return;
       }
+      if (options.backend === 'recursive') {
+        startRecursive(dirs);
+        return;
+      }
       const created = watch(root, { ignoreInitial: true, followSymlinks: false, ignored: isIgnored });
       watcher = created;
       created.on('all', (_event, path) => {
-        if (closed || isIgnored(path)) return;
-        if (basename(path) === '.gitignore') void refresh();
-        options.onEvent(path);
+        onPath(path);
       });
-      created.on('error', (error) => {
-        const code = errorCode(error);
-        log.warn(`watch: ${root}: ${errorMessage(error)}`);
-        if (code !== undefined && EXHAUSTED.has(code)) void giveUp(`out of watch resources (${code})`);
-      });
+      created.on('error', onError);
       await readyOrClosed(created, closedSignal);
       if (isClosed()) return;
       const watched = Object.keys(created.getWatched()).filter((dir) => dir === root || dir.startsWith(`${root}/`));
@@ -201,6 +254,7 @@ function createWorktreeWatcher(options: WorktreeWatcherOptions): WorktreeWatcher
     async close() {
       closed = true;
       signalClosed();
+      closeAll();
       const current = watcher;
       watcher = null;
       await current?.close();
@@ -231,6 +285,7 @@ export function createRepoWatcher(options: RepoWatcherOptions): RepoWatcher {
       root,
       others: () => listed.filter((path) => path !== root),
       budget,
+      backend: options.backend ?? DEFAULT_WORKTREE_BACKEND,
       log,
       onEvent: (path) => {
         options.onWorktree(root, path);

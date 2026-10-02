@@ -3,13 +3,14 @@
 // collector is a recorder. Each test lets the watchers settle after they
 // start, so the events of the repo's own setup are not counted.
 
+import { readdirSync } from 'node:fs';
 import { mkdir, realpath } from 'node:fs/promises';
 import { join } from 'node:path';
 import { PassThrough } from 'node:stream';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { CollectPriority, CollectScope, RepoRecord } from '../../../src/core/model/types.js';
 import { createStreamLogger } from '../../../src/daemon/log.js';
-import { DIR_BUDGET } from '../../../src/daemon/watcher/repo-watcher.js';
+import { DEFAULT_WORKTREE_BACKEND, DIR_BUDGET, type WorktreeBackend } from '../../../src/daemon/watcher/repo-watcher.js';
 import { createWatchers, type WatchEvent, type Watchers } from '../../../src/daemon/watcher/watchers.js';
 import { manualClock, type ManualClock } from '../../helpers/clock.js';
 import { waitFor } from '../../helpers/daemon.js';
@@ -55,7 +56,7 @@ async function sampleRepo(options: CreateRepoOptions = {}): Promise<TempRepo> {
   return repo;
 }
 
-async function watch(repo: TempRepo, options: { budget?: number } = {}): Promise<Watched> {
+async function watch(repo: TempRepo, options: { budget?: number; backend?: WorktreeBackend } = {}): Promise<Watched> {
   const root = await realpath(repo.dir);
   const record: RepoRecord = {
     id: REPO_ID,
@@ -84,6 +85,7 @@ async function watch(repo: TempRepo, options: { budget?: number } = {}): Promise
     clock,
     log: createStreamLogger(new PassThrough()),
     ...(options.budget === undefined ? {} : { budget: options.budget }),
+    ...(options.backend === undefined ? {} : { backend: options.backend }),
     onEvent: (event) => events.push(event),
     onModeChange: (repoId) => modeChanges.push(repoId),
   });
@@ -172,10 +174,13 @@ describe('git watcher (C4)', () => {
   });
 });
 
-describe('working tree watcher (C4, ADR-020)', () => {
+// Both backends on macOS; chokidar only elsewhere (recursive fs.watch is the macOS backend).
+const BACKENDS: WorktreeBackend[] = process.platform === 'darwin' ? ['recursive', 'chokidar'] : ['chokidar'];
+
+describe.each(BACKENDS)('working tree watcher (C4, ADR-020), backend %s', (backend) => {
   it('an edit → scope `worktree:<root>`, debounced', async () => {
     const repo = await sampleRepo();
-    const w = await watch(repo);
+    const w = await watch(repo, { backend });
     await w.settle();
     await repo.write({ 'src/oven.ts': 'export const heat = 2;\n' });
     await repo.write({ 'src/oven.ts': 'export const heat = 3;\n' });
@@ -187,7 +192,7 @@ describe('working tree watcher (C4, ADR-020)', () => {
   it('watch/node-modules-ignored: a write in node_modules → nothing', async () => {
     const repo = await sampleRepo();
     await repo.write({ 'node_modules/left-pad/index.js': 'module.exports = 1;\n' });
-    const w = await watch(repo);
+    const w = await watch(repo, { backend });
     await w.settle();
     await repo.write({ 'node_modules/left-pad/index.js': 'module.exports = 2;\n', 'packages/cart/node_modules/qs/index.js': 'x\n' });
     await w.sentinel();
@@ -197,7 +202,7 @@ describe('working tree watcher (C4, ADR-020)', () => {
   it('watch/gitignored-dir-ignored: a write in a gitignored directory → nothing', async () => {
     const repo = await sampleRepo({ files: { '.gitignore': 'build/\n*.log\n', 'src/oven.ts': 'export const heat = 1;\n' } });
     await repo.write({ 'build/app.js': 'bundle\n', 'oven.log': 'cold\n' });
-    const w = await watch(repo);
+    const w = await watch(repo, { backend });
     await w.settle();
     await repo.write({ 'build/app.js': 'bundle 2\n', 'build/assets/new.css': 'body{}\n', 'oven.log': 'warm\n' });
     // oven.log existed when the ignored set was computed; a new ignored file is
@@ -209,7 +214,7 @@ describe('working tree watcher (C4, ADR-020)', () => {
   it('watch/gitignore-change-refreshes: a directory newly listed in .gitignore stops producing events', async () => {
     const repo = await sampleRepo();
     await repo.write({ 'cache/data.txt': 'one\n' });
-    const w = await watch(repo);
+    const w = await watch(repo, { backend });
     await w.settle();
     const data = join(w.root, 'cache', 'data.txt');
     await repo.write({ 'cache/data.txt': 'two\n' });
@@ -228,7 +233,7 @@ describe('working tree watcher (C4, ADR-020)', () => {
   it('watch/linked-worktree-own-watcher: a linked worktree has its own watcher and scope', async () => {
     const repo = await sampleRepo({ files: { '.gitignore': '.worktrees/\n', 'src/oven.ts': 'export const heat = 1;\n' } });
     await repo.git('worktree', 'add', '--quiet', '.worktrees/rack', '-b', 'feature/rack');
-    const w = await watch(repo);
+    const w = await watch(repo, { backend });
     const linked = join(w.root, '.worktrees', 'rack');
     expect(w.watchers.watchedWorktrees(REPO_ID).sort()).toEqual([w.root, linked].sort());
     await w.settle();
@@ -246,7 +251,7 @@ describe('working tree watcher (C4, ADR-020)', () => {
 
   it('follows the working trees a collection lists: a new one is watched, a removed one is not', async () => {
     const repo = await sampleRepo({ files: { '.gitignore': '.worktrees/\n', 'README.md': '# sample-bakery\n' } });
-    const w = await watch(repo);
+    const w = await watch(repo, { backend });
     await w.settle();
     await repo.git('worktree', 'add', '--quiet', '.worktrees/shelf', '-b', 'feature/shelf');
     const linked = join(w.root, '.worktrees', 'shelf');
@@ -264,7 +269,7 @@ describe('working tree watcher (C4, ADR-020)', () => {
     for (let i = 0; i <= 100; i++) {
       await Promise.all(Array.from({ length: 100 }, (_, j) => mkdir(join(root, 'data', `d${String(i)}`, `e${String(j)}`), { recursive: true })));
     }
-    const w = await watch(repo);
+    const w = await watch(repo, { backend });
     expect(w.watchers.mode(REPO_ID)).toBe('git-only');
     expect(w.modeChanges).toEqual([REPO_ID]);
     expect(w.watchers.watchedWorktrees(REPO_ID)).toEqual([]);
@@ -274,9 +279,30 @@ describe('working tree watcher (C4, ADR-020)', () => {
   });
 
   it('a working tree under the budget is `full`', async () => {
-    const w = await watch(await sampleRepo());
+    const w = await watch(await sampleRepo(), { backend });
     expect(w.watchers.mode(REPO_ID)).toBe('full');
     expect(w.watchers.watchedWorktrees(REPO_ID)).toEqual([w.root]);
+  });
+});
+
+describe('descriptors (ADR-020 amendment)', () => {
+  it('uses the recursive backend on macOS', () => {
+    expect(DEFAULT_WORKTREE_BACKEND).toBe(process.platform === 'darwin' ? 'recursive' : 'chokidar');
+  });
+
+  it.skipIf(process.platform !== 'darwin')('a 2,000-file working tree holds no descriptor per file on macOS', async () => {
+    const files: Record<string, string> = {};
+    for (let d = 0; d < 20; d++) for (let f = 0; f < 100; f++) files[`src/d${String(d)}/f${String(f)}.ts`] = `export const v${String(f)} = ${String(d)};\n`;
+    const repo = await sampleRepo({ files });
+    const descriptors = (): number => readdirSync('/dev/fd').length;
+    const before = descriptors();
+    const w = await watch(repo);
+    expect(w.watchers.watchedWorktrees(REPO_ID)).toEqual([w.root]);
+    // The git watcher (chokidar on .git) holds a few, for HEAD and the refs; never one per working tree file.
+    expect(descriptors() - before).toBeLessThan(50);
+    await w.settle();
+    await repo.write({ 'src/d3/f7.ts': 'export const changed = 1;\n' });
+    await waitFor(() => paths(w.events).includes(join(w.root, 'src', 'd3', 'f7.ts')), 10_000, 'the edit event');
   });
 });
 
