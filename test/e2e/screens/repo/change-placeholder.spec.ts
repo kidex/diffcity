@@ -12,6 +12,8 @@ test('header, city, back link', async ({ page }) => {
   await page.goto('/#/repo/1');
   await page.getByRole('link', { name: 'Add percentage discounts to orders' }).click();
   await expect(page).toHaveURL(/#\/change\/11$/);
+  // The city's first frame compiles shaders; on SwiftShader that holds the page for a few seconds.
+  await expect(page.getByTestId('city')).toHaveAttribute('data-ready', 'true', { timeout: 30_000 });
 
   const head = page.getByTestId('change-head');
   await expect(head.getByTestId('change-kind')).toHaveText('Branch');

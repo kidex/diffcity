@@ -28,8 +28,9 @@ test('Repo shows Fleet / repo name', async ({ page }) => {
 
 test('Change shows Fleet / repo / branch against base, and each crumb goes back up', async ({ page }) => {
   await page.goto('/#/change/11');
+  // The city's first frame compiles shaders; on SwiftShader that holds the page for a few seconds.
+  await expect(page.locator('[data-screen="change"] [data-testid="city"]')).toHaveAttribute('data-ready', 'true', { timeout: 30_000 });
   await expect(crumbs(page)).toHaveText(['Fleet', 'sample-shop', /^feature\/order-discounts\s*against\s*main\s*2 commits, /]);
-  await expect(page.locator('[data-screen="change"]')).toContainText('Change view arrives in phase 3');
 
   await page.getByRole('link', { name: 'sample-shop' }).click();
   await expect(page).toHaveURL(/#\/repo\/1$/);
