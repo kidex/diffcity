@@ -3,5 +3,5 @@
 export { gitIgnoreMatcher } from './git-paths.js';
 export { ALWAYS_IGNORED_NAMES, countWatchedDirs, ignoreMatcher, listIgnored, parseIgnored } from './ignore.js';
 export type { IgnoredSet } from './ignore.js';
-export { missingFromWatched, topmostDirs, walkWatched } from './reconcile.js';
+export { missingFromWatched, topmostDirs, unheldLinks, walkWatched } from './reconcile.js';
 export type { WalkEntry, WatchWalk } from './reconcile.js';

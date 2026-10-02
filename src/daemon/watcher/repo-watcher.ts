@@ -31,11 +31,18 @@
 // `.gitignore` event) re-scans the whole working tree within the budget. What
 // the watcher does not hold is added to it and reported as an event, so the
 // debounce asks for one collection of that working tree.
+//
+// Symlinks are never added: chokidar cannot hold a dangling one, and add() of a
+// symlink lists it under its absolute path and emits `add` on every call, which
+// would loop through collection, refresh and add again. A symlink the watcher
+// does not hold is reported once, like any missed path, and then left alone:
+// chokidar gives no event when a dangling link appears, so without that report
+// a new one would wait for an unrelated collection.
 
 import { watch as fsWatch, type FSWatcher as NativeWatcher } from 'node:fs';
 import { basename, join } from 'node:path';
 import { watch, type FSWatcher } from 'chokidar';
-import { countWatchedDirs, gitIgnoreMatcher, ignoreMatcher, listIgnored, missingFromWatched, topmostDirs, walkWatched, type IgnoredSet, type WalkEntry } from '../../core/watch/index.js';
+import { countWatchedDirs, gitIgnoreMatcher, ignoreMatcher, listIgnored, missingFromWatched, topmostDirs, unheldLinks, walkWatched, type IgnoredSet, type WalkEntry } from '../../core/watch/index.js';
 import { systemClock, type Clock, type TimerHandle } from '../clock.js';
 import { errorMessage, type Logger } from '../log.js';
 
@@ -259,21 +266,27 @@ function createWorktreeWatcher(options: WorktreeWatcherOptions): WorktreeWatcher
       }
       for (const entry of walk.entries) found.push(entry);
     }
-    const missing = missingFromWatched(found, current.getWatched());
+    const watched = current.getWatched();
+    const missing = missingFromWatched(found, watched);
+    const links = unheldLinks(found, watched);
     const missingPaths = new Set(missing.map((entry) => entry.path));
-    if (whole) reported = new Set([...reported].filter((path) => missingPaths.has(path)));
-    else for (const entry of found) if (!missingPaths.has(entry.path)) reported.delete(entry.path);
-    if (missing.length === 0) return;
-    // add() reopens a closed chokidar watcher: checked right before, with no await in between.
-    if (isClosed() || watcher !== current) return;
-    current.add([...missingPaths]);
-    const fresh = missing.filter((entry) => !reported.has(entry.path));
+    /** What the watcher still lacks: a path in `reported` stays there while it is. */
+    const lacking = new Set([...missingPaths, ...links.map((entry) => entry.path)]);
+    if (whole) reported = new Set([...reported].filter((path) => lacking.has(path)));
+    else for (const entry of found) if (!lacking.has(entry.path)) reported.delete(entry.path);
+    if (lacking.size === 0) return;
+    if (missing.length > 0) {
+      // add() reopens a closed chokidar watcher: checked right before, with no await in between.
+      if (isClosed() || watcher !== current) return;
+      current.add([...missingPaths]);
+    }
+    const fresh = [...missing, ...links].filter((entry) => !reported.has(entry.path));
     if (fresh.length === 0) return;
     for (const entry of fresh) reported.add(entry.path);
-    log.info(`watch: ${root}: ${String(fresh.length)} paths the watcher missed, now watched`);
+    log.info(`watch: ${root}: ${String(fresh.length)} paths the watcher missed, now watched or reported`);
     for (const entry of fresh) onPath(entry.path);
     // chokidar reads the added directories before watching them: the same gap, so look again.
-    scheduleReconcile([...dirs, ...fresh.filter((entry) => entry.dir).map((entry) => entry.path)]);
+    if (fresh.some((entry) => !entry.link)) scheduleReconcile([...dirs, ...fresh.filter((entry) => entry.dir).map((entry) => entry.path)]);
   }
 
   function stopReconcile(): void {
