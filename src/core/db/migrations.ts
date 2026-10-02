@@ -77,8 +77,39 @@ CREATE TABLE events (
 CREATE INDEX events_repo_at ON events(repoId, at);
 `;
 
+/**
+ * Schema v2: the merge-base and the fingerprints of a snapshot (ADR-027) and
+ * the reviewer's marks and notes (ADR-028). The new snapshot columns are
+ * nullable, so the rows of a v1 database migrate in place.
+ */
+const V2 = `
+ALTER TABLE snapshots ADD COLUMN mergeBase TEXT;
+ALTER TABLE snapshots ADD COLUMN fingerprints TEXT;
+
+CREATE TABLE review_marks (
+  id INTEGER PRIMARY KEY,
+  changeId INTEGER NOT NULL REFERENCES changes(id) ON DELETE CASCADE,
+  kind TEXT NOT NULL CHECK (kind IN ('file','symbol')),
+  target TEXT NOT NULL,
+  fingerprint TEXT NOT NULL,
+  markedAt TEXT NOT NULL,
+  UNIQUE (changeId, kind, target)
+);
+
+CREATE TABLE review_notes (
+  id INTEGER PRIMARY KEY,
+  changeId INTEGER NOT NULL REFERENCES changes(id) ON DELETE CASCADE,
+  path TEXT NOT NULL,
+  line INTEGER,
+  body TEXT NOT NULL,
+  createdAt TEXT NOT NULL,
+  updatedAt TEXT NOT NULL
+);
+CREATE INDEX review_notes_change ON review_notes(changeId);
+`;
+
 /** The migrations in order; index i holds the SQL that produces version i + 1. */
-export const MIGRATIONS: readonly string[] = [V1];
+export const MIGRATIONS: readonly string[] = [V1, V2];
 
 /** The schema version this code writes. */
 export const SCHEMA_VERSION = MIGRATIONS.length;

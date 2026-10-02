@@ -294,6 +294,8 @@ export function createCollector(options: CollectorOptions): Collector {
         touched: computed.touched,
         contentHash: computed.contentHash,
         computedAt: iso,
+        mergeBase: computed.mergeBase,
+        fingerprints: computed.fingerprintsJson,
       });
       if (stored === 'unchanged') return { result: stored, listMoved: false };
       const current = db.changes.get(change.id);
