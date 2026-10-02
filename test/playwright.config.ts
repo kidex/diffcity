@@ -1,11 +1,17 @@
-// Playwright Test (ADR-023). Two projects:
+// Playwright Test (ADR-023). Two projects by default:
 // - screens: the UI against a mocked API (page.route + JSON fixtures), served
 //   by a test-only static server; video, trace and screenshot kept on failure;
 // - acceptance: each spec starts its own daemon in a fresh temporary home,
 //   one worker so timed specs never share the machine with each other; CI
 //   runs it alone, after the screens (.github/workflows/ci.yml).
+//
+// A third project, proof, records a video of one task's acceptance criteria
+// (e2e/proof/DC-<nr>.spec.ts). It exists only in proof mode: DIFFCITY_PROOF
+// set (`npm run proof -- DC-<nr>` sets it to the task key) or `--project
+// proof` on the command line. Proof mode has only that project and no stub
+// server, so `npm run test:e2e` and CI never run it.
 
-import { defineConfig, devices } from '@playwright/test';
+import { defineConfig, devices, type Project } from '@playwright/test';
 
 const CI = Boolean(process.env['CI']);
 // DIFFCITY_E2E_PORT lets two worktrees run the screens project side by side;
@@ -20,7 +26,57 @@ const PORT = Number.isInteger(requestedPort) && requestedPort >= 1 && requestedP
 // ffmpeg). CI sets neither.
 const channel = process.env['DIFFCITY_E2E_CHANNEL'];
 const video = process.env['DIFFCITY_E2E_VIDEO'] === 'off' ? 'off' : 'retain-on-failure';
-const browser = { ...devices['Desktop Chrome'], viewport: { width: 1440, height: 900 }, ...(channel ? { channel } : {}) };
+const viewport = { width: 1440, height: 900 };
+const browser = { ...devices['Desktop Chrome'], viewport, ...(channel ? { channel } : {}) };
+
+const argv = process.argv;
+const proofFlag = argv.some((arg, i) => arg === '--project=proof' || (arg === '--project' && argv[i + 1] === 'proof'));
+// Workers load this file again without the CLI arguments: the environment
+// carries proof mode to them, so every process sees the same projects.
+if (proofFlag && process.env['DIFFCITY_PROOF'] === undefined) process.env['DIFFCITY_PROOF'] = '1';
+const proofTask = process.env['DIFFCITY_PROOF'];
+// Proof videos are attached to Jira: temporary repos go under /tmp so the
+// paths they show carry no per-user folder (the macOS default TMPDIR is a
+// hashed folder under /var/folders). Set before the workers start, so they
+// inherit it.
+if (proofTask !== undefined) process.env['TMPDIR'] = '/tmp';
+const PROOF_TASK = /^DC-\d+$/;
+
+/** One task's proof spec, recorded at full size and slowed down so it can be followed. */
+const proofProject = (task: string | undefined): Project => ({
+  name: 'proof',
+  testDir: './e2e/proof',
+  ...(task !== undefined && PROOF_TASK.test(task) ? { testMatch: `${task}.spec.ts` } : {}),
+  outputDir: task !== undefined && PROOF_TASK.test(task) ? `../test-results/proof/${task}` : '../test-results/proof',
+  workers: 1,
+  retries: 0,
+  timeout: 120_000,
+  use: {
+    ...browser,
+    video: { mode: 'on', size: viewport },
+    trace: 'off',
+    screenshot: 'off',
+    launchOptions: { slowMo: 120 },
+  },
+});
+
+const defaultProjects: Project[] = [
+  {
+    name: 'screens',
+    testDir: './e2e/screens',
+    use: { ...browser, baseURL: `http://127.0.0.1:${String(PORT)}` },
+  },
+  {
+    name: 'acceptance',
+    testDir: './e2e/acceptance',
+    // Real daemons with deadlines: one spec at a time (see cd-to-ui.spec.ts).
+    workers: 1,
+    // No retry: a retry would let a slow first attempt pass as flaky, so the
+    // 5 s deadline would never fail CI. Screens keep the global retry.
+    retries: 0,
+    use: browser,
+  },
+];
 
 export default defineConfig({
   testDir: './e2e',
@@ -34,28 +90,17 @@ export default defineConfig({
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
   },
-  projects: [
-    {
-      name: 'screens',
-      testDir: './e2e/screens',
-      use: { ...browser, baseURL: `http://127.0.0.1:${String(PORT)}` },
-    },
-    {
-      name: 'acceptance',
-      testDir: './e2e/acceptance',
-      // Real daemons with deadlines: one spec at a time (see cd-to-ui.spec.ts).
-      workers: 1,
-      // No retry: a retry would let a slow first attempt pass as flaky, so the
-      // 5 s deadline would never fail CI. Screens keep the global retry.
-      retries: 0,
-      use: browser,
-    },
-  ],
-  webServer: {
-    // Until the daemon serves dist/ui, a stub with the same HTTP surface does.
-    command: `node e2e/support/stub-server.mjs --port ${String(PORT)}`,
-    url: `http://127.0.0.1:${String(PORT)}/__stub/health`,
-    reuseExistingServer: !CI,
-    stdout: 'ignore',
-  },
+  projects: proofTask === undefined ? defaultProjects : [proofProject(proofTask)],
+  // The stub server serves only the screens project.
+  ...(proofTask === undefined
+    ? {
+        webServer: {
+          // Until the daemon serves dist/ui, a stub with the same HTTP surface does.
+          command: `node e2e/support/stub-server.mjs --port ${String(PORT)}`,
+          url: `http://127.0.0.1:${String(PORT)}/__stub/health`,
+          reuseExistingServer: !CI,
+          stdout: 'ignore' as const,
+        },
+      }
+    : {}),
 });

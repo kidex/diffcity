@@ -31,7 +31,8 @@
     "test": "node scripts/test.mjs",
     "test:watch": "node node_modules/vitest/vitest.mjs",
     "test:e2e": "node node_modules/@playwright/test/cli.js test -c test/playwright.config.ts",
-    "prepare": "node scripts/copy-grammars.mjs"
+    "prepare": "node scripts/copy-grammars.mjs",
+    "proof": "node scripts/proof.mjs"
   },
   "dependencies": {
     "@fastify/static": "10.1.5",
