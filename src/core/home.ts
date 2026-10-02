@@ -32,6 +32,8 @@ export interface HomePaths {
   log: string;
   /** `state.json`: the DaemonState record, the last port chosen with `up --port`. */
   state: string;
+  /** `settings.json`: the user settings, the trusted repos among them (ADR-030). */
+  settings: string;
 }
 
 /**
@@ -72,6 +74,7 @@ export function homePaths(home: string): HomePaths {
     socket: socketPathFor(home),
     log: join(home, 'daemon.log'),
     state: join(home, 'state.json'),
+    settings: join(home, 'settings.json'),
   };
 }
 
