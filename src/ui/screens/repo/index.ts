@@ -41,13 +41,16 @@ function chip<T extends string>(value: T, label: string, group: string, onClick:
   return { value, button, count };
 }
 
-/**
- * The change each repo was left for, so coming back (the back link, the
- * breadcrumb, browser Back) puts focus on its row instead of on <body>.
- */
-const openedChange = new Map<number, number>();
+export interface RepoMountOptions {
+  /**
+   * The change screen mounted right before this one, if any. Coming back
+   * from it (the back link, the breadcrumb, browser Back) puts focus on its
+   * row instead of on <body>. Any other way in leaves focus alone.
+   */
+  fromChange?: number;
+}
 
-export function mountRepo(element: HTMLElement, context: DataContext, repoId: number): () => void {
+export function mountRepo(element: HTMLElement, context: DataContext, repoId: number, options: RepoMountOptions = {}): () => void {
   const { api, live, refetch } = context;
   const go = (href: string): void => {
     window.location.hash = href;
@@ -177,11 +180,21 @@ export function mountRepo(element: HTMLElement, context: DataContext, repoId: nu
     }
   }
 
-  /** Focuses the row of the change this repo was left for, once, if it is listed. */
+  /** The change to put focus back on, used at the first render with data, then dropped. */
+  let returnTo = options.fromChange ?? null;
+
+  /**
+   * Focuses the row of the change we came back from, once, if it is listed
+   * and nothing else has the focus: not while the user is already somewhere
+   * else, such as typing in the Cmd+K palette.
+   */
   function restoreFocus(): void {
-    const changeId = openedChange.get(repoId);
-    if (changeId === undefined) return;
-    openedChange.delete(repoId);
+    if (returnTo === null) return;
+    const changeId = returnTo;
+    returnTo = null;
+    const active = element.ownerDocument.activeElement;
+    if (active !== null && active !== element.ownerDocument.body) return;
+    if (element.ownerDocument.querySelector('.palette-backdrop:not([hidden])')) return;
     const link = list.element.querySelector<HTMLAnchorElement>(`[data-change-id="${String(changeId)}"] a[href]`);
     if (!link) return;
     link.focus({ preventScroll: true });
@@ -346,9 +359,6 @@ export function mountRepo(element: HTMLElement, context: DataContext, repoId: nu
   reload();
 
   return () => {
-    // Unmounted by the router after the hash changed: remember the change opened from here.
-    const opened = /^#\/change\/(\d+)$/.exec(window.location.hash)?.[1];
-    if (opened !== undefined && list.element.querySelector(`[data-change-id="${opened}"]`)) openedChange.set(repoId, Number(opened));
     disposed = true;
     for (const stop of stops) stop();
     clearInterval(clock);

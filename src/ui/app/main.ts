@@ -34,13 +34,15 @@ let mounted: Route | null = null;
 function mountScreen(route: Route): void {
   if (mounted && mounted.name === route.name && (route.name === 'fleet' || (mounted.name !== 'fleet' && mounted.id === route.id))) return;
   unmount?.();
+  const previous = mounted;
   mounted = route;
   switch (route.name) {
     case 'fleet':
       unmount = mountFleet(view, context);
       break;
     case 'repo':
-      unmount = mountRepo(view, context, route.id);
+      // Back from a change: the Repo screen puts focus on that change's row.
+      unmount = mountRepo(view, context, route.id, previous?.name === 'change' ? { fromChange: previous.id } : {});
       break;
     case 'change':
       unmount = mountChangeRoute(view, context, route.id);
