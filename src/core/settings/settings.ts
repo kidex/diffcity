@@ -13,6 +13,9 @@ import { dirname, isAbsolute } from 'node:path';
 
 export const SETTINGS_VERSION = 1;
 
+/** The RepoSummary note of an untrusted repo that has a diffcity.config.js. */
+export const CONFIG_NOT_TRUSTED_NOTE = 'config not loaded: repo not trusted (run diffcity trust)';
+
 export interface UserSettings {
   v: typeof SETTINGS_VERSION;
   /** Absolute realpaths of the trusted repo roots. */

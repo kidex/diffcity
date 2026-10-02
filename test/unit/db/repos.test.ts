@@ -122,6 +122,7 @@ describe('repo summaries', () => {
       collecting: false,
       error: null,
       watch: 'full',
+      notes: [],
     });
   });
 
@@ -217,7 +218,8 @@ describe('repo summaries', () => {
     const [summary] = db.repos.listSummaries((record) => ({
       collecting: record.id === repo.id,
       watch: 'git-only',
+      notes: ['a note'],
     }));
-    expect(summary).toMatchObject({ collecting: true, watch: 'git-only' });
+    expect(summary).toMatchObject({ collecting: true, watch: 'git-only', notes: ['a note'] });
   });
 });

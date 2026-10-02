@@ -151,6 +151,11 @@ export interface RepoSummary {
   /** `repos.collectError`. */
   error: string | null;
   watch: WatchMode;
+  /**
+   * Non-fatal notes from the daemon, such as a config file not loaded because
+   * the repo is not trusted (ADR-030); empty when there is nothing to say.
+   */
+  notes: string[];
 }
 
 /** Counters of a change, read from the latest snapshot's summary. */

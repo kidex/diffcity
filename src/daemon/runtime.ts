@@ -1,6 +1,6 @@
 // Per-repo daemon state that is not in the database, for RepoSummary
-// (ADR-017): `collecting` comes from the collector, `watch` from the watchers
-// (ADR-020). Plugins provide their part for a daemon context; the API reads
+// (ADR-017): `collecting` and `notes` come from the collector, `watch` from
+// the watchers (ADR-020). Plugins provide their part for a daemon context; the API reads
 // getRuntime(context) as the RepoRuntimeLookup of the repo store. The lookup
 // resolves at call time, so plugin order does not matter.
 
@@ -13,6 +13,8 @@ export interface RuntimeProviders {
   collecting?: (repoId: number) => boolean;
   /** How the repo is watched; without a provider, `full` when active and `off` otherwise. */
   watch?: (repo: RepoRecord) => WatchMode;
+  /** Non-fatal notes on the repo (ADR-030); none without a provider. */
+  notes?: (repoId: number) => string[];
 }
 
 const providers = new WeakMap<DaemonContext, RuntimeProviders>();
@@ -29,6 +31,7 @@ export function getRuntime(context: DaemonContext): RepoRuntimeLookup {
     return {
       collecting: current?.collecting?.(repo.id) ?? false,
       watch: current?.watch?.(repo) ?? (repo.active ? 'full' : 'off'),
+      notes: current?.notes?.(repo.id) ?? [],
     };
   };
 }

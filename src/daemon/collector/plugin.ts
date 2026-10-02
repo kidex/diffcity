@@ -14,6 +14,7 @@
 
 import { availableParallelism } from 'node:os';
 import { identifyRepo, type RepoIdentity } from '../../core/changes/index.js';
+import { createTrustCheck } from '../../core/settings/index.js';
 import type { Db } from '../../core/db/index.js';
 import type { CommandRunner } from '../../core/git/index.js';
 import type { SocketSuccessResponses } from '../../core/model/types.js';
@@ -158,10 +159,19 @@ export function createCollection(options: CollectionPluginOptions = {}): Collect
         log: context.log,
         now,
         ...(options.gh === undefined ? {} : { gh: options.gh }),
+        // settings.json is read on every collection, so `diffcity trust` needs no restart (ADR-030).
+        isTrusted: createTrustCheck(context.paths.settings, {
+          onInvalid: (message) => {
+            context.log.warn(`settings: ${message}`);
+          },
+        }),
       });
       collector = created;
       context.setCollectingCounter(() => created.collecting);
-      provideRuntime(context, { collecting: (repoId) => created.isCollecting(repoId) });
+      provideRuntime(context, {
+        collecting: (repoId) => created.isCollecting(repoId),
+        notes: (repoId) => created.notes(repoId),
+      });
       context.socket.handle('track', (request) => track(context, request));
       context.socket.handle('register', (request) => register(context, request));
     },

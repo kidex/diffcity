@@ -59,7 +59,7 @@ describe('collect/track-registers-and-collects (C2)', () => {
     expect(test.collection.collector().isCollecting(response.repo.id)).toBe(true);
     // The API's RepoSummary reads the same flag (DC-31).
     if (stored === null) throw new Error('repo not stored');
-    expect(getRuntime(test.daemon.context)(stored)).toEqual({ collecting: true, watch: 'full' });
+    expect(getRuntime(test.daemon.context)(stored)).toEqual({ collecting: true, watch: 'full', notes: [] });
 
     release();
     await test.idle();

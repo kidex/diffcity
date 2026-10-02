@@ -1,4 +1,5 @@
 export {
+  CONFIG_NOT_TRUSTED_NOTE,
   SETTINGS_VERSION,
   SettingsError,
   addTrustedRepo,

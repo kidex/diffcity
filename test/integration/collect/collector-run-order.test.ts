@@ -70,6 +70,7 @@ describe('collector run order', () => {
       broadcast: (event) => events.push(event),
       log: createStreamLogger(new PassThrough()),
       gh: ghNotInstalled(),
+      isTrusted: () => Promise.resolve(false),
     });
 
     // Run 1 lists the Draft and waits on its snapshot.

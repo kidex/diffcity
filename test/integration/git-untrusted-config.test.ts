@@ -166,7 +166,7 @@ describe.each<Variant>(['clean', 'process'])('repo-configured commands (filter.x
     ]);
     expect((await computeMeta(change, NOW)).commits).toBe(1);
 
-    const report = await buildReport({ repoDir: repo.dir, base: 'main', now: NOW, runner: ghForbidden().runner });
+    const report = await buildReport({ repoDir: repo.dir, base: 'main', now: NOW, runner: ghForbidden().runner, trustConfig: false });
     expect(filesOf(report)).toEqual({
       '.gitattributes': 'add',
       'src/app.ts': 'sig',
@@ -208,6 +208,7 @@ describe.each<Variant>(['clean', 'process'])('repo-configured commands (filter.x
       head: 'feature',
       now: NOW,
       runner: ghForbidden().runner,
+      trustConfig: false,
     });
     expect(filesOf(report)).toEqual({ 'src/app.ts': 'sig', 'src/moved.ts': 'same', 'src/util.ts': 'same' });
 
@@ -264,7 +265,7 @@ describe('a submodule', () => {
     const change = await resolveChange(repo.dir, { base: 'main', runner: ghForbidden().runner });
     expect((await changedFiles(change)).map((file) => file.path)).toEqual(['.gitmodules', 'src/app.ts']);
     expect(await listHeadFiles(change)).toEqual(['.gitmodules', 'src/app.ts', 'src/moved.ts', 'src/util.ts']);
-    const report = await buildReport({ repoDir: repo.dir, base: 'main', now: NOW, runner: ghForbidden().runner });
+    const report = await buildReport({ repoDir: repo.dir, base: 'main', now: NOW, runner: ghForbidden().runner, trustConfig: false });
     expect(filesOf(report)).toEqual({
       '.gitmodules': 'add',
       'src/app.ts': 'sig',
