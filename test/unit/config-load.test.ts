@@ -1,10 +1,11 @@
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { access, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { CONFIG_FILE_NAME, ConfigError, loadConfig } from '../../src/core/config/index.js';
 
 const dirs: string[] = [];
+const TRUSTED = { trusted: true } as const;
 
 async function repoWithConfig(source: string | null): Promise<string> {
   const dir = await mkdtemp(join(tmpdir(), 'diffcity-config-'));
@@ -16,7 +17,7 @@ async function repoWithConfig(source: string | null): Promise<string> {
 async function loadError(source: string): Promise<ConfigError> {
   const dir = await repoWithConfig(source);
   try {
-    await loadConfig(dir);
+    await loadConfig(dir, TRUSTED);
   } catch (error) {
     if (error instanceof ConfigError) return error;
     throw error;
@@ -33,33 +34,53 @@ afterEach(async () => {
 
 describe('loadConfig (ADR-012 config, ADR-007 tier1 shape)', () => {
   it('returns an empty config when diffcity.config.js is absent', async () => {
-    expect(await loadConfig(await repoWithConfig(null))).toEqual({});
+    expect(await loadConfig(await repoWithConfig(null), TRUSTED)).toEqual({});
   });
 
   it('loads base and a tier1 array', async () => {
     const dir = await repoWithConfig(`export default { base: 'trunk', tier1: ['ledger', 'vault'] };\n`);
-    expect(await loadConfig(dir)).toEqual({ base: 'trunk', tier1: ['ledger', 'vault'] });
+    expect(await loadConfig(dir, TRUSTED)).toEqual({ base: 'trunk', tier1: ['ledger', 'vault'] });
   });
 
   it('loads a tier1 function that receives the defaults', async () => {
     const dir = await repoWithConfig(
       `export default { tier1: (defaults) => defaults.filter((t) => t !== 'schema').concat('ledger') };\n`,
     );
-    const config = await loadConfig(dir);
+    const config = await loadConfig(dir, TRUSTED);
     expect(typeof config.tier1).toBe('function');
     if (typeof config.tier1 !== 'function') throw new Error('unreachable');
     expect(config.tier1(['auth', 'schema'])).toEqual(['auth', 'ledger']);
   });
 
   it('accepts an empty default export', async () => {
-    expect(await loadConfig(await repoWithConfig('export default {};\n'))).toEqual({});
+    expect(await loadConfig(await repoWithConfig('export default {};\n'), TRUSTED)).toEqual({});
   });
 
   it('picks up an edited config on the next load', async () => {
     const dir = await repoWithConfig(`export default { base: 'trunk' };\n`);
-    expect((await loadConfig(dir)).base).toBe('trunk');
+    expect((await loadConfig(dir, TRUSTED)).base).toBe('trunk');
     await writeFile(join(dir, CONFIG_FILE_NAME), `export default { base: 'develop' };\n`, 'utf8');
-    expect((await loadConfig(dir)).base).toBe('develop');
+    expect((await loadConfig(dir, TRUSTED)).base).toBe('develop');
+  });
+
+  describe('untrusted repo (ADR-030, DC-53)', () => {
+    it('never imports the config file and gives an empty config', async () => {
+      const dir = await repoWithConfig(null);
+      const marker = join(dir, 'imported.marker');
+      await writeFile(
+        join(dir, CONFIG_FILE_NAME),
+        `import { writeFileSync } from 'node:fs';\nwriteFileSync(${JSON.stringify(marker)}, 'ran');\nexport default { base: 'trunk' };\n`,
+        'utf8',
+      );
+      expect(await loadConfig(dir, { trusted: false })).toEqual({});
+      await expect(access(marker)).rejects.toMatchObject({ code: 'ENOENT' });
+      expect(await loadConfig(dir, TRUSTED)).toEqual({ base: 'trunk' });
+      await expect(access(marker)).resolves.toBeUndefined();
+    });
+
+    it('ignores an invalid config file instead of failing', async () => {
+      expect(await loadConfig(await repoWithConfig('export default {;\n'), { trusted: false })).toEqual({});
+    });
   });
 
   describe('config-invalid-field', () => {

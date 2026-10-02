@@ -4,7 +4,9 @@
 
 import { Command } from 'commander';
 import type { DiffCommandOptions } from './diff.js';
+import type { StartCommandOptions } from './start.js';
 import type { TrackCommandOptions } from './track.js';
+import type { TrustCommandOptions } from './trust.js';
 import type { UpCommandOptions } from './up.js';
 import { readVersion } from './version.js';
 
@@ -38,6 +40,26 @@ export function buildProgram(io: CliIo = defaultIo): Command {
     .version(readVersion(), '-V, --version', 'print the diffcity version')
     .configureOutput({ writeOut: io.stdout, writeErr: io.stderr });
 
+  // start and stop come first: they are the commands most people need.
+  program
+    .command('start')
+    .description('open the current repo (or <dir>) in the browser, starting the daemon if needed')
+    .argument('[dir]', 'repo directory (default: the repo containing the current directory)')
+    .option('--port <port>', 'port for the UI and API (default: the last one used, else 4321; 0 picks a free port)')
+    .option('--no-open', 'do not open the browser')
+    .action(async (dir: string | undefined, options: StartCommandOptions) => {
+      const { runStart } = await import('./start.js');
+      process.exitCode = await runStart(dir, options, { io, env: io.env?.() ?? process.env, cwd: io.cwd?.() ?? process.cwd() });
+    });
+
+  program
+    .command('stop')
+    .description('stop the daemon')
+    .action(async () => {
+      const { runStop } = await import('./stop.js');
+      process.exitCode = await runStop({ io, env: io.env?.() ?? process.env });
+    });
+
   program
     .command('up')
     .description('start the daemon and open the UI on localhost')
@@ -57,26 +79,43 @@ export function buildProgram(io: CliIo = defaultIo): Command {
     });
 
   program
+    .command('trust')
+    .description("let the daemon load a repo's diffcity.config.js (it runs code); --list, --remove")
+    .argument('[dir]', 'repo directory (default: the current directory)')
+    .option('--list', 'print the trusted repos')
+    .option('--remove', 'stop trusting the repo')
+    .action(async (dir: string | undefined, options: TrustCommandOptions) => {
+      const { runTrust } = await import('./trust.js');
+      process.exitCode = await runTrust(dir, options, { io, env: io.env?.() ?? process.env, cwd: io.cwd?.() ?? process.cwd() });
+    });
+
+  program
     .command('shell-init')
     .description('print the shell hook that tracks repos on cd')
     .argument('[shell]', 'zsh, bash or fish', 'zsh')
-    .action(notImplemented(io, 'shell-init'));
+    .action(async (shell: string) => {
+      const { runShellInit } = await import('./shell-init.js');
+      process.exitCode = runShellInit(shell, { io });
+    });
 
   program
     .command('track')
     .description('register a repo and ask the daemon to collect its changes')
-    .argument('[dir]', 'repo directory', '.')
-    .option('--agent', 'mark the current change as "agent worked, not reviewed"')
-    .action(async (dir: string, options: TrackCommandOptions) => {
+    .argument('[dir]', 'repo directory (default: the current directory, or cwd from the hook input with --agent)')
+    .option('--agent', 'mark the current change as "agent worked, not reviewed"; reads the Claude Code hook JSON from stdin')
+    .action(async (dir: string | undefined, options: TrackCommandOptions) => {
       const { runTrack } = await import('./track.js');
-      process.exitCode = await runTrack(dir, options, { io });
+      process.exitCode = await runTrack(dir, options, { io, env: io.env?.() ?? process.env, cwd: io.cwd?.() ?? process.cwd() });
     });
 
   program
     .command('scan')
     .description('discover and register every repo under a folder')
     .argument('<dir>', 'folder to scan')
-    .action(notImplemented(io, 'scan'));
+    .action(async (dir: string) => {
+      const { runScan } = await import('./scan.js');
+      process.exitCode = await runScan(dir, { io, env: io.env?.() ?? process.env, cwd: io.cwd?.() ?? process.cwd() });
+    });
 
   program
     .command('diff')

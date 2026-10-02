@@ -111,6 +111,7 @@ const repoSummary: RepoSummary = {
   collecting: false,
   error: null,
   watch: 'full',
+  notes: [],
 };
 
 const stats: ChangeStats = { touchedFiles: 3, symbolsByStatus: byStatus, filesByVerdict: byVerdict, tier1Files: ['lib/auth/session.ts'] };

@@ -28,13 +28,14 @@
     "design:directions:build": "vite build --config design/directions/vite.config.ts",
     "typecheck": "tsc --noEmit && tsc --noEmit -p src/ui && tsc --noEmit -p test/unit/ui && tsc --noEmit -p design/directions",
     "lint": "eslint .",
-    "test": "vitest run",
-    "test:watch": "vitest",
-    "test:e2e": "playwright test -c test/playwright.config.ts",
+    "test": "node scripts/test.mjs",
+    "test:watch": "node node_modules/vitest/vitest.mjs",
+    "test:e2e": "node node_modules/@playwright/test/cli.js test -c test/playwright.config.ts",
     "prepare": "node scripts/copy-grammars.mjs"
   },
   "dependencies": {
     "@fastify/static": "10.1.5",
+    "chokidar": "5.0.0",
     "commander": "15.0.0",
     "fastify": "5.12.5",
     "web-tree-sitter": "0.27.0"

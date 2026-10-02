@@ -1,0 +1,15 @@
+{
+  "id": 4,
+  "name": "inventory-api",
+  "path": "/work/inventory-api",
+  "active": true,
+  "lastSeenAt": "2026-05-04T12:00:00.000Z",
+  "lastEventAt": "2026-05-04T12:00:00.000Z",
+  "counts": { "draft": 1, "branch": 0, "pr": 0 },
+  "unreviewed": 1,
+  "highFindings": 0,
+  "lastAudit": null,
+  "collecting": true,
+  "error": null,
+  "watch": "full"
+}

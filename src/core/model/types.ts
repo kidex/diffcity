@@ -151,6 +151,11 @@ export interface RepoSummary {
   /** `repos.collectError`. */
   error: string | null;
   watch: WatchMode;
+  /**
+   * Non-fatal notes from the daemon, such as a config file not loaded because
+   * the repo is not trusted (ADR-030); empty when there is nothing to say.
+   */
+  notes: string[];
 }
 
 /** Counters of a change, read from the latest snapshot's summary. */
@@ -306,7 +311,10 @@ export type CollectOutcome = { ok: true } | { ok: false; error: string };
 
 /**
  * The daemon's collector as seen by its callers (socket handlers, watchers,
- * scheduler). Requests for the same repo and scope coalesce (ADR-021).
+ * scheduler). Requests for one repo coalesce under the key `<repoId>:sources`
+ * whatever their scope (ADR-021): a queued collection merges the scopes of the
+ * requests it absorbs and keeps the highest priority; a request during a
+ * running collection gives one more run afterwards.
  */
 export interface CollectorPort {
   /** Resolves when a collection covering this request has finished; never rejects. */

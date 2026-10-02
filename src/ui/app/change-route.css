@@ -1,0 +1,16 @@
+/* The header of #/change/:id in the SPA: the mockup's stage title, with the
+   change kind tag and the way back to the repo. */
+.stage.change { display: flex; flex-direction: column; }
+.stage .change-head { padding-bottom: 16px; }
+.change-head .back { display: inline-block; margin-bottom: 8px; color: var(--muted); font-size: 12.5px; text-decoration: none; }
+.change-head .back:hover { color: var(--ink); }
+.change-head .name-line { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.stage .change-head p.meta { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; max-width: none; margin-top: 6px; }
+.change-head .meta code { font-family: var(--mono); font-size: 12px; color: var(--ink-2); min-width: 0; overflow-wrap: anywhere; }
+.change-head h1 { min-width: 0; overflow-wrap: anywhere; }
+.change-body { flex: 1 0 auto; background: var(--panel); border-top: 1px solid var(--line); }
+/* loading and error messages: the stage title's look, always shown */
+.change-message { padding: 18px 22px 0; }
+.change-message h1 { margin: 0; font-size: 20px; font-weight: 600; letter-spacing: -.02em; }
+.change-message p { margin: 4px 0 0; color: var(--muted); font-size: 13px; max-width: 46ch; }
+@media (max-width: 980px) { .stage .change-head p.meta { display: flex; } }

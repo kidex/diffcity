@@ -25,7 +25,7 @@ const DAEMON_LABEL: Record<DaemonState, string> = {
 const DAEMON_TITLE: Record<DaemonState, string> = {
   connected: 'Live updates from the diffcity daemon',
   reconnecting: 'Lost the diffcity daemon, reconnecting',
-  offline: 'The diffcity daemon is not reachable. Start it with: diffcity up',
+  offline: 'The diffcity daemon is not reachable. Start it with: diffcity start',
 };
 
 /** What the breadcrumb needs, fetched for the current route. */
@@ -50,6 +50,8 @@ export function mountShell(top: HTMLElement, context: DataContext, go: (route: R
     {
       type: 'button',
       class: 'btn search-btn',
+      // The visible label is hidden at 980 px and below; the name stays.
+      'aria-label': 'Search',
       'aria-keyshortcuts': 'Meta+K Control+K',
       onclick: () => {
         palette.open();
@@ -87,10 +89,10 @@ export function mountShell(top: HTMLElement, context: DataContext, go: (route: R
     const repoId = route.name === 'repo' ? route.id : data.change?.repoId;
     const repoName = data.repoName ?? '…';
     if (route.name === 'repo') {
-      items.push(h('li', { 'aria-current': 'page' }, h('strong', null, repoName)));
+      items.push(h('li', { 'aria-current': 'page' }, h('strong', { title: repoName }, repoName)));
     } else {
       items.push(
-        h('li', null, repoId === undefined ? h('span', null, repoName) : h('a', { href: routeHref({ name: 'repo', id: repoId }) }, repoName)),
+        h('li', null, repoId === undefined ? h('span', { title: repoName }, repoName) : h('a', { href: routeHref({ name: 'repo', id: repoId }), title: repoName }, repoName)),
       );
       items.push(h('li', { 'aria-current': 'page' }, ...changeCrumb(data.change)));
     }
@@ -166,10 +168,13 @@ function changeCrumb(change: ChangeSummary | undefined): HTMLElement[] {
   const name = change.kind === 'branch' ? changeName(change) : kindLabel(change);
   const when = relativeTime(change.lastEvent.at);
   const meta = change.ahead === null ? when : `${plural(change.ahead, 'commit')}, ${when}`;
+  // A long ref is cut with an ellipsis by CSS; the text node keeps it whole
+  // for the accessible name, and the title shows it whole on hover. A PR's
+  // label is short, so its title carries the PR title instead.
   return [
-    h('span', { class: 'branch', title: change.title }, name),
+    h('span', { class: 'branch', title: change.kind === 'branch' ? name : change.title }, name),
     h('span', { class: 'vs' }, 'against'),
-    h('span', { class: 'branch' }, change.base),
-    h('span', { class: 'vs' }, meta),
+    h('span', { class: 'branch', title: change.base }, change.base),
+    h('span', { class: 'vs meta' }, meta),
   ];
 }

@@ -84,7 +84,8 @@ describe.each(scenarios)('scenario $name', (scenario) => {
     result = await runCli(built.repo.dir, ['diff', '--json'], cliEnv(home, scenario.steps.now));
     report = JSON.parse(result.stdout) as Report;
     if (updateGolden && result.code === 0) writeFileSync(scenario.expectedPath, result.stdout, 'utf8');
-  });
+    // Builds a whole repo and runs the built CLI: dozens of git processes, slow under parallel load.
+  }, 120_000);
 
   afterAll(async () => {
     await built.repo.cleanup();

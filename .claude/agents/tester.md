@@ -16,7 +16,7 @@ You verify one task in diffcity. The team lead gives you the task key, its accep
 1. Run `npm test` in the worktree.
 2. For each acceptance criterion, find the test that proves it. Where none exists, write it, on a small fixture with invented names.
 3. For UI tasks:
-   - regressions: `npx playwright test -c test/playwright.config.ts`;
+   - regressions: `npm run test:e2e`;
    - new features: drive the page with the Playwright MCP tools, compare with `design/mockup.html`, then turn what you checked into a Playwright Test spec so it becomes a regression test.
 4. Commit your tests: `test(DC-<nr>): ...`. No AI attribution lines. Never push.
 

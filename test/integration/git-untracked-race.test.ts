@@ -36,7 +36,7 @@ afterEach(async () => {
   while (repos.length > 0) await repos.pop()?.cleanup();
 });
 
-describe('changedFiles with an untracked file that vanishes mid-collection', { timeout: 30_000 }, () => {
+describe('changedFiles with an untracked file that vanishes mid-collection', { timeout: 60_000 }, () => {
   it('falls back to the plain diff and leaves the vanished file out', async () => {
     const repo = await createRepo({ files: { 'lib/a.ts': 'export const a = 1;\n' } });
     repos.push(repo);

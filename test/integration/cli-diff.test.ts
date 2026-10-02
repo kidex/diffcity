@@ -77,6 +77,7 @@ describe('report/cli-json-stdout: diffcity diff --json', () => {
       repoDir: fixture.repo.dir,
       now: new Date(fromCli.meta.generatedAt),
       runner: ghForbidden().runner,
+      trustConfig: true,
     });
     expect(fromCli).toEqual(inProcess);
   });

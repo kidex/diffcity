@@ -14,18 +14,24 @@ The goal is to understand in a few minutes what an agent built, where the risk i
 - git
 - Optional: `gh` (authenticated) for open pull requests; `semgrep` and `gitleaks` for audits
 
-## Install
+## Getting started
 
 ```sh
-npm install -g diffcity
-diffcity --help
+npm i -g diffcity
+diffcity start
+diffcity stop
 ```
+
+`diffcity start` starts the daemon if it is not running, registers the repo you are in (or the one given as `diffcity start <dir>`) and opens it in the browser. Run outside a repo, it opens the Fleet of every registered repo. `diffcity stop` stops the daemon.
 
 ## Commands
 
 | Command | What it does |
 |---|---|
+| `diffcity start [<dir>] [--port 4321] [--no-open]` | start the daemon if needed and open the repo at `<dir>` (or the current repo) in the browser |
+| `diffcity stop` | stop the daemon |
 | `diffcity up [--port 4321]` | start the daemon and open the UI on localhost |
+| `diffcity trust [<dir>] [--list] [--remove]` | let the daemon load a repo's `diffcity.config.js`, which runs code; untrusted repos use the defaults |
 | `diffcity shell-init [zsh\|bash\|fish]` | print the shell hook that registers a repo when you `cd` into it |
 | `diffcity track [<dir>] [--agent]` | register a repo and ask the daemon to collect its changes |
 | `diffcity scan <dir>` | discover and register every repo under a folder |
@@ -36,7 +42,7 @@ diffcity --help
 | `diffcity audit [--stale] [<repo>]` | full audit: dependencies, semgrep, gitleaks, AI review on tier 1 |
 | `diffcity --version` | print the installed version |
 
-`diff`, `--help` and `--version` work today; the other commands are not implemented yet and exit with status 2.
+`import`, `export`, `status` and `audit` are not implemented yet and exit with status 2.
 
 ### Semantic diff
 

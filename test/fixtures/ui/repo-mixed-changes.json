@@ -8,8 +8,8 @@
     "lastEventAt": "2026-05-04T11:19:00.000Z",
     "counts": {
       "draft": 1,
-      "branch": 2,
-      "pr": 1
+      "branch": 3,
+      "pr": 2
     },
     "unreviewed": 3,
     "highFindings": 0,
@@ -151,6 +151,88 @@
       "archivedAt": null,
       "archiveReason": null,
       "stats": null
+    },
+    {
+      "id": 14,
+      "repoId": 1,
+      "kind": "branch",
+      "ref": "branch:feature/order-history",
+      "prNumber": null,
+      "head": "1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c",
+      "headAvailable": true,
+      "dirty": true,
+      "base": "main",
+      "title": "Show past orders on the account page",
+      "ahead": 4,
+      "behind": 1,
+      "reviewState": "in-review",
+      "agentUnreviewed": false,
+      "lastEvent": {
+        "type": "review",
+        "at": "2026-05-03T16:40:00.000Z"
+      },
+      "updatedAt": "2026-05-03T16:40:00.000Z",
+      "archivedAt": null,
+      "archiveReason": null,
+      "stats": {
+        "touchedFiles": 3,
+        "symbolsByStatus": {
+          "add": 4,
+          "mod": 3,
+          "sig": 0,
+          "del": 0,
+          "same": 9
+        },
+        "filesByVerdict": {
+          "eyes": 0,
+          "risky": 0,
+          "spec": 0,
+          "ok": 3,
+          "same": 2
+        },
+        "tier1Files": []
+      }
+    },
+    {
+      "id": 15,
+      "repoId": 1,
+      "kind": "pr",
+      "ref": "pr:9",
+      "prNumber": 9,
+      "head": "2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d",
+      "headAvailable": true,
+      "dirty": false,
+      "base": "main",
+      "title": "Cache the product catalogue",
+      "ahead": 1,
+      "behind": 0,
+      "reviewState": "approved",
+      "agentUnreviewed": false,
+      "lastEvent": {
+        "type": "review",
+        "at": "2026-05-02T10:15:00.000Z"
+      },
+      "updatedAt": "2026-05-02T10:15:00.000Z",
+      "archivedAt": null,
+      "archiveReason": null,
+      "stats": {
+        "touchedFiles": 2,
+        "symbolsByStatus": {
+          "add": 2,
+          "mod": 1,
+          "sig": 0,
+          "del": 1,
+          "same": 4
+        },
+        "filesByVerdict": {
+          "eyes": 0,
+          "risky": 1,
+          "spec": 0,
+          "ok": 1,
+          "same": 1
+        },
+        "tier1Files": []
+      }
     }
   ]
 }

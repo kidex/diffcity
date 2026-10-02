@@ -10,9 +10,9 @@ import '../shared/fonts.js';
 import { createApi } from '../data/api.js';
 import type { DataContext } from '../data/context.js';
 import { connectLive, createCoalescer } from '../data/live.js';
-import { mountChange } from '../screens/change/index.js';
 import { mountFleet } from '../screens/fleet/index.js';
 import { mountRepo } from '../screens/repo/index.js';
+import { mountChangeRoute } from './change-route.js';
 import { navigate, startRouter, type Route } from './router.js';
 import { mountShell } from './shell.js';
 
@@ -34,17 +34,18 @@ let mounted: Route | null = null;
 function mountScreen(route: Route): void {
   if (mounted && mounted.name === route.name && (route.name === 'fleet' || (mounted.name !== 'fleet' && mounted.id === route.id))) return;
   unmount?.();
+  const previous = mounted;
   mounted = route;
   switch (route.name) {
     case 'fleet':
-      unmount = mountFleet(view);
+      unmount = mountFleet(view, context);
       break;
     case 'repo':
-      unmount = mountRepo(view, route.id);
+      // Back from a change: the Repo screen puts focus on that change's row.
+      unmount = mountRepo(view, context, route.id, previous?.name === 'change' ? { fromChange: previous.id } : {});
       break;
     case 'change':
-      // Phase 3 fetches the Report and passes the snapshot signal as `live`.
-      unmount = mountChange(view, { report: null });
+      unmount = mountChangeRoute(view, context, route.id);
       break;
   }
 }

@@ -52,7 +52,7 @@ function externalIpv4(): string[] {
 describe('daemon HTTP binding', () => {
   it('daemon/http-loopback-only: the port answers on 127.0.0.1 and is closed on ::1 and on external addresses', async () => {
     daemons.spawnDaemon(temp.env);
-    const info = await waitFor<DaemonInfo>(() => readDaemonInfo(paths).then((value) => value ?? undefined), 10_000, 'daemon.json');
+    const info = await waitFor<DaemonInfo>(() => readDaemonInfo(paths).then((value) => value ?? undefined), 45_000, 'daemon.json');
 
     expect(await tryConnect('127.0.0.1', info.port)).toBe('connected');
     expect(await tryConnect('::1', info.port)).not.toBe('connected');

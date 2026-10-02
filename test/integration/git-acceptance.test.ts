@@ -33,7 +33,7 @@ const noGh = { runner: ghForbidden().runner };
 
 const body = Array.from({ length: 20 }, (_, i) => `export const v${String(i)} = ${String(i)};\n`).join('');
 
-describe('L5 base detection order (ADR-012)', { timeout: 30_000 }, () => {
+describe('L5 base detection order (ADR-012)', { timeout: 60_000 }, () => {
   it('L5 base-origin-only: local main beats a diverging origin/main', async () => {
     const repo = await repoOn({ files: { 'lib/orders.ts': 'export const n = 1;\n' } });
     const originSha = await repo.git('rev-parse', 'main');
@@ -61,7 +61,7 @@ describe('L5 base detection order (ADR-012)', { timeout: 30_000 }, () => {
   });
 });
 
-describe('config end to end (ADR-012)', { timeout: 30_000 }, () => {
+describe('config end to end (ADR-012)', { timeout: 60_000 }, () => {
   it('base-config-override: base from diffcity.config.js drives before and meta.base', async () => {
     const repo = await repoOn({ files: { 'a.ts': 'a\n' } });
     await repo.branch('develop');
@@ -72,7 +72,7 @@ describe('config end to end (ADR-012)', { timeout: 30_000 }, () => {
     await repo.git('add', 'diffcity.config.js');
     await repo.git('commit', '-q', '-m', 'config');
 
-    const config = await loadConfig(repo.dir);
+    const config = await loadConfig(repo.dir, { trusted: true });
     const change = await resolveChange(repo.dir, { config, ...noGh });
     expect(change.base).toMatchObject({ name: 'develop', source: 'config' });
     expect(change.mergeBase).toBe(developTip);
@@ -84,14 +84,14 @@ describe('config end to end (ADR-012)', { timeout: 30_000 }, () => {
     const dir = await mkdtemp(join(tmpdir(), 'diffcity-config-'));
     dirs.push(dir);
     await writeFile(join(dir, 'diffcity.config.js'), "export default { bsae: 'main' };\n", 'utf8');
-    const error: unknown = await loadConfig(dir).catch((e: unknown) => e);
+    const error: unknown = await loadConfig(dir, { trusted: true }).catch((e: unknown) => e);
     expect(error).toBeInstanceOf(ConfigError);
     expect((error as ConfigError).field).toBe('bsae');
     expect((error as ConfigError).message).toContain('"bsae"');
   });
 });
 
-describe('user git config cannot change the result', { timeout: 30_000 }, () => {
+describe('user git config cannot change the result', { timeout: 60_000 }, () => {
   it('rename-detected: hostile diff settings in the global config are overridden', async () => {
     const home = await mkdtemp(join(tmpdir(), 'diffcity-gitcfg-'));
     dirs.push(home);

@@ -1,0 +1,116 @@
+/*
+ * Repo screen. Built from the mockup's tokens and components: the stage is the
+ * mockup's .city backdrop and title; the filter rows are its verdict and type
+ * chips (round dots, then square dots and the dashed "Show everything"); the
+ * list is the reading panel (.read on --panel) and each row behaves like its
+ * .step (hover background, --sig left rule); status counters are the top
+ * bar's .stat with swatches, verdict counters its .file-verdict tags, the
+ * agent badge its .tier pill; the "Audit now" hint is its .tip card.
+ */
+
+.stage.repo { display: flex; flex-direction: column; }
+
+/* ---------- header ---------- */
+/* the gutter is on the header, so the actions keep it when they wrap under the title */
+.repo-head { display: flex; align-items: flex-start; gap: 0 16px; flex-wrap: wrap; padding: 0 22px; }
+.repo .repo-head .title { flex: 1 1 auto; min-width: 0; padding-left: 0; padding-right: 0; }
+.repo-head .name-line { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.repo-head h1 { font-family: var(--mono); font-weight: 500; letter-spacing: -.01em; }
+.repo-head .title p.path { font-family: var(--mono); font-size: 12px; overflow-wrap: anywhere; display: block; }
+.repo-head .indicators { display: inline-flex; gap: 8px; flex-wrap: wrap; }
+.repo-head .indicators:empty { display: none; }
+.repo-head .actions { padding-top: 18px; align-items: center; }
+.repo .tag.collecting { display: inline-flex; align-items: center; gap: 6px; color: var(--sig); background: color-mix(in srgb, var(--sig) 16%, transparent); }
+.repo .tag.collecting i { width: 6px; height: 6px; border-radius: 50%; background: var(--sig); animation: daemon-pulse 1.2s ease-in-out infinite; }
+
+.btn.on { color: var(--ink); border-color: var(--ink-2); }
+.btn[aria-disabled="true"] { opacity: .5; cursor: not-allowed; }
+.btn.primary[aria-disabled="true"]:hover { opacity: .5; }
+
+/* the mockup's .tip, as a hint for the disabled "Audit now" */
+.has-tip { position: relative; display: inline-flex; }
+.hint-tip {
+  position: absolute; right: 0; top: calc(100% + 8px); z-index: 5; pointer-events: none;
+  opacity: 0; transform: translateY(4px); transition: opacity .12s ease, transform .12s ease;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+  padding: 8px 12px; box-shadow: 0 14px 40px rgba(0,0,0,.35);
+  font-size: 12.5px; color: var(--ink-2); white-space: nowrap;
+}
+.has-tip:hover .hint-tip, .has-tip:focus-within .hint-tip { opacity: 1; transform: translateY(0); }
+
+/* ---------- filters (the mockup's two chip rows) ---------- */
+.repo .filters { display: flex; flex-direction: column; gap: 8px; padding: 14px 22px 18px; }
+.repo .filters .chip { cursor: pointer; }
+.repo .filters .chips.kinds .chip i { display: none; }
+.repo .filters .chips.kinds .chip { padding-left: 11px; }
+.repo .filters .chips.reviews .chip i { border-radius: 2px; }
+.repo .chip[data-value="unreviewed"] i { background: var(--muted); }
+.repo .chip[data-value="in-review"] i { background: var(--sig); }
+.repo .chip[data-value="approved"] i { background: var(--add); }
+
+/* ---------- list (the reading panel) ---------- */
+.repo .changes { flex: 1 0 auto; background: var(--panel); border-top: 1px solid var(--line); }
+.repo .changes header { padding: 18px 22px 12px; border-bottom: 1px solid var(--line-soft); }
+.repo .changes .heading { display: flex; align-items: baseline; gap: 8px; }
+.repo .changes h2 { margin: 0; font-size: 16px; font-weight: 600; letter-spacing: -.01em; }
+.repo .changes .cnt { color: var(--muted); font-size: 13px; }
+.repo .changes header p { margin: 4px 0 0; color: var(--muted); font-size: 12.5px; }
+.repo .list-status { margin: 0; padding: 18px 22px; color: var(--muted); font-size: 13px; }
+
+.change-list { list-style: none; margin: 0; padding: 0 0 24px; }
+.change-row {
+  padding: 14px 22px 16px 19px; border-left: 3px solid transparent; border-bottom: 1px solid var(--line-soft);
+  cursor: pointer; transition: background .15s ease;
+}
+.change-row:hover, .change-row:focus-within { background: color-mix(in srgb, var(--panel-2) 70%, transparent); }
+.change-row:focus-within { border-left-color: var(--sig); }
+
+.change-row .head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.change-row .change-title { color: var(--ink); font-weight: 500; font-size: 14px; text-decoration: none; min-width: 0; overflow-wrap: anywhere; }
+.change-row .change-title:hover { text-decoration: underline; text-decoration-color: var(--plot-line); text-underline-offset: 3px; }
+.change-row .badges { display: inline-flex; gap: 6px; flex-wrap: wrap; align-items: baseline; }
+.change-row .when { margin-left: auto; color: var(--muted); font-size: 12px; white-space: nowrap; }
+.change-row .when .ev { color: var(--ink-2); }
+
+/* the mockup's .tier pill, at tag size */
+.tag.agent {
+  display: inline-flex; align-items: center; gap: 6px; color: var(--tier);
+  background: color-mix(in srgb, var(--tier) 16%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--tier) 55%, transparent);
+}
+.tag.agent i { width: 6px; height: 6px; border-radius: 50%; background: var(--tier); }
+/* archive */
+.tag.archived.merged { color: var(--sig); background: color-mix(in srgb, var(--sig) 16%, transparent); }
+.tag.archived.closed, .tag.archived.deleted { color: var(--del); background: color-mix(in srgb, var(--del) 14%, transparent); }
+.change-row .archived-at { color: var(--muted); font-size: 12px; }
+
+.change-row .where { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; margin-top: 6px; color: var(--muted); font-size: 12.5px; }
+.change-row .where code { font-family: var(--mono); font-size: 12px; color: var(--ink-2); overflow-wrap: anywhere; }
+.change-row .where .vs { font-size: 12px; }
+.change-row .where .ahead { color: var(--ink-2); }
+
+.change-row .counts { display: flex; align-items: center; gap: 8px 16px; flex-wrap: wrap; margin-top: 10px; }
+.change-row .stats { margin-left: 0; display: inline-flex; gap: 14px; flex-wrap: wrap; color: var(--ink-2); }
+.change-row .stat b { font-size: 14px; }
+.change-row .stat.zero b, .change-row .stat.zero small { color: var(--muted); }
+.change-row .stat.zero .sw { opacity: .35; }
+.change-row .stat.add .sw { background: var(--add); }
+.change-row .stat.mod .sw { background: var(--mod); }
+.change-row .stat.sig .sw { background: var(--sig); }
+.change-row .stat.del .sw { background: var(--del); }
+.change-row .verdict-counts { display: inline-flex; gap: 6px; flex-wrap: wrap; }
+
+.change-row .note { color: var(--muted); font-size: 12.5px; }
+.change-row .note.computing { display: inline-flex; align-items: center; gap: 7px; color: var(--sig); }
+.change-row .note.computing i { width: 6px; height: 6px; border-radius: 50%; background: var(--sig); animation: daemon-pulse 1.2s ease-in-out infinite; }
+.change-row .note.not-fetched { color: var(--mod); }
+
+/* ---------- loading, missing, unreachable ---------- */
+.repo-hero { margin: 10vh auto 0; max-width: 480px; padding: 0 22px; text-align: center; }
+.repo-hero h2 { margin: 0; font-size: 18px; font-weight: 600; letter-spacing: -.01em; }
+.repo-hero p, .repo-status { margin: 6px auto 0; color: var(--muted); font-size: 13px; }
+.repo-hero a { color: var(--ink-2); }
+
+@media (max-width: 760px) {
+  .change-row .when { margin-left: 0; flex-basis: 100%; }
+}

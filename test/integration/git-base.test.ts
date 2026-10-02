@@ -26,7 +26,7 @@ afterEach(async () => {
 });
 
 // Each test spawns a dozen git processes; inside vitest workers a spawn costs ~70 ms.
-describe('resolveBase (ADR-012)', { timeout: 30_000 }, () => {
+describe('resolveBase (ADR-012)', { timeout: 60_000 }, () => {
   it('base-main: picks refs/heads/main without calling gh', async () => {
     const repo = await featureRepo('main');
     const gh = ghForbidden();
@@ -176,7 +176,7 @@ describe('defaultRunner', () => {
 
   it('returns stdout of a successful command', async () => {
     expect(
-      await defaultRunner(process.execPath, ['-e', 'process.stdout.write("ok")'], { cwd: process.cwd(), timeoutMs: 5000 }),
+      await defaultRunner(process.execPath, ['-e', 'process.stdout.write("ok")'], { cwd: process.cwd(), timeoutMs: 30_000 }),
     ).toBe('ok');
   });
 

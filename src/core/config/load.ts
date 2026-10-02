@@ -78,11 +78,23 @@ export function validateConfig(value: unknown): DiffcityConfig {
   return config;
 }
 
+export interface LoadConfigOptions {
+  /**
+   * Whether the repo's config may run. The file is JavaScript, so importing it
+   * runs the repo's code (ADR-024): the daemon passes true only for a repo
+   * root listed in settings.json (ADR-030); `diffcity diff`, run by hand in
+   * the repo, passes true. Required, so no caller decides by omission.
+   */
+  trusted: boolean;
+}
+
 /**
  * Loads `diffcity.config.js` from `repoRoot` through a dynamic `import()` and
- * validates its default export. A missing file gives an empty config.
+ * validates its default export. A missing file gives an empty config, and so
+ * does an untrusted repo: its file is then neither read nor imported.
  */
-export async function loadConfig(repoRoot: string): Promise<DiffcityConfig> {
+export async function loadConfig(repoRoot: string, options: LoadConfigOptions): Promise<DiffcityConfig> {
+  if (!options.trusted) return {};
   const file = join(repoRoot, CONFIG_FILE_NAME);
   let mtimeMs: number;
   try {
