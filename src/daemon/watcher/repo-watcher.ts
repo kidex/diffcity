@@ -22,11 +22,21 @@
 // again after `ready`. A watcher error for exhausted resources (EMFILE, ENFILE,
 // ENOSPC) also falls back to `git-only` for that working tree, on both
 // backends. The git watcher always stays.
+//
+// Reconcile (chokidar only): on Linux chokidar reads a new directory and only
+// then puts its inotify watch on it, so a file or subdirectory created in
+// between is never watched, and edits inside a missed subdirectory produce no
+// event at all. Each `addDir` schedules a re-scan of that directory
+// RECONCILE_DELAY_MS later, and every refresh (after each collection, and on a
+// `.gitignore` event) re-scans the whole working tree within the budget. What
+// the watcher does not hold is added to it and reported as an event, so the
+// debounce asks for one collection of that working tree.
 
 import { watch as fsWatch, type FSWatcher as NativeWatcher } from 'node:fs';
 import { basename, join } from 'node:path';
 import { watch, type FSWatcher } from 'chokidar';
-import { countWatchedDirs, gitIgnoreMatcher, ignoreMatcher, listIgnored, type IgnoredSet } from '../../core/watch/index.js';
+import { countWatchedDirs, gitIgnoreMatcher, ignoreMatcher, listIgnored, missingFromWatched, topmostDirs, walkWatched, type IgnoredSet, type WalkEntry } from '../../core/watch/index.js';
+import { systemClock, type Clock, type TimerHandle } from '../clock.js';
 import { errorMessage, type Logger } from '../log.js';
 
 /** Working trees watched per repo (ADR-020). */
@@ -39,6 +49,12 @@ export const DIR_BUDGET = 10_000;
 const EXHAUSTED = new Set(['EMFILE', 'ENFILE', 'ENOSPC']);
 
 const EMPTY: IgnoredSet = { dirs: new Set(), files: new Set() };
+
+/** Delay between a chokidar `addDir` and the re-scan of that directory. */
+export const RECONCILE_DELAY_MS = 250;
+
+/** The editor swap files chokidar ignores with `atomic` on, its default with fs.watch (chokidar's DOT_RE). */
+const CHOKIDAR_ATOMIC = /\..*\.(sw[px])$|~$|\.subl.*\.tmp/;
 
 /** How a working tree is watched: one recursive fs.watch (FSEvents), or chokidar. */
 export type WorktreeBackend = 'recursive' | 'chokidar';
@@ -54,6 +70,10 @@ export interface RepoWatcherOptions {
   budget?: number;
   /** Defaults to DEFAULT_WORKTREE_BACKEND. */
   backend?: WorktreeBackend;
+  /** Runs the reconcile timers (chokidar backend); defaults to the system clock. */
+  reconcileClock?: Clock;
+  /** Defaults to RECONCILE_DELAY_MS. */
+  reconcileDelayMs?: number;
   /** A change under refs, packed-refs or a HEAD. */
   onGit(path: string): void;
   /** A change in the working tree at `worktree`. */
@@ -74,6 +94,8 @@ export interface RepoWatcher {
   syncWorktrees(paths: readonly string[]): Promise<void>;
   /** The working trees with a running watcher. */
   watchedWorktrees(): string[];
+  /** A reconcile pass is scheduled or running in one of the working trees. */
+  reconciling(): boolean;
   /** Closes every watcher; waits for the closes. */
   close(): Promise<void>;
 }
@@ -83,6 +105,7 @@ interface WorktreeWatcher {
   refresh(): Promise<void>;
   close(): Promise<void>;
   readonly running: boolean;
+  readonly reconciling: boolean;
 }
 
 function errorCode(error: unknown): string | undefined {
@@ -100,6 +123,8 @@ interface WorktreeWatcherOptions {
   others: () => readonly string[];
   budget: number;
   backend: WorktreeBackend;
+  reconcileClock: Clock;
+  reconcileDelayMs: number;
   log: Logger;
   onEvent(path: string): void;
   /** The working tree cannot be watched (over budget or out of resources); the watcher has closed. */
@@ -125,6 +150,23 @@ function createWorktreeWatcher(options: WorktreeWatcherOptions): WorktreeWatcher
   const askedAgain = (): boolean => again;
 
   const isIgnored = (path: string): boolean => ignored(path);
+  /** What chokidar leaves out: our ignores plus its own atomic-write filter. */
+  const isUnwatched = (path: string): boolean => ignored(path) || CHOKIDAR_ATOMIC.test(path);
+
+  // Reconcile state (chokidar backend).
+  const { reconcileClock: clock } = options;
+  /** Directories waiting for their re-scan. */
+  const scheduled = new Set<string>();
+  let timer: { handle: TimerHandle } | null = null;
+  /** Passes run one at a time. */
+  let passes: Promise<void> = Promise.resolve();
+  let queuedPasses = 0;
+  /**
+   * Paths a pass already added and reported. A path the watcher still does not
+   * hold afterwards (chokidar skips unreadable files, say) is added again but
+   * not reported again, so a lasting difference cannot loop into collections.
+   */
+  let reported = new Set<string>();
 
   async function recompute(): Promise<void> {
     let set: IgnoredSet;
@@ -162,6 +204,7 @@ function createWorktreeWatcher(options: WorktreeWatcherOptions): WorktreeWatcher
       do {
         again = false;
         await recompute();
+        if (watcher !== null && !isClosed()) await enqueuePass([root], true);
       } while (askedAgain() && !isClosed());
     })().finally(() => {
       refreshing = null;
@@ -169,10 +212,81 @@ function createWorktreeWatcher(options: WorktreeWatcherOptions): WorktreeWatcher
     return refreshing;
   }
 
+  /** Schedules a re-scan of `dirs`; one timer for every directory that arrives before it fires. */
+  function scheduleReconcile(dirs: Iterable<string>): void {
+    if (closed) return;
+    for (const dir of dirs) scheduled.add(dir);
+    if (timer !== null || scheduled.size === 0) return;
+    const handle = clock.setTimeout(() => {
+      timer = null;
+      const batch = topmostDirs(scheduled);
+      scheduled.clear();
+      void enqueuePass(batch, false);
+    }, options.reconcileDelayMs);
+    timer = { handle };
+  }
+
+  function enqueuePass(dirs: readonly string[], whole: boolean): Promise<void> {
+    queuedPasses++;
+    const pass = passes
+      .then(() => reconcile(dirs, whole))
+      .catch((error: unknown) => {
+        log.warn(`watch: cannot reconcile ${root}: ${errorMessage(error)}`);
+      })
+      .finally(() => {
+        queuedPasses--;
+      });
+    passes = pass;
+    return pass;
+  }
+
+  /**
+   * Walks `dirs` (the whole working tree when `whole`), adds to chokidar what
+   * it does not hold, and reports what is new as events. Past the budget, the
+   * working tree falls back to `git-only`.
+   */
+  async function reconcile(dirs: readonly string[], whole: boolean): Promise<void> {
+    const current = watcher;
+    if (current === null || isClosed()) return;
+    const found: WalkEntry[] = [];
+    for (const dir of dirs) {
+      if (dir !== root && isUnwatched(dir)) continue;
+      const walk = await walkWatched(dir, isUnwatched, budget);
+      if (isClosed() || watcher !== current) return;
+      if (walk.over) {
+        await giveUp(`more than ${String(budget)} directories`);
+        return;
+      }
+      for (const entry of walk.entries) found.push(entry);
+    }
+    const missing = missingFromWatched(found, current.getWatched());
+    const missingPaths = new Set(missing.map((entry) => entry.path));
+    if (whole) reported = new Set([...reported].filter((path) => missingPaths.has(path)));
+    else for (const entry of found) if (!missingPaths.has(entry.path)) reported.delete(entry.path);
+    if (missing.length === 0) return;
+    // add() reopens a closed chokidar watcher: checked right before, with no await in between.
+    if (isClosed() || watcher !== current) return;
+    current.add([...missingPaths]);
+    const fresh = missing.filter((entry) => !reported.has(entry.path));
+    if (fresh.length === 0) return;
+    for (const entry of fresh) reported.add(entry.path);
+    log.info(`watch: ${root}: ${String(fresh.length)} paths the watcher missed, now watched`);
+    for (const entry of fresh) onPath(entry.path);
+    // chokidar reads the added directories before watching them: the same gap, so look again.
+    scheduleReconcile([...dirs, ...fresh.filter((entry) => entry.dir).map((entry) => entry.path)]);
+  }
+
+  function stopReconcile(): void {
+    if (timer !== null) clock.clearTimeout(timer.handle);
+    timer = null;
+    scheduled.clear();
+  }
+
   async function giveUp(reason: string): Promise<void> {
     if (closed) return;
     closed = true;
     signalClosed();
+    stopReconcile();
     closeAll();
     const current = watcher;
     watcher = null;
@@ -219,6 +333,9 @@ function createWorktreeWatcher(options: WorktreeWatcherOptions): WorktreeWatcher
     get running() {
       return (watcher !== null || native !== null) && !closed;
     },
+    get reconciling() {
+      return timer !== null || queuedPasses > 0;
+    },
     async start() {
       await refresh();
       if (closed) return;
@@ -234,7 +351,8 @@ function createWorktreeWatcher(options: WorktreeWatcherOptions): WorktreeWatcher
       }
       const created = watch(root, { ignoreInitial: true, followSymlinks: false, ignored: isIgnored });
       watcher = created;
-      created.on('all', (_event, path) => {
+      created.on('all', (event, path) => {
+        if (event === 'addDir' && !isClosed() && !isIgnored(path)) scheduleReconcile([path]);
         onPath(path);
       });
       created.on('error', onError);
@@ -254,11 +372,13 @@ function createWorktreeWatcher(options: WorktreeWatcherOptions): WorktreeWatcher
     async close() {
       closed = true;
       signalClosed();
+      stopReconcile();
       closeAll();
       const current = watcher;
       watcher = null;
       await current?.close();
       await refreshing?.catch(() => undefined);
+      await passes;
     },
   };
 }
@@ -286,6 +406,8 @@ export function createRepoWatcher(options: RepoWatcherOptions): RepoWatcher {
       others: () => listed.filter((path) => path !== root),
       budget,
       backend: options.backend ?? DEFAULT_WORKTREE_BACKEND,
+      reconcileClock: options.reconcileClock ?? systemClock,
+      reconcileDelayMs: options.reconcileDelayMs ?? RECONCILE_DELAY_MS,
       log,
       onEvent: (path) => {
         options.onWorktree(root, path);
@@ -351,6 +473,7 @@ export function createRepoWatcher(options: RepoWatcherOptions): RepoWatcher {
       return syncing;
     },
     watchedWorktrees: () => [...worktrees].filter(([, watcher]) => watcher.running).map(([root]) => root),
+    reconciling: () => [...worktrees.values()].some((watcher) => watcher.reconciling),
     async close() {
       closed = true;
       signalClosed();
