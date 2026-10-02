@@ -41,6 +41,12 @@ function chip<T extends string>(value: T, label: string, group: string, onClick:
   return { value, button, count };
 }
 
+/**
+ * The change each repo was left for, so coming back (the back link, the
+ * breadcrumb, browser Back) puts focus on its row instead of on <body>.
+ */
+const openedChange = new Map<number, number>();
+
 export function mountRepo(element: HTMLElement, context: DataContext, repoId: number): () => void {
   const { api, live, refetch } = context;
   const go = (href: string): void => {
@@ -171,6 +177,17 @@ export function mountRepo(element: HTMLElement, context: DataContext, repoId: nu
     }
   }
 
+  /** Focuses the row of the change this repo was left for, once, if it is listed. */
+  function restoreFocus(): void {
+    const changeId = openedChange.get(repoId);
+    if (changeId === undefined) return;
+    openedChange.delete(repoId);
+    const link = list.element.querySelector<HTMLAnchorElement>(`[data-change-id="${String(changeId)}"] a[href]`);
+    if (!link) return;
+    link.focus({ preventScroll: true });
+    link.scrollIntoView({ block: 'nearest' });
+  }
+
   function renderReady(repo: RepoDetail): void {
     const now = Date.now();
     if (name.textContent !== repo.repo.name) name.textContent = repo.repo.name;
@@ -208,6 +225,7 @@ export function mountRepo(element: HTMLElement, context: DataContext, repoId: nu
     const noun = showArchive ? 'archived change' : 'change';
     listTotalText.textContent = isFiltered(filters) ? `${String(rows.length)} of ${plural(all.length, noun)} shown` : plural(all.length, noun);
     list.render(rows, now, showArchive);
+    restoreFocus();
 
     let message = '';
     if (showArchive && archiveFailed) message = 'Can’t load the archive right now.';
@@ -328,6 +346,9 @@ export function mountRepo(element: HTMLElement, context: DataContext, repoId: nu
   reload();
 
   return () => {
+    // Unmounted by the router after the hash changed: remember the change opened from here.
+    const opened = /^#\/change\/(\d+)$/.exec(window.location.hash)?.[1];
+    if (opened !== undefined && list.element.querySelector(`[data-change-id="${opened}"]`)) openedChange.set(repoId, Number(opened));
     disposed = true;
     for (const stop of stops) stop();
     clearInterval(clock);
