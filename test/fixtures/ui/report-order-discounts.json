@@ -1,0 +1,215 @@
+{
+  "meta": {
+    "repo": "sample-shop",
+    "base": "main",
+    "head": "3f2a9c41d0b7e6a5c4d3e2f1a0b9c8d7e6f5a4b3",
+    "commits": 2,
+    "generatedAt": "2026-05-04T11:19:20.000Z"
+  },
+  "packages": [
+    {
+      "id": "src/orders",
+      "path": "src/orders",
+      "tier1": false,
+      "files": [
+        {
+          "id": "src/orders/discounts.ts",
+          "path": "src/orders/discounts.ts",
+          "language": "typescript",
+          "status": "add",
+          "verdict": "ok",
+          "inSpec": null,
+          "symbols": [
+            {
+              "id": "src/orders/discounts.ts#applyDiscount",
+              "name": "applyDiscount",
+              "kind": "function",
+              "status": "add",
+              "range": {
+                "start": 3,
+                "end": 18
+              }
+            }
+          ]
+        },
+        {
+          "id": "src/orders/orders.service.ts",
+          "path": "src/orders/orders.service.ts",
+          "language": "typescript",
+          "status": "mod",
+          "verdict": "ok",
+          "inSpec": null,
+          "symbols": [
+            {
+              "id": "src/orders/orders.service.ts#OrdersService.total",
+              "name": "OrdersService.total",
+              "kind": "method",
+              "status": "mod",
+              "range": {
+                "start": 20,
+                "end": 41
+              }
+            },
+            {
+              "id": "src/orders/orders.service.ts#OrdersService.list",
+              "name": "OrdersService.list",
+              "kind": "method",
+              "status": "same",
+              "range": {
+                "start": 43,
+                "end": 60
+              }
+            }
+          ]
+        },
+        {
+          "id": "src/orders/orders.controller.ts",
+          "path": "src/orders/orders.controller.ts",
+          "language": "typescript",
+          "status": "add",
+          "verdict": "ok",
+          "inSpec": null,
+          "symbols": [
+            {
+              "id": "src/orders/orders.controller.ts#postDiscount",
+              "name": "postDiscount",
+              "kind": "function",
+              "status": "add",
+              "range": {
+                "start": 12,
+                "end": 30
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "src/payments",
+      "path": "src/payments",
+      "tier1": true,
+      "files": [
+        {
+          "id": "src/payments/charge.ts",
+          "path": "src/payments/charge.ts",
+          "language": "typescript",
+          "status": "sig",
+          "verdict": "eyes",
+          "inSpec": null,
+          "symbols": [
+            {
+              "id": "src/payments/charge.ts#charge",
+              "name": "charge",
+              "kind": "function",
+              "status": "sig",
+              "range": {
+                "start": 5,
+                "end": 40
+              },
+              "signatureBefore": "charge(order: Order)",
+              "signatureAfter": "charge(order: Order, discountPct: number)",
+              "callsites": 3
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "src/cart",
+      "path": "src/cart",
+      "tier1": false,
+      "files": [
+        {
+          "id": "src/cart/cart.ts",
+          "path": "src/cart/cart.ts",
+          "language": "typescript",
+          "status": "same",
+          "verdict": "same",
+          "inSpec": null,
+          "symbols": [
+            {
+              "id": "src/cart/cart.ts#Cart",
+              "name": "Cart",
+              "kind": "class",
+              "status": "same",
+              "range": {
+                "start": 1,
+                "end": 80
+              }
+            }
+          ]
+        },
+        {
+          "id": "src/cart/legacy-coupon.ts",
+          "path": "src/cart/legacy-coupon.ts",
+          "language": "typescript",
+          "status": "del",
+          "verdict": "ok",
+          "inSpec": null,
+          "symbols": [
+            {
+              "id": "src/cart/legacy-coupon.ts#applyCoupon",
+              "name": "applyCoupon",
+              "kind": "function",
+              "status": "del",
+              "range": {
+                "start": 1,
+                "end": 22
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "migrations",
+      "path": "migrations",
+      "tier1": true,
+      "files": [
+        {
+          "id": "migrations/0042_order_discounts.sql",
+          "path": "migrations/0042_order_discounts.sql",
+          "language": "sql",
+          "status": "add",
+          "verdict": "eyes",
+          "inSpec": null,
+          "symbols": [
+            {
+              "id": "migrations/0042_order_discounts.sql#ALTER TABLE orders",
+              "name": "ALTER TABLE orders",
+              "kind": "sql",
+              "status": "add",
+              "range": {
+                "start": 1,
+                "end": 4
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "steps": [],
+  "findings": [],
+  "summary": {
+    "files": 7,
+    "byStatus": {
+      "add": 4,
+      "mod": 1,
+      "sig": 1,
+      "del": 1,
+      "same": 2
+    },
+    "byVerdict": {
+      "eyes": 2,
+      "risky": 0,
+      "spec": 0,
+      "ok": 4,
+      "same": 1
+    },
+    "tier1Files": [
+      "src/payments/charge.ts",
+      "migrations/0042_order_discounts.sql"
+    ]
+  }
+}

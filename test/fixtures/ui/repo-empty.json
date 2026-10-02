@@ -1,0 +1,22 @@
+{
+  "repo": {
+    "id": 3,
+    "name": "docs-site",
+    "path": "/work/docs-site",
+    "active": true,
+    "lastSeenAt": "2026-05-04T11:58:00.000Z",
+    "lastEventAt": null,
+    "counts": {
+      "draft": 0,
+      "branch": 0,
+      "pr": 0
+    },
+    "unreviewed": 0,
+    "highFindings": 0,
+    "lastAudit": null,
+    "collecting": false,
+    "error": null,
+    "watch": "full"
+  },
+  "changes": []
+}
