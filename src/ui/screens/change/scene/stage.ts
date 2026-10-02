@@ -69,6 +69,8 @@ export class Stage {
   private frameId: number | null = null;
   private continuousUntil = 0;
   private disposed = false;
+  /** No frame is drawn before start(). */
+  private held = true;
   /** Frames drawn since the stage started. */
   frames = 0;
 
@@ -125,9 +127,15 @@ export class Stage {
     this.request();
   }
 
+  /** Allows frames; the first one is drawn right away. */
+  start(): void {
+    this.held = false;
+    this.request();
+  }
+
   /** Asks for a frame; several requests before it is drawn give one frame. */
   request(): void {
-    if (this.disposed || this.frameId !== null) return;
+    if (this.disposed || this.held || this.frameId !== null) return;
     this.frameId = requestAnimationFrame((now) => {
       this.frameId = null;
       this.draw(now);

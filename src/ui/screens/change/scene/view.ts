@@ -4,6 +4,7 @@
 // on a theme change. Everything it creates is released by dispose().
 
 import { Fog, HemisphereLight, PMREMGenerator, Vector3 } from 'three';
+import type { Object3D } from 'three';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 
 import type { Report } from '../../../../core/report/types.js';
@@ -62,6 +63,8 @@ export const disposal = { live: 0, lastGeometries: -1, lastTextures: -1 };
 
 interface Content {
   city: City;
+  /** The scene parts, compiled one per task before the first frame. */
+  parts: Object3D[];
   towers: Towers;
   lines: FatLines[];
   picker: Picker;
@@ -87,6 +90,7 @@ export function createCityView(host: HTMLElement, report: Report, options: CityV
   host.append(element);
 
   let content: Content | null = null;
+  let disposed = false;
   let hovered: string | null = null;
   let selected: string | null = null;
   let settled = false;
@@ -156,9 +160,11 @@ export function createCityView(host: HTMLElement, report: Report, options: CityV
     const position = orbitPosition(target, orbit.state);
     camera.position.set(position.x, position.y, position.z);
     camera.lookAt(target);
+    // Picking and projection read the matrices before the next frame is drawn.
+    camera.updateMatrixWorld();
   }
 
-  function build(city: City): void {
+  function build(city: City): Content {
     content?.dispose();
     const voidColor = colorToken('--c-void');
     const { bounds } = city;
@@ -180,6 +186,7 @@ export function createCityView(host: HTMLElement, report: Report, options: CityV
       city,
       towers,
       lines,
+      parts: [ground.mesh, lots.group, towers.group],
       picker: new Picker(city),
       dispose() {
         scene.remove(ground.mesh, lots.group, towers.group);
@@ -213,6 +220,7 @@ export function createCityView(host: HTMLElement, report: Report, options: CityV
     element.dataset['selected'] = selected ?? '';
     settled = false;
     stage.request();
+    return content;
   }
 
   const buildingAt = (clientX: number, clientY: number): CityBuilding | null =>
@@ -238,11 +246,27 @@ export function createCityView(host: HTMLElement, report: Report, options: CityV
     stage.request();
   }
 
+  // Shaders compile one scene part at a time before the first frame, in
+  // parallel where the GPU supports it, so opening a change does not freeze
+  // the page while they compile.
   let lastReport = report;
-  build(buildCity(report));
+  const first = build(buildCity(report));
+  const isDisposed = (): boolean => disposed;
+  void (async () => {
+    try {
+      for (const part of first.parts) {
+        if (isDisposed()) return;
+        await renderer.compileAsync(part, camera, scene);
+      }
+    } catch {
+      // A failed warm-up only means the first frame compiles the rest.
+    }
+    if (!isDisposed()) stage.start();
+  })();
 
   const unbind = bindOrbit(canvas, orbit, {
     changed: () => {
+      applyCamera();
       settled = false;
       stage.request();
     },
@@ -267,7 +291,6 @@ export function createCityView(host: HTMLElement, report: Report, options: CityV
   };
   scheme.addEventListener('change', onScheme);
 
-  let disposed = false;
   return {
     element,
     setReport(next) {
