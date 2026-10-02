@@ -44,3 +44,46 @@ test('a later visit without opening a change does not steal focus', async ({ pag
   await expect(page.getByTestId('change-row')).toHaveCount(6);
   await expect(page.getByRole('link', { name: 'Round cart totals once' })).not.toBeFocused();
 });
+
+test('change → Fleet → repo again does not move focus to the row', async ({ page }) => {
+  await mockApi(page);
+  await page.goto('/#/repo/1');
+  await page.getByRole('link', { name: 'Round cart totals once' }).click();
+  await expect(page).toHaveURL(/#\/change\/13$/);
+  await page.getByRole('navigation', { name: 'Breadcrumb' }).getByRole('link', { name: 'Fleet', exact: true }).click();
+  await expect(page).toHaveURL(/#\/$/);
+  await page.getByTestId('repo-row').getByRole('link', { name: 'sample-shop', exact: true }).click();
+  await expect(page).toHaveURL(/#\/repo\/1$/);
+  await expect(page.getByTestId('change-row')).toHaveCount(6);
+  await page.waitForTimeout(200);
+  await expect(page.getByRole('link', { name: 'Round cart totals once' })).not.toBeFocused();
+});
+
+test('Cmd+K while the repo is still loading keeps the palette focused and the typing', async ({ page }) => {
+  await mockApi(page);
+  await page.goto('/#/repo/1');
+  await page.getByRole('link', { name: 'Round cart totals once' }).click();
+  await expect(page.getByTestId('change-head')).toBeVisible();
+
+  let release: () => void = () => undefined;
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await page.route('**/api/repos/1', async (route) => {
+    await held;
+    await route.fallback();
+  });
+  await page.getByTestId('back-to-repo').click();
+  await expect(page).toHaveURL(/#\/repo\/1$/);
+  await page.keyboard.press('ControlOrMeta+k');
+  const input = page.getByRole('dialog', { name: 'Quick search' }).getByRole('combobox');
+  await expect(input).toBeFocused();
+  await page.keyboard.type('car');
+
+  release();
+  await expect(page.getByTestId('change-row')).toHaveCount(6);
+  await page.waitForTimeout(200);
+  await page.keyboard.type('t');
+  await expect(input).toBeFocused();
+  await expect(input).toHaveValue('cart');
+});
