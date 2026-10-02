@@ -50,6 +50,14 @@ Scene tests assert through state the UI exposes for tests (a `data-state` attrib
 
 The `playwright` MCP server (`.mcp.json`) drives a browser interactively: navigate, click, hover, take snapshots and screenshots into `test-results/mcp/`. Use it to explore a new screen against `design/mockup.html`, then encode what you verified as a Playwright Test spec so it becomes a regression test. The MCP session is not the proof; the spec is.
 
+## Proof videos (every task with visible behaviour)
+
+A task that changes something a user can see (a screen, a CLI flow, an acceptance path) gets a proof video before it moves to Done. Pure `src/core` tasks with no visible flow are exempt.
+
+1. Write `test/e2e/proof/DC-<nr>.spec.ts` with the `proof` fixture and the caption helpers from `test/e2e/support/proof.ts`: one `criterion(...)` step per acceptance criterion, against the real daemon from `dist/` in a temporary `DIFFCITY_HOME`, on invented fixture repos.
+2. Record it: `npm run proof -- DC-<nr>`. The `proof` project exists only in proof mode (never in `npm run test:e2e` or CI); it records 1440x900 video with slowMo, builds repos under `/tmp`, and copies the video to `test-results/proof/DC-<nr>.webm`.
+3. Attach it: `node scripts/jira-attach.mjs DC-<nr> test-results/proof/DC-<nr>.webm`. Credentials come from `JIRA_EMAIL`, `JIRA_API_TOKEN`, `JIRA_BASE_URL` or the macOS Keychain entry `diffcity-jira`; the token is never printed. Exit 2 means no credentials: put the video path in the Jira comment and tell the team lead the upload is pending. Never ask anyone to paste a token.
+
 ## Reporting a failure in Jira
 
 1. Create a `Bug` in project `DC` (in English): summary, steps to reproduce, expected vs actual, failing test name, commit hash, and the artefact paths.
