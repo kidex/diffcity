@@ -13,7 +13,9 @@ const PORT = 4399;
 // ffmpeg). CI sets neither.
 const channel = process.env['DIFFCITY_E2E_CHANNEL'];
 const video = process.env['DIFFCITY_E2E_VIDEO'] === 'off' ? 'off' : 'retain-on-failure';
-const browser = { ...devices['Desktop Chrome'], viewport: { width: 1440, height: 900 }, ...(channel ? { channel } : {}) };
+// WebGL in headless Chromium runs on SwiftShader (the change screen's city needs it).
+const launchOptions = { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] };
+const browser = { ...devices['Desktop Chrome'], viewport: { width: 1440, height: 900 }, launchOptions, ...(channel ? { channel } : {}) };
 
 export default defineConfig({
   testDir: './e2e',

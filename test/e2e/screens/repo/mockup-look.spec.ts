@@ -68,7 +68,7 @@ test('screenshot of the change placeholder', async ({ page }, testInfo) => {
   await page.emulateMedia({ colorScheme: 'dark', reducedMotion: 'reduce' });
   await page.clock.setFixedTime(NOW);
   await openRepo(page, '/#/change/11');
-  await expect(page.getByTestId('touched-file')).toHaveCount(6);
+  await expect(page.getByTestId('city')).toHaveAttribute('data-ready', 'true');
   const path = testInfo.outputPath('repo-change-placeholder.png');
   await page.screenshot({ path, fullPage: true });
   await testInfo.attach('repo-change-placeholder', { path, contentType: 'image/png' });

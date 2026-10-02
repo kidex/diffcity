@@ -12,3 +12,4 @@ playwright-report/
 *.log
 .claude/settings.local.json
 grammars/
+test/fixtures/ui/generated/
