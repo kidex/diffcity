@@ -42,6 +42,8 @@ interface Watched {
   settle(): Promise<void>;
   /** Rewrites `sentinel.txt` and waits for its event: the earlier writes have been delivered by then. */
   sentinel(): Promise<void>;
+  /** Waits until no reconcile pass has been scheduled or running for a while (chokidar backend). */
+  reconciled(): Promise<void>;
 }
 
 const REPO_ID = 7;
@@ -114,6 +116,19 @@ async function watch(repo: TempRepo, options: { budget?: number; backend?: Workt
       await repo.write({ 'sentinel.txt': String(sentinels) });
       const path = join(root, 'sentinel.txt');
       await waitFor(() => events.some((event) => event.path === path), 10_000, 'the sentinel event');
+    },
+    async reconciled() {
+      // Three quiet checks in a row: chokidar may still emit an `addDir` that schedules a pass.
+      let quiet = 0;
+      await waitFor(
+        async () => {
+          await new Promise((resolve) => setTimeout(resolve, 150));
+          quiet = watchers.reconciling(REPO_ID) ? 0 : quiet + 1;
+          return quiet >= 3;
+        },
+        20_000,
+        'the reconcile passes',
+      );
     },
   };
 }
@@ -322,7 +337,10 @@ describe('bursts (C4, Q7)', () => {
     await repo.checkout('feature/trays');
     await waitFor(() => paths(w.events, 'refs').includes(join(w.root, '.git', 'HEAD')), 10_000, 'the HEAD event');
     await w.sentinel();
-    expect(w.events.length).toBeGreaterThan(30);
+    await w.reconciled();
+    // How many of the 30 files report an event depends on the platform (inotify
+    // can miss the files of a directory created during the checkout): at least one does.
+    expect(w.events.filter((event) => event.scope === `worktree:${w.root}`).length).toBeGreaterThan(0);
     w.clock.advance(2000);
     expect(w.requests).toHaveLength(2);
     expect(w.requests).toEqual(
@@ -333,6 +351,44 @@ describe('bursts (C4, Q7)', () => {
     );
     w.clock.advance(60_000);
     expect(w.requests).toHaveLength(2);
+  });
+
+  it('watch/linux-subdir-after-checkout: every subdirectory a checkout creates is watched afterwards (chokidar backend)', { timeout: 300_000 }, async () => {
+    const repo = await sampleRepo();
+    await repo.git('checkout', '--quiet', '-b', 'feature/racks');
+    const files: Record<string, string> = {};
+    for (let n = 0; n < 30; n++) files[`src/racks/rack${String(n)}.ts`] = `export const rack${String(n)} = ${String(n)};\n`;
+    for (let n = 0; n < 40; n++) files[`src/racks/shelf${String(n)}/leaf.ts`] = `export const leaf = ${String(n)};\n`;
+    await repo.write(files);
+    await repo.git('add', '--all');
+    await repo.git('commit', '--quiet', '-m', 'racks and shelves');
+    await repo.checkout('main');
+    const w = await watch(repo, { backend: 'chokidar' });
+    await w.settle();
+
+    // The checkout creates src/racks and its 40 subdirectories while chokidar reads them.
+    await repo.checkout('feature/racks');
+    await waitFor(() => paths(w.events, 'refs').includes(join(w.root, '.git', 'HEAD')), 10_000, 'the HEAD event');
+    await w.sentinel();
+    await w.reconciled();
+    await w.settle();
+
+    const missed: number[] = [];
+    for (let n = 0; n < 40; n++) {
+      const leaf = join(w.root, 'src', 'racks', `shelf${String(n)}`, 'leaf.ts');
+      await repo.write({ [`src/racks/shelf${String(n)}/leaf.ts`]: `export const leaf = ${String(n + 100)};\n` });
+      try {
+        await waitFor(() => w.events.some((event) => event.path === leaf), 5000, `the event of shelf${String(n)}/leaf.ts`);
+      } catch {
+        missed.push(n);
+        continue;
+      }
+      w.clock.advance(2000);
+      expect(w.requests, `shelf${String(n)}`).toEqual([{ repoId: REPO_ID, scope: `worktree:${w.root}`, priority: 'normal' }]);
+      w.events.length = 0;
+      w.requests.length = 0;
+    }
+    expect(missed).toEqual([]);
   });
 
   it('watch/node-modules-churn: 5,000 files written under node_modules → no event, no collection', { timeout: 60_000 }, async () => {
