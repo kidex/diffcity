@@ -30,6 +30,11 @@ const proofFlag = argv.some((arg, i) => arg === '--project=proof' || (arg === '-
 // carries proof mode to them, so every process sees the same projects.
 if (proofFlag && process.env['DIFFCITY_PROOF'] === undefined) process.env['DIFFCITY_PROOF'] = '1';
 const proofTask = process.env['DIFFCITY_PROOF'];
+// Proof videos are attached to Jira: temporary repos go under /tmp so the
+// paths they show carry no per-user folder (the macOS default TMPDIR is a
+// hashed folder under /var/folders). Set before the workers start, so they
+// inherit it.
+if (proofTask !== undefined) process.env['TMPDIR'] = '/tmp';
 const PROOF_TASK = /^DC-\d+$/;
 
 /** One task's proof spec, recorded at full size and slowed down so it can be followed. */
