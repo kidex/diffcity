@@ -66,6 +66,28 @@ for (const width of [700, 1024, 1440]) {
   }
 }
 
+for (const scheme of ['dark', 'light'] as const) {
+  test(`screenshot of the closed changes (1440 px, ${scheme})`, async ({ page }, testInfo) => {
+    await page.setViewportSize({ width: 1440, height: 1100 });
+    await page.emulateMedia({ colorScheme: scheme, reducedMotion: 'reduce' });
+    await page.clock.setFixedTime(NOW);
+    await openRepo(page);
+    await page.getByTestId('archive-toggle').click();
+    await page.mouse.move(0, 0);
+    await expect(page.getByTestId('change-row')).toHaveCount(4);
+    expect(await page.evaluate<boolean>('document.documentElement.scrollWidth <= window.innerWidth')).toBe(true);
+    const name = `repo-closed-1440-${scheme}.png`;
+    const path = testInfo.outputPath(name);
+    await page.screenshot({ path, fullPage: true });
+    await testInfo.attach(name, { path, contentType: 'image/png' });
+    const shots = process.env['DIFFCITY_E2E_SHOTS'];
+    if (shots) {
+      mkdirSync(shots, { recursive: true });
+      copyFileSync(path, join(shots, name));
+    }
+  });
+}
+
 test('screenshot of the change placeholder', async ({ page }, testInfo) => {
   await page.emulateMedia({ colorScheme: 'dark', reducedMotion: 'reduce' });
   await page.clock.setFixedTime(NOW);
