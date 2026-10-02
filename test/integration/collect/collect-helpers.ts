@@ -11,6 +11,7 @@ import { dbPlugin } from '../../../src/daemon/db.js';
 import { createCollection, type Collection, type CollectionPluginOptions } from '../../../src/daemon/collector/plugin.js';
 import { startDaemon, type RunningDaemon } from '../../../src/daemon/daemon.js';
 import { createStreamLogger } from '../../../src/daemon/log.js';
+import type { DaemonPlugin } from '../../../src/daemon/plugin.js';
 import { tempHome, type TempHome } from '../../helpers/config.js';
 import { waitFor } from '../../helpers/daemon.js';
 import { fakeRunner, type RecordedCall } from '../../helpers/git-env.js';
@@ -77,6 +78,11 @@ async function recordSse(port: number): Promise<{ events: SseRecord[]; close: ()
 export interface TestDaemonOptions {
   /** Also serve the JSON API (/api/repos and the rest). */
   api?: boolean;
+  /**
+   * Adds plugins after the collection (the watch plugin, say); they start
+   * after it and stop before it.
+   */
+  plugins?: (collection: Collection) => DaemonPlugin[];
 }
 
 export async function startTestDaemon(options: CollectionPluginOptions = {}, extra: TestDaemonOptions = {}): Promise<TestDaemon> {
@@ -85,7 +91,7 @@ export async function startTestDaemon(options: CollectionPluginOptions = {}, ext
   const result = await startDaemon({
     env: home.env,
     port: 0,
-    plugins: extra.api === true ? [dbPlugin, collection.plugin, apiPlugin] : [dbPlugin, collection.plugin],
+    plugins: [dbPlugin, collection.plugin, ...(extra.api === true ? [apiPlugin] : []), ...(extra.plugins?.(collection) ?? [])],
     log: createStreamLogger(new PassThrough()),
   });
   if (result.status !== 'started') throw new Error(`daemon did not start: ${result.status}`);

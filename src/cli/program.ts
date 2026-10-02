@@ -4,6 +4,7 @@
 
 import { Command } from 'commander';
 import type { DiffCommandOptions } from './diff.js';
+import type { StartCommandOptions } from './start.js';
 import type { TrackCommandOptions } from './track.js';
 import type { TrustCommandOptions } from './trust.js';
 import type { UpCommandOptions } from './up.js';
@@ -38,6 +39,26 @@ export function buildProgram(io: CliIo = defaultIo): Command {
     .description('Local visual code review for code written by AI agents.')
     .version(readVersion(), '-V, --version', 'print the diffcity version')
     .configureOutput({ writeOut: io.stdout, writeErr: io.stderr });
+
+  // start and stop come first: they are the commands most people need.
+  program
+    .command('start')
+    .description('open the current repo (or <dir>) in the browser, starting the daemon if needed')
+    .argument('[dir]', 'repo directory (default: the repo containing the current directory)')
+    .option('--port <port>', 'port for the UI and API (default: the last one used, else 4321; 0 picks a free port)')
+    .option('--no-open', 'do not open the browser')
+    .action(async (dir: string | undefined, options: StartCommandOptions) => {
+      const { runStart } = await import('./start.js');
+      process.exitCode = await runStart(dir, options, { io, env: io.env?.() ?? process.env, cwd: io.cwd?.() ?? process.cwd() });
+    });
+
+  program
+    .command('stop')
+    .description('stop the daemon')
+    .action(async () => {
+      const { runStop } = await import('./stop.js');
+      process.exitCode = await runStop({ io, env: io.env?.() ?? process.env });
+    });
 
   program
     .command('up')

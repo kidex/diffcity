@@ -3,20 +3,13 @@
 // opens it in the browser. The module stays light: the daemon itself (Fastify)
 // is loaded only for --foreground.
 
-import { createServer } from 'node:net';
 import { ensureHome, homePaths, resolveHome, type HomePaths } from '../core/home.js';
 import type { DaemonInfo } from '../core/model/types.js';
-import { readVersion } from '../core/version.js';
-import {
-  DAEMON_START_TIMEOUT_MS,
-  EXIT_PORT_IN_USE,
-  findRunningDaemon,
-  portInUseMessage,
-  spawnDaemon as defaultSpawnDaemon,
-  startDaemon,
-} from '../daemon/client.js';
-import { isPort, resolvePort, writeState } from '../daemon/files.js';
+import { DAEMON_START_TIMEOUT_MS, EXIT_PORT_IN_USE, type spawnDaemon as defaultSpawnDaemon } from '../daemon/client.js';
+import { acceptDaemon, ensureDaemon, parsePort, urlOf, type EnsureDaemonOptions } from './ensure-daemon.js';
 import { openBrowser } from './open.js';
+
+export { isPortFree } from './ensure-daemon.js';
 
 /** How long `up` waits for a detached daemon to write daemon.json (DAEMON_START_TIMEOUT_MS). */
 export const UP_START_TIMEOUT_MS = DAEMON_START_TIMEOUT_MS;
@@ -39,29 +32,6 @@ export interface UpDeps {
   startTimeoutMs?: number;
 }
 
-const urlOf = (info: Pick<DaemonInfo, 'port'>): string => `http://127.0.0.1:${String(info.port)}`;
-
-function parsePort(value: string | undefined): number | undefined | null {
-  if (value === undefined) return undefined;
-  const port = /^\d+$/.test(value) ? Number(value) : Number.NaN;
-  return isPort(port) ? port : null;
-}
-
-/** True unless something already listens on 127.0.0.1:<port>. Other bind errors are left to the daemon. */
-export function isPortFree(port: number): Promise<boolean> {
-  return new Promise((resolve) => {
-    const probe = createServer();
-    probe.once('error', (error: NodeJS.ErrnoException) => {
-      resolve(error.code !== 'EADDRINUSE');
-    });
-    probe.listen(port, '127.0.0.1', () => {
-      probe.close(() => {
-        resolve(true);
-      });
-    });
-  });
-}
-
 export async function runUp(options: UpCommandOptions, deps: UpDeps): Promise<number> {
   const { io } = deps;
   const env = deps.env ?? process.env;
@@ -72,7 +42,6 @@ export async function runUp(options: UpCommandOptions, deps: UpDeps): Promise<nu
   }
   const shouldOpen = options.open !== false;
   const openUrl = deps.openUrl ?? ((url: string) => openBrowser(url));
-  const cliVersion = readVersion();
 
   let paths: HomePaths;
   try {
@@ -83,52 +52,29 @@ export async function runUp(options: UpCommandOptions, deps: UpDeps): Promise<nu
     return 1;
   }
 
-  /** Prints the URL (or the version mismatch) for a running daemon and opens it. */
-  const report = async (info: DaemonInfo, version: string, startedByUs: boolean): Promise<number> => {
-    if (version !== cliVersion) {
-      io.stderr(`daemon v${version} is running, CLI is v${cliVersion}; stop it and run up again\n`);
-      return 1;
-    }
-    if (!startedByUs && explicitPort !== undefined && explicitPort !== 0 && explicitPort !== info.port) {
-      io.stderr(`daemon already running on port ${String(info.port)}\n`);
-    }
-    if (explicitPort !== undefined && explicitPort !== 0 && explicitPort === info.port) {
-      await writeState(paths, { port: explicitPort });
-    }
+  /** Prints the URL of a running daemon and opens it. */
+  const show = async (info: DaemonInfo): Promise<number> => {
     const url = urlOf(info);
     io.stdout(`${url}\n`);
     if (shouldOpen && !(await openUrl(url))) io.stderr(`could not open a browser; open ${url} yourself\n`);
     return 0;
   };
 
-  const running = await findRunningDaemon(paths);
-  if (running !== null) return report(running.info, running.version, false);
-
-  const port = await resolvePort(paths, explicitPort);
-  if (port !== 0 && !(await (deps.isPortFree ?? isPortFree)(port))) {
-    io.stderr(`${portInUseMessage(port)}\n`);
-    return 1;
+  const ensureOptions: EnsureDaemonOptions = { command: 'up', paths, explicitPort };
+  if (options.foreground === true) {
+    ensureOptions.runInstead = (port) =>
+      runForeground(port, env, io, async (info, startedByUs) =>
+        (await acceptDaemon(ensureOptions, io, info, info.version, startedByUs)) ? show(info) : 1,
+      );
   }
-
-  if (options.foreground === true) return runForeground(port, env, io, report);
-
-  const timeoutMs = deps.startTimeoutMs ?? UP_START_TIMEOUT_MS;
-  const started = await startDaemon({ paths, port, env, spawn: deps.spawnDaemon ?? defaultSpawnDaemon, timeoutMs });
-  if (!started.ok) {
-    switch (started.reason) {
-      case 'port-in-use':
-        io.stderr(`${portInUseMessage(port)}\n`);
-        break;
-      case 'exited':
-        io.stderr(`diffcity up: the daemon exited with code ${String(started.exitCode)}; see ${paths.log}\n`);
-        break;
-      case 'timeout':
-        io.stderr(`diffcity up: the daemon did not start within ${String(timeoutMs / 1000)} s; see ${paths.log}\n`);
-        break;
-    }
-    return 1;
-  }
-  return report(started.info, started.version, true);
+  const result = await ensureDaemon(ensureOptions, {
+    io,
+    env,
+    ...(deps.spawnDaemon === undefined ? {} : { spawnDaemon: deps.spawnDaemon }),
+    ...(deps.isPortFree === undefined ? {} : { isPortFree: deps.isPortFree }),
+    startTimeoutMs: deps.startTimeoutMs ?? UP_START_TIMEOUT_MS,
+  });
+  return result.status === 'ready' ? show(result.info) : result.code;
 }
 
 /** --foreground: the daemon runs in this process, logging to stderr, until SIGTERM, SIGINT or `shutdown`. */
@@ -136,7 +82,7 @@ async function runForeground(
   port: number,
   env: NodeJS.ProcessEnv,
   io: UpDeps['io'],
-  report: (info: DaemonInfo, version: string, startedByUs: boolean) => Promise<number>,
+  report: (info: DaemonInfo, startedByUs: boolean) => Promise<number>,
 ): Promise<number> {
   const [{ runDaemon }, { createStreamLogger }] = await Promise.all([import('../daemon/run.js'), import('../daemon/log.js')]);
   let reported = 0;
@@ -145,7 +91,7 @@ async function runForeground(
     {
       err: io.stderr,
       onReady: async (info, alreadyRunning) => {
-        reported = await report(info, info.version, !alreadyRunning);
+        reported = await report(info, !alreadyRunning);
       },
     },
   );
