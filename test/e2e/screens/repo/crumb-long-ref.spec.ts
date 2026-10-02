@@ -1,6 +1,7 @@
 // e2e/repo/crumb-long-ref (DC-55): a long ref in the breadcrumb ends in an
 // ellipsis, keeps its full text as the accessible name and in a title, and
-// Search keeps its name when its label is hidden.
+// Search keeps its name when its label is hidden. The page never widens and
+// Search and the daemon indicator stay fully on screen.
 
 import { expect, test } from '@playwright/test';
 import { computed } from '../../support/css.js';
@@ -24,6 +25,10 @@ for (const width of [700, 1440]) {
       return box.scrollWidth > box.clientWidth;
     })).toBe(true);
     await expect(crumb.getByRole('link', { name: detail.repo.name })).toHaveAttribute('title', detail.repo.name);
-    await expect(page.getByRole('button', { name: 'Search' })).toBeVisible();
+    // The DC-55 symptom: the page never gets wider than the window, and the
+    // end of the top bar stays fully on screen.
+    expect(await page.evaluate<boolean>('document.documentElement.scrollWidth <= window.innerWidth')).toBe(true);
+    await expect(page.getByRole('button', { name: 'Search' })).toBeInViewport({ ratio: 1 });
+    await expect(page.getByTestId('daemon')).toBeInViewport({ ratio: 1 });
   });
 }
