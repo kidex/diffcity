@@ -16,7 +16,8 @@
     "lastAudit": null,
     "collecting": false,
     "error": null,
-    "watch": "full"
+    "watch": "full",
+    "notes": []
   },
   "changes": [
     {

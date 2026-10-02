@@ -11,5 +11,6 @@
   "lastAudit": null,
   "collecting": true,
   "error": null,
-  "watch": "full"
+  "watch": "full",
+  "notes": []
 }

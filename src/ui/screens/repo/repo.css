@@ -48,6 +48,30 @@
 .has-tip .hint-tip.on-demand { opacity: 0; transform: translateY(4px); }
 .has-tip:hover .hint-tip.on-demand, .has-tip:has(:focus-visible) .hint-tip.on-demand { visibility: visible; opacity: 1; transform: translateY(0); }
 
+/* ---------- notes: a calm info banner per daemon note (not an error) ---------- */
+.repo-notes { display: flex; flex-direction: column; gap: 10px; padding: 14px 22px 0; }
+.repo-notes:empty { display: none; }
+.repo-note {
+  display: flex; align-items: flex-start; gap: 12px; padding: 12px 14px; border-radius: 10px;
+  background: color-mix(in srgb, var(--sev-low) 10%, var(--panel)); border: 1px solid color-mix(in srgb, var(--sev-low) 45%, var(--line));
+  color: var(--ink); font-size: 13px; line-height: 1.5;
+}
+.repo-note .mark {
+  flex: 0 0 auto; width: 18px; height: 18px; margin-top: 1px; border-radius: 50%;
+  display: inline-grid; place-items: center; background: var(--sev-low); color: var(--on-accent);
+  font: italic 700 11px/1 var(--sans);
+}
+.repo-note .body { min-width: 0; flex: 1 1 auto; }
+.repo-note p { margin: 0; max-width: 80ch; }
+.repo-note .cmd {
+  display: inline-flex; align-items: center; gap: 10px; max-width: 100%; margin-top: 8px;
+  padding: 5px 5px 5px 12px; border-radius: 8px; background: var(--code-bg); border: 1px solid var(--line);
+  font-family: var(--mono); font-size: 12.5px;
+}
+.repo-note .cmd .prompt { color: var(--ink-2); }
+.repo-note .cmd code { min-width: 0; color: var(--ink); font-family: var(--mono); overflow-wrap: anywhere; }
+.repo-note .copy { flex: 0 0 auto; padding: 3px 10px; font-size: 12px; }
+
 /* ---------- filters (the mockup's two chip rows) ---------- */
 .repo .filters { display: flex; flex-direction: column; gap: 8px; padding: 14px 22px 18px; }
 .repo .filters .chip { cursor: pointer; }

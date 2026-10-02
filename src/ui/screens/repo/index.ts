@@ -12,9 +12,11 @@ import './repo.css';
 import type { ChangeKind, ChangeSummary, RepoDetail, ReviewState } from '../../../core/model/types.js';
 import { ApiRequestError } from '../../data/api.js';
 import type { DataContext } from '../../data/context.js';
+import { copyButton } from '../../shared/copy.js';
 import { h, replaceChildren } from '../../shared/dom.js';
 import { CLOSED_CHANGES_HINT, KIND_FILTER_LABEL, KINDS, plural, REVIEW_STATE_LABEL, REVIEW_STATES } from '../../shared/format.js';
 import { applyFilters, filterCounts, isFiltered, NO_FILTERS, toggleKind, toggleReview, type RepoFilters } from './filters.js';
+import { noteCopy } from '../../shared/notes.js';
 import { createChangeList } from './list.js';
 
 /** Relative times ("3 min ago") are redrawn this often. */
@@ -118,6 +120,9 @@ export function mountRepo(element: HTMLElement, context: DataContext, repoId: nu
     h('div', { class: 'title' }, h('div', { class: 'name-line' }, name, indicators), path),
     h('div', { class: 'actions' }, h('span', { class: 'has-tip' }, archiveToggle, archiveTip), h('span', { class: 'has-tip' }, audit, auditTip)),
   );
+
+  // ---------- notes (calm info banners under the header, one per daemon note) ----------
+  const notesSlot = h('div', { class: 'repo-notes', 'data-testid': 'repo-notes' });
 
   // ---------- filters ----------
   const kindChips = KINDS.map((kind) =>
@@ -234,6 +239,32 @@ export function mountRepo(element: HTMLElement, context: DataContext, repoId: nu
     link.scrollIntoView({ block: 'nearest' });
   }
 
+  /** Rebuilt only when the notes change, so a focused Copy button survives live updates. */
+  function renderNotes(notes: readonly string[], repoPath: string): void {
+    const signature = JSON.stringify([notes, repoPath]);
+    if (notesSlot.dataset['sig'] === signature) return;
+    notesSlot.dataset['sig'] = signature;
+    replaceChildren(
+      notesSlot,
+      notes.map((note) => {
+        const { text, command } = noteCopy(note, repoPath);
+        return h(
+          'div',
+          { class: 'repo-note', role: 'note', 'data-testid': 'repo-note' },
+          h('i', { class: 'mark', 'aria-hidden': 'true' }, 'i'),
+          h(
+            'div',
+            { class: 'body' },
+            h('p', null, text),
+            command === null
+              ? null
+              : h('div', { class: 'cmd' }, h('span', { class: 'prompt', 'aria-hidden': 'true' }, '$'), h('code', { 'data-testid': 'note-command' }, command), copyButton(command)),
+          ),
+        );
+      }),
+    );
+  }
+
   function renderReady(repo: RepoDetail): void {
     const now = Date.now();
     if (name.textContent !== repo.repo.name) name.textContent = repo.repo.name;
@@ -247,6 +278,7 @@ export function mountRepo(element: HTMLElement, context: DataContext, repoId: nu
       if (repo.repo.watch === 'git-only') tags.push(h('span', { class: 'tag', 'data-testid': 'git-only' }, 'working tree not watched (too large)'));
       replaceChildren(indicators, tags);
     }
+    renderNotes(repo.repo.notes, repo.repo.path);
 
     const toggleText = showArchive ? BACK_TO_OPEN : SHOW_CLOSED;
     if (archiveToggle.textContent !== toggleText) archiveToggle.textContent = toggleText;
@@ -322,7 +354,7 @@ export function mountRepo(element: HTMLElement, context: DataContext, repoId: nu
           );
           break;
         case 'ready':
-          replaceChildren(stage, head, filterSlot, listSection);
+          replaceChildren(stage, head, notesSlot, filterSlot, listSection);
           break;
       }
     }

@@ -12,7 +12,8 @@
     "lastAudit": null,
     "collecting": false,
     "error": null,
-    "watch": "full"
+    "watch": "full",
+    "notes": []
   },
   {
     "id": 12,
@@ -27,7 +28,8 @@
     "lastAudit": null,
     "collecting": false,
     "error": null,
-    "watch": "git-only"
+    "watch": "git-only",
+    "notes": []
   },
   {
     "id": 13,
@@ -42,7 +44,8 @@
     "lastAudit": null,
     "collecting": false,
     "error": "git rev-parse failed: not a git repository",
-    "watch": "full"
+    "watch": "full",
+    "notes": []
   },
   {
     "id": 14,
@@ -57,6 +60,7 @@
     "lastAudit": null,
     "collecting": true,
     "error": null,
-    "watch": "full"
+    "watch": "full",
+    "notes": []
   }
 ]

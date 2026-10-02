@@ -6,6 +6,7 @@ import './fleet.css';
 
 import type { RepoSummary } from '../../../core/model/types.js';
 import type { DataContext } from '../../data/context.js';
+import { copyButton } from '../../shared/copy.js';
 import { h, replaceChildren } from '../../shared/dom.js';
 import { createFleetList } from './list.js';
 import { createFleetMap } from './map.js';
@@ -21,25 +22,13 @@ type FleetState = 'loading' | 'ready' | 'empty' | 'unreachable';
 
 function emptyState(): HTMLElement {
   const command = h('code', null, START_COMMAND);
-  const copy = h('button', { type: 'button', class: 'btn copy', 'aria-label': 'Copy the command' }, 'Copy');
-  copy.addEventListener('click', () => {
-    void navigator.clipboard
-      .writeText(START_COMMAND)
-      .then(() => {
-        copy.textContent = 'Copied';
-        setTimeout(() => {
-          copy.textContent = 'Copy';
-        }, 1600);
-      })
-      .catch(() => undefined);
-  });
   return h(
     'div',
     { class: 'fleet-empty', 'data-testid': 'fleet-empty' },
     h('div', { class: 'empty-lot', 'aria-hidden': 'true' }, h('span')),
     h('h2', null, 'No repos yet'),
     h('p', null, 'Run this inside a repo you work in. diffcity starts in the background, adds the repo and opens it here.'),
-    h('div', { class: 'cmd' }, h('span', { class: 'prompt', 'aria-hidden': 'true' }, '$'), command, copy),
+    h('div', { class: 'cmd' }, h('span', { class: 'prompt', 'aria-hidden': 'true' }, '$'), command, copyButton(START_COMMAND)),
   );
 }
 

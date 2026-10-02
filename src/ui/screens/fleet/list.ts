@@ -5,6 +5,7 @@ import type { RepoSummary } from '../../../core/model/types.js';
 import { routeHref } from '../../app/router.js';
 import { h, renderList, replaceChildren } from '../../shared/dom.js';
 import { lastAuditLabel, plural, relativeTime } from '../../shared/format.js';
+import { noteSummary } from '../../shared/notes.js';
 
 export interface FleetList {
   readonly element: HTMLElement;
@@ -130,13 +131,17 @@ export function createFleetList(go: (href: string) => void): FleetList {
     setText(cells.link, repo.name);
     setText(cells.path, repo.path);
 
-    const status = JSON.stringify([repo.collecting, repo.error, repo.active, repo.watch]);
+    const status = JSON.stringify([repo.collecting, repo.error, repo.active, repo.watch, repo.notes, repo.path]);
     if (cells.indicators.dataset['status'] !== status) {
       cells.indicators.dataset['status'] = status;
       const indicators: HTMLElement[] = [];
       if (repo.collecting) indicators.push(h('span', { class: 'tag collecting', 'data-testid': 'collecting' }, h('i'), 'collecting'));
       if (repo.error !== null) indicators.push(h('span', { class: 'tag del', 'data-testid': 'collect-error', title: repo.error }, 'error'));
       if (!repo.active) indicators.push(h('span', { class: 'tag', 'data-testid': 'inactive' }, 'inactive'));
+      for (const note of repo.notes) {
+        const summary = noteSummary(note, repo.path);
+        indicators.push(h('span', { class: 'tag note-tag', role: 'note', 'aria-label': `Note: ${summary}`, title: summary, 'data-testid': 'repo-note-indicator' }, h('i', { 'aria-hidden': 'true' }, 'i'), 'note'));
+      }
       replaceChildren(cells.indicators, indicators);
 
       const notes: HTMLElement[] = [];
