@@ -26,7 +26,7 @@
 import { spawnSync } from 'node:child_process';
 import { appendFileSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { basename, dirname, join } from 'node:path';
+import { basename, dirname, join, relative, sep } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
 import { homePaths } from '../../src/core/home.js';
@@ -64,12 +64,46 @@ function spellings(path: string): string[] {
   return [...out];
 }
 
+/** Prefix of the temporary roots the test helpers create (`dc-XXXXXX`). */
+const TEMP_ROOT_PREFIX = 'dc-';
+
+/** `path` with its real path resolved as far as it exists (a home not yet created resolves through its parent). */
+function resolved(path: string): string {
+  const missing: string[] = [];
+  let current = path;
+  for (;;) {
+    try {
+      return join(realpathSync(current), ...missing.reverse());
+    } catch {
+      const parent = dirname(current);
+      if (parent === current) return path;
+      missing.push(basename(current));
+      current = parent;
+    }
+  }
+}
+
+/**
+ * Throws unless `home` lies under os.tmpdir() (real paths, so macOS /var is
+ * /private/var) inside a root whose name starts with `dc-`. The sweep signals
+ * processes by home, so a registered real home would be fatal.
+ */
+function assertTempHome(home: string): void {
+  const rel = relative(resolved(tmpdir()), resolved(home));
+  const [root] = rel.split(sep);
+  if (rel === '' || rel.startsWith('..') || root === undefined || !root.startsWith(TEMP_ROOT_PREFIX)) {
+    throw new Error(`registerHome: ${home} is not under a ${TEMP_ROOT_PREFIX}* directory of os.tmpdir(); refusing to register it`);
+  }
+}
+
 /**
  * Registers a temporary home (or a directory holding homes) whose daemons must
  * be stopped, and the pid of a child that may run one. Recorded in this
- * process and in the run's registry file.
+ * process and in the run's registry file. Throws for a path that is not a
+ * `dc-*` temporary directory (or below one) of os.tmpdir().
  */
 export function registerHome(home: string, pid?: number): void {
+  assertTempHome(home);
   for (const spelling of spellings(home)) registered.add(spelling);
   if (pid !== undefined) registeredPids.add(pid);
   const file = process.env[REGISTRY_ENV];
