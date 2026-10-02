@@ -439,6 +439,100 @@ describe('bursts (C4, Q7)', () => {
   });
 });
 
+describe('reconcile pass (C4, ADR-020 amendment v4), chokidar backend', () => {
+  it('watch/reconcile-respects-ignores: what a checkout creates in gitignored, node_modules, nested worktree and swap-file paths is never reported', { timeout: 120_000 }, async () => {
+    const repo = await sampleRepo({ files: { '.gitignore': 'build/\n', 'src/oven.ts': 'export const heat = 1;\n' } });
+    await repo.git('checkout', '--quiet', '-b', 'feature/racks');
+    const shelves: Record<string, string> = {};
+    for (let n = 0; n < 20; n++) shelves[`src/racks/shelf${String(n)}/leaf.ts`] = `export const leaf = ${String(n)};\n`;
+    await repo.write(shelves);
+    await repo.git('add', 'src/racks');
+    await repo.git('commit', '--quiet', '-m', 'twenty shelves');
+    await repo.checkout('main');
+    // build/ exists before the watcher starts, so git lists it as ignored; the nested worktree is not gitignored.
+    await repo.write({ 'build/app.js': 'bundle\n' });
+    await repo.git('worktree', 'add', '--quiet', '.worktrees/rack', '-b', 'feature/rack');
+    const w = await watch(repo, { backend: 'chokidar' });
+    const linked = join(w.root, '.worktrees', 'rack');
+    expect(w.watchers.watchedWorktrees(REPO_ID).sort()).toEqual([w.root, linked].sort());
+    await w.settle();
+
+    // The checkout creates src/racks/shelf*; what a post-checkout build writes lands at the same time.
+    await repo.checkout('feature/racks');
+    const generated: Record<string, string> = {};
+    for (let n = 0; n < 20; n++) {
+      generated[`build/racks/shelf${String(n)}/out.js`] = 'bundle\n';
+      generated[`.worktrees/rack/src/racks/shelf${String(n)}/copy.ts`] = 'export {};\n';
+    }
+    generated['node_modules/sample-tray/lib/deep/index.js'] = 'module.exports = 1;\n';
+    generated['src/racks/shelf3/node_modules/qs/lib/index.js'] = 'module.exports = 2;\n';
+    generated['src/racks/shelf4/.leaf.ts.swp'] = 'swap\n';
+    generated['src/racks/shelf5/.notes.md.swx'] = 'swap\n';
+    await repo.write(generated);
+    await waitFor(() => paths(w.events, 'refs').includes(join(w.root, '.git', 'HEAD')), 10_000, 'the HEAD event');
+    await w.sentinel();
+    // What onListed does after a collection: recompute the ignores, then a whole-tree reconcile pass, twice.
+    w.watchers.worktreesListed(REPO_ID, [w.root, linked]);
+    w.watchers.worktreesListed(REPO_ID, [w.root, linked]);
+    await w.reconciled();
+    await new Promise((resolve) => setTimeout(resolve, 500));
+
+    const rootPaths = paths(w.events, `worktree:${w.root}`);
+    // The new tracked tree is seen, so the pass did run over it.
+    expect(rootPaths.some((path) => path.startsWith(join(w.root, 'src', 'racks')))).toBe(true);
+    expect(rootPaths.filter((path) => path.startsWith(join(w.root, 'build')))).toEqual([]);
+    expect(rootPaths.filter((path) => path.includes('node_modules'))).toEqual([]);
+    expect(rootPaths.filter((path) => path.startsWith(linked))).toEqual([]);
+    expect(rootPaths.filter((path) => /\.sw[px]$/.test(path))).toEqual([]);
+    // Nothing else is pending for the root: further passes report nothing.
+    await w.settle();
+    w.watchers.worktreesListed(REPO_ID, [w.root, linked]);
+    await w.reconciled();
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    expect(paths(w.events, `worktree:${w.root}`)).toEqual([]);
+  });
+
+  it('watch/reconcile-budget-git-only: a directory created after start with more subdirectories than the budget → `git-only`, the git watcher stays', { timeout: 60_000 }, async () => {
+    const repo = await sampleRepo();
+    const w = await watch(repo, { backend: 'chokidar', budget: 30 });
+    expect(w.watchers.mode(REPO_ID)).toBe('full');
+    await w.settle();
+
+    await Promise.all(Array.from({ length: 40 }, (_, n) => mkdir(join(w.root, 'data', `d${String(n)}`), { recursive: true })));
+    await waitFor(() => w.watchers.mode(REPO_ID) === 'git-only', 20_000, 'the git-only fallback');
+    expect(w.modeChanges).toEqual([REPO_ID]);
+    expect(w.watchers.watchedWorktrees(REPO_ID)).toEqual([]);
+    await w.settle();
+    await repo.git('commit', '--quiet', '--allow-empty', '-m', 'still watched');
+    await waitFor(() => paths(w.events, 'refs').length > 0, 10_000, 'the ref event');
+    await repo.write({ 'src/oven.ts': 'export const heat = 7;\n' });
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    expect(w.events.filter((event) => event.scope !== 'refs')).toEqual([]);
+  });
+
+  it('watch/reconcile-budget-git-only: a tree that grows past the budget in small directories → `git-only` on the next whole-tree pass', { timeout: 60_000 }, async () => {
+    const repo = await sampleRepo();
+    const w = await watch(repo, { backend: 'chokidar', budget: 30 });
+    await w.settle();
+
+    // Three directories of 12 subdirectories each: no single one is over the budget, the tree is (2 + 3 + 36 > 30).
+    for (let d = 0; d < 3; d++) {
+      await Promise.all(Array.from({ length: 12 }, (_, n) => mkdir(join(w.root, `data${String(d)}`, `e${String(n)}`), { recursive: true })));
+    }
+    await w.reconciled();
+    expect(w.watchers.mode(REPO_ID)).toBe('full');
+
+    // What onListed does after the collection those directories ask for.
+    w.watchers.worktreesListed(REPO_ID, [w.root]);
+    await waitFor(() => w.watchers.mode(REPO_ID) === 'git-only', 20_000, 'the git-only fallback');
+    expect(w.modeChanges).toEqual([REPO_ID]);
+    expect(w.watchers.watchedWorktrees(REPO_ID)).toEqual([]);
+    await w.settle();
+    await repo.git('commit', '--quiet', '--allow-empty', '-m', 'still watched');
+    await waitFor(() => paths(w.events, 'refs').length > 0, 10_000, 'the ref event');
+  });
+});
+
 describe('working tree limit (ADR-020)', () => {
   it('watch/max-8-worktrees: of 10 working trees only the first 8 are watched; an edit in the others is silent', { timeout: 120_000 }, async () => {
     const repo = await sampleRepo({ files: { '.gitignore': '.worktrees/\n', 'src/oven.ts': 'export const heat = 1;\n' } });
