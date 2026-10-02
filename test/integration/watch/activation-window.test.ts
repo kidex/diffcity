@@ -143,3 +143,59 @@ describe('opening a repo in the UI refreshes its 7-day window (Q6)', () => {
     expect(setup.watch().scheduler().polled()).toEqual([repoId]);
   });
 });
+
+describe('a UI open is stamped like track and activates once (Q6)', () => {
+  it('activation/ui-open-never-moves-back: a UI open stamped earlier than a later lastSeenAt leaves it unchanged', async () => {
+    const setup = await daemonOnClock();
+    const repoId = await tracked(setup);
+    // A later sighting, two hours ahead of the daemon's clock (a track whose `at` is ahead, say).
+    const later = new Date(setup.clock.now() + 2 * 60 * 60_000).toISOString();
+    setup.test.collection.db().repos.touchSeen(repoId, later);
+
+    await setup.open(repoId);
+    await setup.test.idle();
+    expect(setup.test.collection.db().repos.get(repoId)?.lastSeenAt).toBe(later);
+    expect(setup.active(repoId)).toBe(true);
+  });
+
+  it('activation/ui-open-burst-one-activation: five rapid same-origin opens of an inactive repo activate it once, collect once and signal once', async () => {
+    const setup = await daemonOnClock();
+    const repoId = await registered(setup);
+    const activations: number[] = [];
+    setup.test.collection.onActivated((id) => activations.push(id));
+    const before = setup.test.events().length;
+
+    await Promise.all(Array.from({ length: 5 }, () => setup.open(repoId)));
+    await waitFor(() => setup.watch().watchers().watched().includes(repoId), 10_000, 'the watchers of the opened repo');
+    await setup.test.idle();
+    // Late SSE frames arrive after the collection settles.
+    await new Promise((resolve) => setTimeout(resolve, 200));
+
+    const after = setup.test.events().slice(before).filter((record) => record.data.repoId === repoId);
+    expect(activations).toEqual([repoId]);
+    expect(after.filter((record) => record.event === 'collect' && record.data.state === 'done')).toHaveLength(1);
+    expect(after.filter((record) => record.event === 'repo')).toHaveLength(1);
+    expect(setup.active(repoId)).toBe(true);
+  });
+
+  it('activation/seven-day-boundary-same-for-track-and-open: seen at the same instant by track and by a UI open, both are active at exactly 7 days and inactive at the next hourly check', async () => {
+    const setup = await daemonOnClock();
+    const viaOpen = await registered(setup);
+    const at = new Date(setup.clock.now()).toISOString();
+    const viaTrack = await tracked(setup);
+    await setup.open(viaOpen);
+    await setup.test.idle();
+    const db = setup.test.collection.db();
+    expect(db.repos.get(viaTrack)?.lastSeenAt).toBe(at);
+    expect(db.repos.get(viaOpen)?.lastSeenAt).toBe(at);
+
+    // The hourly check due exactly 7 days after the sighting: not more than 7 days, still active.
+    setup.toDay(7);
+    expect(setup.active(viaTrack)).toBe(true);
+    expect(setup.active(viaOpen)).toBe(true);
+
+    setup.clock.advance(DEACTIVATE_CHECK_MS);
+    expect(setup.active(viaTrack)).toBe(false);
+    expect(setup.active(viaOpen)).toBe(false);
+  });
+});
