@@ -1,7 +1,8 @@
 // Playwright Test (ADR-023). Two projects:
 // - screens: the UI against a mocked API (page.route + JSON fixtures), served
 //   by a test-only static server; video, trace and screenshot kept on failure;
-// - acceptance: each spec starts its own daemon in a fresh temporary home.
+// - acceptance: each spec starts its own daemon in a fresh temporary home,
+//   one worker so timed specs never share the machine with each other.
 
 import { defineConfig, devices } from '@playwright/test';
 
@@ -36,6 +37,8 @@ export default defineConfig({
     {
       name: 'acceptance',
       testDir: './e2e/acceptance',
+      // Real daemons with deadlines: one spec at a time (see cd-to-ui.spec.ts).
+      workers: 1,
       use: browser,
     },
   ],
