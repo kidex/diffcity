@@ -1,7 +1,7 @@
 // The night data city of a Report (ADR-026): stage, ground, lots, towers and
 // roof labels, the mockup's orbit camera, hover and selection. Rebuilt in
-// place on a new Report, keeping the camera and the selected building, and
-// on a theme change. Everything it creates is released by dispose().
+// place on a new Report, keeping the camera, the selected building and the
+// city's row width (so lots before a change stay put), and on a theme change. Everything it creates is released by dispose().
 
 import { Fog, HemisphereLight, PMREMGenerator, Vector3 } from 'three';
 import type { Object3D } from 'three';
@@ -58,6 +58,9 @@ export interface CityViewOptions {
   onReady?: () => void;
 }
 
+/** The camera counts as resting this long after it last moved; labels are re-ranked and occluded then. */
+const REST_MS = 120;
+
 /** Memory left by the last disposed view, for the disposal test. */
 export const disposal = { live: 0, lastGeometries: -1, lastTextures: -1 };
 
@@ -93,8 +96,13 @@ export function createCityView(host: HTMLElement, report: Report, options: CityV
   let disposed = false;
   let hovered: string | null = null;
   let selected: string | null = null;
+  /** Labels are ranked and occluded for the current camera, selection and hover. */
   let settled = false;
+  let cameraMovedAt = Number.NEGATIVE_INFINITY;
+  let restTimer: ReturnType<typeof setTimeout> | undefined;
   let ready = false;
+  /** Row width of the first city, kept for every later Report (ADR-026 layout stability). */
+  let rowWidth: number | undefined;
   const target = new Vector3();
   // Homed on the first build.
   const orbit = new Orbit(homeFor(1));
@@ -118,14 +126,23 @@ export function createCityView(host: HTMLElement, report: Report, options: CityV
         const moving = orbit.step(now);
         applyCamera();
         firstCamera ??= { ...orbit.state };
-        if (moving) settled = false;
+        if (moving) cameraMoved(now);
         return moving;
       },
       afterFrame: () => {
         labels.render(stage.camera);
         if (!settled && content !== null && !orbit.introRunning) {
-          labels.updateOcclusion(stage.camera, content.picker);
-          settled = true;
+          // Only when the camera rests, never on every drag frame.
+          const wait = cameraMovedAt + REST_MS - performance.now();
+          if (wait <= 0) {
+            labels.updateOcclusion(stage.camera, content.picker);
+            settled = true;
+          } else {
+            clearTimeout(restTimer);
+            restTimer = setTimeout(() => {
+              stage.request();
+            }, wait);
+          }
         }
         if (!ready) {
           ready = true;
@@ -155,6 +172,17 @@ export function createCityView(host: HTMLElement, report: Report, options: CityV
   scene.environmentIntensity = 0.2;
   const sky = new HemisphereLight();
   scene.add(sky);
+
+  function cameraMoved(now = performance.now()): void {
+    cameraMovedAt = now;
+    settled = false;
+  }
+
+  function cityOf(next: Report): City {
+    const city = buildCity(next, { rowWidth });
+    rowWidth = city.rowWidth > 0 ? city.rowWidth : rowWidth;
+    return city;
+  }
 
   function applyCamera(): void {
     const position = orbitPosition(target, orbit.state);
@@ -216,7 +244,7 @@ export function createCityView(host: HTMLElement, report: Report, options: CityV
     canvas.style.cursor = '';
     if (selected !== null && !city.byId.has(selected)) selected = null;
     towers.setSelected(selected);
-    labels.toggle(selected, 'is-selected', true);
+    labels.setFocus(selected, hovered);
     element.dataset['selected'] = selected ?? '';
     settled = false;
     stage.request();
@@ -228,9 +256,8 @@ export function createCityView(host: HTMLElement, report: Report, options: CityV
 
   function setHover(id: string | null): void {
     if (id === hovered) return;
-    labels.toggle(hovered, 'is-hover', false);
     hovered = id;
-    labels.toggle(hovered, 'is-hover', true);
+    if (labels.setFocus(selected, hovered)) settled = false;
     content?.towers.setHover(id);
     canvas.style.cursor = id === null ? '' : 'pointer';
     element.dataset['hovered'] = id ?? '';
@@ -238,9 +265,8 @@ export function createCityView(host: HTMLElement, report: Report, options: CityV
   }
 
   function select(id: string | null): void {
-    labels.toggle(selected, 'is-selected', false);
     selected = id;
-    labels.toggle(selected, 'is-selected', true);
+    if (labels.setFocus(selected, hovered)) settled = false;
     content?.towers.setSelected(id);
     element.dataset['selected'] = id ?? '';
     stage.request();
@@ -250,12 +276,15 @@ export function createCityView(host: HTMLElement, report: Report, options: CityV
   // parallel where the GPU supports it, so opening a change does not freeze
   // the page while they compile.
   let lastReport = report;
-  const first = build(buildCity(report));
+  const first = build(cityOf(report));
   const isDisposed = (): boolean => disposed;
+  // A new Report or a theme change disposes `first`; its materials are not compiled then.
+  const isStale = (): boolean => content !== first;
   void (async () => {
     try {
       for (const part of first.parts) {
         if (isDisposed()) return;
+        if (isStale()) break;
         await renderer.compileAsync(part, camera, scene);
       }
     } catch {
@@ -267,7 +296,7 @@ export function createCityView(host: HTMLElement, report: Report, options: CityV
   const unbind = bindOrbit(canvas, orbit, {
     changed: () => {
       applyCamera();
-      settled = false;
+      cameraMoved();
       stage.request();
     },
     hover: (x, y) => {
@@ -287,7 +316,7 @@ export function createCityView(host: HTMLElement, report: Report, options: CityV
   // A theme change re-reads every colour token.
   const scheme = matchMedia('(prefers-color-scheme: light)');
   const onScheme = (): void => {
-    build(buildCity(lastReport));
+    build(cityOf(lastReport));
   };
   scheme.addEventListener('change', onScheme);
 
@@ -296,7 +325,7 @@ export function createCityView(host: HTMLElement, report: Report, options: CityV
     setReport(next) {
       if (disposed) return;
       lastReport = next;
-      build(buildCity(next));
+      build(cityOf(next));
     },
     project(fileId) {
       const building = content?.city.byId.get(fileId);
@@ -334,6 +363,7 @@ export function createCityView(host: HTMLElement, report: Report, options: CityV
       if (disposed) return;
       disposed = true;
       unbind();
+      clearTimeout(restTimer);
       scheme.removeEventListener('change', onScheme);
       content?.dispose();
       content = null;

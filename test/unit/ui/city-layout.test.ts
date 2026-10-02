@@ -1,6 +1,7 @@
 // city/* (ADR-026): the change screen's layout from a Report. Deterministic,
-// stable when a file is added, quiet packages at the back, floors in source
-// order, footprints from the symbol count. Nothing here reads a status or a
+// stable when a file is added (the row width is kept by the view), quiet
+// packages at the back, floors in source order, footprints from the symbol
+// count, labels in the ADR's priority. Nothing here reads a status or a
 // verdict for any purpose but copying it.
 
 import { describe, expect, it } from 'vitest';
@@ -14,6 +15,8 @@ import {
   INSET,
   labelledBuildings,
   MAX_LABELS,
+  REFLOW_FACTOR,
+  ROW_QUANTUM,
   SIDE_MAX_SYMBOLS,
   SIDE_MIN,
   SIDE_STEP,
@@ -113,14 +116,14 @@ describe('city/layout-deterministic', () => {
     }
   });
 
-  it('labels touched buildings only, eyes first, at most MAX_LABELS', () => {
-    const city = buildCity(golden());
-    const labelled = labelledBuildings(city);
-    expect(labelled.every((item) => item.touched)).toBe(true);
-    expect(labelled).toHaveLength(city.buildings.filter((item) => item.touched).length);
-    expect(labelled.slice(0, 2).map((item) => item.verdict)).toEqual(['eyes', 'eyes']);
-    expect(labelledBuildings(city, 3)).toHaveLength(3);
-    expect(MAX_LABELS).toBe(120);
+  it('keeps the same coordinates for the same Report when no previous row width is given', () => {
+    const a = buildCity(golden());
+    const b = buildCity(golden(), {});
+    const c = buildCity(golden(), { rowWidth: undefined });
+    for (const city of [b, c]) {
+      expect(city.rowWidth).toBe(a.rowWidth);
+      expect(city.buildings.map((item) => [item.x, item.z])).toEqual(a.buildings.map((item) => [item.x, item.z]));
+    }
   });
 
   it('is empty for a Report without packages', () => {
@@ -139,7 +142,7 @@ describe('city/layout-stable-on-add', () => {
     target.files.push(file('src/repo/orders.audit.ts', [symbol('src/repo/orders.audit.ts', 'audit', 'add', 1)], 'add'));
 
     const a = buildCity(before);
-    const b = buildCity(after);
+    const b = buildCity(after, { rowWidth: a.rowWidth });
     expect(b.rowWidth).toBe(a.rowWidth);
     expect(b.lots.map((lot) => lot.id)).toEqual(a.lots.map((lot) => lot.id));
 
@@ -159,6 +162,167 @@ describe('city/layout-stable-on-add', () => {
         .buildings.filter((item) => item.id !== 'src/repo/orders.audit.ts')
         .map((item) => item.id);
     expect(order(b)).toEqual(order(a));
+  });
+});
+
+describe('city/row-width-sticky', () => {
+  const lastLot = (source: Report): Package => {
+    const last = source.packages.find((p) => p.path === 'src/services/orders');
+    if (last === undefined) throw new Error('src/services/orders missing from the golden');
+    return last;
+  };
+  const box = (lot: CityLot) => [lot.id, lot.x0, lot.z0, lot.x1, lot.z1, lot.row];
+  // A lot in the changed lot's row keeps its place and buildings; only its plate deepens with the row.
+  const place = (lot: CityLot) => [lot.id, lot.x0, lot.z0, lot.x1, lot.row];
+
+  /** Lots before `index`: those in earlier rows are untouched, those in its row keep their place. */
+  function expectEarlierLotsKept(before: City, after: City, index: number): void {
+    const row = at(before.lots, index).row;
+    for (const lot of before.lots.slice(0, index)) {
+      const next = at(after.lots, lot.index);
+      expect(lot.row < row ? box(next) : place(next)).toEqual(lot.row < row ? box(lot) : place(lot));
+      for (const item of lot.buildings) expect([building(after, item.id).x, building(after, item.id).z]).toEqual([item.x, item.z]);
+    }
+  }
+
+  it('moves no earlier lot while files are added to the last lot across several row-width steps', () => {
+    const first = buildCity(golden());
+    const lastIndex = first.lots.findIndex((lot) => lot.id === 'src/services/orders');
+    expect(lastIndex).toBe(first.lots.length - 1);
+    const grown = golden();
+    let previous = first;
+    let crossed = 0;
+    for (let n = 0; crossed < 2; n += 1) {
+      const path = `src/services/orders/extra-${String(n)}.ts`;
+      lastLot(grown).files.push(file(path, [symbol(path, `extra${String(n)}`, 'add', 1)], 'add'));
+      const city = buildCity(grown, { rowWidth: previous.rowWidth });
+      expect(city.rowWidth).toBe(first.rowWidth);
+      expectEarlierLotsKept(first, city, lastIndex);
+      // What a fresh layout of the same Report would pick: it has crossed `crossed` steps.
+      crossed = (buildCity(grown).rowWidth - first.rowWidth) / ROW_QUANTUM;
+      previous = city;
+      expect(n).toBeLessThan(500);
+    }
+    expect(crossed).toBeGreaterThanOrEqual(2);
+  });
+
+  it('keeps the earlier lots in place when files go to src/services/orders (the review probe)', () => {
+    const before = buildCity(golden());
+    const grown = golden();
+    for (const name of ['refunds', 'returns']) {
+      const path = `src/services/orders/${name}.ts`;
+      lastLot(grown).files.push(file(path, [symbol(path, name, 'add', 1)], 'add'));
+    }
+    const after = buildCity(grown, { rowWidth: before.rowWidth });
+    expect(after.rowWidth).toBe(before.rowWidth);
+    expectEarlierLotsKept(before, after, before.lots.findIndex((lot) => lot.id === 'src/services/orders'));
+  });
+
+  it('puts a lot wider than the kept rows alone in its own row instead of widening them', () => {
+    const one = (path: string): Package => pkg(path, [file(`${path}/a.ts`, [symbol(`${path}/a.ts`, 'a', 'mod', 1)])]);
+    const kept = 3 * ROW_QUANTUM;
+    const wide = pkg(
+      'c',
+      Array.from({ length: 130 }, (_, i) => file(`c/f${String(i)}.ts`, [symbol(`c/f${String(i)}.ts`, 'f', 'mod', 1)])),
+    );
+    const next = buildCity(report([one('a'), one('b'), wide]), { rowWidth: kept });
+    expect(next.rowWidth).toBe(kept);
+    const c = at(next.lots, 2);
+    expect(c.x1 - c.x0).toBeGreaterThan(kept);
+    expect(c.x0).toBe(0);
+    expect(at(next.lots, 0).row).toBe(at(next.lots, 1).row);
+    expect(c.row).toBeGreaterThan(at(next.lots, 1).row);
+    expect(next.lots.slice(0, 2).map(box)).toEqual(buildCity(report([one('a'), one('b')]), { rowWidth: kept }).lots.map(box));
+  });
+
+  it('chooses the width afresh once the city is REFLOW_FACTOR times wider than its rows', () => {
+    const one = (path: string): Package => pkg(path, [file(`${path}/a.ts`, [symbol(`${path}/a.ts`, 'a', 'mod', 1)])]);
+    const small = buildCity(report([one('p0')]));
+    const many = report(Array.from({ length: 80 }, (_, i) => one(`p${String(i)}`)));
+    const fresh = buildCity(many).rowWidth;
+    expect(fresh).toBeGreaterThanOrEqual(small.rowWidth * REFLOW_FACTOR);
+    expect(buildCity(many, { rowWidth: small.rowWidth }).rowWidth).toBe(fresh);
+  });
+});
+
+describe('city/quiet-package-joins-touched-block', () => {
+  it('moves a quiet package from the back rows into the touched block when it gets its first touched file (ADR-026)', () => {
+    const before = golden();
+    const a = buildCity(before);
+    const quietLot = a.lots.find((lot) => lot.id === 'src/shared');
+    expect(quietLot?.touched).toBe(false);
+    expect(quietLot?.row).toBe(0);
+
+    const after = golden();
+    const shared = after.packages.find((p) => p.path === 'src/shared');
+    if (shared === undefined) throw new Error('src/shared missing from the golden');
+    const path = 'src/shared/money.format.ts';
+    shared.files.push(file(path, [symbol(path, 'formatMoney', 'add', 1)], 'add'));
+    const b = buildCity(after, { rowWidth: a.rowWidth });
+
+    const moved = b.lots.find((lot) => lot.id === 'src/shared');
+    expect(moved?.touched).toBe(true);
+    // No quiet package is left, so it now follows the Report's order among the touched ones.
+    expect(b.lots.map((lot) => lot.id)).toEqual(after.packages.map((p) => p.id));
+    expect(moved?.row).toBeGreaterThan(0);
+    expect(b.rowWidth).toBe(a.rowWidth);
+  });
+});
+
+describe('city/label-priority', () => {
+  const lbl = (path: string, verdict: 'eyes' | 'risky' | 'spec' | 'ok', status: Status = 'mod'): File => ({
+    ...file(path, [symbol(path, 'f', status, 1)], status),
+    verdict,
+  });
+  const city = buildCity(
+    report([
+      pkg('a', [lbl('a/ok-1.ts', 'ok'), lbl('a/risky.ts', 'risky'), lbl('a/spec.ts', 'spec'), file('a/quiet.ts', [symbol('a/quiet.ts', 'q', 'same', 1)])]),
+      pkg('b', [lbl('b/ok-2.ts', 'ok'), lbl('b/eyes.ts', 'eyes')]),
+    ]),
+  );
+  const ids = (list: CityBuilding[]) => list.map((item) => item.id);
+  const near = (id: string) => {
+    const item = building(city, id);
+    return { x: item.x, y: item.height + 1, z: item.z };
+  };
+
+  it('labels touched buildings only, at most MAX_LABELS', () => {
+    expect(MAX_LABELS).toBe(120);
+    const labelled = labelledBuildings(city);
+    expect(labelled.every((item) => item.touched)).toBe(true);
+    expect(labelled).toHaveLength(5);
+    expect(labelledBuildings(city, {}, 3)).toHaveLength(3);
+    expect(labelledBuildings(buildCity(golden())).slice(0, 2).map((item) => item.verdict)).toEqual(['eyes', 'eyes']);
+  });
+
+  it('puts eyes and risky first, then the other touched files; Report order without a camera', () => {
+    expect(ids(labelledBuildings(city))).toEqual(['a/risky.ts', 'b/eyes.ts', 'a/ok-1.ts', 'a/spec.ts', 'b/ok-2.ts']);
+  });
+
+  it('orders each group by distance to the camera', () => {
+    for (const id of ['b/ok-2.ts', 'a/ok-1.ts', 'a/spec.ts']) {
+      const eye = near(id);
+      const order = labelledBuildings(city, { eye });
+      const sq = (item: CityBuilding) => (item.x - eye.x) ** 2 + (item.height - eye.y) ** 2 + (item.z - eye.z) ** 2;
+      expect(ids(order.slice(0, 2)).sort()).toEqual(['a/risky.ts', 'b/eyes.ts']);
+      expect(at(order, 2).id).toBe(id);
+      for (const group of [order.slice(0, 2), order.slice(2)]) {
+        for (let i = 1; i < group.length; i += 1) expect(sq(at(group, i))).toBeGreaterThanOrEqual(sq(at(group, i - 1)));
+      }
+    }
+    // The risky roof is nearer than the eyes one from its own spot: distance beats the verdict inside the group.
+    expect(at(labelledBuildings(city, { eye: near('a/risky.ts') }), 0).id).toBe('a/risky.ts');
+    expect(at(labelledBuildings(city, { eye: near('b/eyes.ts') }), 0).id).toBe('b/eyes.ts');
+  });
+
+  it('puts the selected, then the hovered building before everything else', () => {
+    const order = ids(labelledBuildings(city, { selected: 'b/ok-2.ts', hovered: 'a/spec.ts', eye: near('a/risky.ts') }));
+    expect(order.slice(0, 4)).toEqual(['b/ok-2.ts', 'a/spec.ts', 'a/risky.ts', 'b/eyes.ts']);
+    expect(ids(labelledBuildings(city, { selected: 'b/ok-2.ts', hovered: 'a/spec.ts' }, 2))).toEqual(['b/ok-2.ts', 'a/spec.ts']);
+  });
+
+  it('never labels an untouched building, even selected or hovered', () => {
+    expect(ids(labelledBuildings(city, { selected: 'a/quiet.ts', hovered: 'a/quiet.ts' }))).not.toContain('a/quiet.ts');
   });
 });
 

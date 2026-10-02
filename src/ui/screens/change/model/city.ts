@@ -4,10 +4,13 @@
 // src/core. No three.js and no DOM, so the layout is unit-tested in Node.
 //
 // The layout is deterministic: the same Report always gives the same
-// coordinates. It is also stable under live updates, as far as a packing can
-// be: a package's buildings depend only on that package, lots keep the
-// Report's order, and the city's row width moves in coarse steps, so adding a
-// file moves only its own lot and the lots after it.
+// coordinates. It is also stable under live updates: a package's buildings
+// depend only on that package, lots keep the Report's order, and a view packs
+// every later Report into the row width it already has, so adding a file
+// moves only its own lot and the lots after it (the lots before it in its
+// row keep their place; their plates deepen with the row). A lot wider than the rows
+// stands alone in its own row instead of widening them. Only when the city
+// outgrows its rows twice over (REFLOW_FACTOR) is the width chosen afresh.
 
 import type { File, Package, Report, Status, Verdict } from '../../../../core/report/types.js';
 
@@ -24,8 +27,10 @@ const LOT_PAD = 0.75;
 export const LOT_LABEL_STRIP = 0.7;
 const BUILDING_GAP = 0.8;
 export const STREET = 1.6;
-/** City rows are a multiple of this wide, so one more file rarely changes them. */
-const ROW_QUANTUM = 8;
+/** City rows are a multiple of this wide. */
+export const ROW_QUANTUM = 8;
+/** A kept row width is chosen afresh once the city's own width reaches this many times it. */
+export const REFLOW_FACTOR = 2;
 /** Width / depth the lots and the city aim for. */
 const LOT_ASPECT = 1.25;
 const CITY_ASPECT = 1.6;
@@ -96,6 +101,15 @@ export interface CityBounds {
   cz: number;
   /** The larger of the two sides. */
   span: number;
+}
+
+export interface CityOptions {
+  /**
+   * Row width of the previous city of the same view. When given, the rows
+   * keep it, so a growing Report does not reflow the lots before the change,
+   * until the city's own width reaches REFLOW_FACTOR times it.
+   */
+  rowWidth?: number | undefined;
 }
 
 export interface City {
@@ -172,12 +186,13 @@ function shelf(sizes: readonly { w: number; d: number }[], rowWidth: number, gap
   return { at, rows, w: width, d: z + rowDepth };
 }
 
+const quantise = (width: number, quantum: number): number => Math.ceil(width / quantum - 1e-9) * quantum;
+
 /** Row width for `sizes`: the side of a rectangle of the target aspect, rounded up to `quantum`. */
 function rowWidthFor(sizes: readonly { w: number; d: number }[], gap: number, aspect: number, quantum: number): number {
   const widest = Math.max(...sizes.map((size) => size.w));
   const area = sizes.reduce((sum, size) => sum + (size.w + gap) * (size.d + gap), 0);
-  const ideal = Math.sqrt(area * aspect);
-  return Math.max(widest, Math.ceil(ideal / quantum - 1e-9) * quantum);
+  return Math.max(widest, quantise(Math.sqrt(area * aspect), quantum));
 }
 
 function countStatuses(floors: readonly CityFloor[]): Record<Status, number> {
@@ -220,15 +235,20 @@ const EMPTY_BOUNDS: CityBounds = { x0: 0, z0: 0, x1: 0, z1: 0, cx: 0, cz: 0, spa
  * their own rows at the back of the city (low z, far from the home camera),
  * so quiet towers never stand in front of the change; the rest keep the
  * Report's order. Buildings fill their lot in the Report's file order.
+ * Without `options.rowWidth` the row width comes from the city's area; with
+ * it, that width is kept unless the city has outgrown it REFLOW_FACTOR times.
  */
-export function buildCity(report: Report): City {
+export function buildCity(report: Report, options: CityOptions = {}): City {
   const plans = report.packages.map(planLot);
   const ordered = [...plans.filter((plan) => !plan.touched), ...plans.filter((plan) => plan.touched)];
   const quietCount = plans.length - plans.filter((plan) => plan.touched).length;
   if (ordered.length === 0) return { lots: [], buildings: [], byId: new Map(), bounds: EMPTY_BOUNDS, rowWidth: 0 };
 
   const sizes = ordered.map((plan) => ({ w: plan.w, d: plan.d }));
-  const rowWidth = rowWidthFor(sizes, STREET, CITY_ASPECT, ROW_QUANTUM);
+  const fresh = rowWidthFor(sizes, STREET, CITY_ASPECT, ROW_QUANTUM);
+  const kept = options.rowWidth ?? 0;
+  // The shelf puts a lot wider than the rows alone in its own row, so a kept width never has to grow for one lot.
+  const rowWidth = kept > 0 && fresh < kept * REFLOW_FACTOR ? kept : fresh;
   const city = shelf(sizes, rowWidth, STREET, quietCount > 0 && quietCount < ordered.length ? quietCount : -1);
 
   // Each lot is stretched to its row's depth, so the streets between rows run straight.
@@ -303,22 +323,35 @@ export function buildCity(report: Report): City {
 /** Labels shown at most, whatever the size of the change (ADR-026). */
 export const MAX_LABELS = 120;
 
-const VERDICT_RANK: Readonly<Record<Verdict, number>> = { eyes: 0, risky: 1, spec: 2, ok: 3, same: 4 };
+/** What the label order depends on besides the city. */
+export interface LabelFocus {
+  selected?: string | null;
+  hovered?: string | null;
+  /** Camera position; without it, distance ties and the Report's order decides. */
+  eye?: { x: number; y: number; z: number } | null;
+}
+
+/** Priority group of a touched building's label (ADR-026): lower comes first. */
+function labelGroup(building: CityBuilding, focus: LabelFocus): number {
+  if (building.id === focus.selected) return 0;
+  if (building.id === focus.hovered) return 1;
+  return building.verdict === 'eyes' || building.verdict === 'risky' ? 2 : 3;
+}
 
 /**
- * The touched buildings that get a label, most important first: verdict
- * (eyes, risky, outside the spec, fine), then tier 1, then the number of
- * changed floors, then the Report's order. Untouched buildings never get one.
+ * The touched buildings that get a label, most important first (ADR-026):
+ * the selected and the hovered one, then eyes and risky, then the other
+ * touched files; within a group the nearest roof to the camera first, then
+ * the Report's order. Untouched buildings never get one, as in the mockup.
  */
-export function labelledBuildings(city: City, max = MAX_LABELS): CityBuilding[] {
+export function labelledBuildings(city: City, focus: LabelFocus = {}, max = MAX_LABELS): CityBuilding[] {
+  const eye = focus.eye ?? null;
+  const distance = (building: CityBuilding): number =>
+    eye === null ? 0 : (building.x - eye.x) ** 2 + (building.height - eye.y) ** 2 + (building.z - eye.z) ** 2;
   return city.buildings
     .filter((building) => building.touched)
-    .sort(
-      (a, b) =>
-        VERDICT_RANK[a.verdict] - VERDICT_RANK[b.verdict] ||
-        Number(b.tier1) - Number(a.tier1) ||
-        b.changed - a.changed ||
-        a.index - b.index,
-    )
-    .slice(0, max);
+    .map((building) => ({ building, group: labelGroup(building, focus), distance: distance(building) }))
+    .sort((a, b) => a.group - b.group || a.distance - b.distance || a.building.index - b.building.index)
+    .slice(0, max)
+    .map((entry) => entry.building);
 }

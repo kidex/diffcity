@@ -1,10 +1,12 @@
 // Roof labels as HTML pinned to 3D points (CSS2DRenderer, ADR-026): the
 // holographic verdict tag over the file name, above touched buildings, as
-// crisp as the page at any zoom. At most MAX_LABELS, the most important first
-// (labelledBuildings). Labels live in their own scene so the CSS renderer
-// never walks the city. Once the camera rests, a label whose anchor is hidden
-// behind another building fades out, and so does a label that would overlap
-// a more important one on screen; hover and selection always show theirs.
+// crisp as the page at any zoom. At most MAX_LABELS, in ADR-026's priority
+// (labelledBuildings): selected and hovered, then eyes and risky, then the
+// other touched files nearest the camera. Labels live in their own scene so
+// the CSS renderer never walks the city. Once the camera rests, the set is
+// re-ranked by distance, a label whose anchor is hidden behind another
+// building fades out, and so does a label that would overlap one of higher
+// priority on screen; hover and selection always show theirs.
 
 import { Scene, Vector3 } from 'three';
 import type { Camera } from 'three';
@@ -46,7 +48,12 @@ interface Entry {
 export class LabelLayer {
   private readonly renderer = new CSS2DRenderer();
   private readonly scene = new Scene();
+  /** In priority order. */
   private entries: Entry[] = [];
+  private city: City | null = null;
+  private selected: string | null = null;
+  private hovered: string | null = null;
+  private eye: Vector3 | null = null;
   private readonly anchor = new Vector3();
 
   constructor(container: HTMLElement) {
@@ -60,31 +67,37 @@ export class LabelLayer {
     return this.entries.length;
   }
 
-  /** Replaces the labels with those of `city`. */
-  setCity(city: City): void {
-    this.clear();
-    for (const building of labelledBuildings(city)) {
-      const element = roofLabel(building);
-      const object = new CSS2DObject(element);
-      object.position.set(building.x, building.height + labelLift(building), building.z);
-      object.center.set(0.5, 1);
-      this.scene.add(object);
-      this.entries.push({ building, object, element });
-    }
+  /** Ids of the labelled buildings, in priority order. */
+  get ids(): string[] {
+    return this.entries.map((entry) => entry.building.id);
   }
 
-  /** Toggles a state class (is-hover, is-selected) on a building's label. */
-  toggle(id: string | null, className: string, on: boolean): void {
-    if (id === null) return;
-    for (const entry of this.entries) if (entry.building.id === id) entry.element.classList.toggle(className, on);
+  /** Replaces the labels with those of `city`, ranked from the last camera position. */
+  setCity(city: City): void {
+    this.clear();
+    this.city = city;
+    this.arrange();
   }
 
   /**
-   * Fades the labels whose anchor another building hides from `camera`, and
-   * those that overlap a more important label on screen. Call it after a
-   * render, when the labels are in place.
+   * Sets the selected and hovered buildings. Returns true when the labelled
+   * set or its order changed, so the caller re-runs updateOcclusion.
+   */
+  setFocus(selected: string | null, hovered: string | null): boolean {
+    this.selected = selected;
+    this.hovered = hovered;
+    return this.arrange();
+  }
+
+  /**
+   * Re-ranks the labels from `camera` (call it when the camera rests), then
+   * fades those whose anchor another building hides and those that overlap a
+   * label of higher priority on screen. Call it after a render, so the labels
+   * are in place.
    */
   updateOcclusion(camera: Camera, picker: Picker): void {
+    this.eye = (this.eye ?? new Vector3()).copy(camera.position);
+    if (this.arrange()) this.render(camera);
     const kept: DOMRect[] = [];
     for (const entry of this.entries) {
       this.anchor.copy(entry.object.position);
@@ -109,6 +122,37 @@ export class LabelLayer {
     this.renderer.render(this.scene, camera);
   }
 
+  /** Brings the entries in line with labelledBuildings, reusing the labels that stay. Returns true on a change. */
+  private arrange(): boolean {
+    if (this.city === null) return false;
+    const next = labelledBuildings(this.city, { selected: this.selected, hovered: this.hovered, eye: this.eye });
+    const old = new Map(this.entries.map((entry) => [entry.building.id, entry]));
+    const entries = next.map((building) => {
+      const kept = old.get(building.id);
+      if (kept !== undefined) {
+        old.delete(building.id);
+        return kept;
+      }
+      const element = roofLabel(building);
+      const object = new CSS2DObject(element);
+      object.position.set(building.x, building.height + labelLift(building), building.z);
+      object.center.set(0.5, 1);
+      this.scene.add(object);
+      return { building, object, element };
+    });
+    for (const entry of old.values()) {
+      entry.object.removeFromParent();
+      entry.element.remove();
+    }
+    const changed = old.size > 0 || entries.length !== this.entries.length || entries.some((entry, i) => entry !== this.entries[i]);
+    this.entries = entries;
+    for (const entry of entries) {
+      entry.element.classList.toggle('is-selected', entry.building.id === this.selected);
+      entry.element.classList.toggle('is-hover', entry.building.id === this.hovered);
+    }
+    return changed;
+  }
+
   private clear(): void {
     for (const entry of this.entries) {
       entry.object.removeFromParent();
@@ -119,6 +163,7 @@ export class LabelLayer {
 
   dispose(): void {
     this.clear();
+    this.city = null;
     this.renderer.domElement.remove();
   }
 }
