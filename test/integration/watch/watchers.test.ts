@@ -4,7 +4,8 @@
 // start, so the events of the repo's own setup are not counted.
 
 import { readdirSync } from 'node:fs';
-import { mkdir, realpath } from 'node:fs/promises';
+import { mkdir, mkdtemp, realpath, rm, symlink } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { PassThrough } from 'node:stream';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -389,6 +390,39 @@ describe('bursts (C4, Q7)', () => {
       w.requests.length = 0;
     }
     expect(missed).toEqual([]);
+  });
+
+  it('watch/symlinks-no-loop: a dangling symlink and one to a directory outside are reported once, then never again (chokidar backend)', { timeout: 60_000 }, async () => {
+    const repo = await sampleRepo();
+    const outside = await realpath(await mkdtemp(join(tmpdir(), 'sample-pantry-')));
+    cleanups.push(() => rm(outside, { recursive: true, force: true }));
+    await mkdir(join(outside, 'jars'));
+    const root = await realpath(repo.dir);
+    await symlink(join(root, 'nowhere'), join(root, 'src', 'dangling'));
+    await symlink(join(outside, 'jars'), join(root, 'pantry'));
+    await repo.git('add', '--all');
+    await repo.git('commit', '--quiet', '-m', 'links');
+    const w = await watch(repo, { backend: 'chokidar' });
+    const dangling = join(w.root, 'src', 'dangling');
+
+    // What onListed does after each collection, twice in a row.
+    w.watchers.worktreesListed(REPO_ID, [w.root]);
+    w.watchers.worktreesListed(REPO_ID, [w.root]);
+    await w.reconciled();
+    // chokidar never holds a dangling link: the reconcile pass reports it, once.
+    await waitFor(() => paths(w.events).includes(dangling), 10_000, 'the dangling link report');
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    expect(paths(w.events).filter((path) => path === dangling)).toHaveLength(1);
+    await w.settle();
+
+    for (let round = 0; round < 4; round++) {
+      w.watchers.worktreesListed(REPO_ID, [w.root]);
+      await w.reconciled();
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      w.clock.advance(5000);
+      expect(paths(w.events), `round ${String(round)}`).toEqual([]);
+      expect(w.requests, `round ${String(round)}`).toEqual([]);
+    }
   });
 
   it('watch/node-modules-churn: 5,000 files written under node_modules → no event, no collection', { timeout: 60_000 }, async () => {
