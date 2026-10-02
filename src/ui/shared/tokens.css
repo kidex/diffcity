@@ -6,7 +6,11 @@
  * Added on top of the mockup:
  * - --verdict-*: the mockup's VERDICT map, which hard-codes spec and same;
  * - --audit-*: the Fleet audit-age colours (ADR-022), from the mockup's fleet
- *   card (fresh = green bar, warn = amber bar, stale = red bar) plus "never".
+ *   card (fresh = green bar, warn = amber bar, stale = red bar) plus "never";
+ * - --c-*: the night data city of the change screen (ADR-026, direction C):
+ *   the dark palette one step deeper for the night ground, the glass and lot
+ *   tints derived from it, and the bloom strength. The light theme keeps the
+ *   same scene on a pale ground with a weaker bloom.
  */
 :root {
   --bg: #12203A;
@@ -49,6 +53,14 @@
   --audit-stale: #F0705F;
   --audit-never: #5A6F98;
 
+  --c-void: #070D1A;
+  --c-ground: #0A1222;
+  --c-sky: #2F4A7A;
+  --c-lot: #0E1A30;
+  --c-glass: #10203C;
+  --c-glass-quiet: #0D182D;
+  --c-bloom: 0.45;
+
   --sans: "Sora", "Segoe UI", system-ui, -apple-system, sans-serif;
   --mono: "IBM Plex Mono", "SFMono-Regular", Menlo, Consolas, monospace;
 }
@@ -58,6 +70,8 @@
     --line: #D3DCEA; --line-soft: #E3E9F2; --ink: #16223B; --ink-2: #3D4D6E;
     --muted: #74829E; --grid: #E2E8F2; --plot: #F5F8FC; --plot-line: #C9D5E8;
     --same: #C9D3E4; --same-top: #DCE4F0; --code-bg: #F7F9FD;
+    --c-void: #DDE5F1; --c-ground: #E6ECF5; --c-sky: #FFFFFF; --c-lot: #D2DCEB;
+    --c-glass: #9FB2D2; --c-glass-quiet: #C3CFE3; --c-bloom: 0.12;
   }
 }
 :root[data-theme="light"] {
@@ -65,4 +79,6 @@
   --line: #D3DCEA; --line-soft: #E3E9F2; --ink: #16223B; --ink-2: #3D4D6E;
   --muted: #74829E; --grid: #E2E8F2; --plot: #F5F8FC; --plot-line: #C9D5E8;
   --same: #C9D3E4; --same-top: #DCE4F0; --code-bg: #F7F9FD;
+  --c-void: #DDE5F1; --c-ground: #E6ECF5; --c-sky: #FFFFFF; --c-lot: #D2DCEB;
+  --c-glass: #9FB2D2; --c-glass-quiet: #C3CFE3; --c-bloom: 0.12;
 }

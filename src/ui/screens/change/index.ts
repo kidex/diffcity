@@ -1,96 +1,158 @@
-// The change screen (SPEC.md section 6): the city and the reading panel. It
-// renders from a Report alone and never imports src/ui/data (ADR-002,
-// ADR-022): the SPA passes `live`, the HTML export does not.
+// The change screen (SPEC.md section 6): the night data city of the Report
+// (ADR-026). It renders from a Report alone and never imports src/ui/data
+// (ADR-002, ADR-022): the SPA hands it each new Report, the HTML export a
+// single one. Loaded with import() by the route, so Fleet and Repo never
+// download three.js.
 //
-// Until phase 3 brings the city, it lists the touched files of the Report with
-// their status and verdict, exactly as the daemon computed them.
+// States: no Report yet (computing), a Report without files, no WebGL (a
+// message and the touched-file table), or the city.
 
 import './change.css';
 
 import type { Report } from '../../../core/report/types.js';
 import { h, replaceChildren } from '../../shared/dom.js';
-import { plural, shortSha, STATUS_LABEL, VERDICT_LABEL } from '../../shared/format.js';
+import { readToken } from '../../shared/tokens.js';
+import { fallbackView } from './fallback.js';
+import type { CityView, SceneStats } from './scene/view.js';
+import { createCityView, disposal } from './scene/view.js';
 
-/** Live updates for an open change; missing in the export. */
-export interface ChangeLive {
-  /** Calls `listener` when a new snapshot of this change exists; returns the unsubscribe function. */
-  onSnapshot(listener: () => void): () => void;
-}
+export const COMPUTING = 'Computing the first snapshot of this change…';
+export const NO_FILES = 'No files in this change';
 
 export interface ChangeScreenOptions {
   /** Null while the first snapshot is being computed. */
   report: Report | null;
-  live?: ChangeLive;
 }
 
-export const PHASE_3_NOTE = 'Change view arrives in phase 3, with the 3D city and the reading panel. Until then, here are the files this change touches.';
-
-function fileTable(report: Report): HTMLElement {
-  // Touched = any status but `same` (SPEC.md section 5.1); the order is the Report's.
-  const touched = report.packages.flatMap((pkg) => pkg.files.filter((file) => file.status !== 'same').map((file) => ({ pkg, file })));
-  if (touched.length === 0) return h('p', { class: 'change-empty', 'data-testid': 'no-touched-files' }, 'This change touches no file.');
-  return h(
-    'table',
-    { class: 'touched-files', 'data-testid': 'touched-files' },
-    h(
-      'thead',
-      null,
-      h('tr', null, h('th', { scope: 'col' }, 'File'), h('th', { scope: 'col' }, 'Status'), h('th', { scope: 'col' }, 'Verdict')),
-    ),
-    h(
-      'tbody',
-      null,
-      touched.map(({ pkg, file }) =>
-        h(
-          'tr',
-          { 'data-testid': 'touched-file', 'data-path': file.path },
-          h(
-            'th',
-            { scope: 'row' },
-            h('span', { class: 'file-path' }, file.path),
-            pkg.tier1 ? h('span', { class: 'tag tier1', title: 'Tier 1 zone' }, 'tier 1') : null,
-          ),
-          h('td', null, h('span', { class: `tag ${file.status}`, 'data-testid': 'file-status' }, STATUS_LABEL[file.status])),
-          h(
-            'td',
-            null,
-            h('span', { class: `tag verdict ${file.verdict}`, 'data-testid': 'file-verdict' }, h('i', { 'aria-hidden': 'true' }), VERDICT_LABEL[file.verdict]),
-          ),
-        ),
-      ),
-    ),
-  );
+export interface ChangeScreen {
+  /** Shows a new Report of the same change; the camera and the selection stay. */
+  update(report: Report | null): void;
+  unmount(): void;
 }
 
-export function mountChange(element: HTMLElement, options: ChangeScreenOptions): () => void {
-  const { report } = options;
-  const body: HTMLElement[] = [];
-  if (report === null) {
-    body.push(h('p', { class: 'change-empty', 'data-testid': 'report-computing' }, 'Computing the first snapshot of this change…'));
-  } else {
-    body.push(
-      h(
-        'p',
-        { class: 'report-meta', 'data-testid': 'report-meta' },
-        h('span', null, 'against ', h('code', null, report.meta.base)),
-        h('span', null, 'head ', h('code', null, shortSha(report.meta.head))),
-        h('span', null, plural(report.meta.commits, 'commit')),
-      ),
-      fileTable(report),
-    );
+/** The `?scene-debug` hook for tests and benchmarks (window.diffcityScene). */
+export interface SceneDebug {
+  ready: boolean;
+  project(fileId: string): { x: number; y: number } | null;
+  stats(): SceneStats | null;
+  bench(ms: number): Promise<{ fps: number; drawCalls: number } | null>;
+  camera(): { theta: number; phi: number; r: number } | null;
+  selected(): string | null;
+  hovered(): string | null;
+  /** Views alive, and the renderer's geometries and textures just before the last view released its context. */
+  disposal: typeof disposal;
+}
+
+declare global {
+  interface Window {
+    diffcityScene?: SceneDebug;
   }
-  replaceChildren(
-    element,
-    h(
-      'section',
-      { class: 'change-report', 'aria-label': 'Touched files' },
-      h('p', { class: 'phase-note', 'data-testid': 'phase-note' }, PHASE_3_NOTE),
-      body,
-    ),
-  );
-  const stopLive = options.live?.onSnapshot(() => undefined);
-  return () => {
-    stopLive?.();
-    element.replaceChildren();
+}
+
+function debugEnabled(): boolean {
+  return /[?&]scene-debug(?:[=&]|$)/.test(location.search) || location.hash.includes('scene-debug');
+}
+
+function installDebug(view: () => CityView | null): SceneDebug {
+  const hook: SceneDebug = {
+    ready: false,
+    project: (fileId) => view()?.project(fileId) ?? null,
+    stats: () => view()?.stats() ?? null,
+    bench: async (ms) => (await view()?.bench(ms)) ?? null,
+    camera: () => view()?.camera() ?? null,
+    selected: () => view()?.selected() ?? null,
+    hovered: () => view()?.hovered() ?? null,
+    disposal,
+  };
+  window.diffcityScene = hook;
+  return hook;
+}
+
+const fileCount = (report: Report): number => report.packages.reduce((sum, pkg) => sum + pkg.files.length, 0);
+
+/** Canvas text of the lot names needs the mono face loaded; never waits more than 3 s. */
+function monoReady(): Promise<unknown> {
+  const family = readToken('--mono');
+  if (family === '' || !('fonts' in document)) return Promise.resolve();
+  return Promise.race([document.fonts.load(`500 64px ${family}`).catch(() => undefined), new Promise((resolve) => setTimeout(resolve, 3000))]);
+}
+
+export function mountChange(element: HTMLElement, options: ChangeScreenOptions): ChangeScreen {
+  let view: CityView | null = null;
+  let mode: 'computing' | 'empty' | 'fallback' | 'city' | 'pending' | null = null;
+  let latest = options.report;
+  let disposed = false;
+  const debug = debugEnabled() ? installDebug(() => view) : null;
+  const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  const message = (testId: string, text: string): HTMLElement => h('p', { class: 'change-empty', role: 'status', 'data-testid': testId }, text);
+
+  function dropView(): void {
+    view?.dispose();
+    view = null;
+    if (debug !== null) debug.ready = false;
+  }
+
+  function startCity(): void {
+    mode = 'pending';
+    replaceChildren(element);
+    element.classList.add('has-city');
+    void monoReady().then(() => {
+      if (disposed || mode !== 'pending' || latest === null) return;
+      try {
+        view = createCityView(element, latest, {
+          reducedMotion,
+          onReady: () => {
+            if (debug !== null) debug.ready = true;
+          },
+        });
+        mode = 'city';
+      } catch {
+        mode = 'fallback';
+        element.classList.remove('has-city');
+        replaceChildren(element, fallbackView(latest));
+      }
+    });
+  }
+
+  function show(report: Report | null): void {
+    latest = report;
+    if (report === null) {
+      dropView();
+      mode = 'computing';
+      element.classList.remove('has-city');
+      replaceChildren(element, message('report-computing', COMPUTING));
+      return;
+    }
+    if (fileCount(report) === 0) {
+      dropView();
+      mode = 'empty';
+      element.classList.remove('has-city');
+      replaceChildren(element, message('no-files', NO_FILES));
+      return;
+    }
+    if (mode === 'city' && view !== null) {
+      view.setReport(report);
+      return;
+    }
+    if (mode === 'pending') return;
+    if (mode === 'fallback') {
+      replaceChildren(element, fallbackView(report));
+      return;
+    }
+    startCity();
+  }
+
+  show(options.report);
+  return {
+    update(report) {
+      if (!disposed) show(report);
+    },
+    unmount() {
+      disposed = true;
+      dropView();
+      element.classList.remove('has-city');
+      element.replaceChildren();
+    },
   };
 }
