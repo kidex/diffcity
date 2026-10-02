@@ -17,6 +17,7 @@ import { join } from 'node:path';
 import { test as base, type Page } from '@playwright/test';
 import { homePaths, HOME_ENV } from '../../../src/core/home.js';
 import { CLI_DIST, stopDaemonIn } from '../../helpers/daemon.js';
+import { registerHome } from '../../helpers/daemons.js';
 import { freePort, openShell, type ShellSession, type ShellSpec } from './acceptance.js';
 
 /** How long each criterion stays on screen once its step is done. */
@@ -126,6 +127,8 @@ export const test = base.extend<{ proof: ProofWorld }>({
     // Short prefix: <root>/home/daemon.sock must fit the socket path limit.
     const root = await realpath(await mkdtemp(join(tmpdir(), 'dc-proof-')));
     const home = join(root, 'home');
+    // Stopped at teardown, or by the global teardown if this worker dies.
+    registerHome(home);
     const user = join(root, 'user');
     await mkdir(user);
     const env: NodeJS.ProcessEnv = { ...process.env, [HOME_ENV]: home, HOME: user };

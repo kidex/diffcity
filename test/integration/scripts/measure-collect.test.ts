@@ -8,6 +8,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
+import { registerHome } from '../../helpers/daemons.js';
 import { createRepo, type TempRepo } from '../../helpers/repo.js';
 import { ghStubEnv } from '../../e2e/support/acceptance.js';
 
@@ -58,7 +59,12 @@ describe('measure-collect output', () => {
     await orchard.checkout('main');
     await orchard.write({ 'src/trees/plum.ts': 'export const plums = 1;\n' });
 
-    const env = await ghStubEnv(root, { ...process.env, HOME: user }, []);
+    // The script's DIFFCITY_HOME goes below TMPDIR: a short, registered directory
+    // (the socket path limit), so the daemon is stopped even if the script is not.
+    const scratch = await mkdtemp(join(tmpdir(), 'dc-'));
+    cleanups.push(() => rm(scratch, { recursive: true, force: true }));
+    registerHome(scratch);
+    const env = await ghStubEnv(root, { ...process.env, HOME: user, TMPDIR: scratch }, []);
     const run = await runScript([orchard.dir, shed, '--timeout', '60'], env);
     const output = run.stdout + run.stderr;
 

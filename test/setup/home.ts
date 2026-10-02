@@ -6,9 +6,12 @@
 import { afterAll } from 'vitest';
 import { HOME_ENV } from '../../src/core/home.js';
 import { tempHome } from '../helpers/config.js';
+import { registerHome } from '../helpers/daemons.js';
 
 const original = { home: process.env[HOME_ENV], userHome: process.env.HOME };
 const temp = await tempHome();
+// A daemon a test starts through the inherited environment is still swept.
+registerHome(temp.home);
 
 process.env[HOME_ENV] = temp.home;
 process.env.HOME = temp.userHome;

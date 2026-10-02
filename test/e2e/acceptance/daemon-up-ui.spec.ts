@@ -12,6 +12,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { expect, test as base, type Page } from '@playwright/test';
+import { stopDaemonIn } from '../../helpers/daemon.js';
+import { registerHome } from '../../helpers/daemons.js';
 
 const CLI = fileURLToPath(new URL('../../../dist/cli/index.js', import.meta.url));
 
@@ -80,6 +82,8 @@ const test = base.extend<{ daemon: Daemon }>({
   daemon: async ({}, use) => {
     const root = await mkdtemp(join(tmpdir(), 'dc-e2e-'));
     const home = join(root, 'home');
+    // Stopped at teardown, or by the global teardown if this worker dies.
+    registerHome(home);
     const user = join(root, 'user');
     await mkdir(user);
     const env = { ...process.env, DIFFCITY_HOME: home, HOME: user };
@@ -130,6 +134,7 @@ const test = base.extend<{ daemon: Daemon }>({
       const timeout = new Promise<'timeout'>((resolve) => setTimeout(() => { resolve('timeout'); }, 5_000));
       if ((await Promise.race([running.exited, timeout])) === 'timeout') running.child.kill('SIGKILL');
     }
+    await stopDaemonIn(home);
     await rm(root, { recursive: true, force: true });
   },
 });

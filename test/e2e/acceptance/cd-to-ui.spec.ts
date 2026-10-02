@@ -42,6 +42,7 @@ import { homePaths, HOME_ENV, type HomePaths } from '../../../src/core/home.js';
 import type { RepoDetail, RepoSummary } from '../../../src/core/model/types.js';
 import { CONFIG_NOT_TRUSTED_NOTE } from '../../../src/core/settings/index.js';
 import { CLI_DIST, stopDaemonIn } from '../../helpers/daemon.js';
+import { registerHome } from '../../helpers/daemons.js';
 import { createRepo, type TempRepo } from '../../helpers/repo.js';
 import {
   buildSampleShop,
@@ -86,6 +87,8 @@ const test = base.extend<{ world: World }>({
     // Short prefix: <root>/home/daemon.sock must fit the socket path limit.
     const root = await realpath(await mkdtemp(join(tmpdir(), 'dc-acc-')));
     const home = join(root, 'home');
+    // Stopped at teardown, or by the global teardown if this worker dies.
+    registerHome(home);
     const user = join(root, 'user');
     await mkdir(user);
     const { repo, prHead } = await buildSampleShop();
