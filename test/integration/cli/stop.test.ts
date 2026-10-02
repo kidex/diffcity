@@ -166,4 +166,41 @@ describe('diffcity stop, edge cases', () => {
 
     expect(await stop({ timeoutMs: 5000 })).toEqual({ code: 0, stdout: 'stopped\n', stderr: '' });
   }, 15_000);
+
+  it('cli/stop-successor-while-old-alive: stop keeps waiting while the old pid lives, even once a successor holds the lock and daemon.json', async () => {
+    const old = idleProcess();
+    const oldPid = old.pid ?? 0;
+    await writeFile(paths.lock, `${String(oldPid)}\n`);
+    await writeDaemonInfo(paths, infoFor(oldPid));
+    let successorReady = false;
+    const timeline: { oldKilledAt: number | null } = { oldKilledAt: null };
+    await listen((request) => {
+      if (request.type === 'ping') return { ok: true, version: readVersion(), pid: oldPid, port: 4999 };
+      setTimeout(() => {
+        void (async () => {
+          // A successor (this process) takes the lock, the socket and daemon.json while the old pid is still alive.
+          for (const server of servers.splice(0)) await new Promise((resolve) => server.close(resolve));
+          await writeFile(paths.lock, `${String(process.pid)}\n`);
+          fakes.push(await startFakeDaemon(paths));
+          successorReady = true;
+          // Only well after that does the old process exit.
+          setTimeout(() => {
+            old.kill('SIGKILL');
+            timeline.oldKilledAt = Date.now();
+          }, 600);
+        })();
+      }, 20);
+      return { ok: true };
+    });
+
+    const result = await stop({ timeoutMs: 5000 });
+    const returnedAt = Date.now();
+
+    expect(result).toEqual({ code: 0, stdout: 'stopped\n', stderr: '' });
+    expect(successorReady).toBe(true);
+    // stop returned only after the old pid was gone, not as soon as the successor appeared.
+    expect(timeline.oldKilledAt).not.toBeNull();
+    expect(returnedAt).toBeGreaterThanOrEqual(timeline.oldKilledAt ?? Number.POSITIVE_INFINITY);
+    expect(isProcessAlive(oldPid)).toBe(false);
+  }, 15_000);
 });
