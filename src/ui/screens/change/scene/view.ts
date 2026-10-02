@@ -42,6 +42,8 @@ export interface CityView {
   project(fileId: string): { x: number; y: number } | null;
   stats(): SceneStats;
   camera(): OrbitState;
+  /** The camera of the first frame drawn (far out when the intro runs). */
+  firstCamera(): OrbitState | null;
   selected(): string | null;
   hovered(): string | null;
   /** Renders every frame for `ms` and reports the frame rate and the scene's draw calls. */
@@ -93,6 +95,9 @@ export function createCityView(host: HTMLElement, report: Report, options: CityV
   // Homed on the first build.
   const orbit = new Orbit(homeFor(1));
   let homed = false;
+  // The intro starts with the first frame, so a slow first frame (shader compile) does not eat it.
+  let introPending = false;
+  let firstCamera: OrbitState | null = null;
   const labels = new LabelLayer(element);
 
   let stage: Stage;
@@ -102,8 +107,13 @@ export function createCityView(host: HTMLElement, report: Report, options: CityV
       container: element,
       bloomStrength: numberToken('--c-bloom', 0.45),
       beforeFrame: ({ now }) => {
+        if (introPending) {
+          introPending = false;
+          if (orbit.introRunning) orbit.startIntro(now);
+        }
         const moving = orbit.step(now);
         applyCamera();
+        firstCamera ??= { ...orbit.state };
         if (moving) settled = false;
         return moving;
       },
@@ -133,9 +143,11 @@ export function createCityView(host: HTMLElement, report: Report, options: CityV
 
   const { scene, camera, renderer } = stage;
   const pmrem = new PMREMGenerator(renderer);
-  const environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+  const room = new RoomEnvironment();
+  const environment = pmrem.fromScene(room, 0.04);
+  room.dispose();
   pmrem.dispose();
-  scene.environment = environment;
+  scene.environment = environment.texture;
   scene.environmentIntensity = 0.2;
   const sky = new HemisphereLight();
   scene.add(sky);
@@ -185,7 +197,10 @@ export function createCityView(host: HTMLElement, report: Report, options: CityV
       homed = true;
       target.set(bounds.cx, 0.4, bounds.cz + bounds.span * 0.03);
       orbit.reset();
-      if (!options.reducedMotion) orbit.startIntro(performance.now());
+      if (!options.reducedMotion) {
+        orbit.startIntro(performance.now());
+        introPending = true;
+      }
     }
     applyCamera();
 
@@ -278,6 +293,7 @@ export function createCityView(host: HTMLElement, report: Report, options: CityV
       };
     },
     camera: () => ({ ...orbit.state }),
+    firstCamera: () => (firstCamera === null ? null : { ...firstCamera }),
     selected: () => selected,
     hovered: () => hovered,
     bench(ms) {
@@ -303,9 +319,9 @@ export function createCityView(host: HTMLElement, report: Report, options: CityV
       scene.environment = null;
       environment.dispose();
       labels.dispose();
-      disposal.lastGeometries = renderer.info.memory.geometries;
-      disposal.lastTextures = renderer.info.memory.textures;
-      stage.dispose();
+      const left = stage.dispose();
+      disposal.lastGeometries = left.geometries;
+      disposal.lastTextures = left.textures;
       element.remove();
       disposal.live -= 1;
     },

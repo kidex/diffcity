@@ -150,8 +150,13 @@ export class Stage {
     if (again || now < this.continuousUntil) this.request();
   }
 
-  dispose(): void {
-    if (this.disposed) return;
+  /**
+   * Frees the passes, the render targets and the context. Returns the GPU
+   * resources the renderer still held once everything else was released
+   * (zero when nothing leaked), for the disposal test.
+   */
+  dispose(): { geometries: number; textures: number } {
+    if (this.disposed) return { geometries: 0, textures: 0 };
     this.disposed = true;
     if (this.frameId !== null) cancelAnimationFrame(this.frameId);
     this.frameId = null;
@@ -162,7 +167,9 @@ export class Stage {
     this.composer.renderTarget1.dispose();
     this.composer.renderTarget2.dispose();
     this.composer.dispose();
+    const { geometries, textures } = this.renderer.info.memory;
     this.renderer.dispose();
     this.renderer.forceContextLoss();
+    return { geometries, textures };
   }
 }

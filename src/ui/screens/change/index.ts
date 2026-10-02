@@ -37,6 +37,8 @@ export interface SceneDebug {
   stats(): SceneStats | null;
   bench(ms: number): Promise<{ fps: number; drawCalls: number } | null>;
   camera(): { theta: number; phi: number; r: number } | null;
+  /** The camera of the first frame: far out when the intro runs, home when it is skipped. */
+  firstCamera(): { theta: number; phi: number; r: number } | null;
   selected(): string | null;
   hovered(): string | null;
   /** Views alive, and the renderer's geometries and textures just before the last view released its context. */
@@ -60,6 +62,7 @@ function installDebug(view: () => CityView | null): SceneDebug {
     stats: () => view()?.stats() ?? null,
     bench: async (ms) => (await view()?.bench(ms)) ?? null,
     camera: () => view()?.camera() ?? null,
+    firstCamera: () => view()?.firstCamera() ?? null,
     selected: () => view()?.selected() ?? null,
     hovered: () => view()?.hovered() ?? null,
     disposal,
