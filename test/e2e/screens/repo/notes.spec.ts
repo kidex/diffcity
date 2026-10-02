@@ -190,3 +190,20 @@ for (const width of [700, 1024, 1440]) {
     expect(await page.evaluate('document.documentElement.scrollWidth <= window.innerWidth')).toBe(true);
   });
 }
+
+test('the note stays on the Fleet list tag and the map lot while the repo is collecting, and the hover card carries it', async ({ page }) => {
+  const repos = fixtures.fleetThreeRepos();
+  const [shop] = repos;
+  if (!shop) throw new Error('fleet-three-repos.json is empty');
+  repos[0] = { ...shop, collecting: true, notes: [UNTRUSTED] };
+  await mockApi(page, { repos });
+  await page.goto('/#/');
+  const row = page.getByTestId('repo-row').filter({ hasText: shop.name });
+  await expect(row.getByTestId('collecting')).toHaveCount(1);
+  await expect(row.getByTestId('repo-note-indicator')).toHaveCount(1);
+  const lot = page.locator(`[data-testid="lot"][data-repo-id="${String(shop.id)}"]`);
+  await expect(lot).toHaveAttribute('aria-label', /collecting/);
+  await expect(lot).toHaveAttribute('aria-label', /note: This repo has a diffcity\.config\.js/);
+  await lot.hover();
+  await expect(page.getByTestId('tip-note')).toContainText('Defaults are used for the base and tier 1.');
+});
