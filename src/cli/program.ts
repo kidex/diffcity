@@ -5,6 +5,7 @@
 import { Command } from 'commander';
 import type { DiffCommandOptions } from './diff.js';
 import type { TrackCommandOptions } from './track.js';
+import type { TrustCommandOptions } from './trust.js';
 import type { UpCommandOptions } from './up.js';
 import { readVersion } from './version.js';
 
@@ -54,6 +55,17 @@ export function buildProgram(io: CliIo = defaultIo): Command {
           process.stderr.write('', () => process.exit(code));
         });
       }
+    });
+
+  program
+    .command('trust')
+    .description("let the daemon load a repo's diffcity.config.js (it runs code); --list, --remove")
+    .argument('[dir]', 'repo directory (default: the current directory)')
+    .option('--list', 'print the trusted repos')
+    .option('--remove', 'stop trusting the repo')
+    .action(async (dir: string | undefined, options: TrustCommandOptions) => {
+      const { runTrust } = await import('./trust.js');
+      process.exitCode = await runTrust(dir, options, { io, env: io.env?.() ?? process.env, cwd: io.cwd?.() ?? process.cwd() });
     });
 
   program
