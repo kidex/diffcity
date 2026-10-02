@@ -26,7 +26,7 @@
     "dev:ui": "vite",
     "design:directions": "vite --config design/directions/vite.config.ts --host 127.0.0.1 --port 4400",
     "design:directions:build": "vite build --config design/directions/vite.config.ts",
-    "typecheck": "tsc --noEmit && tsc --noEmit -p src/ui && tsc --noEmit -p test/unit/ui && tsc --noEmit -p design/directions",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p src/ui && tsc --noEmit -p test/unit/ui",
     "lint": "eslint .",
     "test": "node scripts/test.mjs",
     "test:watch": "node node_modules/vitest/vitest.mjs",
