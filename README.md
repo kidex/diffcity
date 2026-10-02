@@ -26,6 +26,7 @@ diffcity --help
 | Command | What it does |
 |---|---|
 | `diffcity up [--port 4321]` | start the daemon and open the UI on localhost |
+| `diffcity trust [<dir>] [--list] [--remove]` | let the daemon load a repo's `diffcity.config.js`, which runs code; untrusted repos use the defaults |
 | `diffcity shell-init [zsh\|bash\|fish]` | print the shell hook that registers a repo when you `cd` into it |
 | `diffcity track [<dir>] [--agent]` | register a repo and ask the daemon to collect its changes |
 | `diffcity scan <dir>` | discover and register every repo under a folder |
