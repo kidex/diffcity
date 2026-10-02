@@ -75,8 +75,8 @@ function toRecord(row: SnapshotRow): SnapshotRecord {
 const LATEST = 'WHERE changeId = ? ORDER BY computedAt DESC, id DESC LIMIT 1';
 
 export function createSnapshotStore(db: Connection): SnapshotStore {
-  const existingHash = db.prepare<[number, string], { id: number; contentHash: string; mergeBase: string | null; fingerprints: string | null }>(
-    'SELECT id, contentHash, mergeBase, fingerprints FROM snapshots WHERE changeId = ? AND head = ?',
+  const existingHash = db.prepare<[number, string], { id: number; contentHash: string }>(
+    'SELECT id, contentHash FROM snapshots WHERE changeId = ? AND head = ?',
   );
   const latestId = db.prepare<[number], { id: number }>(`SELECT id FROM snapshots ${LATEST}`);
   const touch = db.prepare<[string, number]>('UPDATE snapshots SET computedAt = ? WHERE id = ?');
@@ -91,8 +91,6 @@ export function createSnapshotStore(db: Connection): SnapshotStore {
        mergeBase = ?, fingerprints = ?
      WHERE changeId = ? AND head = ?`,
   );
-  // Same report, other bytes (a whitespace edit in a working tree): the fingerprints still follow the content.
-  const refresh = db.prepare<[string | null, string | null, number]>('UPDATE snapshots SET mergeBase = ?, fingerprints = ? WHERE id = ?');
   const latestFingerprints = db.prepare<[number], { fingerprints: string | null }>(
     `SELECT fingerprints FROM snapshots ${LATEST}`,
   );
@@ -109,18 +107,10 @@ export function createSnapshotStore(db: Connection): SnapshotStore {
   const put = (snapshot: SnapshotInput): SnapshotPutResult => {
     const existing = existingHash.get(snapshot.changeId, snapshot.head);
     if (existing?.contentHash === snapshot.contentHash) {
-      if (latestId.get(snapshot.changeId)?.id === existing.id) {
-        if (existing.fingerprints !== snapshot.fingerprints || existing.mergeBase !== snapshot.mergeBase) {
-          refresh.run(snapshot.mergeBase, snapshot.fingerprints, existing.id);
-        }
-        return 'unchanged';
-      }
+      if (latestId.get(snapshot.changeId)?.id === existing.id) return 'unchanged';
       // The change came back to an older head with identical content (A -> B -> A):
       // only computedAt moves, so that row becomes the latest again.
       touch.run(isoTime(snapshot.computedAt, 'computedAt'), existing.id);
-      if (existing.fingerprints !== snapshot.fingerprints || existing.mergeBase !== snapshot.mergeBase) {
-        refresh.run(snapshot.mergeBase, snapshot.fingerprints, existing.id);
-      }
       return 'replaced';
     }
     if (isJson.get(snapshot.report)?.valid !== 1) {

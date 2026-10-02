@@ -89,23 +89,32 @@ ALTER TABLE snapshots ADD COLUMN fingerprints TEXT;
 CREATE TABLE review_marks (
   id INTEGER PRIMARY KEY,
   changeId INTEGER NOT NULL REFERENCES changes(id) ON DELETE CASCADE,
-  kind TEXT NOT NULL CHECK (kind IN ('file','symbol')),
-  target TEXT NOT NULL,
+  targetKind TEXT NOT NULL CHECK (targetKind IN ('file','symbol')),
+  targetId TEXT NOT NULL,
+  filePath TEXT NOT NULL,
+  mark TEXT NOT NULL CHECK (mark IN ('checked','good','rewrite')),
+  note TEXT,
+  lineSide TEXT CHECK (lineSide IN ('old','new')),
+  lineStart INTEGER,
+  lineEnd INTEGER,
   fingerprint TEXT NOT NULL,
-  markedAt TEXT NOT NULL,
-  UNIQUE (changeId, kind, target)
+  snapshotId INTEGER REFERENCES snapshots(id) ON DELETE SET NULL,
+  state TEXT NOT NULL DEFAULT 'current' CHECK (state IN ('current','outdated')),
+  outdatedAt TEXT,
+  createdAt TEXT NOT NULL,
+  updatedAt TEXT NOT NULL,
+  UNIQUE (changeId, targetKind, targetId),
+  CHECK (mark <> 'rewrite' OR (note IS NOT NULL AND length(note) BETWEEN 1 AND 2000)),
+  CHECK ((lineStart IS NULL AND lineEnd IS NULL AND lineSide IS NULL)
+      OR (lineSide IS NOT NULL AND lineStart >= 1 AND lineEnd >= lineStart))
 );
+CREATE INDEX review_marks_change ON review_marks(changeId, state);
 
 CREATE TABLE review_notes (
-  id INTEGER PRIMARY KEY,
-  changeId INTEGER NOT NULL REFERENCES changes(id) ON DELETE CASCADE,
-  path TEXT NOT NULL,
-  line INTEGER,
-  body TEXT NOT NULL,
-  createdAt TEXT NOT NULL,
+  changeId INTEGER PRIMARY KEY REFERENCES changes(id) ON DELETE CASCADE,
+  note TEXT NOT NULL CHECK (length(note) <= 4000),
   updatedAt TEXT NOT NULL
 );
-CREATE INDEX review_notes_change ON review_notes(changeId);
 `;
 
 /** The migrations in order; index i holds the SQL that produces version i + 1. */
