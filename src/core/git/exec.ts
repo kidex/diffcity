@@ -110,7 +110,9 @@ export function gitEnv(): NodeJS.ProcessEnv {
  * through the environment (ADR-032): the static config overrides appended after
  * any GIT_CONFIG_COUNT entries already set, no transport, no lazy fetch, and no
  * prompt or update notice from git or gh. The user's own variables (including
- * gh's token) pass through unchanged.
+ * gh's token) pass through unchanged. Repo-defined filter drivers are not
+ * covered: they need per-repo names, and the gh commands diffcity runs (pr list,
+ * pr view, repo view) never run clean or smudge.
  */
 export function ghEnv(base: Readonly<Record<string, string | undefined>> = process.env): NodeJS.ProcessEnv {
   return {
