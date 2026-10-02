@@ -6,8 +6,8 @@
 import { stat } from 'node:fs/promises';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { homePaths, resolveHome, type HomePaths } from '../core/home.js';
-import { findRunningDaemon, isNoDaemonError, sendRequest } from '../daemon/client.js';
-import { isProcessAlive } from '../daemon/files.js';
+import { CLIENT_TIMEOUT_MS, findRunningDaemon, isNoDaemonError, sendRequest } from '../daemon/client.js';
+import { isProcessAlive, readDaemonInfo } from '../daemon/files.js';
 import type { CliStreams } from './ensure-daemon.js';
 
 /**
@@ -21,6 +21,11 @@ export interface StopDeps {
   io: CliStreams;
   env?: NodeJS.ProcessEnv;
   timeoutMs?: number;
+  /**
+   * Second `ping` wait for a daemon that did not answer the quick first one;
+   * defaults to CLIENT_TIMEOUT_MS.
+   */
+  pingTimeoutMs?: number;
 }
 
 const exists = (file: string): Promise<boolean> =>
@@ -33,6 +38,27 @@ async function stopped(paths: HomePaths, pid: number, socket: string): Promise<b
   if (isProcessAlive(pid)) return false;
   for (const file of [paths.daemonJson, paths.lock, socket]) if (await exists(file)) return false;
   return true;
+}
+
+/**
+ * The daemon to stop. A daemon that misses the quick ping gets a second, longer
+ * one on the socket from daemon.json: no listener there means not running,
+ * anything else (a timeout, a bad answer) means a daemon that does not answer.
+ */
+async function findTarget(
+  paths: HomePaths,
+  pingTimeoutMs: number,
+): Promise<{ pid: number; socket: string } | { hung: number } | 'not running'> {
+  const running = await findRunningDaemon(paths);
+  if (running !== null) return { pid: running.info.pid, socket: running.info.socket };
+  const info = await readDaemonInfo(paths);
+  if (info === null) return 'not running';
+  try {
+    const response = await sendRequest(info.socket, { v: 1, type: 'ping' }, { timeoutMs: pingTimeoutMs });
+    return response.ok ? { pid: response.pid, socket: info.socket } : { hung: info.pid };
+  } catch (error) {
+    return isNoDaemonError(error) ? 'not running' : { hung: info.pid };
+  }
 }
 
 /** Runs the command; resolves with the process exit code (0 or 1). */
@@ -49,12 +75,13 @@ export async function runStop(deps: StopDeps): Promise<number> {
     return fail(error instanceof Error ? error.message : String(error));
   }
 
-  const running = await findRunningDaemon(paths);
-  if (running === null) {
+  const target = await findTarget(paths, deps.pingTimeoutMs ?? CLIENT_TIMEOUT_MS);
+  if (target === 'not running') {
     io.stdout('not running\n');
     return 0;
   }
-  const { pid, socket } = running.info;
+  if ('hung' in target) return fail(`the daemon (pid ${String(target.hung)}) does not answer; see ${paths.log}`);
+  const { pid, socket } = target;
   try {
     const response = await sendRequest(socket, { v: 1, type: 'shutdown' });
     if (!response.ok) return fail(response.error);
