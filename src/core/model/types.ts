@@ -114,6 +114,10 @@ export interface SnapshotRecord {
   /** sha256 of the report with `meta.generatedAt` emptied. */
   contentHash: string;
   computedAt: string;
+  /** The merge-base the before state was read from; null on a snapshot written before schema v2. */
+  mergeBase: string | null;
+  /** The serialized Fingerprints (ADR-027), verbatim; null on a snapshot written before schema v2. */
+  fingerprints: string | null;
 }
 
 /** A row of `events`. `changeId` is null for repo-level events (an agent run on a clean base). */
@@ -125,6 +129,90 @@ export interface EventRecord {
   at: string;
   /** Parsed JSON payload; null when the event has none. */
   payload: unknown;
+}
+
+// ---------------------------------------------------------------------------
+// Fingerprints (ADR-027) and review marks (ADR-028)
+
+/** Hashes of one file's bytes: sha256 hex, null on the side where the file does not exist. */
+export interface FileFingerprint {
+  before: string | null;
+  after: string | null;
+  /** The path in the before state, for a rename. */
+  oldPath?: string;
+}
+
+/**
+ * What a snapshot fingerprints, keyed by file path and by symbol id. A symbol's
+ * hash covers its before slice + `\0` + after slice. Untouched files have
+ * `before === after`.
+ */
+export interface Fingerprints {
+  files: Record<string, FileFingerprint>;
+  symbols: Record<string, string>;
+}
+
+/** What a review mark is on. */
+export type ReviewMarkKind = 'file' | 'symbol';
+
+/** A row of `review_marks`: the reviewer saw `target` as it was when its fingerprint was `fingerprint`. */
+export interface ReviewMark {
+  id: number;
+  changeId: number;
+  kind: ReviewMarkKind;
+  /** The file path, or the symbol id. */
+  target: string;
+  /** The fingerprint of the target when it was marked. */
+  fingerprint: string;
+  markedAt: string;
+}
+
+/** A row of `review_notes`: a reviewer's note on a file, optionally on one line of its after version. */
+export interface ReviewNote {
+  id: number;
+  changeId: number;
+  path: string;
+  line: number | null;
+  body: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** How far a review of a change has got; computed in the daemon, never in the UI. */
+export interface ReviewProgress {
+  /** Touched files marked and still matching their fingerprint. */
+  marked: number;
+  /** Touched files. */
+  total: number;
+  /** Marks whose target changed since they were made. */
+  stale: number;
+}
+
+// ---------------------------------------------------------------------------
+// Diff contracts (ADR-027): what the change screen renders for one file
+
+/** Syntax highlight class of a token in a diff row. */
+export type HighlightClass = 'keyword' | 'string' | 'number' | 'comment' | 'type' | 'function' | 'punct' | 'plain';
+
+/** One row of a unified or side-by-side diff. */
+export interface DiffRow {
+  kind: 'ctx' | 'add' | 'del';
+  /** 1-based line number in the before version; null on an added row. */
+  oldLine: number | null;
+  /** 1-based line number in the after version; null on a deleted row. */
+  newLine: number | null;
+  /** The line's tokens, in order; their texts joined are the line. */
+  tokens: { text: string; class: HighlightClass }[];
+}
+
+/** The diff of one file between before and after. */
+export interface FileDiff {
+  path: string;
+  /** The before path, for a rename. */
+  oldPath?: string;
+  rows: DiffRow[];
+  /** True when the file is binary or too large to show; `rows` is then empty. */
+  omitted: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -227,6 +315,7 @@ export type SseEvent =
   | { event: 'repo'; data: { repoId: number } }
   | { event: 'changes'; data: { repoId: number } }
   | { event: 'snapshot'; data: { repoId: number; changeId: number; head: string } }
+  | { event: 'review'; data: { repoId: number; changeId: number; reviewState: ReviewState } }
   | {
       event: 'collect';
       data: { repoId: number; state: 'started' | 'done' } | { repoId: number; state: 'error'; error: string };

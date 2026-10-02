@@ -13,6 +13,7 @@ export {
   readAfterBatch,
   readAfterBytes,
   readBefore,
+  readBeforeBytes,
 } from './files.js';
 export type { ChangeType, ChangedFile } from './files.js';
 export { computeMeta, countCommits } from './meta.js';

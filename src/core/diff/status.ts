@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { parseFile } from '../parse/file.js';
 import type { ParsedFile } from '../parse/file.js';
 import { languageForPath } from '../parse/language.js';
@@ -29,6 +30,21 @@ export interface FileStatus {
   symbols: Symbol[];
 }
 
+/** FileStatus, plus each symbol's fingerprint: its id to sha256 of before slice + `\0` + after slice (ADR-027). */
+export interface FileStatusWithFingerprints extends FileStatus {
+  symbolFingerprints: Record<string, string>;
+}
+
+/** Lines `range.start`..`range.end` (1-based, inclusive) of `source`, joined with `\n`; empty for no source. */
+function sliceOf(source: string | null, range: { start: number; end: number } | undefined): string {
+  if (source === null || range === undefined) return '';
+  return source.split('\n').slice(range.start - 1, range.end).join('\n');
+}
+
+function sliceHash(before: string, after: string): string {
+  return createHash('sha256').update(before).update('\0').update(after).digest('hex');
+}
+
 /** Heaviest first (SPEC.md 5.1). */
 const WEIGHT: Readonly<Record<Status, number>> = { sig: 4, add: 3, del: 2, mod: 1, same: 0 };
 
@@ -49,18 +65,29 @@ function gitStatus(change: GitChange): Status {
  * of every symbol and of the file itself. Pure over the given contents.
  */
 export async function compareFile(file: FileChange): Promise<FileStatus> {
-  if (file.binary) return { status: gitStatus(file.change), symbols: [] };
+  const { status, symbols } = await compareFileWithFingerprints(file);
+  return { status, symbols };
+}
+
+/** compareFile, plus the fingerprint of every symbol. */
+export async function compareFileWithFingerprints(file: FileChange): Promise<FileStatusWithFingerprints> {
+  if (file.binary) return { status: gitStatus(file.change), symbols: [], symbolFingerprints: {} };
 
   const beforeLanguage = languageForPath(file.oldPath ?? file.path);
   const afterLanguage = languageForPath(file.path);
-  if (beforeLanguage === null && afterLanguage === null) return { status: gitStatus(file.change), symbols: [] };
+  if (beforeLanguage === null && afterLanguage === null) return { status: gitStatus(file.change), symbols: [], symbolFingerprints: {} };
 
   const [before, after] = await Promise.all([
     file.before === null || beforeLanguage === null ? null : parseFile(file.before, beforeLanguage),
     file.after === null || afterLanguage === null ? null : parseFile(file.after, afterLanguage),
   ]);
-  const symbols = compareSymbols(file.path, before?.symbols ?? [], after?.symbols ?? []);
-  return { status: fileStatus(file, before, after, symbols), symbols };
+  const detailed = compareSymbols(file.path, before?.symbols ?? [], after?.symbols ?? []);
+  const symbols = detailed.map((entry) => entry.symbol);
+  const symbolFingerprints: Record<string, string> = {};
+  for (const entry of detailed) {
+    symbolFingerprints[entry.symbol.id] = sliceHash(sliceOf(file.before, entry.beforeRange), sliceOf(file.after, entry.afterRange));
+  }
+  return { status: fileStatus(file, before, after, symbols), symbols, symbolFingerprints };
 }
 
 /**
@@ -69,10 +96,24 @@ export async function compareFile(file: FileChange): Promise<FileStatus> {
  * `source`. Parses once. Empty for unsupported languages.
  */
 export async function unchangedSymbols(path: string, source: string): Promise<Symbol[]> {
+  return (await unchangedSymbolsWithFingerprints(path, source)).symbols;
+}
+
+/** unchangedSymbols, plus each symbol's fingerprint (before slice equals after slice). */
+export async function unchangedSymbolsWithFingerprints(
+  path: string,
+  source: string,
+): Promise<{ symbols: Symbol[]; symbolFingerprints: Record<string, string> }> {
   const language = languageForPath(path);
-  if (language === null) return [];
+  if (language === null) return { symbols: [], symbolFingerprints: {} };
   const { symbols } = await parseFile(source, language);
-  return compareSymbols(path, symbols, symbols);
+  const detailed = compareSymbols(path, symbols, symbols);
+  const symbolFingerprints: Record<string, string> = {};
+  for (const entry of detailed) {
+    const slice = sliceOf(source, entry.afterRange);
+    symbolFingerprints[entry.symbol.id] = sliceHash(slice, slice);
+  }
+  return { symbols: detailed.map((entry) => entry.symbol), symbolFingerprints };
 }
 
 function fileStatus(file: FileChange, before: ParsedFile | null, after: ParsedFile | null, symbols: Symbol[]): Status {
@@ -114,7 +155,14 @@ interface Entry {
   before?: ParsedSymbol;
 }
 
-function compareSymbols(path: string, before: ParsedSymbol[], after: ParsedSymbol[]): Symbol[] {
+/** A report symbol with where it sits in each version (absent on the side it does not exist). */
+interface DetailedSymbol {
+  symbol: Symbol;
+  beforeRange?: Symbol['range'];
+  afterRange?: Symbol['range'];
+}
+
+function compareSymbols(path: string, before: ParsedSymbol[], after: ParsedSymbol[]): DetailedSymbol[] {
   const beforeKeys = matchKeys(before);
   const afterKeys = matchKeys(after);
   const beforeByKey = new Map(before.map((symbol, i) => [beforeKeys[i], symbol]));
@@ -140,7 +188,7 @@ function compareSymbols(path: string, before: ParsedSymbol[], after: ParsedSymbo
   });
 
   return entries
-    .map(({ symbol, id, status, before: previous }): Symbol => {
+    .map(({ symbol, id, status, before: previous }): DetailedSymbol => {
       const out: Symbol = {
         id: `${path}#${id}`,
         name: symbol.baseQualifiedName,
@@ -152,9 +200,18 @@ function compareSymbols(path: string, before: ParsedSymbol[], after: ParsedSymbo
         out.signatureBefore = previous.signatureText;
         out.signatureAfter = symbol.signatureText;
       }
-      return out;
+      const detailed: DetailedSymbol = { symbol: out };
+      if (status === 'del') detailed.beforeRange = { ...symbol.range };
+      else {
+        detailed.afterRange = { ...symbol.range };
+        if (previous !== undefined) detailed.beforeRange = { ...previous.range };
+      }
+      return detailed;
     })
-    .sort((a, b) => a.range.start - b.range.start || compare(a.id, b.id) || compare(a.kind, b.kind));
+    .sort(
+      (a, b) =>
+        a.symbol.range.start - b.symbol.range.start || compare(a.symbol.id, b.symbol.id) || compare(a.symbol.kind, b.symbol.kind),
+    );
 }
 
 function compare(a: string, b: string): number {

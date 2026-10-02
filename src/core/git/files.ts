@@ -312,7 +312,12 @@ async function readBlob(root: string, commit: string, path: string): Promise<Buf
 
 /** Content of `path` (repo-relative) in the before state, or null when it does not exist there. */
 export async function readBefore(change: ResolvedChange, path: string): Promise<string | null> {
-  return (await readBlob(change.root, change.mergeBase, path))?.toString('utf8') ?? null;
+  return (await readBeforeBytes(change, path))?.toString('utf8') ?? null;
+}
+
+/** Raw bytes of `path` (repo-relative) in the before state, or null when it does not exist there. */
+export async function readBeforeBytes(change: ResolvedChange, path: string): Promise<Buffer | null> {
+  return readBlob(change.root, change.mergeBase, path);
 }
 
 /** Content of `path` (repo-relative) in the after state, or null when it does not exist there. */
