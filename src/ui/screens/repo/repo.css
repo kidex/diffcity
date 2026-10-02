@@ -11,8 +11,9 @@
 .stage.repo { display: flex; flex-direction: column; }
 
 /* ---------- header ---------- */
-.repo-head { display: flex; align-items: flex-start; gap: 16px; flex-wrap: wrap; padding-right: 22px; }
-.repo-head .title { flex: 1 1 auto; min-width: 0; }
+/* the gutter is on the header, so the actions keep it when they wrap under the title */
+.repo-head { display: flex; align-items: flex-start; gap: 0 16px; flex-wrap: wrap; padding: 0 22px; }
+.repo .repo-head .title { flex: 1 1 auto; min-width: 0; padding-left: 0; padding-right: 0; }
 .repo-head .name-line { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .repo-head h1 { font-family: var(--mono); font-weight: 500; letter-spacing: -.01em; }
 .repo-head .title p.path { font-family: var(--mono); font-size: 12px; overflow-wrap: anywhere; display: block; }
