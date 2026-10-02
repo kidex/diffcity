@@ -12,7 +12,7 @@ Look: "Night data city" (ADR-026, SPEC.md section 6). `design/directions/c` is t
 - The screen renders from a `Report` alone (it is also the HTML export, ADR-002). `src/ui/screens/change/**` never imports `src/ui/data/**` (lint enforces it); core types come in with `import type` only (ADR-022).
 - Nothing computes status, verdict, tier 1, paths or anchoring. The layout copies them from the Report.
 - No colour in TypeScript: every colour is a CSS token read at run time (`scene/tokens.ts`).
-- At most 40 scene draw calls at any city size (measured on the scene pass only, post passes excluded). Today: 14.
+- At most 40 scene draw calls at any city size (measured on the scene pass only, post passes excluded).
 - The change screen chunk is loaded with `import()` by `src/ui/app/change-route.ts`; Fleet and Repo never download three.js.
 
 ## Module layout (`src/ui/screens/change/`)
@@ -21,12 +21,12 @@ Look: "Night data city" (ADR-026, SPEC.md section 6). `design/directions/c` is t
 |---|---|
 | `index.ts` | `mountChange(el, { report }) → { update(report), unmount }`; states: `null` → "Computing the first snapshot of this change…", no files → "No files in this change", no WebGL → `fallback.ts`, else the city; installs `window.diffcityScene` under `?scene-debug` |
 | `fallback.ts` | "3D view needs WebGL" and the touched-file table (status, verdict, tier 1) |
-| `model/city.ts` | pure layout (no three, no DOM, unit-tested in Node): `buildCity(report)`, `sideOf`, `floorsOf`, `labelledBuildings` |
-| `scene/view.ts` | ties it together: stage, content (ground, lots, towers), labels, orbit, picker; `setReport` rebuilds content and keeps camera and selection; rebuilds on a colour-scheme change; `dispose()` |
+| `model/city.ts` | pure layout (no three, no DOM, unit-tested in Node): `buildCity(report, { rowWidth? })`, `sideOf`, `floorsOf`, `labelledBuildings` |
+| `scene/view.ts` | ties it together: stage, content (ground, lots, towers), labels, orbit, picker; `setReport` rebuilds content and keeps camera, selection and the row width; rebuilds on a colour-scheme change; `dispose()` |
 | `scene/stage.ts` | `WebGLRenderer`, AgX at exposure 1.1, `EffectComposer` on a half-float 4x MSAA target: `RenderPass` (counting its draw calls) → `UnrealBloomPass` (strength `--c-bloom`, radius 0.4, threshold 0.9; it already works at half resolution) → `OutputPass`; pixel ratio `min(dpr, 2)`; `ResizeObserver`; frames only on request; `runContinuously(ms)` for the bench; `dispose()` frees passes, targets and the context (`forceContextLoss`) |
 | `scene/orbit.ts` | the mockup's orbit as plain math plus `bindOrbit` (listeners on an `AbortController`, removed on unmount) |
 | `scene/picking.ts` | ray against one box per building (not the meshes); floor from the hit height; the same boxes answer label occlusion |
-| `scene/labels.ts` | `CSS2DRenderer` in its own `Scene`; at most 120 labels |
+| `scene/labels.ts` | `CSS2DRenderer` in its own `Scene`; at most 120 labels, re-ranked when the camera rests |
 | `scene/tokens.ts` | `colorToken`, `numberToken`, `statusToken`, `verdictColor` |
 | `scene/night/ground.ts` | shader grid (minor 1, major 5, anti-aliased with `fwidth`, fading with distance), 1 draw |
 | `scene/night/lots.ts` | plates (1 instanced mesh), outlines (batched `LineSegments2`: plain lots, tier 1 lots, static tier 1 outer ring), lot names in one canvas atlas on one mesh |
@@ -39,9 +39,11 @@ Look: "Night data city" (ADR-026, SPEC.md section 6). `design/directions/c` is t
 - Floors bottom to top in source order: `range.start`, then `range.end`, then id. A file without symbols gets one floor in the file's status.
 - Footprint: `1.15 + 0.28 * clamp(symbols, 1, 6)`.
 - Lots: files shelf-packed in Report order into a row width near `sqrt(area * 1.25)`.
-- City: packages with no touched file first, in their own rows at the back (low z, far from the home camera), then the touched ones, each group in Report order. Rows are a multiple of 8 wide (`sqrt(area * 1.6)` rounded up), so an added file moves only its own lot and the lots after it. Lots stretch to their row's depth; buildings sit at the back-left, the name strip at the front.
-- Deterministic: same Report, same coordinates. Tests: `test/unit/ui/city-layout.test.ts`.
-- Label priority (`labelledBuildings`): verdict eyes, risky, spec, ok; then tier 1; then changed floors; then Report order. Untouched buildings never get a label.
+- City: packages with no touched file first, in their own rows at the back (low z, far from the home camera), then the touched ones, each group in Report order. Lots stretch to their row's depth; buildings sit at the back-left, the name strip at the front.
+- Row width: the first Report of a view gets a multiple of 8 (`sqrt(area * 1.6)` rounded up). The view passes it back (`buildCity(report, { rowWidth })`) for every later Report, so an added file moves only its own lot and the lots after it; lots before it in its row keep their place and only their plate deepens with the row. A lot wider than the rows stands alone in its own row. The width is chosen afresh only when the fresh width reaches twice the kept one (`REFLOW_FACTOR`).
+- A quiet package that gets its first touched file leaves the back rows for the touched block (ADR-026; the move is tweened once live updates animate).
+- Deterministic: same Report and no previous width, same coordinates. Tests: `test/unit/ui/city-layout.test.ts`.
+- Label priority (`labelledBuildings`, ADR-026): selected and hovered; then eyes and risky; then the other touched files; within a group nearest the camera first, then Report order. Untouched buildings never get a label.
 
 ## Tokens
 
@@ -66,7 +68,7 @@ Environment: `RoomEnvironment` through `PMREMGenerator` (sigma 0.04), intensity 
 
 - `.roof.v-<verdict>`: `.badge` (holographic tag: scanlines, glow, verdict colour through `--c`) over `.file` (mono 11 px). Reviewed-fine tags are smaller and quieter.
 - Anchor at the roof + 0.3, or + 1.05 for eyes and risky (above the beam); element bottom-centre on the anchor.
-- When the camera rests: `.is-occluded` if another building's box hides the anchor, `.is-crowded` if it overlaps a more important label on screen. `.is-hover` and `.is-selected` always show.
+- When the camera rests (120 ms after it last moved, never on drag frames) and on a selection or hover that changes the set: the 120 are re-ranked from the camera position (labels that stay are reused), then `.is-occluded` if another building's box hides the anchor, `.is-crowded` if it overlaps a label of higher priority on screen (the tie-breaker after priority). `.is-hover` and `.is-selected` always show.
 - Lot names are not DOM: one atlas texture (mono 500, `--muted`, tier 1 in `--tier` with `   tier 1`), font shrunk until the atlas fits 4096 x 4096. Wait for the mono face (`document.fonts.load`) before drawing it.
 
 ## Camera (`scene/orbit.ts`)
@@ -81,7 +83,7 @@ Environment: `RoomEnvironment` through `PMREMGenerator` (sigma 0.04), intensity 
 
 - Hover: pointer cursor, outline x2, strips x1.6, `.is-hover` label.
 - Click: selection outline (violet, wider), strips x1.35, `.is-selected` label. Escape or a click on empty ground clears it. The selection survives `update` while its file exists.
-- The tooltip, selection card, filters, reading path, pins and panel are later tasks; add them as instanced or batched geometry inside the same budget.
+- New scene elements go in as instanced or batched geometry inside the same draw-call budget.
 
 ## Disposal
 
