@@ -149,3 +149,12 @@ export function shortSha(sha: string): string {
 /** Why a PR without its head commit has no counters (ADR-019: diffcity never fetches). */
 export const HEAD_NOT_FETCHED = 'head not fetched locally';
 export const HEAD_NOT_FETCHED_TITLE = 'diffcity never runs git fetch. Fetch the pull request to see what it changes.';
+
+/**
+ * The verdicts that ask for a human look (SPEC.md section 5.2), in the table
+ * order: the Repo rows show their counters first and loudest.
+ */
+export const ATTENTION_VERDICTS: readonly Verdict[] = ['eyes', 'risky', 'spec'];
+
+/** The verdicts that ask for nothing: shown quietly after the attention ones. */
+export const QUIET_VERDICTS: readonly Verdict[] = ['ok', 'same'];

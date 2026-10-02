@@ -6,7 +6,10 @@
  * Added on top of the mockup:
  * - --verdict-*: the mockup's VERDICT map, which hard-codes spec and same;
  * - --audit-*: the Fleet audit-age colours (ADR-022), from the mockup's fleet
- *   card (fresh = green bar, warn = amber bar, stale = red bar) plus "never".
+ *   card (fresh = green bar, warn = amber bar, stale = red bar) plus "never";
+ * - --on-accent: text on a solid accent fill (a status, verdict or kind
+ *   colour), the mockup's darkest navy in both schemes, since the accents
+ *   do not change with the scheme.
  */
 :root {
   --bg: #12203A;
@@ -48,6 +51,8 @@
   --audit-aging: #F4B94A;
   --audit-stale: #F0705F;
   --audit-never: #5A6F98;
+
+  --on-accent: #0D172B;
 
   --sans: "Sora", "Segoe UI", system-ui, -apple-system, sans-serif;
   --mono: "IBM Plex Mono", "SFMono-Regular", Menlo, Consolas, monospace;
