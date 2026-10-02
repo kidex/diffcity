@@ -3,7 +3,7 @@
 // daemon.json, the lock and the socket. With no daemon running it says so and
 // succeeds. It never creates the home.
 
-import { stat } from 'node:fs/promises';
+import { readFile, stat } from 'node:fs/promises';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { homePaths, resolveHome, type HomePaths } from '../core/home.js';
 import { CLIENT_TIMEOUT_MS, findRunningDaemon, isNoDaemonError, sendRequest } from '../daemon/client.js';
@@ -34,10 +34,26 @@ const exists = (file: string): Promise<boolean> =>
     () => false,
   );
 
+async function readLockPid(paths: HomePaths): Promise<number | null> {
+  const text = await readFile(paths.lock, 'utf8').catch(() => null);
+  if (text === null) return null;
+  const pid = Number(text.trim());
+  return Number.isSafeInteger(pid) && pid > 0 ? pid : null;
+}
+
+/**
+ * True once `pid` has exited and its files are gone. A daemon started in the
+ * meantime (another pid in daemon.json or the lock) owns the files it wrote,
+ * the socket included, so they do not keep the stop waiting.
+ */
 async function stopped(paths: HomePaths, pid: number, socket: string): Promise<boolean> {
   if (isProcessAlive(pid)) return false;
-  for (const file of [paths.daemonJson, paths.lock, socket]) if (await exists(file)) return false;
-  return true;
+  const info = await readDaemonInfo(paths);
+  const lockPid = await readLockPid(paths);
+  if (info?.pid === pid || lockPid === pid) return false;
+  if (await exists(paths.lock) && lockPid === null) return false;
+  const successor = (info !== null && info.pid !== pid) || (lockPid !== null && lockPid !== pid);
+  return successor || !(await exists(socket));
 }
 
 /**
