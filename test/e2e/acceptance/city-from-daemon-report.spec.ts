@@ -14,6 +14,8 @@ import { fileURLToPath } from 'node:url';
 import { expect, test } from '@playwright/test';
 import type { RepoDetail, RepoSummary } from '../../../src/core/model/types.js';
 import type { Report } from '../../../src/core/report/types.js';
+import { stopDaemonIn } from '../../helpers/daemon.js';
+import { registerHome } from '../../helpers/daemons.js';
 import { buildScenario, listScenarios } from '../../helpers/scenario.js';
 import { stats, waitReady } from '../support/scene.js';
 
@@ -60,6 +62,8 @@ test('change/city-from-daemon-report', async ({ page }) => {
   const { repo } = await buildScenario(scenario);
   const root = await mkdtemp(join(tmpdir(), 'dc-e2e-city-'));
   const home = join(root, 'home');
+  // A timeout skips `finally`: the global teardown stops this home's daemon then.
+  registerHome(home);
   const user = join(root, 'user');
   await mkdir(user);
   const env = { ...process.env, DIFFCITY_HOME: home, HOME: user };
@@ -109,6 +113,7 @@ test('change/city-from-daemon-report', async ({ page }) => {
       const timeout = new Promise<'timeout'>((resolve) => setTimeout(() => { resolve('timeout'); }, 5_000));
       if ((await Promise.race([exited, timeout])) === 'timeout') daemon.kill('SIGKILL');
     }
+    await stopDaemonIn(home);
     await rm(root, { recursive: true, force: true });
     await repo.cleanup();
   }
