@@ -21,6 +21,7 @@ export const fixtures = {
   fleetManyRepos: () => load('fleet-many-repos.json') as RepoSummary[],
   repoMixedChanges: () => load('repo-mixed-changes.json') as RepoDetail,
   repoEmpty: () => load('repo-empty.json') as RepoDetail,
+  repoLongList: () => load('repo-long-list.json') as RepoDetail,
   repoArchived: () => load('repo-archived.json') as ChangeSummary[],
   reportOrderDiscounts: () => load('report-order-discounts.json') as Report,
   searchResults: () => load('search-results.json') as SearchResult[],
