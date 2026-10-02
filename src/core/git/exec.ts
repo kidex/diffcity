@@ -35,7 +35,14 @@ export const defaultRunner: CommandRunner = (file, args, options) =>
     execFile(
       file,
       [...args],
-      { cwd: options.cwd, timeout: options.timeoutMs, encoding: 'utf8', windowsHide: true, maxBuffer: 16 * 1024 * 1024 },
+      {
+        cwd: options.cwd,
+        env: ghEnv(),
+        timeout: options.timeoutMs,
+        encoding: 'utf8',
+        windowsHide: true,
+        maxBuffer: 16 * 1024 * 1024,
+      },
       (error, stdout) => {
         if (error === null) resolve(stdout);
         else reject(error instanceof Error ? error : new Error(`${file} failed`, { cause: error }));
@@ -55,13 +62,12 @@ export const defaultRunner: CommandRunner = (file, args, options) =>
  * diff.external, diff.<driver>.command and diff.<driver>.textconv are turned
  * off by the diff flags (--no-ext-diff, --no-textconv).
  */
-const SAFE_CONFIG = [
-  '--no-pager',
-  '-c',
-  'core.fsmonitor=false',
-  '-c',
-  `core.hooksPath=${devNull}`,
+const STATIC_OVERRIDES: readonly [string, string][] = [
+  ['core.fsmonitor', 'false'],
+  ['core.hooksPath', devNull],
 ];
+
+const SAFE_CONFIG = ['--no-pager', ...STATIC_OVERRIDES.flatMap(([key, value]) => ['-c', `${key}=${value}`])];
 
 /** Big enough for any single source file or file list we read. */
 const GIT_MAX_BUFFER = 512 * 1024 * 1024;
@@ -96,6 +102,26 @@ export function gitEnv(): NodeJS.ProcessEnv {
   env.GIT_NO_LAZY_FETCH = '1';
   env.GIT_ALLOW_PROTOCOL = '';
   return env;
+}
+
+/**
+ * Environment for `gh`. gh runs `git` inside the collected repo itself, without
+ * the flags every diffcity git call carries, so the same guards (ADR-024) go in
+ * through the environment (ADR-032): the static config overrides appended after
+ * any GIT_CONFIG_COUNT entries already set, no transport, no lazy fetch, and no
+ * prompt or update notice from git or gh. The user's own variables (including
+ * gh's token) pass through unchanged.
+ */
+export function ghEnv(base: Readonly<Record<string, string | undefined>> = process.env): NodeJS.ProcessEnv {
+  return {
+    ...base,
+    ...configEnv(STATIC_OVERRIDES, base),
+    GIT_ALLOW_PROTOCOL: '',
+    GIT_NO_LAZY_FETCH: '1',
+    GIT_TERMINAL_PROMPT: '0',
+    GH_PROMPT_DISABLED: '1',
+    GH_NO_UPDATE_NOTIFIER: '1',
+  };
 }
 
 export interface GitResult {
