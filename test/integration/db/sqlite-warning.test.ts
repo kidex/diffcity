@@ -25,6 +25,13 @@ const afterLoad = `
   await new Promise((resolve) => setImmediate(resolve));
 `;
 
+// Whether this runtime warns when node:sqlite loads: Node 22 does, Node 24
+// does not. Probed in a child process rather than read from the version.
+const SQLITE_WARNING = /ExperimentalWarning: SQLite is an experimental feature/;
+const runtimeWarns = SQLITE_WARNING.test(
+  await stderrOf(`await import('node:sqlite'); await new Promise((resolve) => setImmediate(resolve));`),
+);
+
 describe('suppressSqliteExperimentalWarning', () => {
   it('drops the SQLite ExperimentalWarning and keeps every other warning', async () => {
     const stderr = await stderrOf(`
@@ -38,9 +45,16 @@ describe('suppressSqliteExperimentalWarning', () => {
     expect(stderr).toContain('Warning: a plain warning about SQLite usage');
   });
 
-  it('without it, loading the db prints the SQLite warning (so the filter is what removes it)', async () => {
+  it.runIf(runtimeWarns)('without it, loading the db prints the SQLite warning (so the filter is what removes it)', async () => {
     const stderr = await stderrOf(afterLoad);
-    expect(stderr).toMatch(/ExperimentalWarning: SQLite is an experimental feature/);
+    expect(stderr).toMatch(SQLITE_WARNING);
+  });
+
+  it.skipIf(runtimeWarns)('on a runtime that emits no SQLite warning, loading the db prints none either way', async () => {
+    const stderr = await stderrOf(afterLoad);
+    expect(stderr).not.toMatch(/ExperimentalWarning: SQLite/);
+    expect(stderr).toContain('ExperimentalWarning: sample-shop feature');
+    expect(stderr).toContain('Warning: a plain warning about SQLite usage');
   });
 
   it('daemon order: suppress, then dynamic import and a real open/write/read prints nothing on stderr', async () => {
