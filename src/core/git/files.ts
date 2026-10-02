@@ -1,10 +1,12 @@
 // Changed files, file contents and the head file list for a resolved change.
 
+import { createHash } from 'node:crypto';
+import { createReadStream } from 'node:fs';
 import { copyFile, lstat, mkdir, mkdtemp, open, readFile, readlink, realpath, rm, stat, utimes } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, dirname, isAbsolute, join, posix, relative, sep } from 'node:path';
 import type { ResolvedChange } from './change.js';
-import { GitError, git, gitRaw, splitNul } from './exec.js';
+import { GitError, git, gitRaw, gitStream, splitNul } from './exec.js';
 
 export type ChangeType = 'add' | 'del' | 'mod' | 'rename';
 
@@ -338,6 +340,45 @@ export async function readAfterBytes(change: ResolvedChange, path: string): Prom
     if (stats.isSymbolicLink()) return await readlink(absPath, { encoding: 'buffer' });
     if (!stats.isFile()) return null;
     return await readFile(absPath);
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === 'ENOENT' || code === 'ENOTDIR') return null;
+    throw error;
+  }
+}
+
+async function hashBlob(root: string, commit: string, path: string): Promise<string | null> {
+  const repoPath = checkRepoPath(path);
+  const hash = createHash('sha256');
+  const result = await gitStream(root, ['cat-file', 'blob', `${commit}:${repoPath}`], (chunk) => {
+    hash.update(chunk);
+  });
+  if (result.exitCode === 0) return hash.digest('hex');
+  await assertBlobAbsent(root, commit, repoPath);
+  return null;
+}
+
+/** sha256 hex of `path` in the before state, streamed (never buffered), or null when it does not exist there. */
+export async function hashBefore(change: ResolvedChange, path: string): Promise<string | null> {
+  return hashBlob(change.root, change.mergeBase, path);
+}
+
+/**
+ * sha256 hex of `path` in the after state, streamed (never buffered), or null
+ * when it does not exist there. Same bytes as readAfterBytes: a symlink hashes
+ * its target text.
+ */
+export async function hashAfter(change: ResolvedChange, path: string): Promise<string | null> {
+  if (!change.worktree) return hashBlob(change.root, change.headCommit, path);
+  const absPath = await confinedWorktreePath(change.root, path);
+  if (absPath === null) return null;
+  try {
+    const stats = await lstat(absPath);
+    if (stats.isSymbolicLink()) return createHash('sha256').update(await readlink(absPath, { encoding: 'buffer' })).digest('hex');
+    if (!stats.isFile()) return null;
+    const hash = createHash('sha256');
+    for await (const chunk of createReadStream(absPath)) hash.update(chunk as Buffer);
+    return hash.digest('hex');
   } catch (error) {
     const code = (error as NodeJS.ErrnoException).code;
     if (code === 'ENOENT' || code === 'ENOTDIR') return null;

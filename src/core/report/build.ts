@@ -12,6 +12,8 @@ import {
   listHeadFiles,
   looksBinary,
   readAfterBatch,
+  hashAfter,
+  hashBefore,
   readAfterBytes,
   readBeforeBytes,
   resolveChange,
@@ -157,18 +159,27 @@ function sha256(bytes: Uint8Array | null): string | null {
 
 async function describeChanged(change: ResolvedChange, file: ChangedFile): Promise<Described> {
   const oldPath = file.oldPath ?? file.path;
-  // Every touched file is read for its fingerprint; only code files are parsed: the status of anything else comes from git (ADR-008).
-  const [beforeBytes, afterBytes] = await Promise.all([
-    file.type === 'add' ? null : readBeforeBytes(change, oldPath),
-    file.type === 'del' ? null : readAfterBytes(change, file.path),
-  ]);
+  // Only code files are read into memory and parsed: the status of anything else comes from git (ADR-008).
+  // The others are hashed from a stream, so a large asset never sits in the worker's memory.
   const readable = !file.binary && (languageForPath(oldPath) !== null || languageForPath(file.path) !== null);
-  const before = readable ? (beforeBytes?.toString('utf8') ?? null) : null;
-  const after = readable ? (afterBytes?.toString('utf8') ?? null) : null;
+  const [beforeBytes, afterBytes] = readable
+    ? await Promise.all([
+        file.type === 'add' ? null : readBeforeBytes(change, oldPath),
+        file.type === 'del' ? null : readAfterBytes(change, file.path),
+      ])
+    : [null, null];
+  const [beforeHash, afterHash] = readable
+    ? [sha256(beforeBytes), sha256(afterBytes)]
+    : await Promise.all([
+        file.type === 'add' ? null : hashBefore(change, oldPath),
+        file.type === 'del' ? null : hashAfter(change, file.path),
+      ]);
+  const before = beforeBytes?.toString('utf8') ?? null;
+  const after = afterBytes?.toString('utf8') ?? null;
   const input: FileChange = { path: file.path, change: file.type, binary: file.binary, before, after };
   if (oldPath !== file.path) input.oldPath = oldPath;
   const { status, symbols, symbolFingerprints } = await compareFileWithFingerprints(input);
-  const fingerprint: FileFingerprint = { before: sha256(beforeBytes), after: sha256(afterBytes) };
+  const fingerprint: FileFingerprint = { before: beforeHash, after: afterHash };
   if (oldPath !== file.path) fingerprint.oldPath = oldPath;
   return { input: { path: file.path, language: languageOf(file.path), status, symbols }, fingerprint, symbolFingerprints };
 }
