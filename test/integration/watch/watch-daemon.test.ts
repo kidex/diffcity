@@ -184,6 +184,46 @@ function countingClock(): Clock & { live(): number } {
 
 const fsWatchHandles = (): number => process.getActiveResourcesInfo().filter((name) => name === 'FSEventWrap').length;
 
+describe('activation cycles (Q6)', () => {
+  it('10 activate/deactivate cycles keep the fs.watch handles and the live timers flat', { timeout: 240_000 }, async () => {
+    const repo = await sampleRepo({ files: { '.gitignore': 'dist/\n', 'src/pantry/jar.ts': 'export const jar = 1;\n' } });
+    const clock = manualClock();
+    const { test, watch } = await daemonWithWatch(clock);
+    const baseline = fsWatchHandles();
+    const idleTimers = clock.pending();
+    const active: { handles: number; timers: number }[] = [];
+    const inactive: { handles: number; timers: number }[] = [];
+
+    for (let cycle = 0; cycle < 10; cycle++) {
+      const repoId = repoIdOf(await test.track(repo.dir, false, new Date(clock.now()).toISOString()));
+      await waitFor(() => watch().watchers().watchedWorktrees(repoId).length === 1, 10_000, `the watchers, cycle ${String(cycle)}`);
+      await test.idle();
+      // Let the collection's own events pass and flush their debounce.
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      clock.advance(60_000);
+      await test.idle();
+      active.push({ handles: fsWatchHandles(), timers: clock.pending() });
+
+      clock.advance(ACTIVE_WINDOW_MS + DEACTIVATE_CHECK_MS);
+      await waitFor(() => watch().watchers().watched().length === 0, 10_000, `the watchers to stop, cycle ${String(cycle)}`);
+      expect(test.collection.db().repos.get(repoId)?.active).toBe(false);
+      await waitFor(() => fsWatchHandles() === baseline, 5000, `the fs.watch handles to close, cycle ${String(cycle)}`);
+      await test.idle();
+      inactive.push({ handles: fsWatchHandles(), timers: clock.pending() });
+    }
+
+    const first = active[0];
+    if (first === undefined) throw new Error('no cycle ran');
+    expect(first.handles).toBeGreaterThan(baseline);
+    expect(active).toEqual(Array.from({ length: 10 }, () => first));
+    // Inactive: only the scheduler's two recurring tasks (maintenance, deactivation check).
+    expect(inactive).toEqual(Array.from({ length: 10 }, () => ({ handles: baseline, timers: idleTimers })));
+    expect(idleTimers).toBe(2);
+    expect(watch().scheduler().polled()).toEqual([]);
+    expect(watch().watchers().pending()).toBe(0);
+  });
+});
+
 describe('shutdown', () => {
   it('closes every watcher and clears every timer', async () => {
     const baseline = fsWatchHandles();

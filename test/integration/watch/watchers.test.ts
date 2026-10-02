@@ -306,6 +306,73 @@ describe('descriptors (ADR-020 amendment)', () => {
   });
 });
 
+describe('bursts (C4, Q7)', () => {
+  it('watch/checkout-no-pile-up: a checkout rewriting 30 files asks one collection per scope, `refs` and its working tree', { timeout: 60_000 }, async () => {
+    const repo = await sampleRepo();
+    await repo.git('checkout', '--quiet', '-b', 'feature/trays');
+    const trays: Record<string, string> = {};
+    for (let n = 0; n < 30; n++) trays[`src/trays/tray${String(n)}.ts`] = `export const tray${String(n)} = ${String(n)};\n`;
+    await repo.write(trays);
+    await repo.git('add', '--all');
+    await repo.git('commit', '--quiet', '-m', 'thirty trays');
+    await repo.checkout('main');
+    const w = await watch(repo);
+    await w.settle();
+
+    await repo.checkout('feature/trays');
+    await waitFor(() => paths(w.events, 'refs').includes(join(w.root, '.git', 'HEAD')), 10_000, 'the HEAD event');
+    await w.sentinel();
+    expect(w.events.length).toBeGreaterThan(30);
+    w.clock.advance(2000);
+    expect(w.requests).toHaveLength(2);
+    expect(w.requests).toEqual(
+      expect.arrayContaining([
+        { repoId: REPO_ID, scope: 'refs', priority: 'normal' },
+        { repoId: REPO_ID, scope: `worktree:${w.root}`, priority: 'normal' },
+      ]),
+    );
+    w.clock.advance(60_000);
+    expect(w.requests).toHaveLength(2);
+  });
+
+  it('watch/node-modules-churn: 5,000 files written under node_modules → no event, no collection', { timeout: 60_000 }, async () => {
+    const repo = await sampleRepo();
+    const w = await watch(repo);
+    await w.settle();
+    const files: Record<string, string> = {};
+    for (let n = 0; n < 5000; n++) files[`node_modules/pkg${String(Math.floor(n / 50))}/lib/f${String(n % 50)}.js`] = `module.exports = ${String(n)};\n`;
+    await repo.write(files);
+    await w.sentinel();
+    expect(paths(w.events).filter((path) => path.includes('node_modules'))).toEqual([]);
+    w.clock.advance(60_000);
+    expect(w.requests).toEqual([{ repoId: REPO_ID, scope: `worktree:${w.root}`, priority: 'normal' }]);
+  });
+});
+
+describe('working tree limit (ADR-020)', () => {
+  it('watch/max-8-worktrees: of 10 working trees only the first 8 are watched; an edit in the others is silent', { timeout: 120_000 }, async () => {
+    const repo = await sampleRepo({ files: { '.gitignore': '.worktrees/\n', 'src/oven.ts': 'export const heat = 1;\n' } });
+    for (let n = 0; n < 9; n++) await repo.git('worktree', 'add', '--quiet', `.worktrees/tray${String(n)}`, '-b', `feature/tray${String(n)}`);
+    const w = await watch(repo);
+    const watched = w.watchers.watchedWorktrees(REPO_ID);
+    expect(watched).toHaveLength(8);
+    expect(watched[0]).toBe(w.root);
+    expect(w.watchers.mode(REPO_ID)).toBe('full');
+    const all = [w.root, ...Array.from({ length: 9 }, (_, n) => join(w.root, '.worktrees', `tray${String(n)}`))];
+    const unwatched = all.filter((path) => !watched.includes(path));
+    expect(unwatched).toHaveLength(2);
+    await w.settle();
+
+    for (const dir of unwatched) await repo.write({ [join(dir.slice(w.root.length + 1), 'src', 'oven.ts')]: 'export const heat = 9;\n' });
+    const lastWatched = watched[7];
+    if (lastWatched === undefined) throw new Error('missing watcher');
+    await repo.write({ [join(lastWatched.slice(w.root.length + 1), 'src', 'oven.ts')]: 'export const heat = 8;\n' });
+    await waitFor(() => w.events.some((event) => event.scope === `worktree:${lastWatched}`), 10_000, 'the event of the 8th working tree');
+    await w.sentinel();
+    for (const dir of unwatched) expect(w.events.filter((event) => event.scope === `worktree:${dir}`)).toEqual([]);
+  });
+});
+
 describe('stop', () => {
   it('stopping a repo drops its pending events and its watchers', async () => {
     const repo = await sampleRepo();
