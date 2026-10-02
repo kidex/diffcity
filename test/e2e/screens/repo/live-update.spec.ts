@@ -67,7 +67,8 @@ test('SSE snapshot → a computing change gets its counters, focus kept', async 
 
   await expect(row.getByTestId('computing')).toHaveCount(0);
   await expect(row.getByTestId('touched').locator('.stat').first()).toHaveText('1 file');
-  await expect(row.getByTestId('verdicts')).toHaveText('Reviewed, fine 1');
+  await expect(row.getByTestId('verdicts').locator('.tag')).toHaveText(['1 Reviewed, fine']);
+  await expect(row.getByTestId('no-flags')).toHaveText('Nothing flagged');
   await expect(link).toBeFocused();
 });
 

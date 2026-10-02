@@ -15,15 +15,16 @@ test('archived changes show their reason and date, read-only', async ({ page }) 
   expect(api.requests.some((url) => url.pathname === '/api/repos/1/changes')).toBe(false);
 
   const toggle = page.getByTestId('archive-toggle');
-  await expect(toggle).toHaveAttribute('aria-pressed', 'false');
+  await expect(toggle).toHaveText('Show closed changes');
+  await expect(toggle).toHaveAccessibleDescription('Merged, deleted, closed or cleaned changes, kept for 90 days');
   await toggle.click();
-  await expect(toggle).toHaveAttribute('aria-pressed', 'true');
+  await expect(toggle).toHaveText('Back to open changes');
   await expect(page.getByTestId('change-row')).toHaveCount(4);
   const request = api.requests.find((url) => url.pathname === '/api/repos/1/changes');
   expect(request?.searchParams.get('archived')).toBe('1');
 
-  await expect(page.locator('.repo .changes h2')).toHaveText('Archive');
-  await expect(page.getByTestId('change-count-text')).toHaveText('4 archived changes');
+  await expect(page.locator('.repo .changes h2')).toHaveText('Closed changes');
+  await expect(page.getByTestId('change-count-text')).toHaveText('4 closed changes');
   await expect(page.getByTestId('archive-reason')).toHaveText(['Merged', 'PR closed', 'Draft cleaned', 'Branch deleted']);
   await expect(page.getByTestId('archived-at')).toHaveText(['3 May 2026', '30 Apr 2026', '21 Apr 2026', '12 Apr 2026']);
   await expect(page.getByTestId('archived-at').first()).toHaveAttribute('datetime', '2026-05-03T09:00:00.000Z');
@@ -34,16 +35,16 @@ test('archived changes show their reason and date, read-only', async ({ page }) 
   await expect(page.getByRole('group', { name: 'Filter by kind' }).getByRole('button')).toHaveText(['Draft 1', 'Branch 2', 'PR 1']);
 
   await toggle.click();
-  await expect(toggle).toHaveAttribute('aria-pressed', 'false');
+  await expect(toggle).toHaveText('Show closed changes');
   await expect(page.getByTestId('change-row')).toHaveCount(6);
-  await expect(page.locator('.repo .changes h2')).toHaveText('Changes');
+  await expect(page.locator('.repo .changes h2')).toHaveText('Open changes');
 });
 
 test('an empty archive says so', async ({ page }) => {
   await mockApi(page, { archived: {} });
   await page.goto('/#/repo/1');
   await page.getByTestId('archive-toggle').click();
-  await expect(page.getByTestId('list-empty')).toHaveText('Nothing archived in the last 90 days.');
+  await expect(page.getByTestId('list-empty')).toHaveText('No change closed in the last 90 days.');
 });
 
 test('a failed archive fetch says so until the next successful refetch', async ({ page }, testInfo) => {
@@ -57,7 +58,7 @@ test('a failed archive fetch says so until the next successful refetch', async (
   await page.goto('/#/repo/1');
   await expect(page.getByTestId('daemon')).toHaveAttribute('data-state', 'connected');
   await page.getByTestId('archive-toggle').click();
-  await expect(page.getByTestId('list-empty')).toHaveText('Can’t load the archive right now.');
+  await expect(page.getByTestId('list-empty')).toHaveText('Can’t load the closed changes right now.');
   await expect(page.getByTestId('change-row')).toHaveCount(0);
 
   failing = false;

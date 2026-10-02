@@ -23,17 +23,17 @@ test('archive toggle while the daemon is down, then back', async ({ page }, test
 
   const toggle = page.getByTestId('archive-toggle');
   await toggle.click();
-  await expect(toggle).toHaveAttribute('aria-pressed', 'true');
-  await expect(page.getByTestId('list-empty')).toHaveText('Can’t load the archive right now.');
+  await expect(toggle).toHaveText('Back to open changes');
+  await expect(page.getByTestId('list-empty')).toHaveText('Can’t load the closed changes right now.');
   await expect(page.getByTestId('change-row')).toHaveCount(0);
 
   await toggle.click();
-  await expect(toggle).toHaveAttribute('aria-pressed', 'false');
+  await expect(toggle).toHaveText('Show closed changes');
   await expect(page.getByTestId('change-row')).toHaveCount(6);
   await expect(page.getByTestId('list-empty')).toBeHidden();
 
   await toggle.click();
-  await expect(page.getByTestId('list-empty')).toHaveText('Can’t load the archive right now.');
+  await expect(page.getByTestId('list-empty')).toHaveText('Can’t load the closed changes right now.');
 
   // The daemon is back: hello refetches the archive that is on screen.
   await page.unroute('**/api/repos/1/changes?archived=1');

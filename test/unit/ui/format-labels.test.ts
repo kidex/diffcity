@@ -4,11 +4,13 @@ import { describe, expect, it } from 'vitest';
 import {
   aheadBehind,
   ARCHIVE_REASON_LABEL,
+  ATTENTION_VERDICTS,
   changeName,
   EVENT_LABEL,
   kindLabel,
   lastAuditLabel,
   plural,
+  QUIET_VERDICTS,
   refName,
   relativeTime,
   shortDate,
@@ -102,6 +104,12 @@ describe('ui/format-labels', () => {
       'Reviewed, fine',
       'Untouched',
     ]);
+  });
+
+  it('splits the verdicts into those asking for a look and the quiet ones, keeping the table order', () => {
+    expect(ATTENTION_VERDICTS).toEqual(['eyes', 'risky', 'spec']);
+    expect(QUIET_VERDICTS).toEqual(['ok', 'same']);
+    expect([...ATTENTION_VERDICTS, ...QUIET_VERDICTS]).toEqual(VERDICTS);
   });
 
   it('names where a change lives from its ref', () => {

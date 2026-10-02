@@ -3,9 +3,12 @@
  * mockup's .city backdrop and title; the filter rows are its verdict and type
  * chips (round dots, then square dots and the dashed "Show everything"); the
  * list is the reading panel (.read on --panel) and each row behaves like its
- * .step (hover background, --sig left rule); status counters are the top
- * bar's .stat with swatches, verdict counters its .file-verdict tags, the
- * agent badge its .tier pill; the "Audit now" hint is its .tip card.
+ * fleet card (--line border, 12 px radius) with the .step's --sig rule on
+ * focus; status counters are the top bar's .stat with swatches; the verdict
+ * counters asking for a look are solid tiles in the verdict colours, the
+ * others quiet text; the agent badge is the .tier pill; the "Audit now" and
+ * "Show closed changes" hints are its .tip card. Text on a solid accent uses
+ * --on-accent, and row text avoids --muted, so both schemes pass WCAG AA.
  */
 
 .stage.repo { display: flex; flex-direction: column; }
@@ -37,6 +40,13 @@
   font-size: 12.5px; color: var(--ink-2); white-space: nowrap;
 }
 .has-tip:hover .hint-tip, .has-tip:focus-within .hint-tip { opacity: 1; transform: translateY(0); }
+/*
+ * Hidden at once when left, so only the hint in use is in the accessibility
+ * tree; shown on hover and on keyboard focus, not left over after a click.
+ */
+.hint-tip.on-demand { visibility: hidden; }
+.has-tip .hint-tip.on-demand { opacity: 0; transform: translateY(4px); }
+.has-tip:hover .hint-tip.on-demand, .has-tip:has(:focus-visible) .hint-tip.on-demand { visibility: visible; opacity: 1; transform: translateY(0); }
 
 /* ---------- filters (the mockup's two chip rows) ---------- */
 .repo .filters { display: flex; flex-direction: column; gap: 8px; padding: 14px 22px 18px; }
@@ -48,62 +58,115 @@
 .repo .chip[data-value="in-review"] i { background: var(--sig); }
 .repo .chip[data-value="approved"] i { background: var(--add); }
 
+/* the archive's own bar: a tinted strip, so the swap from the open filters shows */
+.repo .filters.closed {
+  flex-direction: row; flex-wrap: wrap; align-items: center; gap: 10px 16px;
+  margin: 14px 22px 18px; padding: 10px 14px; border-radius: 10px;
+  background: color-mix(in srgb, var(--sig) 10%, var(--panel)); border: 1px dashed color-mix(in srgb, var(--sig) 55%, var(--line));
+}
+.repo .filters.closed .closed-note { margin: 0; display: inline-flex; align-items: center; gap: 8px; color: var(--ink); font-size: 13px; }
+.repo .filters.closed .chip.clear { color: var(--ink-2); }
+.repo .filters.closed .closed-note i { width: 8px; height: 8px; border-radius: 2px; background: var(--sig); }
+
 /* ---------- list (the reading panel) ---------- */
 .repo .changes { flex: 1 0 auto; background: var(--panel); border-top: 1px solid var(--line); }
-.repo .changes header { padding: 18px 22px 12px; border-bottom: 1px solid var(--line-soft); }
+.repo .changes header { padding: 18px 22px 4px; }
 .repo .changes .heading { display: flex; align-items: baseline; gap: 8px; }
 .repo .changes h2 { margin: 0; font-size: 16px; font-weight: 600; letter-spacing: -.01em; }
-.repo .changes .cnt { color: var(--muted); font-size: 13px; }
-.repo .changes header p { margin: 4px 0 0; color: var(--muted); font-size: 12.5px; }
-.repo .list-status { margin: 0; padding: 18px 22px; color: var(--muted); font-size: 13px; }
+.repo .changes .cnt { color: var(--ink-2); font-size: 13px; }
+.repo .changes header p { margin: 4px 0 0; color: var(--ink-2); font-size: 12.5px; }
+.repo .list-status { margin: 0; padding: 18px 22px; color: var(--ink-2); font-size: 13px; }
 
-.change-list { list-style: none; margin: 0; padding: 0 0 24px; }
+/* each change is a card, like the mockup's fleet card */
+.change-list { list-style: none; margin: 0; padding: 12px 22px 28px; display: flex; flex-direction: column; gap: 10px; }
 .change-row {
-  padding: 14px 22px 16px 19px; border-left: 3px solid transparent; border-bottom: 1px solid var(--line-soft);
-  cursor: pointer; transition: background .15s ease;
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; gap: 12px 28px;
+  padding: 14px 16px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel-2);
+  cursor: pointer; transition: border-color .15s ease, box-shadow .15s ease;
 }
-.change-row:hover, .change-row:focus-within { background: color-mix(in srgb, var(--panel-2) 70%, transparent); }
-.change-row:focus-within { border-left-color: var(--sig); }
+.change-row:hover { border-color: var(--plot-line); }
+.change-row:focus-within { border-color: var(--sig); box-shadow: inset 3px 0 0 var(--sig); }
+.change-row .main { min-width: 0; }
 
-.change-row .head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
-.change-row .change-title { color: var(--ink); font-weight: 500; font-size: 14px; text-decoration: none; min-width: 0; overflow-wrap: anywhere; }
+.change-row .head { display: flex; align-items: center; gap: 6px 8px; flex-wrap: wrap; }
+.change-row .badges { display: inline-flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.change-row .when { margin-left: auto; color: var(--ink-2); font-size: 12px; white-space: nowrap; }
+.change-row .when .ev { color: var(--ink); font-weight: 500; }
+
+.change-row h3.change-name { margin: 8px 0 0; font-size: 16.5px; font-weight: 600; line-height: 1.3; letter-spacing: -.01em; }
+.change-row .change-title { color: var(--ink); text-decoration: none; overflow-wrap: anywhere; }
 .change-row .change-title:hover { text-decoration: underline; text-decoration-color: var(--plot-line); text-underline-offset: 3px; }
-.change-row .badges { display: inline-flex; gap: 6px; flex-wrap: wrap; align-items: baseline; }
-.change-row .when { margin-left: auto; color: var(--muted); font-size: 12px; white-space: nowrap; }
-.change-row .when .ev { color: var(--ink-2); }
 
-/* the mockup's .tier pill, at tag size */
-.tag.agent {
-  display: inline-flex; align-items: center; gap: 6px; color: var(--tier);
-  background: color-mix(in srgb, var(--tier) 16%, transparent);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--tier) 55%, transparent);
+/* kind: a solid, square-cornered mono label, one colour per kind */
+.change-row .tag.kind {
+  font-family: var(--mono); font-weight: 600; font-size: 11.5px; border: 0; border-radius: 4px; padding: 2px 7px;
+  color: var(--on-accent); background: var(--k, var(--ink-2));
 }
-.tag.agent i { width: 6px; height: 6px; border-radius: 50%; background: var(--tier); }
-/* archive */
-.tag.archived.merged { color: var(--sig); background: color-mix(in srgb, var(--sig) 16%, transparent); }
-.tag.archived.closed, .tag.archived.deleted { color: var(--del); background: color-mix(in srgb, var(--del) 14%, transparent); }
-.change-row .archived-at { color: var(--muted); font-size: 12px; }
+.change-row[data-kind="draft"] { --k: var(--mod); }
+.change-row[data-kind="branch"] { --k: var(--sev-low); }
+.change-row[data-kind="pr"] { --k: var(--sig); }
 
-.change-row .where { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; margin-top: 6px; color: var(--muted); font-size: 12.5px; }
+/* review state: a round pill with a mark, in the colours of the filter chips */
+.change-row .tag.review { display: inline-flex; align-items: center; gap: 6px; border-radius: 999px; padding: 2px 9px 2px 7px; font-weight: 600; }
+.change-row .tag.review::before { content: ""; width: 7px; height: 7px; border-radius: 50%; box-sizing: border-box; }
+.change-row .tag.review.unreviewed { color: var(--panel); background: var(--ink); }
+.change-row .tag.review.unreviewed::before { border: 1.5px solid var(--panel); }
+.change-row .tag.review.in-review { color: var(--ink); background: color-mix(in srgb, var(--sig) 16%, transparent); box-shadow: inset 0 0 0 1.5px var(--sig); }
+.change-row .tag.review.in-review::before { background: linear-gradient(90deg, var(--sig) 50%, transparent 50%); border: 1.5px solid var(--sig); }
+.change-row .tag.review.approved { color: var(--on-accent); background: var(--add); }
+.change-row .tag.review.approved::before { background: var(--on-accent); }
+
+/* the mockup's .tier pill, at tag size, with ink text for contrast */
+.change-row .tag.agent {
+  display: inline-flex; align-items: center; gap: 6px; border-radius: 999px; font-weight: 600; color: var(--ink);
+  background: color-mix(in srgb, var(--tier) 14%, transparent);
+  box-shadow: inset 0 0 0 1.5px var(--tier);
+}
+.change-row .tag.agent i { width: 7px; height: 7px; border-radius: 50%; background: var(--tier); }
+
+/* closed changes: why they left, as a solid badge, and when */
+.change-row .tag.archived { font-weight: 600; color: var(--panel); background: var(--ink); }
+.change-row .tag.archived.merged { color: var(--on-accent); background: var(--sig); }
+.change-row .tag.archived.closed, .change-row .tag.archived.deleted { color: var(--on-accent); background: var(--del); }
+.change-row .archived-at { color: var(--ink-2); font-size: 12px; }
+
+.change-row .where { display: flex; align-items: baseline; gap: 4px 8px; flex-wrap: wrap; margin-top: 6px; color: var(--ink-2); font-size: 12.5px; }
 .change-row .where code { font-family: var(--mono); font-size: 12px; color: var(--ink-2); overflow-wrap: anywhere; }
 .change-row .where .vs { font-size: 12px; }
-.change-row .where .ahead { color: var(--ink-2); }
+.change-row .where .tag.dirty { color: var(--ink); background: color-mix(in srgb, var(--mod) 22%, transparent); }
 
-.change-row .counts { display: flex; align-items: center; gap: 8px 16px; flex-wrap: wrap; margin-top: 10px; }
-.change-row .stats { margin-left: 0; display: inline-flex; gap: 14px; flex-wrap: wrap; color: var(--ink-2); }
-.change-row .stat b { font-size: 14px; }
-.change-row .stat.zero b, .change-row .stat.zero small { color: var(--muted); }
-.change-row .stat.zero .sw { opacity: .35; }
+/* touched files and symbols: secondary, and a zero status is not shown at all */
+.change-row .counts { margin-top: 10px; }
+.change-row .counts:empty { display: none; }
+.change-row .stats { margin-left: 0; display: inline-flex; align-items: baseline; gap: 6px 14px; flex-wrap: wrap; color: var(--ink-2); }
+.change-row .stat b { font-size: 13.5px; font-weight: 600; }
+.change-row .stat small { color: var(--ink-2); }
+.change-row .stat.zero { display: none; }
 .change-row .stat.add .sw { background: var(--add); }
 .change-row .stat.mod .sw { background: var(--mod); }
 .change-row .stat.sig .sw { background: var(--sig); }
 .change-row .stat.del .sw { background: var(--del); }
-.change-row .verdict-counts { display: inline-flex; gap: 6px; flex-wrap: wrap; }
 
-.change-row .note { color: var(--muted); font-size: 12.5px; }
-.change-row .note.computing { display: inline-flex; align-items: center; gap: 7px; color: var(--sig); }
-.change-row .note.computing i { width: 6px; height: 6px; border-radius: 50%; background: var(--sig); animation: daemon-pulse 1.2s ease-in-out infinite; }
-.change-row .note.not-fetched { color: var(--mod); }
+/* file verdicts: what asks for a human look is the loudest thing on the card */
+.change-row .attention { display: flex; flex-direction: column; align-items: flex-end; min-width: 0; }
+.change-row .verdict-counts { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
+.change-row .flags { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
+.change-row .tag.verdict.flag {
+  display: inline-flex; align-items: baseline; gap: 6px; padding: 5px 10px 6px; border-radius: 8px;
+  color: var(--on-accent); background: var(--v); font-size: 12.5px; font-weight: 600;
+}
+.change-row .tag.verdict.flag i { display: none; }
+.change-row .tag.verdict.flag b { font-size: 20px; font-weight: 700; line-height: 1; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+.change-row .no-flags { display: inline-flex; align-items: center; gap: 6px; color: var(--ink-2); font-size: 12.5px; padding: 6px 0; }
+.change-row .no-flags::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--verdict-ok); }
+.change-row .quiet-counts { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 4px 12px; }
+.change-row .tag.verdict.quiet { padding: 0; background: none; color: var(--ink-2); font-weight: 400; font-size: 12px; }
+.change-row .tag.verdict.quiet b { font-weight: 600; color: var(--ink-2); }
+
+.change-row .note { display: inline-flex; align-items: center; gap: 7px; color: var(--ink-2); font-size: 12.5px; padding: 6px 0; }
+.change-row .note i { width: 7px; height: 7px; border-radius: 50%; }
+.change-row .note.computing i { background: var(--sig); animation: daemon-pulse 1.2s ease-in-out infinite; }
+.change-row .note.not-fetched i { background: var(--mod); }
 
 /* ---------- loading, missing, unreachable ---------- */
 .repo-hero { margin: 10vh auto 0; max-width: 480px; padding: 0 22px; text-align: center; }
@@ -111,6 +174,17 @@
 .repo-hero p, .repo-status { margin: 6px auto 0; color: var(--muted); font-size: 13px; }
 .repo-hero a { color: var(--ink-2); }
 
+/* one column: the verdicts move up under the title, still read after the row's text */
 @media (max-width: 760px) {
+  .change-row { display: flex; flex-direction: column; gap: 0; }
+  .change-row .main { display: contents; }
+  .change-row .head { order: 1; }
+  .change-row h3.change-name { order: 2; }
+  .change-row .attention { order: 3; margin-top: 10px; align-items: flex-start; }
+  .change-row .where { order: 4; }
+  .change-row .counts { order: 5; }
   .change-row .when { margin-left: 0; flex-basis: 100%; }
+  .change-row .verdict-counts { flex-direction: row; flex-wrap: wrap; align-items: center; gap: 6px 14px; }
+  .change-row .flags, .change-row .quiet-counts { justify-content: flex-start; }
+  .change-row .no-flags, .change-row .note { padding: 0; }
 }
