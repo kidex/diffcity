@@ -12,18 +12,22 @@
 //
 // On start, every active repo gets one low-priority collection (ADR-020).
 //
+// Opening a repo in the UI (provideRepoOpen, called by GET /api/repos/:id)
+// counts as seeing it, exactly like `track` (Q6): its 7-day window moves
+// forward on this plugin's clock, active or not, and an inactive repo is
+// active again and collected once. An open of an active repo collects nothing.
+//
 // Two hooks for the watchers (DC-33): onActivated fires when `track` registers
-// a repo or reactivates an inactive one, and when the UI opens an inactive repo
-// (provideActivation, called by GET /api/repos/:id, which then also collects
-// it once); onListed fires after each collection read a repo's working trees.
+// a repo or reactivates an inactive one, and when the UI opens an inactive
+// repo; onListed fires after each collection read a repo's working trees.
 
 import { availableParallelism } from 'node:os';
 import { identifyRepo, type RepoIdentity, type WorktreeInfo } from '../../core/changes/index.js';
 import { createTrustCheck } from '../../core/settings/index.js';
 import type { Db } from '../../core/db/index.js';
 import type { CommandRunner } from '../../core/git/index.js';
-import type { SocketSuccessResponses } from '../../core/model/types.js';
-import { provideActivation } from '../activation.js';
+import type { RepoRecord, SocketSuccessResponses } from '../../core/model/types.js';
+import { provideRepoOpen } from '../activation.js';
 import { getDb } from '../db.js';
 import { errorMessage } from '../log.js';
 import type { DaemonContext, DaemonPlugin } from '../plugin.js';
@@ -123,12 +127,25 @@ export function createCollection(options: CollectionPluginOptions = {}): Collect
     }
   }
 
-  /** Opening an inactive repo in the UI (Q6): active again, watched, and collected once. */
-  function reactivate(context: DaemonContext, repoId: number): boolean {
+  /**
+   * Seeing a known repo (Q6), for `track` and the UI: active, and its 7-day
+   * window moved to `at` (never back). Returns true when it was inactive.
+   */
+  function markSeen(store: Db, repo: RepoRecord, at: string): boolean {
+    if (!repo.active) store.repos.setActive(repo.id, true);
+    if (at > repo.lastSeenAt) store.repos.touchSeen(repo.id, at);
+    return !repo.active;
+  }
+
+  /**
+   * Opening a repo in the UI (Q6): seen now. An inactive repo is also active
+   * again, watched, and collected once; an active one only gets its window
+   * moved, with no signal (the UI refetches the repo on a `repo` signal).
+   */
+  function open(context: DaemonContext, repoId: number): boolean {
     const store = need(db, 'database');
     const repo = store.repos.get(repoId);
-    if (repo === null || repo.active) return false;
-    store.repos.setActive(repoId, true);
+    if (repo === null || !markSeen(store, repo, now().toISOString())) return false;
     emitActivated(context, repoId);
     context.broadcast({ event: 'repo', data: { repoId } });
     const active = need(collector, 'collector');
@@ -142,11 +159,8 @@ export function createCollection(options: CollectionPluginOptions = {}): Collect
     const identity = await identifyRepo(request.dir);
     const at = requestTime(request.at, now());
     const { repo, created } = store.repos.upsert({ ...identity, active: true, seenAt: at });
-    if (!created) {
-      if (!repo.active) store.repos.setActive(repo.id, true);
-      if (at > repo.lastSeenAt) store.repos.touchSeen(repo.id, at);
-    }
-    if (created || !repo.active) emitActivated(context, repo.id);
+    const reactivated = !created && markSeen(store, repo, at);
+    if (created || reactivated) emitActivated(context, repo.id);
     context.broadcast({ event: 'repo', data: { repoId: repo.id } });
     later(async () => {
       await active.request(repo.id, 'full', 'high');
@@ -222,7 +236,7 @@ export function createCollection(options: CollectionPluginOptions = {}): Collect
         collecting: (repoId) => created.isCollecting(repoId),
         notes: (repoId) => created.notes(repoId),
       });
-      provideActivation(context, (repoId) => reactivate(context, repoId));
+      provideRepoOpen(context, (repoId) => open(context, repoId));
       context.socket.handle('track', (request) => track(context, request));
       context.socket.handle('register', (request) => register(context, request));
     },

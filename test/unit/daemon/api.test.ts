@@ -120,7 +120,14 @@ beforeEach(async () => {
     log: createStreamLogger(new PassThrough()),
     port: () => PORT,
   });
-  registerApiRoutes(app, { db, now: () => NOW, port: () => PORT });
+  registerApiRoutes(app, {
+    db,
+    port: () => PORT,
+    // Stands in for the collection plugin's handler, which stamps lastSeenAt on the daemon's clock.
+    open: (repoId) => {
+      db.repos.touchSeen(repoId, NOW);
+    },
+  });
 });
 afterEach(async () => {
   hub.close();
