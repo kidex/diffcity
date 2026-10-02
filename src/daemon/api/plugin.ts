@@ -2,7 +2,7 @@
 // database that cannot be opened stops the daemon from starting, and registers
 // the routes before the server listens.
 
-import { activateRepo } from '../activation.js';
+import { openRepo } from '../activation.js';
 import { getDb } from '../db.js';
 import type { DaemonPlugin } from '../plugin.js';
 import { getRuntime } from '../runtime.js';
@@ -14,13 +14,12 @@ export const apiPlugin: DaemonPlugin = {
     const db = await getDb(context);
     registerApiRoutes(http, {
       db,
-      now: () => new Date().toISOString(),
       port: () => context.port(),
       // `collecting` from the collector, `watch` from the watchers (src/daemon/runtime.ts).
       runtime: getRuntime(context),
-      // Through the collection plugin's activation hook (src/daemon/activation.ts).
-      activate: (repoId) => {
-        activateRepo(context, repoId);
+      // Through the collection plugin's handler (src/daemon/activation.ts), on its clock.
+      open: (repoId) => {
+        openRepo(context, repoId);
       },
     });
   },
