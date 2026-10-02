@@ -31,6 +31,10 @@ export interface WatchersOptions {
   budget?: number;
   /** Working tree backend; defaults to DEFAULT_WORKTREE_BACKEND (recursive fs.watch on macOS). */
   backend?: WorktreeBackend;
+  /** Runs the chokidar reconcile timers; defaults to the system clock (not `clock`, which runs the debounce). */
+  reconcileClock?: Clock;
+  /** Defaults to RECONCILE_DELAY_MS. */
+  reconcileDelayMs?: number;
   debounceMs?: number;
   maxWaitMs?: number;
   /** A repo's watch mode changed (it went `git-only`). */
@@ -52,6 +56,8 @@ export interface Watchers {
   watched(): number[];
   /** The working trees watched in a repo. */
   watchedWorktrees(repoId: number): string[];
+  /** A reconcile pass is scheduled or running in one of the repo's working trees. */
+  reconciling(repoId: number): boolean;
   /** Pending debounced keys. */
   pending(): number;
   /** Stops everything; waits for every watcher to close. */
@@ -116,6 +122,8 @@ export function createWatchers(options: WatchersOptions): Watchers {
         log,
         ...(options.budget === undefined ? {} : { budget: options.budget }),
         ...(options.backend === undefined ? {} : { backend: options.backend }),
+        ...(options.reconcileClock === undefined ? {} : { reconcileClock: options.reconcileClock }),
+        ...(options.reconcileDelayMs === undefined ? {} : { reconcileDelayMs: options.reconcileDelayMs }),
         onGit: (path) => {
           push(repo.id, 'refs', path);
         },
@@ -146,6 +154,7 @@ export function createWatchers(options: WatchersOptions): Watchers {
     mode: (repoId) => entries.get(repoId)?.watcher.mode ?? null,
     watched: () => [...entries.keys()],
     watchedWorktrees: (repoId) => entries.get(repoId)?.watcher.watchedWorktrees() ?? [],
+    reconciling: (repoId) => entries.get(repoId)?.watcher.reconciling() ?? false,
     pending: () => debouncer.pending(),
     async close() {
       closed = true;
