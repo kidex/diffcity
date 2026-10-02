@@ -46,12 +46,12 @@ Division of labour: the AI writes the line-by-line comments (imported as finding
 ## 3. CLI commands
 
 ```
-diffcity start [<dir>]                                 # the one command to use: start the daemon if needed, register the repo at <dir> (or the current repo) and open it in the browser
+diffcity start [<dir>] [--port 4321] [--no-open]       # the one command to use: start the daemon if needed, register the repo at <dir> (or the current repo) and open it in the browser
 diffcity stop                                          # stop the daemon
 diffcity up [--port 4321]                              # start the daemon and open the UI (localhost); start without a repo
 diffcity shell-init [zsh|bash|fish]                    # print the shell hook; add to .zshrc: eval "$(diffcity shell-init zsh)"
 diffcity track [<dir>] [--agent]                       # register the current repo and ask the daemon to collect; --agent marks the change as "agent worked, not reviewed" and links the Claude Code session from the hook JSON on stdin
-diffcity trust [<dir>] [--revoke]                      # let the daemon load this repo's diffcity.config.js
+diffcity trust [<dir>] [--list] [--remove]             # let the daemon load this repo's diffcity.config.js; --list shows trusted repos, --remove withdraws trust
 diffcity scan <dir>                                    # discover repos (folders with .git) under a folder and register them
 diffcity diff --json [--base] [--head]                 # semantic diff of the current change, for AI and other tools
 diffcity import <findings.json|*.sarif.json> [--open]  # anchor findings to symbols and attach them to the current change; --open opens the change in the UI
@@ -73,7 +73,7 @@ Integrate (phase 5) has no CLI command: merge, push and PR run only from the cha
 | Trigger | What happens |
 |---|---|
 | You `cd` into a folder with `.git` (`chpwd`/`PROMPT_COMMAND` hook) | `diffcity track` registers the repo if missing and asks the daemon to collect; costs under 50 ms, the rest is asynchronous |
-| The daemon is running | watches `.git/refs`, `.git/HEAD` and the working tree of active repos with chokidar; on change it recomputes only the affected change, with a 2 s debounce |
+| The daemon is running | watches `.git/refs`, `.git/HEAD` and the working tree of active repos (chokidar, or recursive `fs.watch` for working trees on macOS; ADR-020); on change it recomputes only the affected change, with a 2 s debounce |
 | Claude Code finishes a task (Stop hook) | `diffcity track --agent` marks the change as "agent worked, not reviewed" |
 | `/code-review` from the editor | findings land on the current change and update its verdicts |
 | Every 15 min, per active repo | `gh pr list --json` (if `gh` is installed and authenticated) refreshes open PRs |

@@ -7,6 +7,9 @@
  * - --verdict-*: the mockup's VERDICT map, which hard-codes spec and same;
  * - --audit-*: the Fleet audit-age colours (ADR-022), from the mockup's fleet
  *   card (fresh = green bar, warn = amber bar, stale = red bar) plus "never";
+ * - --on-accent: text on a solid accent fill (a status, verdict or kind
+ *   colour), the mockup's darkest navy in both schemes, since the accents
+ *   do not change with the scheme.
  * - --c-*: the night data city of the change screen (ADR-026, direction C):
  *   the dark palette one step deeper for the night ground, the glass and lot
  *   tints derived from it, and the bloom strength. The light theme keeps the
@@ -60,6 +63,8 @@
   --c-glass: #10203C;
   --c-glass-quiet: #0D182D;
   --c-bloom: 0.45;
+
+  --on-accent: #0D172B;
 
   --sans: "Sora", "Segoe UI", system-ui, -apple-system, sans-serif;
   --mono: "IBM Plex Mono", "SFMono-Regular", Menlo, Consolas, monospace;

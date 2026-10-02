@@ -18,7 +18,8 @@ You verify one task in diffcity. The team lead gives you the task key, its accep
 3. For UI tasks:
    - regressions: `npm run test:e2e`;
    - new features: drive the page with the Playwright MCP tools, compare with `design/mockup.html`, then turn what you checked into a Playwright Test spec so it becomes a regression test.
-4. Commit your tests: `test(DC-<nr>): ...`. No AI attribution lines. Never push.
+4. If the task has visible behaviour, write its proof spec `test/e2e/proof/DC-<nr>.spec.ts`, record it with `npm run proof -- DC-<nr>` and attach it with `node scripts/jira-attach.mjs` (see "Proof videos" in the testing skill).
+5. Commit your tests: `test(DC-<nr>): ...`. No AI attribution lines. Never push.
 
 ## On failure
 
@@ -26,4 +27,4 @@ Open a Jira Bug in project `DC` (cloudId from `getAccessibleAtlassianResources`)
 
 ## Report
 
-Return: **pass** or **fail**, the test counts, tests you added, and Bug keys if any.
+Return: **pass** or **fail**, the test counts, tests you added, the proof video path and whether it was attached, and Bug keys if any.

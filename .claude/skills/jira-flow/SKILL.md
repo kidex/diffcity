@@ -48,7 +48,7 @@ The workflow has three states. Transition ids: `11` To Do, `21` In Progress, `31
 | Tester verdict | In Progress | `Test: passed (N tests)` or `Test: failed, see DC-<bug>` |
 | Merged by the team lead | Done | summary: what changed, commits, tests, anything left out |
 
-A task goes to Done only after `Review: approved` and `Test: passed`. An epic is closed at the phase tag, after the phase report exists in Confluence.
+A task goes to Done only after `Review: approved` and `Test: passed`, and, when it has visible behaviour, with its proof video attached (or its path in a comment while the upload is pending; see the testing skill). An epic is closed at the phase tag, after the phase report exists in Confluence.
 
 ## Git naming
 

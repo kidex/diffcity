@@ -30,7 +30,7 @@ test('a branch row shows every field', async ({ page }) => {
 
   const touched = branch.getByTestId('touched');
   await expect(touched.locator('.stat')).toHaveText(['6 files', '10 added', '8 modified', '1 signature', '1 removed']);
-  await expect(branch.getByTestId('verdicts').locator('.tag')).toHaveText(['Needs your eyes 2', 'Outside the spec 1', 'Untouched 3']);
+  await expect(branch.getByTestId('verdicts').locator('.tag')).toHaveText(['2 Needs your eyes', '1 Outside the spec', '3 Untouched']);
 });
 
 test('a draft shows its working tree and the uncommitted changes marker', async ({ page }) => {
@@ -55,19 +55,22 @@ test('a pull request is labelled PR #N, with its review state and verdicts', asy
   await expect(pr.getByTestId('kind')).toHaveText('PR #9');
   await expect(pr.getByTestId('ref')).toHaveCount(0);
   await expect(pr.getByTestId('review-state')).toHaveText('Approved');
-  await expect(pr.getByTestId('verdicts').locator('.tag')).toHaveText(['Risky 1', 'Reviewed, fine 1', 'Untouched 1']);
+  await expect(pr.getByTestId('verdicts').locator('.tag')).toHaveText(['1 Risky', '1 Reviewed, fine', '1 Untouched']);
   await expect(pr.getByTestId('last-event')).toHaveText('Reviewed 2 days ago');
 });
 
-test('zero counters stay visible but muted, zero verdicts are left out', async ({ page }) => {
+test('zero status counters are hidden, zero verdicts are left out', async ({ page }) => {
   const draft = row(page, 10);
   await expect(draft.locator('.stat[data-status="sig"]')).toHaveClass(/zero/);
+  await expect(draft.locator('.stat[data-status="sig"]')).toBeHidden();
   await expect(draft.locator('.stat[data-status="add"]')).not.toHaveClass(/zero/);
-  await expect(draft.getByTestId('verdicts').locator('.tag')).toHaveText(['Untouched 2']);
+  await expect(draft.locator('.stat[data-status="add"]')).toBeVisible();
+  await expect(draft.getByTestId('verdicts').locator('.tag')).toHaveText(['2 Untouched']);
+  await expect(draft.getByTestId('no-flags')).toHaveText('Nothing flagged');
 });
 
 test('the list header counts the changes', async ({ page }) => {
-  await expect(page.locator('.repo .changes h2')).toHaveText('Changes');
+  await expect(page.locator('.repo .changes h2')).toHaveText('Open changes');
   await expect(page.locator('.repo .changes .cnt')).toHaveText('6');
   await expect(page.locator('.repo-head h1')).toHaveText('sample-shop');
   await expect(page.locator('.repo-head .path')).toHaveText('/work/sample-shop');

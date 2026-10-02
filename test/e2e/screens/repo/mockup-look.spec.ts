@@ -32,10 +32,12 @@ for (const scheme of ['dark', 'light'] as const) {
     for (const status of ['add', 'mod', 'sig', 'del']) {
       expect(await computed(row(11).locator(`.stat[data-status="${status}"] .sw`), 'background-color'), status).toBe(await token(`--${status}`));
     }
-    expect(await computed(row(11).locator('[data-verdict="eyes"]'), 'color')).toBe(await token('--verdict-eyes'));
-    expect(await computed(row(11).locator('[data-verdict="same"]'), 'color')).toBe(await token('--verdict-same'));
-    expect(await computed(row(15).locator('[data-verdict="risky"]'), 'color')).toBe(await token('--verdict-risky'));
-    expect(await computed(row(11).getByTestId('agent-badge'), 'color')).toBe(await token('--tier'));
+    // Verdicts asking for a look are solid tiles in the verdict colour; the others a dot in it.
+    expect(await computed(row(11).locator('[data-verdict="eyes"]'), 'background-color')).toBe(await token('--verdict-eyes'));
+    expect(await computed(row(11).locator('[data-verdict="eyes"]'), 'color')).toBe(await token('--on-accent'));
+    expect(await computed(row(11).locator('[data-verdict="same"] i'), 'background-color')).toBe(await token('--verdict-same'));
+    expect(await computed(row(15).locator('[data-verdict="risky"]'), 'background-color')).toBe(await token('--verdict-risky'));
+    expect(await computed(row(11).locator('[data-testid="agent-badge"] i'), 'background-color')).toBe(await token('--tier'));
     expect(await computed(page.locator('.chip').first(), 'border-top-color')).toBe(await token('--line'));
     expect(await computed(page.getByTestId('show-everything'), 'border-top-style')).toBe('dashed');
   });
@@ -62,6 +64,28 @@ for (const width of [700, 1024, 1440]) {
       }
     });
   }
+}
+
+for (const scheme of ['dark', 'light'] as const) {
+  test(`screenshot of the closed changes (1440 px, ${scheme})`, async ({ page }, testInfo) => {
+    await page.setViewportSize({ width: 1440, height: 1100 });
+    await page.emulateMedia({ colorScheme: scheme, reducedMotion: 'reduce' });
+    await page.clock.setFixedTime(NOW);
+    await openRepo(page);
+    await page.getByTestId('archive-toggle').click();
+    await page.mouse.move(0, 0);
+    await expect(page.getByTestId('change-row')).toHaveCount(4);
+    expect(await page.evaluate<boolean>('document.documentElement.scrollWidth <= window.innerWidth')).toBe(true);
+    const name = `repo-closed-1440-${scheme}.png`;
+    const path = testInfo.outputPath(name);
+    await page.screenshot({ path, fullPage: true });
+    await testInfo.attach(name, { path, contentType: 'image/png' });
+    const shots = process.env['DIFFCITY_E2E_SHOTS'];
+    if (shots) {
+      mkdirSync(shots, { recursive: true });
+      copyFileSync(path, join(shots, name));
+    }
+  });
 }
 
 test('screenshot of the change city', async ({ page }, testInfo) => {
