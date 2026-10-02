@@ -1,16 +1,16 @@
 // Spawning real daemons in tests (ADR-015). Every daemon a test starts, through
 // the daemon script or through `diffcity up`, lives in a temporary
-// DIFFCITY_HOME; DaemonTracker.cleanup() (in afterEach) stops every one of
-// them, so no test leaves a daemon running.
+// DIFFCITY_HOME registered with test/helpers/daemons.ts; DaemonTracker.cleanup()
+// (in afterEach) stops every one of them, the setup file sweeps what a file
+// registered in afterAll, and the global teardown sweeps the whole run, so no
+// test leaves a daemon running.
 
-import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
-import { readFile } from 'node:fs/promises';
+import { spawn, type ChildProcess } from 'node:child_process';
 import { join } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
-import { homePaths, HOME_ENV } from '../../src/core/home.js';
-import { sendRequest } from '../../src/daemon/client.js';
-import { isProcessAlive, readDaemonInfo } from '../../src/daemon/files.js';
+import { HOME_ENV } from '../../src/core/home.js';
+import { registerHome, sweepHomes } from './daemons.js';
 
 const repoRoot = fileURLToPath(new URL('../../', import.meta.url));
 /** Built by test/global-setup.ts. */
@@ -50,6 +50,7 @@ export class DaemonTracker {
     this.homes.add(home);
     const child = spawn(process.execPath, [...nodeArgs, script, ...args], { env, cwd, stdio: ['ignore', 'pipe', 'pipe'] });
     this.children.add(child);
+    registerHome(home, child.pid);
     let out = '';
     let err = '';
     child.stdout.setEncoding('utf8').on('data', (chunk: string) => (out += chunk));
@@ -73,11 +74,13 @@ export class DaemonTracker {
   /** Registers a home whose daemon must be stopped on cleanup (one started by `up`, say). */
   track(home: string): void {
     this.homes.add(home);
+    registerHome(home);
   }
 
-  /** Stops every daemon in every home seen, then kills any child still running. */
+  /** Stops every process running with a home seen (daemons, `up`, `track`), then kills any child still running. */
   async cleanup(): Promise<void> {
-    for (const home of this.homes) await stopDaemonIn(home);
+    const pids = [...this.children].flatMap((child) => (child.pid === undefined ? [] : [child.pid]));
+    await sweepHomes(this.homes, { pids });
     for (const child of this.children) {
       if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL');
     }
@@ -86,43 +89,13 @@ export class DaemonTracker {
   }
 }
 
-/** The pids that may belong to a daemon of this home: daemon.json and the lock. */
-async function daemonPids(home: string): Promise<number[]> {
-  const paths = homePaths(home);
-  const pids = new Set<number>();
-  const info = await readDaemonInfo(paths).catch(() => null);
-  if (info !== null) pids.add(info.pid);
-  const lock = await readFile(paths.lock, 'utf8').catch(() => '');
-  const lockPid = Number(lock.trim());
-  if (Number.isSafeInteger(lockPid) && lockPid > 0) pids.add(lockPid);
-  return [...pids].filter((pid) => pid !== process.pid);
-}
-
 /**
- * True when `pid` runs this checkout's daemon script. A pid read from a stale
- * lock may since belong to an unrelated process, which must never be killed.
+ * Stops every process of this checkout running with `home` as its
+ * DIFFCITY_HOME (see test/helpers/daemons.ts): SIGTERM, then SIGKILL.
  */
-function isOurDaemon(pid: number): boolean {
-  const ps = spawnSync('ps', ['-o', 'command=', '-p', String(pid)], { encoding: 'utf8' });
-  return ps.status === 0 && ps.stdout.includes(DAEMON_MAIN_DIST);
-}
-
-/** Sends `shutdown`, waits up to 5 s for the daemons to exit, then SIGKILLs those still running. */
 export async function stopDaemonIn(home: string): Promise<void> {
-  const paths = homePaths(home);
-  const pids = (await daemonPids(home)).filter(isOurDaemon);
-  const info = await readDaemonInfo(paths).catch(() => null);
-  if (info !== null) await sendRequest(info.socket, { v: 1, type: 'shutdown' }, { timeoutMs: 2000 }).catch(() => undefined);
-  const deadline = Date.now() + 5000;
-  const running = (): number[] => pids.filter((pid) => isProcessAlive(pid) && isOurDaemon(pid));
-  while (running().length > 0 && Date.now() < deadline) await sleep(25);
-  for (const pid of running()) {
-    try {
-      process.kill(pid, 'SIGKILL');
-    } catch {
-      // Already gone.
-    }
-  }
+  registerHome(home);
+  await sweepHomes([home]);
 }
 
 /** An open SSE connection; `until` reads until the text so far contains `marker`. */
