@@ -1,0 +1,54 @@
+/*
+ * Direction B, "Architectural model". Light theme of the mockup palette;
+ * warm paper, clay and card whites for the maquette, ink for annotations.
+ */
+:root {
+  --b-paper: #F1EFEA;
+  --b-board: #FBFAF7;
+  --b-lot: #F6F4EF;
+  --b-clay: #FFFFFF;
+  --b-foam: #E4E7EC;
+  --b-vellum: #FFFFFF;
+  --b-sky: #FFFFFF;
+  --b-bounce: #D9D4CA;
+  --b-sun: #FFF8EE;
+  --b-ink: #16223B;
+
+  --stage-bg: #F1EFEA;
+  --hud-bg: color-mix(in srgb, #FBFAF7 80%, transparent);
+  --hud-panel: #FBFAF7;
+  --hud-top-bg: #FBFAF7;
+  --hud-chip: #F1EFEA;
+  --hud-line: #DED9CF;
+  --hud-blur: 6px;
+  --hud-radius: 4px;
+  --hud-shadow: 0 1px 2px rgb(22 34 59 / 0.06), 0 12px 32px rgb(22 34 59 / 0.08);
+}
+.chips button { border-radius: 4px; font-weight: 400; }
+.city .title h1 { font-weight: 300; letter-spacing: .01em; font-size: 22px; }
+.top .brand { font-weight: 500; }
+
+/* roof annotations: thin type on a hairline leader */
+.roof { display: flex; flex-direction: column; align-items: center; pointer-events: none; padding-bottom: 34px; position: relative; }
+.roof::after {
+  content: ""; position: absolute; left: 50%; bottom: 0; width: 1px; height: 30px;
+  background: linear-gradient(to top, transparent, color-mix(in srgb, var(--b-ink) 55%, transparent) 30%);
+}
+.roof .badge {
+  display: inline-flex; align-items: center; gap: 6px; white-space: nowrap;
+  font: 500 9.5px/1.2 var(--sans); letter-spacing: .14em; text-transform: uppercase; color: var(--c);
+}
+.roof .badge span { color: color-mix(in srgb, var(--c) 70%, var(--b-ink)); }
+.roof .badge i { width: 6px; height: 6px; border-radius: 50%; background: var(--c); }
+.roof .file {
+  font: 400 11.5px/1.3 var(--mono); color: var(--b-ink); white-space: nowrap;
+  padding: 1px 0 3px; border-bottom: 1px solid color-mix(in srgb, var(--b-ink) 40%, transparent);
+}
+.roof.v-ok .badge { opacity: .75; }
+.roof.v-ok .file { color: color-mix(in srgb, var(--b-ink) 75%, transparent); border-bottom-color: color-mix(in srgb, var(--b-ink) 18%, transparent); }
+.roof.is-selected .file, .roof.is-hover .file { font-weight: 500; border-bottom-color: var(--b-ink); color: var(--b-ink); }
+
+.stop {
+  font: 500 10px/1 var(--sans); color: var(--b-ink); width: 18px; height: 18px; display: grid; place-items: center;
+  border-radius: 50%; background: var(--b-board); border: 1px solid var(--b-ink); pointer-events: none;
+}

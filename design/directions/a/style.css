@@ -1,0 +1,58 @@
+/*
+ * Direction A, "Glass & light". Light theme of the mockup palette; the extra
+ * tokens below are tints of it for glass, studio and shadows.
+ */
+:root {
+  --a-sky-top: #FFFFFF;
+  --a-sky-bottom: #EEF2F8;
+  --a-ground: #DCE4F0;
+  --a-sun: #FFFDF8;
+  --a-shadow: #16223B;
+  --a-lot: #FBFCFE;
+  --a-lot-ink: #74829E;
+  --a-glass: #F4F8FF;
+  --a-frost: #E9EEF6;
+  --a-attenuation: #DCE6F7;
+  --a-core: #C9D3E4;
+  --a-core-quiet: #DCE4F0;
+  --a-stem: #74829E;
+  --a-badge-ink: #0D172B;
+
+  --stage-bg: linear-gradient(#F7F9FD, #E3E9F3);
+  --hud-bg: color-mix(in srgb, #FFFFFF 62%, transparent);
+  --hud-panel: color-mix(in srgb, #FFFFFF 72%, transparent);
+  --hud-top-bg: color-mix(in srgb, #FFFFFF 70%, transparent);
+  --hud-chip: color-mix(in srgb, #FFFFFF 85%, transparent);
+  --hud-line: color-mix(in srgb, var(--line) 80%, transparent);
+  --hud-blur: 18px;
+  --hud-radius: 14px;
+  --hud-shadow: 0 1px 0 rgb(255 255 255 / 0.8) inset, 0 18px 50px rgb(22 34 59 / 0.12);
+}
+.top { backdrop-filter: blur(18px); }
+
+/* roof labels: a glassy file chip under a verdict pill */
+.roof { display: flex; flex-direction: column; align-items: center; gap: 4px; pointer-events: none; }
+.roof .badge {
+  display: inline-flex; align-items: center; gap: 7px; padding: 4px 11px 4px 8px; border-radius: 999px;
+  background: color-mix(in srgb, var(--c) 92%, white); color: var(--a-badge-ink);
+  font: 600 12px/1.2 var(--sans); letter-spacing: -.005em; white-space: nowrap;
+  box-shadow: 0 6px 18px color-mix(in srgb, var(--c) 40%, transparent), 0 1px 0 rgb(255 255 255 / 0.6) inset;
+}
+.roof .badge i { width: 7px; height: 7px; border-radius: 50%; background: currentColor; opacity: .85; }
+.roof .file {
+  font: 500 11.5px/1.2 var(--mono); color: var(--ink); white-space: nowrap;
+  padding: 3px 8px; border-radius: 7px;
+  background: color-mix(in srgb, #FFFFFF 70%, transparent);
+  border: 1px solid color-mix(in srgb, #FFFFFF 90%, transparent);
+  backdrop-filter: blur(10px);
+  box-shadow: 0 4px 14px rgb(22 34 59 / 0.1);
+}
+.roof.v-ok .badge { background: color-mix(in srgb, #FFFFFF 70%, transparent); color: color-mix(in srgb, var(--c) 55%, var(--ink)); box-shadow: 0 4px 12px rgb(22 34 59 / 0.08); border: 1px solid color-mix(in srgb, var(--c) 45%, transparent); backdrop-filter: blur(10px); font-size: 11px; padding: 2px 9px 2px 7px; }
+.roof.v-ok .badge i { background: var(--c); }
+.roof.is-hover .file, .roof.is-selected .file { border-color: var(--sig); }
+.roof.is-selected .badge { outline: 2px solid color-mix(in srgb, var(--sig) 70%, transparent); outline-offset: 2px; }
+
+.stop {
+  font: 700 11px/1 var(--sans); color: var(--panel); width: 18px; height: 18px; display: grid; place-items: center;
+  border-radius: 50%; pointer-events: none; text-shadow: 0 0 2px color-mix(in srgb, var(--sig) 70%, black);
+}
