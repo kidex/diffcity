@@ -29,7 +29,8 @@
 // tests of this file run one after another in a single worker (Playwright's
 // default without fullyParallel) and the `acceptance` project is limited to
 // one worker in test/playwright.config.ts, so no other acceptance spec runs
-// beside them.
+// beside them. CI runs the acceptance project in a step of its own, after the
+// screens project, so no screen spec runs beside them either.
 
 import { spawn, type ChildProcess } from 'node:child_process';
 import { createWriteStream, existsSync } from 'node:fs';

@@ -2,7 +2,8 @@
 // - screens: the UI against a mocked API (page.route + JSON fixtures), served
 //   by a test-only static server; video, trace and screenshot kept on failure;
 // - acceptance: each spec starts its own daemon in a fresh temporary home,
-//   one worker so timed specs never share the machine with each other.
+//   one worker so timed specs never share the machine with each other; CI
+//   runs it alone, after the screens (.github/workflows/ci.yml).
 //
 // A third project, proof, records a video of one task's acceptance criteria
 // (e2e/proof/DC-<nr>.spec.ts). It exists only in proof mode: DIFFCITY_PROOF
@@ -60,6 +61,9 @@ const defaultProjects: Project[] = [
     testDir: './e2e/acceptance',
     // Real daemons with deadlines: one spec at a time (see cd-to-ui.spec.ts).
     workers: 1,
+    // No retry: a retry would let a slow first attempt pass as flaky, so the
+    // 5 s deadline would never fail CI. Screens keep the global retry.
+    retries: 0,
     use: browser,
   },
 ];

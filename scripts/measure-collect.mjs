@@ -116,11 +116,26 @@ try {
     if (info === null) await sleep(25);
   }
 
-  /** Events per repo id since its track request. */
+  // One entry per repo id, created by whichever comes first: an event or the
+  // track answer. Collection starts right after track answers, so a fast
+  // `collect done` can arrive before the answer is processed; creating the
+  // entry from the event keeps it instead of dropping it.
   const pending = new Map();
+  const entryFor = (repoId) => {
+    let entry = pending.get(repoId);
+    if (entry === undefined) {
+      const created = { lastSnapshot: null, snapshots: 0, done: null, finished: null };
+      created.finished = new Promise((resolveDone) => {
+        created.done = resolveDone;
+      });
+      pending.set(repoId, created);
+      entry = created;
+    }
+    return entry;
+  };
   stopListening = await listen(info.port, (name, data, at) => {
-    const entry = pending.get(data.repoId);
-    if (entry === undefined) return;
+    if (typeof data.repoId !== 'number') return;
+    const entry = entryFor(data.repoId);
     if (name === 'snapshot') {
       entry.lastSnapshot = at;
       entry.snapshots += 1;
@@ -151,12 +166,8 @@ try {
     const repoId = response.repo.id;
     // Events of a collection already running for this repo would arrive before
     // the one this track asked for; a repo is tracked once, so none is expected.
-    const entry = { lastSnapshot: null, snapshots: 0, done: null };
-    const finished = new Promise((resolveDone) => {
-      entry.done = resolveDone;
-    });
-    pending.set(repoId, entry);
-    const outcome = await Promise.race([finished, sleep(timeoutMs).then(() => null)]);
+    const entry = entryFor(repoId);
+    const outcome = await Promise.race([entry.finished, sleep(timeoutMs).then(() => null)]);
     pending.delete(repoId);
     if (outcome === null) {
       process.stdout.write(`${label}: no collect done within ${String(timeoutMs / 1000)} s\n`);

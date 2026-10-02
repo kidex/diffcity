@@ -64,7 +64,18 @@ jobs:
       # the runner ships bash, zsh has to be installed.
       - name: Install zsh
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends zsh
-      - run: npm run test:e2e
+      - name: e2e screens
+        id: screens
+        run: npm run test:e2e -- --project=screens
+      # A run of its own, after the screens: the acceptance specs measure the
+      # 5 s deadline, so no other test may share the runner's CPU with them.
+      # It reuses the screens run's build and writes to its own output folder,
+      # so the screens' failure artefacts are kept.
+      - name: e2e acceptance
+        if: ${{ !cancelled() && (steps.screens.outcome == 'success' || steps.screens.outcome == 'failure') }}
+        env:
+          DIFFCITY_E2E_SKIP_BUILD: '1'
+        run: npm run test:e2e -- --project=acceptance --output=test-results/acceptance
       - name: Upload the failure artefacts
         if: failure()
         uses: actions/upload-artifact@v7
