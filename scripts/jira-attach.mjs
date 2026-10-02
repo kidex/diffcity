@@ -174,6 +174,8 @@ export async function main(argv, io = {}) {
       method: 'POST',
       headers: { Authorization: `Basic ${basic}`, [XSRF_HEADER]: XSRF_VALUE, Accept: 'application/json' },
       body: form,
+      // A redirect would resend the Authorization header to wherever it points.
+      redirect: 'error',
     });
   } catch (error) {
     err(clean(`upload to ${parsed.key} failed: ${error instanceof Error ? error.message : String(error)}`));
@@ -181,7 +183,8 @@ export async function main(argv, io = {}) {
   }
   const body = await response.text().catch(() => '');
   if (!response.ok) {
-    const detail = body.trim().slice(0, 500);
+    // Redact first: a cut through the token would leave a fragment that redact no longer matches.
+    const detail = clean(body).trim().slice(0, 500);
     err(clean(`upload to ${parsed.key} failed: HTTP ${String(response.status)}${detail === '' ? '' : `: ${detail}`}`));
     return 1;
   }

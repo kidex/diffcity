@@ -194,6 +194,7 @@ describe('the upload', () => {
     expect(h.calls).toHaveLength(1);
     const init = h.calls[0]?.init;
     expect(init?.method).toBe('POST');
+    expect(init?.redirect).toBe('error');
     expect(new Headers(init?.headers).get('x-atlassian-token')).toBe('no-check');
     const form = init?.body;
     expect(form).toBeInstanceOf(FormData);
@@ -214,6 +215,24 @@ describe('the upload', () => {
     expect(h.err.join('\n')).toMatch(/HTTP 401/);
     expect(printed(h)).not.toContain(PAT);
     expect(printed(h)).not.toContain(basic);
+  });
+
+  it('redacts the error body before cutting it to 500 characters, so a token across the cut leaves no fragment', async () => {
+    const basic = Buffer.from(`${EMAIL}:${PAT}`).toString('base64');
+    /** Every substring of at least 6 characters: a shorter one could match by chance. */
+    const fragments = (secret: string): string[] => {
+      const all: string[] = [];
+      for (let start = 0; start + 6 <= secret.length; start += 1) all.push(secret.slice(start, start + 6));
+      return all;
+    };
+    for (const secret of [PAT, basic]) {
+      // The secret starts 8 characters before the 500-character cut.
+      const body = `${'.'.repeat(492)}${secret} trailing`;
+      const h = harness({ response: () => new Response(body, { status: 400 }) });
+      expect(await main(['DC-35', 'proof/DC-35.webm'], h.io)).toBe(1);
+      expect(h.err.join('\n')).toMatch(/HTTP 400/);
+      for (const fragment of [...fragments(PAT), ...fragments(basic)]) expect(printed(h)).not.toContain(fragment);
+    }
   });
 
   it('exits 1 when the request throws, without the token in the message', async () => {
