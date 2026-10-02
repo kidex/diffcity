@@ -12,7 +12,7 @@ export default defineConfig({
   base: './',
   // three ships its addons as plain ESM; nothing to pre-bundle beyond the defaults.
   build: {
-    outDir: resolve(root, '../../dist/design-directions'),
+    outDir: resolve(root, '../../.tmp/design-directions'),
     emptyOutDir: true,
     target: 'es2022',
     chunkSizeWarningLimit: 1200,

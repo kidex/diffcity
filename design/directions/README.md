@@ -1,10 +1,10 @@
 # Visual directions for the city
 
-Three renderings of the same change, so the city can be chosen before the change screen is built. Every page reads the golden Report of the `order-discounts` scenario (`test/fixtures/scenarios/order-discounts/expected.json`) through `shared/report.ts` and shows the same things as `design/mockup.html`: lots per package (tier 1 marked), a building per file (untouched files present but quiet), a floor per symbol coloured by status (`del` as a ghost), verdict badges and file names above touched buildings, orbit, zoom, `R` to reset, `J`/`K` through the reading path, a hover tooltip, and click to select. The HUD (top bar, verdict and type filters, legend, selection card) is shared and restyled per direction.
+Three renderings of the same change. Direction C, the night data city, is the one the change screen is built on (ADR-026); A and B are kept as reference. Every page reads the golden Report of the `order-discounts` scenario (`test/fixtures/scenarios/order-discounts/expected.json`) through `shared/report.ts` and shows the same things as `design/mockup.html`: lots per package (tier 1 marked), a building per file (untouched files present but quiet), a floor per symbol coloured by status (`del` as a ghost), verdict badges and file names above touched buildings, orbit, zoom, `R` to reset, `J`/`K` through the reading path, a hover tooltip, and click to select. The HUD (top bar, verdict and type filters, legend, selection card) is shared and restyled per direction.
 
 ```sh
 npm run design:directions          # http://127.0.0.1:4400/a/, /b/, /c/
-npm run design:directions:build    # dist/design-directions
+npm run design:directions:build    # .tmp/design-directions
 node design/directions/shoot.mjs   # screenshots, with the dev server running
 ```
 
