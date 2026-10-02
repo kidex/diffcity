@@ -13,6 +13,8 @@ export default defineConfig({
     outDir: '../../dist/ui',
     emptyOutDir: true,
     sourcemap: true,
+    // The change screen chunk carries three.js (about 600 kB); Fleet and Repo never load it.
+    chunkSizeWarningLimit: 800,
   },
   server: {
     host: '127.0.0.1',

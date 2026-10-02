@@ -22,6 +22,7 @@ test('loading is visible and announced while the change is fetched', async ({ pa
   await expect(loading).toHaveRole('status');
   release();
   await expect(page.getByTestId('change-head')).toBeVisible();
+  await expect(page.getByTestId('city')).toHaveAttribute('data-ready', 'true', { timeout: 30_000 });
 });
 
 test('a missing change explains itself', async ({ page }) => {

@@ -88,16 +88,16 @@ for (const scheme of ['dark', 'light'] as const) {
   });
 }
 
-test('screenshot of the change placeholder', async ({ page }, testInfo) => {
+test('screenshot of the change city', async ({ page }, testInfo) => {
   await page.emulateMedia({ colorScheme: 'dark', reducedMotion: 'reduce' });
   await page.clock.setFixedTime(NOW);
   await openRepo(page, '/#/change/11');
-  await expect(page.getByTestId('touched-file')).toHaveCount(6);
-  const path = testInfo.outputPath('repo-change-placeholder.png');
+  await expect(page.getByTestId('city')).toHaveAttribute('data-ready', 'true');
+  const path = testInfo.outputPath('repo-change-city.png');
   await page.screenshot({ path, fullPage: true });
-  await testInfo.attach('repo-change-placeholder', { path, contentType: 'image/png' });
+  await testInfo.attach('repo-change-city', { path, contentType: 'image/png' });
   const shots = process.env['DIFFCITY_E2E_SHOTS'];
-  if (shots) copyFileSync(path, join(shots, 'repo-change-placeholder.png'));
+  if (shots) copyFileSync(path, join(shots, 'repo-change-city.png'));
 });
 
 test('prefers-reduced-motion turns the row transition and the pulses off', async ({ page }) => {

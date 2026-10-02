@@ -27,7 +27,10 @@ const PORT = Number.isInteger(requestedPort) && requestedPort >= 1 && requestedP
 const channel = process.env['DIFFCITY_E2E_CHANNEL'];
 const video = process.env['DIFFCITY_E2E_VIDEO'] === 'off' ? 'off' : 'retain-on-failure';
 const viewport = { width: 1440, height: 900 };
-const browser = { ...devices['Desktop Chrome'], viewport, ...(channel ? { channel } : {}) };
+// WebGL in headless Chromium runs on SwiftShader (the change screen's city
+// needs it); every project shares these arguments.
+const webglArgs = ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'];
+const browser = { ...devices['Desktop Chrome'], viewport, launchOptions: { args: webglArgs }, ...(channel ? { channel } : {}) };
 
 const argv = process.argv;
 const proofFlag = argv.some((arg, i) => arg === '--project=proof' || (arg === '--project' && argv[i + 1] === 'proof'));
@@ -56,7 +59,7 @@ const proofProject = (task: string | undefined): Project => ({
     video: { mode: 'on', size: viewport },
     trace: 'off',
     screenshot: 'off',
-    launchOptions: { slowMo: 120 },
+    launchOptions: { args: webglArgs, slowMo: 120 },
   },
 });
 

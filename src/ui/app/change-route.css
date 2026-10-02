@@ -9,6 +9,9 @@
 .change-head .meta code { font-family: var(--mono); font-size: 12px; color: var(--ink-2); min-width: 0; overflow-wrap: anywhere; }
 .change-head h1 { min-width: 0; overflow-wrap: anywhere; }
 .change-body { flex: 1 0 auto; background: var(--panel); border-top: 1px solid var(--line); }
+/* messages under the header: no snapshot yet, head not fetched, no files */
+.change-body > .change-empty { margin: 0; padding: 18px 22px; color: var(--muted); font-size: 13px; }
+.change-body > .change-empty.not-fetched { color: var(--mod); }
 /* loading and error messages: the stage title's look, always shown */
 .change-message { padding: 18px 22px 0; }
 .change-message h1 { margin: 0; font-size: 20px; font-weight: 600; letter-spacing: -.02em; }

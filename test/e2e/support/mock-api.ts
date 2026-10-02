@@ -11,6 +11,7 @@ import type { Report } from '../../../src/core/report/types.js';
 const fixturesDir = fileURLToPath(new URL('../../fixtures/ui/', import.meta.url));
 
 const load = (name: string): unknown => JSON.parse(readFileSync(`${fixturesDir}${name}`, 'utf8'));
+const scenarioGolden = fileURLToPath(new URL('../../fixtures/scenarios/order-discounts/expected.json', import.meta.url));
 
 /** The JSON fixtures in test/fixtures/ui/, with their DTO types. */
 export const fixtures = {
@@ -24,6 +25,10 @@ export const fixtures = {
   repoLongList: () => load('repo-long-list.json') as RepoDetail,
   repoArchived: () => load('repo-archived.json') as ChangeSummary[],
   reportOrderDiscounts: () => load('report-order-discounts.json') as Report,
+  /** The golden Report of the order-discounts scenario (17 files, the mockup's change). */
+  reportGolden: () => JSON.parse(readFileSync(scenarioGolden, 'utf8')) as Report,
+  /** 2,000 files, written by gen-large-city.mjs in the global setup. */
+  reportLargeCity: () => load('generated/report-large-city.json') as Report,
   searchResults: () => load('search-results.json') as SearchResult[],
 };
 

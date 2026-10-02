@@ -2,7 +2,10 @@
 // the daemon and hands the Report to the change screen, which never touches
 // the daemon itself (ADR-002, ADR-022). The header (kind, ref, title and the
 // way back to the repo) comes from the change summary; everything below it
-// from the Report. SSE `snapshot` and `changes` for this change refetch both.
+// from the Report. SSE `snapshot` and `changes` for this change refetch both;
+// the screen is mounted once and gets each new Report through update(), so
+// the city keeps its camera and selection. The screen (and three.js with it)
+// is loaded with import() the first time a change is opened.
 
 import './change-route.css';
 
@@ -10,7 +13,8 @@ import type { ChangeSummary } from '../../core/model/types.js';
 import type { Report } from '../../core/report/types.js';
 import { ApiRequestError } from '../data/api.js';
 import type { DataContext } from '../data/context.js';
-import { mountChange } from '../screens/change/index.js';
+import type * as ChangeScreenChunk from '../screens/change/index.js';
+import type { ChangeScreen } from '../screens/change/index.js';
 import { h, replaceChildren } from '../shared/dom.js';
 import {
   aheadBehind,
@@ -23,6 +27,14 @@ import {
   shortDate,
 } from '../shared/format.js';
 import { routeHref } from './router.js';
+
+type ChangeScreenModule = typeof ChangeScreenChunk;
+let screenModule: Promise<ChangeScreenModule> | null = null;
+/** The change screen chunk, fetched once. */
+function loadChangeScreen(): Promise<ChangeScreenModule> {
+  screenModule ??= import('../screens/change/index.js');
+  return screenModule;
+}
 
 type Loaded = { change: ChangeSummary; report: Report | null } | { error: 'missing' | 'unreachable' };
 
@@ -57,13 +69,45 @@ export function mountChangeRoute(element: HTMLElement, context: DataContext, cha
 
   let disposed = false;
   let controller: AbortController | null = null;
-  let unmountScreen: (() => void) | null = null;
+  let screen: ChangeScreen | null = null;
+  /** The Report to mount once the screen chunk arrives; undefined when nothing waits. */
+  let waiting: { report: Report | null } | undefined;
+  let head: HTMLElement | null = null;
   let repoId: number | null = null;
 
+  function unmountScreen(): void {
+    screen?.unmount();
+    screen = null;
+    waiting = undefined;
+  }
+
+  function showReport(report: Report | null): void {
+    if (screen !== null) {
+      screen.update(report);
+      return;
+    }
+    const mountNow = waiting === undefined;
+    waiting = { report };
+    if (!mountNow) return;
+    void loadChangeScreen().then(
+      (module) => {
+        if (disposed || waiting === undefined) return;
+        const { report: latest } = waiting;
+        waiting = undefined;
+        screen = module.mountChange(body, { report: latest });
+      },
+      () => {
+        if (disposed || waiting === undefined) return;
+        waiting = undefined;
+        replaceChildren(body, h('p', { class: 'change-empty', role: 'status', 'data-testid': 'change-screen-failed' }, 'The change view could not be loaded. Reload the page to try again.'));
+      },
+    );
+  }
+
   function show(loaded: Loaded): void {
-    unmountScreen?.();
-    unmountScreen = null;
     if ('error' in loaded) {
+      unmountScreen();
+      head = null;
       stage.dataset['state'] = loaded.error;
       replaceChildren(
         stage,
@@ -78,17 +122,21 @@ export function mountChangeRoute(element: HTMLElement, context: DataContext, cha
     }
     stage.dataset['state'] = 'ready';
     repoId = loaded.change.repoId;
-    replaceChildren(stage, header(loaded.change), body);
+    const nextHead = header(loaded.change);
+    if (head !== null && head.parentElement === stage && body.parentElement === stage) head.replaceWith(nextHead);
+    else replaceChildren(stage, nextHead, body);
+    head = nextHead;
     if (loaded.report === null && !loaded.change.headAvailable) {
       // No snapshot can exist until the user fetches the head (ADR-019), so
       // this is not "computing": say why there is nothing to show.
+      unmountScreen();
       replaceChildren(
         body,
         h('p', { class: 'change-empty not-fetched', 'data-testid': 'head-not-fetched', title: HEAD_NOT_FETCHED_TITLE }, HEAD_NOT_FETCHED),
       );
       return;
     }
-    unmountScreen = mountChange(body, { report: loaded.report });
+    showReport(loaded.report);
   }
 
   async function load(): Promise<void> {
@@ -129,7 +177,7 @@ export function mountChangeRoute(element: HTMLElement, context: DataContext, cha
     disposed = true;
     for (const stop of stops) stop();
     controller?.abort();
-    unmountScreen?.();
+    unmountScreen();
     element.replaceChildren();
   };
 }

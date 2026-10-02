@@ -23,6 +23,8 @@ async function openChange(page: Page): Promise<void> {
   await page.goto('/#/change/11');
   await expect(page.getByTestId('daemon')).toHaveAttribute('data-state', 'connected');
   await expect(page.getByRole('navigation', { name: 'Breadcrumb' }).getByRole('link', { name: 'sample-shop' })).toBeVisible();
+  // The city compiles its shaders on open; keyboard checks start once it is on screen.
+  await expect(page.getByTestId('city')).toHaveAttribute('data-ready', 'true', { timeout: 30_000 });
 }
 
 test('Tab walks the top bar in reading order, Shift+Tab walks back', async ({ page }) => {

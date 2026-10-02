@@ -20,6 +20,7 @@ test('every request stays on 127.0.0.1, fonts included', async ({ page, context 
   await page.goto('/#/repo/1');
   await page.goto('/#/change/11');
   await expect(page.getByRole('navigation', { name: 'Breadcrumb' })).toContainText('feature/order-discounts');
+  await expect(page.getByTestId('city')).toHaveAttribute('data-ready', 'true', { timeout: 30_000 });
   await page.keyboard.press('ControlOrMeta+k');
   await page.getByRole('combobox').pressSequentially('order');
   await expect(page.getByRole('option')).toHaveCount(4);

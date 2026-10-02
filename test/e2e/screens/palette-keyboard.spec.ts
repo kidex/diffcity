@@ -88,6 +88,8 @@ test('Enter opens the selected result and closes the palette', async ({ page }) 
   await page.keyboard.press('ArrowDown');
   await page.keyboard.press('Enter');
   await expect(page).toHaveURL(/#\/change\/11$/);
+  // The city's first frame compiles shaders; on SwiftShader that holds the page for a few seconds.
+  await expect(page.getByTestId('city')).toHaveAttribute('data-ready', 'true', { timeout: 30_000 });
   await expect(dialog(page)).toBeHidden();
   await expect(page.getByRole('navigation', { name: 'Breadcrumb' })).toContainText('feature/order-discounts');
 

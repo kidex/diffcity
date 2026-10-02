@@ -1,17 +1,65 @@
 /*
- * The change screen until phase 3: the touched files of the Report as a table
- * in the reading panel's style (--panel, --line-soft rules), with the
- * mockup's status tags and .file-verdict tags.
+ * The change screen: the night data city (ADR-026, direction C) filling the
+ * space under the change header, with the holographic roof labels of
+ * design/directions/c/style.css; and, without WebGL, the touched files as a
+ * table in the reading panel's style.
  */
+
+/* ---------- city ---------- */
+.stage.change:has(> .change-body.has-city) { overflow: hidden; }
+.change-body.has-city { position: relative; flex: 1 1 0; min-height: 320px; background: var(--c-void); }
+.city { position: absolute; inset: 0; overflow: hidden; }
+.city canvas.scene { position: absolute; inset: 0; width: 100%; height: 100%; display: block; cursor: grab; touch-action: none; }
+.city canvas.scene:active { cursor: grabbing; }
+.city .labels { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+.city .hint {
+  position: absolute; right: 22px; top: 14px; z-index: 1; pointer-events: none;
+  color: var(--muted); font-size: 12px; text-align: right;
+}
+.city .hint .kbd {
+  display: inline-block; font-family: var(--mono); font-size: 11px; line-height: 1;
+  border: 1px solid var(--line); border-radius: 4px; padding: 2px 5px; margin-top: 4px; color: var(--ink-2);
+}
+
+/* holographic verdict tags over the file name */
+.labels .roof { display: flex; flex-direction: column; align-items: center; gap: 3px; pointer-events: none; transition: opacity .18s ease; }
+.labels .roof .badge {
+  position: relative; overflow: hidden;
+  display: inline-flex; align-items: center; gap: 7px; padding: 4px 10px 4px 8px; border-radius: 4px;
+  font: 500 10.5px/1.2 var(--mono); letter-spacing: .1em; text-transform: uppercase; white-space: nowrap;
+  color: color-mix(in srgb, var(--c) 80%, white);
+  background:
+    repeating-linear-gradient(to bottom, color-mix(in srgb, var(--c) 10%, transparent) 0 1px, transparent 1px 3px),
+    linear-gradient(to bottom, color-mix(in srgb, var(--c) 26%, transparent), color-mix(in srgb, var(--c) 8%, transparent));
+  border: 1px solid color-mix(in srgb, var(--c) 70%, transparent);
+  box-shadow: 0 0 16px color-mix(in srgb, var(--c) 40%, transparent), inset 0 0 10px color-mix(in srgb, var(--c) 20%, transparent);
+  text-shadow: 0 0 8px color-mix(in srgb, var(--c) 80%, transparent);
+  backdrop-filter: blur(3px);
+}
+.labels .roof .badge i { width: 6px; height: 6px; background: var(--c); box-shadow: 0 0 8px var(--c); transform: rotate(45deg); }
+.labels .roof .file { font: 500 11px/1.2 var(--mono); color: var(--ink); white-space: nowrap; text-shadow: 0 0 6px rgb(0 0 0 / 0.9), 0 0 2px rgb(0 0 0); }
+.labels .roof.v-ok .badge {
+  padding: 2px 7px 2px 6px; font-size: 9.5px; box-shadow: none; text-shadow: none;
+  background: color-mix(in srgb, var(--c) 10%, transparent); border-color: color-mix(in srgb, var(--c) 40%, transparent);
+}
+.labels .roof.is-selected .badge { border-color: var(--sig); }
+.labels .roof.is-selected .file, .labels .roof.is-hover .file { color: var(--ink); text-decoration: underline; text-decoration-color: var(--sig); text-underline-offset: 3px; }
+.labels .roof.is-occluded, .labels .roof.is-crowded { opacity: 0; }
+.labels .roof.is-hover, .labels .roof.is-selected { opacity: 1; z-index: 1; }
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) .labels .roof .badge { color: color-mix(in srgb, var(--c) 70%, black); }
+  :root:not([data-theme="dark"]) .labels .roof .file { text-shadow: 0 0 6px var(--bg), 0 0 2px var(--bg); }
+}
+:root[data-theme="light"] .labels .roof .badge { color: color-mix(in srgb, var(--c) 70%, black); }
+:root[data-theme="light"] .labels .roof .file { text-shadow: 0 0 6px var(--bg), 0 0 2px var(--bg); }
+
+/* ---------- messages and the no-WebGL table ---------- */
 .change-report { padding: 0 0 24px; }
 .change-report .phase-note {
   margin: 0; padding: 10px 22px; color: var(--ink-2); font-size: 12.5px;
   background: color-mix(in srgb, var(--sig) 10%, transparent); border-bottom: 1px solid var(--line-soft);
 }
-.change-report .report-meta { display: flex; gap: 6px 18px; flex-wrap: wrap; margin: 0; padding: 14px 22px 10px; color: var(--muted); font-size: 12.5px; }
-.change-report .report-meta code { font-family: var(--mono); font-size: 12px; color: var(--ink-2); }
-.change-report .change-empty, .change-body > .change-empty { margin: 0; padding: 18px 22px; color: var(--muted); font-size: 13px; }
-.change-body > .change-empty.not-fetched { color: var(--mod); }
+.change-report .change-empty { margin: 0; padding: 18px 22px; color: var(--muted); font-size: 13px; }
 
 .touched-files { width: 100%; border-collapse: collapse; font-size: 13px; }
 .touched-files th[scope="col"] {
