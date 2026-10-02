@@ -37,7 +37,7 @@ describe('snapshot pool runners', () => {
 
   it('pool/inline-runner: the same snapshot inline and in a thread', async () => {
     const { repo, tip } = await sampleShop();
-    const input = { repoDir: repo.dir, base: 'main', head: tip, now: '2026-03-04T05:06:07.000Z' };
+    const input = { repoDir: repo.dir, base: 'main', head: tip, now: '2026-03-04T05:06:07.000Z', trustConfig: false };
     const inline = createSnapshotPool({ runner: 'inline', size: 1 });
     const thread = createSnapshotPool({ runner: 'thread', size: 1 });
     pools.push(inline, thread);
@@ -51,7 +51,7 @@ describe('snapshot pool runners', () => {
     const { repo } = await sampleShop();
     const thread = createSnapshotPool({ runner: 'thread', size: 1 });
     pools.push(thread);
-    await expect(thread.submit('1:1', 'high', { repoDir: repo.dir, base: 'no-such-base', head: 'HEAD' })).rejects.toThrow(
+    await expect(thread.submit('1:1', 'high', { repoDir: repo.dir, base: 'no-such-base', head: 'HEAD', trustConfig: false })).rejects.toThrow(
       /base ref not found: no-such-base/,
     );
   });

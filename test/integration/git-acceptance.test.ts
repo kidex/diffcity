@@ -72,7 +72,7 @@ describe('config end to end (ADR-012)', { timeout: 60_000 }, () => {
     await repo.git('add', 'diffcity.config.js');
     await repo.git('commit', '-q', '-m', 'config');
 
-    const config = await loadConfig(repo.dir);
+    const config = await loadConfig(repo.dir, { trusted: true });
     const change = await resolveChange(repo.dir, { config, ...noGh });
     expect(change.base).toMatchObject({ name: 'develop', source: 'config' });
     expect(change.mergeBase).toBe(developTip);
@@ -84,7 +84,7 @@ describe('config end to end (ADR-012)', { timeout: 60_000 }, () => {
     const dir = await mkdtemp(join(tmpdir(), 'diffcity-config-'));
     dirs.push(dir);
     await writeFile(join(dir, 'diffcity.config.js'), "export default { bsae: 'main' };\n", 'utf8');
-    const error: unknown = await loadConfig(dir).catch((e: unknown) => e);
+    const error: unknown = await loadConfig(dir, { trusted: true }).catch((e: unknown) => e);
     expect(error).toBeInstanceOf(ConfigError);
     expect((error as ConfigError).field).toBe('bsae');
     expect((error as ConfigError).message).toContain('"bsae"');

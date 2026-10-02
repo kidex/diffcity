@@ -26,7 +26,7 @@ afterEach(async () => {
 const NOW = new Date('2026-03-04T05:06:07.000Z');
 
 function build(repoDir: string, extra: { base?: string; head?: string } = {}): Promise<Report> {
-  return buildReport({ repoDir, now: NOW, runner: ghForbidden().runner, ...extra });
+  return buildReport({ repoDir, now: NOW, runner: ghForbidden().runner, trustConfig: true, ...extra });
 }
 
 /** One repo and one report shared by every test of the enclosing describe. */

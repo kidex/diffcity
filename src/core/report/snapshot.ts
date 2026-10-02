@@ -19,6 +19,8 @@ export interface SnapshotJobInput {
   head?: string | undefined;
   /** ISO time for meta.generatedAt; defaults to the current time. */
   now?: string | undefined;
+  /** Whether the repo root is trusted, so its diffcity.config.js may be imported (ADR-030). */
+  trustConfig: boolean;
 }
 
 export interface ComputedSnapshot {
@@ -58,6 +60,7 @@ export async function computeSnapshot(input: SnapshotJobInput): Promise<Computed
     base: input.base,
     head: input.head,
     now: input.now === undefined ? undefined : new Date(input.now),
+    trustConfig: input.trustConfig,
   });
   return snapshotFromReport(report, headCommit);
 }

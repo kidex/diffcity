@@ -1,8 +1,11 @@
 // The daemon's collector (ADR-019, ADR-020, ADR-021, SPEC.md section 3a). One
 // collection of a repo runs, in order:
 //
-// 1. identity and base, cached per repo (the base is resolved again when
-//    diffcity.config.js changes or the cached ref disappears);
+// 1. identity, trust and base: the base is cached per repo and resolved again
+//    when diffcity.config.js or the repo's trust changes or the cached ref
+//    disappears. The config is imported only for a repo root listed in
+//    settings.json, checked on every collection (ADR-024, ADR-030); an
+//    untrusted repo with a config file gets a note in its RepoSummary;
 // 2. the sources (working trees, branches, PRs); gh goes through an injected
 //    CommandRunner and is consulted on the repo's first collection in this
 //    daemon, on `prs`, and on `full` once the PR cache is older than 15 min;
@@ -47,6 +50,7 @@ import {
   type WorktreeInfo,
 } from '../../core/changes/index.js';
 import { CONFIG_FILE_NAME, loadConfig } from '../../core/config/index.js';
+import { CONFIG_NOT_TRUSTED_NOTE, type TrustCheck } from '../../core/settings/index.js';
 import type { Db } from '../../core/db/index.js';
 import { defaultRunner, GitError, resolveBase, type CommandRunner, type ResolvedBase } from '../../core/git/index.js';
 import type {
@@ -81,6 +85,11 @@ export interface CollectorOptions {
   /** Runs gh (and nothing else); defaults to execFile. Tests inject a stub. */
   gh?: CommandRunner;
   now?: () => Date;
+  /**
+   * Whether a repo root may run its diffcity.config.js (ADR-030); asked on
+   * every collection. Required, so no collector imports a config by default.
+   */
+  isTrusted: TrustCheck;
   /** After the sources of a repo are read: its working trees, for the watchers (ADR-020). */
   onListed?: (repoId: number, worktrees: readonly WorktreeInfo[]) => void;
 }
@@ -89,6 +98,8 @@ export interface Collector extends CollectorPort {
   /** Repos with a collection queued or running: the `collecting` of /api/health. */
   readonly collecting: number;
   isCollecting(repoId: number): boolean;
+  /** Non-fatal notes on the repo from its last collection, for RepoSummary.notes. */
+  notes(repoId: number): string[];
   /** False while gh is known to be unavailable for this repo (gh.ts); PR polling skips it then. */
   ghUsable(repoId: number): boolean;
   /**
@@ -126,12 +137,21 @@ function mergeWanted(wanted: Wanted | undefined, scope: CollectScope, priority: 
   return next;
 }
 
+/** mtime of the repo's diffcity.config.js, null when there is none. Only stats it: never reads it. */
 async function configStamp(root: string): Promise<number | null> {
   try {
     return (await stat(join(root, CONFIG_FILE_NAME))).mtimeMs;
   } catch {
     return null;
   }
+}
+
+/** What a collection knows about the repo's config before it detects the base. */
+interface ConfigState {
+  /** The repo root is in settings.json's trustedRepos. */
+  trusted: boolean;
+  /** mtime of diffcity.config.js, null when there is none. */
+  stamp: number | null;
 }
 
 export function createCollector(options: CollectorOptions): Collector {
@@ -141,7 +161,8 @@ export function createCollector(options: CollectorOptions): Collector {
   const ghGate: GhGate = createGhGate(now);
 
   const identities = new Map<number, RepoIdentity>();
-  const bases = new Map<number, { name: string; config: number | null }>();
+  const bases = new Map<number, { name: string; config: string }>();
+  const notes = new Map<number, string[]>();
   const prCache = new Map<number, { prs: GhPullRequest[] | null; at: number }>();
   const worktreesSeen = new Map<number, WorktreeInfo[]>();
   const wanted = new Map<number, Wanted>();
@@ -174,9 +195,21 @@ export function createCollector(options: CollectorOptions): Collector {
     return identity;
   }
 
+  /** Trust and config stamp of a repo, and its note: set when an untrusted repo has a config file. */
+  async function configStateOf(repo: RepoRecord, identity: RepoIdentity): Promise<ConfigState> {
+    const [trusted, stamp] = await Promise.all([options.isTrusted(identity.path), configStamp(identity.path)]);
+    const next = !trusted && stamp !== null ? [CONFIG_NOT_TRUSTED_NOTE] : [];
+    const previous = notes.get(repo.id) ?? [];
+    if (next.length === 0) notes.delete(repo.id);
+    else notes.set(repo.id, next);
+    if (next.join('\n') !== previous.join('\n')) broadcast({ event: 'repo', data: { repoId: repo.id } });
+    return { trusted, stamp };
+  }
+
   /** The repo base (L5), cached by name; its commit is resolved on every collection. */
-  async function baseOf(repo: RepoRecord, identity: RepoIdentity): Promise<ResolvedBase> {
-    const config = await configStamp(identity.path);
+  async function baseOf(repo: RepoRecord, identity: RepoIdentity, state: ConfigState): Promise<ResolvedBase> {
+    // An untrusted repo's config is never loaded, so its edits do not matter until it is trusted.
+    const config = state.trusted ? `trusted:${String(state.stamp)}` : 'untrusted';
     const cached = bases.get(repo.id);
     if (cached?.config === config) {
       try {
@@ -186,7 +219,7 @@ export function createCollector(options: CollectorOptions): Collector {
         // The cached ref disappeared: detect it again.
       }
     }
-    const loaded = await loadConfig(identity.path);
+    const loaded = await loadConfig(identity.path, { trusted: state.trusted });
     const base = await detectBase(identity, { config: loaded.base, runner: gh });
     bases.set(repo.id, { name: base.name, config });
     if (repo.base !== base.name) db.repos.setBase(repo.id, base.name);
@@ -231,16 +264,22 @@ export function createCollector(options: CollectorOptions): Collector {
    * uses its own base as the local repo knows it (prBase: the local branch,
    * origin's, else the repo base), since gh's baseRefName need not exist locally.
    */
-  async function snapshotInput(repo: RepoRecord, change: ChangeRecord, repoBase: ResolvedBase): Promise<SnapshotJobInput> {
+  async function snapshotInput(repo: RepoRecord, change: ChangeRecord, repoBase: ResolvedBase, trustConfig: boolean): Promise<SnapshotJobInput> {
     const at = now().toISOString();
     const base = change.kind === 'pr' ? (await prBase(repo.path, change.base, repoBase)).ref : repoBase.name;
-    if (change.dirty && change.worktreePath !== null) return { repoDir: change.worktreePath, base, now: at };
-    return { repoDir: repo.path, base, head: change.head, now: at };
+    if (change.dirty && change.worktreePath !== null) return { repoDir: change.worktreePath, base, now: at, trustConfig };
+    return { repoDir: repo.path, base, head: change.head, now: at, trustConfig };
   }
 
   /** Computes and stores one snapshot; true when the change list moved (review state or last event). */
-  async function snapshotChange(repo: RepoRecord, change: ChangeRecord, repoBase: ResolvedBase, priority: CollectPriority): Promise<boolean> {
-    const input = await snapshotInput(repo, change, repoBase);
+  async function snapshotChange(
+    repo: RepoRecord,
+    change: ChangeRecord,
+    repoBase: ResolvedBase,
+    trustConfig: boolean,
+    priority: CollectPriority,
+  ): Promise<boolean> {
+    const input = await snapshotInput(repo, change, repoBase, trustConfig);
     const computed = await snapshots.submit(`${String(repo.id)}:${String(change.id)}`, priority, input);
     if (closing) return false;
     const at = now();
@@ -268,13 +307,15 @@ export function createCollector(options: CollectorOptions): Collector {
   }
 
   /** Steps 1-4; returns the changes that need a snapshot. */
-  async function listChanges(repo: RepoRecord, scope: Wanted): Promise<{ pending: ChangeRecord[]; base: ResolvedBase }> {
+  async function listChanges(repo: RepoRecord, scope: Wanted): Promise<{ pending: ChangeRecord[]; base: ResolvedBase; trusted: boolean }> {
     const identity = await identityOf(repo);
+    const configState = await configStateOf(repo, identity);
+    const { trusted } = configState;
     // gh reaches the network: it runs alongside the local git reads (base,
     // working trees, branches), never before them. Reconcile waits for both,
     // so a branch with an open PR folds into the PR change on the first run.
     const openPrsPending = openPrsFor(repo.id, identity, scope);
-    const base = await baseOf(repo, identity);
+    const base = await baseOf(repo, identity, configState);
     const live = db.changes.listLive(repo.id);
     const [worktrees, refs, prs] = await Promise.all([
       listWorktrees(identity, base),
@@ -300,7 +341,7 @@ export function createCollector(options: CollectorOptions): Collector {
       prs,
     };
     worktreesSeen.set(repo.id, discovered.worktrees);
-    if (closing) return { pending: [], base };
+    if (closing) return { pending: [], base, trusted };
     try {
       options.onListed?.(repo.id, discovered.worktrees);
     } catch (error) {
@@ -323,7 +364,7 @@ export function createCollector(options: CollectorOptions): Collector {
       broadcast({ event: 'repo', data: { repoId: repo.id } });
       broadcast({ event: 'changes', data: { repoId: repo.id } });
     }
-    return { pending: db.changes.listLive(repo.id).filter((change) => needsSnapshot(change, scope)), base };
+    return { pending: db.changes.listLive(repo.id).filter((change) => needsSnapshot(change, scope)), base, trusted };
   }
 
   /**
@@ -358,12 +399,13 @@ export function createCollector(options: CollectorOptions): Collector {
     repo: RepoRecord,
     pending: readonly ChangeRecord[],
     base: ResolvedBase,
+    trusted: boolean,
     priority: CollectPriority,
     run: number,
   ): Promise<CollectOutcome> {
     const errors: string[] = [];
     let listMoved = false;
-    const results = await Promise.allSettled(pending.map((change) => snapshotChange(repo, change, base, priority)));
+    const results = await Promise.allSettled(pending.map((change) => snapshotChange(repo, change, base, trusted, priority)));
     for (const [index, result] of results.entries()) {
       if (result.status === 'fulfilled') listMoved ||= result.value;
       else errors.push(`snapshot of ${pending[index]?.ref ?? 'a change'}: ${errorMessage(result.reason)}`);
@@ -385,9 +427,9 @@ export function createCollector(options: CollectorOptions): Collector {
     let done: Promise<CollectOutcome>;
     const started = performance.now();
     try {
-      const { pending, base } = await listChanges(repo, scope);
+      const { pending, base, trusted } = await listChanges(repo, scope);
       const listed = performance.now();
-      done = storeSnapshots(repo, pending, base, scope.priority, run).then((outcome) => {
+      done = storeSnapshots(repo, pending, base, trusted, scope.priority, run).then((outcome) => {
         if (pending.length > 0 || !outcome.ok) {
           const end = performance.now();
           log.info(
@@ -424,6 +466,7 @@ export function createCollector(options: CollectorOptions): Collector {
       return inFlight.size;
     },
     isCollecting: (repoId) => inFlight.has(repoId),
+    notes: (repoId) => [...(notes.get(repoId) ?? [])],
     ghUsable: (repoId) => ghGate.usable(repoId),
     async request(repoId, scope, priority) {
       if (closing) return { ok: false, error: 'the daemon is shutting down' };

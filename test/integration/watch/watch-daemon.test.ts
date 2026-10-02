@@ -24,10 +24,10 @@ cleanupAfterEach();
 async function daemonWithWatch(clock: Clock = manualClock()): Promise<{ test: TestDaemon; watch: () => Watch; events: WatchEvent[] }> {
   const events: WatchEvent[] = [];
   let watch: Watch | null = null;
-  const test = await startTestDaemon({ gh: ghNotInstalled() }, (collection) => {
+  const test = await startTestDaemon({ gh: ghNotInstalled() }, { plugins: (collection) => {
     watch = createWatch(collection, { clock, onEvent: (event) => events.push(event) });
     return [watch.plugin, apiPlugin];
-  });
+  } });
   return {
     test,
     watch: () => {

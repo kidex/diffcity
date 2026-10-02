@@ -44,6 +44,8 @@ export interface RepoInput {
 export interface RepoRuntime {
   collecting: boolean;
   watch: WatchMode;
+  /** RepoSummary.notes. */
+  notes: string[];
 }
 
 /** Runtime state for a repo; without one, a summary says not collecting and `full`/`off` by `active`. */
@@ -86,7 +88,7 @@ function toRecord(row: RepoRow): RepoRecord {
   };
 }
 
-const defaultRuntime: RepoRuntimeLookup = (repo) => ({ collecting: false, watch: repo.active ? 'full' : 'off' });
+const defaultRuntime: RepoRuntimeLookup = (repo) => ({ collecting: false, watch: repo.active ? 'full' : 'off', notes: [] });
 
 function laterOf(a: string | null, b: string | null): string | null {
   if (a === null) return b;
@@ -96,7 +98,7 @@ function laterOf(a: string | null, b: string | null): string | null {
 
 function toSummary(row: RepoSummaryRow, runtime: RepoRuntimeLookup): RepoSummary {
   const repo = toRecord(row);
-  const { collecting, watch } = runtime(repo);
+  const { collecting, watch, notes } = runtime(repo);
   return {
     id: repo.id,
     name: repo.name,
@@ -111,6 +113,7 @@ function toSummary(row: RepoSummaryRow, runtime: RepoRuntimeLookup): RepoSummary
     collecting,
     error: repo.collectError,
     watch,
+    notes,
   };
 }
 

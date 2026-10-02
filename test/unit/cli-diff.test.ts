@@ -64,14 +64,14 @@ describe('diffcity diff', () => {
     expect(out.stderr).toBe('');
     expect(out.stdout.endsWith('\n')).toBe(true);
     expect(JSON.parse(out.stdout)).toEqual(sampleReport);
-    expect(out.calls).toEqual([{ repoDir: '/work/sample-bakery', base: 'trunk', head: 'feature/rolls' }]);
+    expect(out.calls).toEqual([{ repoDir: '/work/sample-bakery', trustConfig: true, base: 'trunk', head: 'feature/rolls' }]);
   });
 
   it('without --json prints the text summary', async () => {
     const { deps, out } = harness(() => Promise.resolve(sampleReport));
     expect(await runDiff({}, deps)).toBe(0);
     expect(out.stdout).toBe(formatSummary(sampleReport));
-    expect(out.calls).toEqual([{ repoDir: '/work/sample-bakery', base: undefined, head: undefined }]);
+    expect(out.calls).toEqual([{ repoDir: '/work/sample-bakery', trustConfig: true, base: undefined, head: undefined }]);
   });
 
   it.each([
