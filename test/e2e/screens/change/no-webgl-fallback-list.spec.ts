@@ -4,14 +4,10 @@
 
 import { expect, test } from '@playwright/test';
 import { mockApi } from '../../support/mock-api.js';
+import { withoutWebgl } from '../../support/scene.js';
 
 test('change/no-webgl-fallback-list', async ({ page }) => {
-  await page.addInitScript(`{
-    const getContext = HTMLCanvasElement.prototype.getContext;
-    HTMLCanvasElement.prototype.getContext = function (kind, ...rest) {
-      return /webgl/i.test(kind) ? null : getContext.call(this, kind, ...rest);
-    };
-  }`);
+  await withoutWebgl(page);
   await mockApi(page);
   await page.goto('/#/change/11');
 

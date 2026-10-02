@@ -32,9 +32,42 @@ export async function openCity(page: Page, changeId = 11): Promise<void> {
   await waitReady(page);
 }
 
+/**
+ * The city's state is only as fast as the first WebGL frame: on a CI runner
+ * SwiftShader compiles shaders for seconds, and the next frames follow the
+ * same CPU. Every wait on the city's attributes uses this budget, never the
+ * 5 s default.
+ */
+export const CITY_TIMEOUT = 30_000;
+
+/** Waits until the city has drawn its first frame (`data-ready`). */
+export async function waitForCity(page: Page): Promise<void> {
+  await waitForCityAttribute(page, 'data-ready', 'true');
+}
+
+/** Waits for one of the city's state attributes (`data-selected`, `data-hovered`; '' for none). */
+export async function waitForCityAttribute(page: Page, name: 'data-selected' | 'data-hovered' | 'data-ready', value: string): Promise<void> {
+  await expect(page.getByTestId('city')).toHaveAttribute(name, value, { timeout: CITY_TIMEOUT });
+}
+
 export async function waitReady(page: Page): Promise<void> {
-  await page.waitForFunction('window.diffcityScene !== undefined && window.diffcityScene.ready === true', null, { timeout: 30_000 });
-  await expect(page.getByTestId('city')).toHaveAttribute('data-ready', 'true');
+  await page.waitForFunction('window.diffcityScene !== undefined && window.diffcityScene.ready === true', null, { timeout: CITY_TIMEOUT });
+  await waitForCity(page);
+}
+
+/**
+ * Makes WebGL unavailable, so the change screen renders its fallback table
+ * instead of the city. For specs that prove the page around the city (header,
+ * routing, lazy loading, live fill-in) and must not pay for a SwiftShader
+ * context. Call before `page.goto`.
+ */
+export async function withoutWebgl(page: Page): Promise<void> {
+  await page.addInitScript(`{
+    const getContext = HTMLCanvasElement.prototype.getContext;
+    HTMLCanvasElement.prototype.getContext = function (kind, ...rest) {
+      return /webgl/i.test(kind) ? null : getContext.call(this, kind, ...rest);
+    };
+  }`);
 }
 
 export const stats = (page: Page): Promise<SceneStats> => page.evaluate<SceneStats>('window.diffcityScene.stats()');

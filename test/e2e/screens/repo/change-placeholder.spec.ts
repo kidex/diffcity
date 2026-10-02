@@ -1,27 +1,30 @@
 // e2e/repo/change-placeholder: `#/change/:id` shows the change header (kind,
 // ref, title) and the way back to the repo above the city of its Report. A
 // change without a snapshot says it is computing, and fills in on SSE
-// `snapshot` (the city itself: test/e2e/screens/change/).
+// `snapshot`. The city itself is proved in test/e2e/screens/change/; these
+// specs run without WebGL, so the Report shows as the touched-files table.
 
 import { expect, test } from '@playwright/test';
 import { fixtures, mockApi } from '../../support/mock-api.js';
+import { withoutWebgl } from '../../support/scene.js';
 import { emitSse, tagClient } from '../../support/sse.js';
 
-test('header, city, back link', async ({ page }) => {
+test.beforeEach(async ({ page }) => {
+  await withoutWebgl(page);
+});
+
+test('header, report, back link', async ({ page }) => {
   await mockApi(page);
   await page.goto('/#/repo/1');
   await page.getByRole('link', { name: 'Add percentage discounts to orders' }).click();
   await expect(page).toHaveURL(/#\/change\/11$/);
-  // The city's first frame compiles shaders; on SwiftShader that holds the page for a few seconds.
-  await expect(page.getByTestId('city')).toHaveAttribute('data-ready', 'true', { timeout: 30_000 });
+  await expect(page.getByTestId('touched-file')).toHaveCount(6);
 
   const head = page.getByTestId('change-head');
   await expect(head.getByTestId('change-kind')).toHaveText('Branch');
   await expect(head.getByRole('heading', { level: 1 })).toHaveText('Add percentage discounts to orders');
   await expect(head.getByTestId('change-ref')).toHaveText('feature/order-discounts');
-  await expect(page.getByTestId('city')).toHaveAttribute('data-ready', 'true');
-  await expect(page.getByTestId('roof-label')).toHaveCount(6);
-  await expect(page.locator('[data-testid="roof-label"][data-building="src/payments/charge.ts"] .badge')).toHaveText('Needs your eyes');
+  await expect(page.getByTestId('touched-file').filter({ hasText: 'src/payments/charge.ts' }).getByTestId('file-verdict')).toHaveText('Needs your eyes');
 
   await page.getByTestId('back-to-repo').click();
   await expect(page).toHaveURL(/#\/repo\/1$/);
@@ -57,8 +60,8 @@ test('a change without a snapshot fills in on SSE snapshot', async ({ page }, te
 
   Object.assign(reports, { 11: fixtures.reportOrderDiscounts() });
   await emitSse(page, testInfo.testId, 'snapshot', { repoId: 1, changeId: 11, head: '3f2a9c4' });
-  await expect(page.getByTestId('city')).toHaveAttribute('data-ready', 'true');
-  await expect(page.getByTestId('roof-label')).toHaveCount(6);
+  await expect(page.getByTestId('report-computing')).toHaveCount(0);
+  await expect(page.getByTestId('touched-file')).toHaveCount(6);
 });
 
 test('an archived change opens from the archive', async ({ page }) => {

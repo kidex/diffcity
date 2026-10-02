@@ -10,7 +10,7 @@
 
 import { expect, test, type Locator, type Page } from '@playwright/test';
 import { fixtures, mockApi } from '../../support/mock-api.js';
-import { hovered, openCity, project, selected } from '../../support/scene.js';
+import { hovered, openCity, project, selected, waitForCityAttribute } from '../../support/scene.js';
 
 const GUARD = 'src/auth/order.guard.ts';
 const MIGRATION = 'db/migrations/20260921_order_discounts.sql';
@@ -35,22 +35,22 @@ test('change/hover-select-escape', async ({ page }) => {
   // Hover the tier 1 guard.
   const guard = await project(page, GUARD);
   await page.mouse.move(guard.x, guard.y, { steps: 3 });
-  await expect(city).toHaveAttribute('data-hovered', GUARD);
+  await waitForCityAttribute(page, 'data-hovered', GUARD);
   await expect.poll(() => hovered(page)).toBe(GUARD);
   await expect(label(page, GUARD)).toHaveClass(/is-hover/);
   await expect(canvas).toHaveCSS('cursor', 'pointer');
 
   // Click selects it.
   await page.mouse.click(guard.x, guard.y);
-  await expect(city).toHaveAttribute('data-selected', GUARD);
+  await waitForCityAttribute(page, 'data-selected', GUARD);
   expect(await selected(page)).toBe(GUARD);
   await expect(label(page, GUARD)).toHaveClass(/is-selected/);
 
   // Hovering another building moves the hover, the selection stays.
   const migration = await project(page, MIGRATION);
   await page.mouse.move(migration.x, migration.y, { steps: 3 });
-  await expect(city).toHaveAttribute('data-hovered', MIGRATION);
-  await expect(city).toHaveAttribute('data-selected', GUARD);
+  await waitForCityAttribute(page, 'data-hovered', MIGRATION);
+  await waitForCityAttribute(page, 'data-selected', GUARD);
   expect(await hovered(page)).toBe(MIGRATION);
   expect(await selected(page)).toBe(GUARD);
   await expect(label(page, MIGRATION)).toHaveClass(/is-hover/);
@@ -58,8 +58,8 @@ test('change/hover-select-escape', async ({ page }) => {
 
   // Escape clears the selection; the hover stays under the pointer.
   await page.keyboard.press('Escape');
-  await expect(city).toHaveAttribute('data-selected', '');
-  await expect(city).toHaveAttribute('data-hovered', MIGRATION);
+  await waitForCityAttribute(page, 'data-selected', '');
+  await waitForCityAttribute(page, 'data-hovered', MIGRATION);
   expect(await selected(page)).toBeNull();
   await expect(page.locator('[data-testid="roof-label"].is-selected')).toHaveCount(0);
 
@@ -67,18 +67,18 @@ test('change/hover-select-escape', async ({ page }) => {
   await page.mouse.down();
   await page.mouse.move(migration.x + 40, migration.y + 5, { steps: 4 });
   await page.mouse.up();
-  await expect(city).toHaveAttribute('data-selected', '');
+  await waitForCityAttribute(page, 'data-selected', '');
 
   // Select again, then a click on empty ground clears.
   const again = await project(page, MIGRATION);
   await page.mouse.click(again.x, again.y);
-  await expect(city).toHaveAttribute('data-selected', MIGRATION);
+  await waitForCityAttribute(page, 'data-selected', MIGRATION);
   await page.mouse.click(empty.x, empty.y);
-  await expect(city).toHaveAttribute('data-selected', '');
+  await waitForCityAttribute(page, 'data-selected', '');
 
   // Leaving the canvas clears the hover and the pointer cursor.
   await page.mouse.move(box.x + box.width / 2, box.y - 20);
-  await expect(city).toHaveAttribute('data-hovered', '');
+  await waitForCityAttribute(page, 'data-hovered', '');
   expect(await hovered(page)).toBeNull();
   await expect(page.locator('[data-testid="roof-label"].is-hover')).toHaveCount(0);
   await expect(canvas).not.toHaveCSS('cursor', 'pointer');

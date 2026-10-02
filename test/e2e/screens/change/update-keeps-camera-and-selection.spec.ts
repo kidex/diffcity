@@ -5,7 +5,7 @@
 import { expect, test } from '@playwright/test';
 import type { Report } from '../../../../src/core/report/types.js';
 import { fixtures, mockApi } from '../../support/mock-api.js';
-import { camera, openCity, project, selected, stats } from '../../support/scene.js';
+import { camera, openCity, project, selected, stats, waitForCityAttribute } from '../../support/scene.js';
 import { emitSse, tagClient } from '../../support/sse.js';
 
 test('change/update-keeps-camera-and-selection', async ({ page }, testInfo) => {
@@ -51,5 +51,5 @@ test('change/update-keeps-camera-and-selection', async ({ page }, testInfo) => {
   expect(await camera(page)).toEqual(before);
   expect(await selected(page)).toBe('src/auth/order.guard.ts');
   await expect(canvas).toHaveAttribute('data-marker', 'first');
-  await expect(page.getByTestId('city')).toHaveAttribute('data-selected', 'src/auth/order.guard.ts');
+  await waitForCityAttribute(page, 'data-selected', 'src/auth/order.guard.ts');
 });
