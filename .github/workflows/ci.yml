@@ -60,6 +60,10 @@ jobs:
       - name: Install Chromium system dependencies
         if: steps.browsers.outputs.cache-hit == 'true'
         run: npx playwright install-deps chromium
+      # The cd-to-UI acceptance spec runs scenario A in every installed shell;
+      # the runner ships bash, zsh has to be installed.
+      - name: Install zsh
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends zsh
       - run: npm run test:e2e
       - name: Upload the failure artefacts
         if: failure()

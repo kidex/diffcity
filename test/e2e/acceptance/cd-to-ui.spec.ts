@@ -245,6 +245,13 @@ const report = (testInfo: TestInfo, text: string): void => {
 const shells = installedShells();
 
 test.describe('scenario A: the daemon runs and the UI is open on the Fleet', () => {
+  // A missing shell would silently drop its test, so CI (which installs zsh)
+  // must find both; fish runs only where it is installed.
+  test('zsh and bash are installed in CI', () => {
+    test.skip(!process.env['CI'], 'local runs use whatever shells are installed');
+    expect(shells.map((spec) => spec.shell)).toEqual(expect.arrayContaining(['zsh', 'bash']));
+  });
+
   for (const spec of shells) {
     test(`${spec.name}: cd → the repo and its 3 changes appear within 5 s`, async ({ page, world }, testInfo) => {
       test.setTimeout(90_000);
