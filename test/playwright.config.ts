@@ -40,6 +40,9 @@ export default defineConfig({
       testDir: './e2e/acceptance',
       // Real daemons with deadlines: one spec at a time (see cd-to-ui.spec.ts).
       workers: 1,
+      // No retry: a retry would let a slow first attempt pass as flaky, so the
+      // 5 s deadline would never fail CI. Screens keep the global retry.
+      retries: 0,
       use: browser,
     },
   ],
