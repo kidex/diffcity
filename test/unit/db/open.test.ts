@@ -54,18 +54,20 @@ describe('openDb pragmas', () => {
 });
 
 describe('migrations', () => {
-  it('db/migrate-fresh: an empty file becomes schema v1', () => {
+  it('db/migrate-fresh: an empty file becomes the current schema', () => {
     const { db, path } = fresh();
     db.close();
     const schema = readSchema(path);
 
-    expect(SCHEMA_VERSION).toBe(1);
-    expect(schema.version).toBe(1);
+    expect(SCHEMA_VERSION).toBe(2);
+    expect(schema.version).toBe(2);
     expect(schema.master.filter((row) => row.type === 'table').map((row) => row.name)).toEqual([
       'changes',
       'events',
       'findings',
       'repos',
+      'review_marks',
+      'review_notes',
       'snapshots',
     ]);
     expect(schema.columns).toEqual({
@@ -113,6 +115,25 @@ describe('migrations', () => {
         'touched TEXT NOT NULL',
         'contentHash TEXT NOT NULL',
         'computedAt TEXT NOT NULL',
+        'mergeBase TEXT',
+        'fingerprints TEXT',
+      ],
+      review_marks: [
+        'id INTEGER PK',
+        'changeId INTEGER NOT NULL',
+        'kind TEXT NOT NULL',
+        'target TEXT NOT NULL',
+        'fingerprint TEXT NOT NULL',
+        'markedAt TEXT NOT NULL',
+      ],
+      review_notes: [
+        'id INTEGER PK',
+        'changeId INTEGER NOT NULL',
+        'path TEXT NOT NULL',
+        'line INTEGER',
+        'body TEXT NOT NULL',
+        'createdAt TEXT NOT NULL',
+        'updatedAt TEXT NOT NULL',
       ],
       findings: [
         'id INTEGER PK',
@@ -138,6 +159,7 @@ describe('migrations', () => {
       changes_live_ref: 'CREATE UNIQUE INDEX changes_live_ref ON changes(repoId, ref) WHERE archivedAt IS NULL',
       changes_repo_event: 'CREATE INDEX changes_repo_event ON changes(repoId, archivedAt, lastEventAt)',
       events_repo_at: 'CREATE INDEX events_repo_at ON events(repoId, at)',
+      review_notes_change: 'CREATE INDEX review_notes_change ON review_notes(changeId)',
     });
   });
 

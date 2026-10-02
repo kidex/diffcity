@@ -93,6 +93,8 @@ const snapshotRecord: SnapshotRecord = {
   touched: ['lib/auth/session.ts', 'lib/ledger/invoice.ts', 'db/orders.sql'],
   contentHash: 'a'.repeat(64),
   computedAt: AT,
+  mergeBase: 'b'.repeat(40),
+  fingerprints: '{"files":{},"symbols":{}}',
 };
 
 const eventRecord: EventRecord = { id: 11, repoId: 1, changeId: null, type: 'agent', at: AT, payload: { dir: '/work/sample-shop' } };
@@ -149,6 +151,7 @@ const sseEvents: SseEvent[] = [
   { event: 'repo', data: { repoId: 1 } },
   { event: 'changes', data: { repoId: 1 } },
   { event: 'snapshot', data: { repoId: 1, changeId: 7, head: HEAD } },
+  { event: 'review', data: { repoId: 1, changeId: 7, reviewState: 'in-review' } },
   { event: 'collect', data: { repoId: 1, state: 'started' } },
   { event: 'collect', data: { repoId: 1, state: 'done' } },
   { event: 'collect', data: { repoId: 1, state: 'error', error: 'git failed' } },
@@ -227,7 +230,7 @@ describe('model types', () => {
     expectTypeOf<ArchiveReason>().toEqualTypeOf<'merged' | 'deleted' | 'closed' | 'clean'>();
     expectTypeOf<WatchMode>().toEqualTypeOf<'full' | 'git-only' | 'off'>();
     expectTypeOf<CollectPriority>().toEqualTypeOf<'high' | 'normal' | 'low'>();
-    expectTypeOf<SseEventName>().toEqualTypeOf<'hello' | 'repo' | 'changes' | 'snapshot' | 'collect'>();
+    expectTypeOf<SseEventName>().toEqualTypeOf<'hello' | 'repo' | 'changes' | 'snapshot' | 'review' | 'collect'>();
     expectTypeOf<SocketRequest['type']>().toEqualTypeOf<'ping' | 'track' | 'register' | 'shutdown'>();
     expectTypeOf<SocketRequest['v']>().toEqualTypeOf<1>();
   });
