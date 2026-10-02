@@ -18,6 +18,8 @@ export interface ApiDeps {
   port: () => number;
   /** Daemon state merged into each RepoSummary (collecting, watch); the store default when absent. */
   runtime?: RepoRuntimeLookup;
+  /** Reactivates an inactive repo opened in the UI (Q6): watchers and PR polling start. */
+  activate?: (repoId: number) => void;
 }
 
 interface IdParams {
@@ -44,15 +46,19 @@ export function registerApiRoutes(http: FastifyInstance, deps: ApiDeps): void {
   http.get('/api/repos', (): RepoSummary[] => db.repos.listSummaries(deps.runtime));
 
   // Opening a repo in the UI counts as seeing it (ADR-020, Q6), so it updates
-  // lastSeenAt, but only for a GET from the daemon's own origin: a HEAD or a
-  // cross-site request gets the same answer and writes nothing. No SSE `repo`
-  // signal goes out: the UI would refetch this route on it, and the refetch
-  // would signal again.
+  // lastSeenAt and reactivates an inactive repo, but only for a GET from the
+  // daemon's own origin: a HEAD or a cross-site request gets the same answer
+  // and writes nothing. No SSE `repo` signal goes out for the touch: the UI
+  // would refetch this route on it, and the refetch would signal again. A
+  // reactivation signals once; the refetch finds the repo active.
   // Always the live changes (ADR-017); archived ones come from /api/repos/:id/changes?archived=1.
   http.get<{ Params: IdParams }>('/api/repos/:id', (request): RepoDetail => {
     const id = parseId('id', request.params.id);
     if (db.repos.get(id) === null) throw notFound('repo', id);
-    if (request.method === 'GET' && isSameOrigin(request, deps.port())) db.repos.touchSeen(id, deps.now());
+    if (request.method === 'GET' && isSameOrigin(request, deps.port())) {
+      db.repos.touchSeen(id, deps.now());
+      deps.activate?.(id);
+    }
     return { repo: repoSummary(id), changes: changesOf(id, false) };
   });
 
