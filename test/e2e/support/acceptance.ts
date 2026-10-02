@@ -75,7 +75,10 @@ export async function ghStubEnv(root: string, base: NodeJS.ProcessEnv, prs: unkn
     TERM: 'dumb',
   };
   // The first exec of a freshly written script pays macOS's provenance check
-  // (the real gh does not); pay it here, before any t0.
+  // (the real gh does not); pay it here, before any t0. On macOS under heavy
+  // load the check is not reliably cached: an exec of the stub from node can
+  // still take seconds, up to the collector's 10 s gh timeout (the PR then
+  // shows as a branch). Linux CI has no such check.
   execFileSync(gh, ['--version'], { env });
   return env;
 }
