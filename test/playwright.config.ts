@@ -2,7 +2,8 @@
 // - screens: the UI against a mocked API (page.route + JSON fixtures), served
 //   by a test-only static server; video, trace and screenshot kept on failure;
 // - acceptance: each spec starts its own daemon in a fresh temporary home,
-//   one worker so timed specs never share the machine with each other.
+//   one worker so timed specs never share the machine with each other; CI
+//   runs it alone, after the screens (.github/workflows/ci.yml).
 
 import { defineConfig, devices } from '@playwright/test';
 
