@@ -6,7 +6,9 @@
 import { defineConfig, devices } from '@playwright/test';
 
 const CI = Boolean(process.env['CI']);
-const PORT = 4399;
+// DIFFCITY_E2E_PORT lets two worktrees run the screens project side by side;
+// with reuseExistingServer, a shared port would serve the other one's dist/.
+const PORT = Number(process.env['DIFFCITY_E2E_PORT'] ?? 4399);
 // Opt-ins for local runs where Playwright's downloads are not available:
 // DIFFCITY_E2E_CHANNEL=chrome uses an installed browser instead of the
 // Chromium download, DIFFCITY_E2E_VIDEO=off skips video (it needs Playwright's
