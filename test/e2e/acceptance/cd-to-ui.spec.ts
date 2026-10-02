@@ -7,11 +7,12 @@
 //   the UI is open on the Fleet, a real interactive shell evaluates the built
 //   `diffcity shell-init` and `cd`s into the invented sample-shop repo. Within
 //   5000 ms of t0 (the moment the `cd` line is written to the shell) the repo's
-//   lot and row are on the Fleet with one Draft, one Branch and one PR, and
-//   GET /api/repos/:id lists the 3 changes, each with stats.
+//   lot and row are on the Fleet with one Draft, one Branch and one PR,
+//   GET /api/repos/:id lists the 3 changes, each with stats, and following the
+//   row opens the Repo screen listing the 3 changes with their stats.
 // - Scenario B: no daemon. The hook's `track` starts one detached (on the port
 //   from state.json) and the same 5000 ms deadline applies from t0; the UI
-//   opened afterwards shows the lot.
+//   opened afterwards shows the lot, and the Repo screen the 3 changes.
 // - An untrusted repo with a diffcity.config.js: its config is never imported
 //   and the repo carries the "not trusted" note.
 //
@@ -190,6 +191,28 @@ async function waitForFleet(page: Page, name: string): Promise<void> {
   );
 }
 
+/**
+ * Opens the repo from its Fleet row and waits until the Repo screen shows
+ * `name` with its 3 changes (a Draft, a Branch and a PR), each with its stats
+ * computed, and the Branch and PR under their titles.
+ */
+async function openRepoScreen(page: Page, name: string): Promise<void> {
+  await page.getByTestId('repo-row').filter({ hasText: name }).getByRole('link', { name }).click();
+  await page.waitForFunction(
+    `(() => {
+      const screen = document.querySelector('[data-screen="repo"]');
+      if (screen === null || screen.querySelector('h1')?.textContent !== ${JSON.stringify(name)}) return false;
+      const rows = [...screen.querySelectorAll('[data-testid="change-row"]')];
+      if (rows.length !== 3 || screen.querySelector('[data-testid="computing"]') !== null) return false;
+      const kinds = rows.map((row) => row.getAttribute('data-kind')).sort().join(',');
+      const titles = rows.map((row) => row.querySelector('[data-testid="change-title"]')?.textContent ?? '');
+      return kinds === 'branch,draft,pr' && titles.includes('add the menu') && titles.includes('Checkout flow');
+    })()`,
+    undefined,
+    { polling: 25, timeout: OBSERVE_MS },
+  );
+}
+
 /** Waits until the Fleet shows a lot for `name`. */
 async function waitForLot(page: Page, name: string): Promise<void> {
   await page.waitForFunction(
@@ -238,11 +261,18 @@ test.describe('scenario A: the daemon runs and the UI is open on the Fleet', () 
         waitForChanges(world.baseURL, 'sample-shop').then((value) => ({ value, ms: performance.now() - t0 })),
       ]);
 
-      const measured = `Fleet lot and counters in ${uiMs.toFixed(0)} ms; API 3 changes with stats in ${detail.ms.toFixed(0)} ms`;
+      // The user follows the row: the Repo screen lists the 3 changes.
+      await openRepoScreen(page, 'sample-shop');
+      const repoMs = performance.now() - t0;
+
+      const measured =
+        `Fleet lot and counters in ${uiMs.toFixed(0)} ms; API 3 changes with stats in ${detail.ms.toFixed(0)} ms; ` +
+        `Repo screen with the 3 changes at ${repoMs.toFixed(0)} ms`;
       report(testInfo, measured);
       expectSampleShopChanges(detail.value);
       expect(uiMs, measured).toBeLessThan(DEADLINE_MS);
       expect(detail.ms, measured).toBeLessThan(DEADLINE_MS);
+      expect(repoMs, measured).toBeLessThan(DEADLINE_MS);
       // The background track prints no job notice and nothing else.
       expect(shell.output()).not.toMatch(/\[\d+\]|tracked|error/i);
     });
@@ -272,11 +302,16 @@ test.describe('scenario B: no daemon runs', () => {
     await page.goto(`${world.baseURL}/#/`);
     await waitForFleet(page, 'sample-shop');
     const uiMs = performance.now() - t0;
+    await openRepoScreen(page, 'sample-shop');
+    const repoMs = performance.now() - t0;
 
-    const measured = `daemon started, API 3 changes with stats in ${apiMs.toFixed(0)} ms; Fleet loaded and showing them at ${uiMs.toFixed(0)} ms`;
+    const measured =
+      `daemon started, API 3 changes with stats in ${apiMs.toFixed(0)} ms; Fleet loaded and showing them at ${uiMs.toFixed(0)} ms; ` +
+      `Repo screen with the 3 changes at ${repoMs.toFixed(0)} ms`;
     report(testInfo, measured);
     expect(apiMs, measured).toBeLessThan(DEADLINE_MS);
     expect(uiMs, measured).toBeLessThan(DEADLINE_MS);
+    expect(repoMs, measured).toBeLessThan(DEADLINE_MS);
   });
 });
 
