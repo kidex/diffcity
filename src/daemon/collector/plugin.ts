@@ -13,14 +13,16 @@
 // On start, every active repo gets one low-priority collection (ADR-020).
 //
 // Two hooks for the watchers (DC-33): onActivated fires when `track` registers
-// a repo or reactivates an inactive one; onListed fires after each collection
-// read a repo's working trees.
+// a repo or reactivates an inactive one, and when the UI opens an inactive repo
+// (provideActivation, called by GET /api/repos/:id, which then also collects
+// it once); onListed fires after each collection read a repo's working trees.
 
 import { availableParallelism } from 'node:os';
 import { identifyRepo, type RepoIdentity, type WorktreeInfo } from '../../core/changes/index.js';
 import type { Db } from '../../core/db/index.js';
 import type { CommandRunner } from '../../core/git/index.js';
 import type { SocketSuccessResponses } from '../../core/model/types.js';
+import { provideActivation } from '../activation.js';
 import { getDb } from '../db.js';
 import { errorMessage } from '../log.js';
 import type { DaemonContext, DaemonPlugin } from '../plugin.js';
@@ -112,6 +114,27 @@ export function createCollection(options: CollectionPluginOptions = {}): Collect
     });
   };
 
+  function emitActivated(context: DaemonContext, repoId: number): void {
+    try {
+      activated.emit(repoId);
+    } catch (error) {
+      context.log.error(`collection: onActivated failed: ${errorMessage(error)}`);
+    }
+  }
+
+  /** Opening an inactive repo in the UI (Q6): active again, watched, and collected once. */
+  function reactivate(context: DaemonContext, repoId: number): boolean {
+    const store = need(db, 'database');
+    const repo = store.repos.get(repoId);
+    if (repo === null || repo.active) return false;
+    store.repos.setActive(repoId, true);
+    emitActivated(context, repoId);
+    context.broadcast({ event: 'repo', data: { repoId } });
+    const active = need(collector, 'collector');
+    later(() => active.request(repoId, 'full', 'normal'), context);
+    return true;
+  }
+
   async function track(context: DaemonContext, request: SocketRequestOf<'track'>): Promise<SocketSuccessResponses['track']> {
     const store = need(db, 'database');
     const active = need(collector, 'collector');
@@ -122,13 +145,7 @@ export function createCollection(options: CollectionPluginOptions = {}): Collect
       if (!repo.active) store.repos.setActive(repo.id, true);
       if (at > repo.lastSeenAt) store.repos.touchSeen(repo.id, at);
     }
-    if (created || !repo.active) {
-      try {
-        activated.emit(repo.id);
-      } catch (error) {
-        context.log.error(`collection: onActivated failed: ${errorMessage(error)}`);
-      }
-    }
+    if (created || !repo.active) emitActivated(context, repo.id);
     context.broadcast({ event: 'repo', data: { repoId: repo.id } });
     later(async () => {
       await active.request(repo.id, 'full', 'high');
@@ -195,6 +212,7 @@ export function createCollection(options: CollectionPluginOptions = {}): Collect
       collector = created;
       context.setCollectingCounter(() => created.collecting);
       provideRuntime(context, { collecting: (repoId) => created.isCollecting(repoId) });
+      provideActivation(context, (repoId) => reactivate(context, repoId));
       context.socket.handle('track', (request) => track(context, request));
       context.socket.handle('register', (request) => register(context, request));
     },

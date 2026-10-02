@@ -6,6 +6,8 @@
 import { realpath } from 'node:fs/promises';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import type { RepoDetail } from '../../../src/core/model/types.js';
+import { apiPlugin } from '../../../src/daemon/api/plugin.js';
 import { systemClock, type Clock, type TimerHandle } from '../../../src/daemon/clock.js';
 import { getRuntime } from '../../../src/daemon/runtime.js';
 import { ACTIVE_WINDOW_MS, DEACTIVATE_CHECK_MS } from '../../../src/daemon/scheduler/scheduler.js';
@@ -24,7 +26,7 @@ async function daemonWithWatch(clock: Clock = manualClock()): Promise<{ test: Te
   let watch: Watch | null = null;
   const test = await startTestDaemon({ gh: ghNotInstalled() }, (collection) => {
     watch = createWatch(collection, { clock, onEvent: (event) => events.push(event) });
-    return [watch.plugin];
+    return [watch.plugin, apiPlugin];
   });
   return {
     test,
@@ -72,6 +74,32 @@ describe('activation (C4, Q6)', () => {
     const repoId = repoIdOf(await test.track(repo.dir));
     await waitFor(() => watch().watchers().watchedWorktrees(repoId).length === 1, 10_000, 'the working tree watcher');
     expect(watch().watchers().watchedWorktrees(repoId)).toEqual([await realpath(repo.dir)]);
+    await test.idle();
+  });
+});
+
+describe('opening a repo in the UI (Q6)', () => {
+  it('a same-origin GET /api/repos/:id reactivates an inactive repo and starts its watchers; a cross-site one does not', async () => {
+    const repo = await sampleRepo();
+    const { test, watch } = await daemonWithWatch();
+    await test.register([repo.dir]);
+    await test.idle();
+    const [stored] = test.collection.db().repos.list();
+    if (stored === undefined) throw new Error('not registered');
+    expect(stored.active).toBe(false);
+    const url = `http://127.0.0.1:${String(test.daemon.info.port)}/api/repos/${String(stored.id)}`;
+
+    const crossSite = await fetch(url, { headers: { origin: 'http://elsewhere.example' } });
+    expect(crossSite.status).toBe(200);
+    expect(test.collection.db().repos.get(stored.id)?.active).toBe(false);
+    expect(watch().watchers().watched()).toEqual([]);
+
+    const detail = (await (await fetch(url)).json()) as RepoDetail;
+    expect(detail.repo).toMatchObject({ active: true, watch: 'full' });
+    expect(test.collection.db().repos.get(stored.id)?.active).toBe(true);
+    await waitFor(() => watch().watchers().watched().includes(stored.id), 10_000, 'the watchers of the opened repo');
+    expect(watch().scheduler().polled()).toEqual([stored.id]);
+    expect(test.events()).toContainEqual({ event: 'repo', data: { repoId: stored.id } });
     await test.idle();
   });
 });
