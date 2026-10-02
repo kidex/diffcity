@@ -16,7 +16,8 @@
     "lastAudit": null,
     "collecting": false,
     "error": null,
-    "watch": "full"
+    "watch": "full",
+    "notes": []
   },
   {
     "id": 101,
@@ -35,7 +36,8 @@
     "lastAudit": null,
     "collecting": false,
     "error": null,
-    "watch": "full"
+    "watch": "full",
+    "notes": []
   },
   {
     "id": 102,
@@ -54,7 +56,8 @@
     "lastAudit": null,
     "collecting": false,
     "error": null,
-    "watch": "full"
+    "watch": "full",
+    "notes": []
   },
   {
     "id": 103,
@@ -73,7 +76,8 @@
     "lastAudit": null,
     "collecting": false,
     "error": null,
-    "watch": "full"
+    "watch": "full",
+    "notes": []
   },
   {
     "id": 104,
@@ -92,7 +96,8 @@
     "lastAudit": null,
     "collecting": true,
     "error": null,
-    "watch": "full"
+    "watch": "full",
+    "notes": []
   },
   {
     "id": 105,
@@ -111,7 +116,8 @@
     "lastAudit": null,
     "collecting": false,
     "error": null,
-    "watch": "full"
+    "watch": "full",
+    "notes": []
   },
   {
     "id": 106,
@@ -130,7 +136,8 @@
     "lastAudit": null,
     "collecting": false,
     "error": null,
-    "watch": "full"
+    "watch": "full",
+    "notes": []
   },
   {
     "id": 107,
@@ -149,7 +156,8 @@
     "lastAudit": null,
     "collecting": false,
     "error": null,
-    "watch": "git-only"
+    "watch": "git-only",
+    "notes": []
   },
   {
     "id": 108,
@@ -168,7 +176,8 @@
     "lastAudit": null,
     "collecting": false,
     "error": null,
-    "watch": "full"
+    "watch": "full",
+    "notes": []
   },
   {
     "id": 109,
@@ -187,7 +196,8 @@
     "lastAudit": null,
     "collecting": false,
     "error": null,
-    "watch": "full"
+    "watch": "full",
+    "notes": []
   },
   {
     "id": 110,
@@ -206,7 +216,8 @@
     "lastAudit": null,
     "collecting": false,
     "error": "git exited with code 128",
-    "watch": "full"
+    "watch": "full",
+    "notes": []
   },
   {
     "id": 111,
@@ -225,7 +236,8 @@
     "lastAudit": null,
     "collecting": false,
     "error": null,
-    "watch": "full"
+    "watch": "full",
+    "notes": []
   },
   {
     "id": 112,
@@ -244,7 +256,8 @@
     "lastAudit": null,
     "collecting": false,
     "error": null,
-    "watch": "full"
+    "watch": "full",
+    "notes": []
   },
   {
     "id": 113,
@@ -263,7 +276,8 @@
     "lastAudit": null,
     "collecting": true,
     "error": null,
-    "watch": "full"
+    "watch": "full",
+    "notes": []
   },
   {
     "id": 114,
@@ -282,7 +296,8 @@
     "lastAudit": null,
     "collecting": false,
     "error": null,
-    "watch": "full"
+    "watch": "full",
+    "notes": []
   },
   {
     "id": 115,
@@ -301,7 +316,8 @@
     "lastAudit": null,
     "collecting": false,
     "error": null,
-    "watch": "git-only"
+    "watch": "git-only",
+    "notes": []
   },
   {
     "id": 116,
@@ -320,7 +336,8 @@
     "lastAudit": null,
     "collecting": false,
     "error": null,
-    "watch": "full"
+    "watch": "full",
+    "notes": []
   },
   {
     "id": 117,
@@ -339,7 +356,8 @@
     "lastAudit": null,
     "collecting": false,
     "error": null,
-    "watch": "full"
+    "watch": "full",
+    "notes": []
   },
   {
     "id": 118,
@@ -358,7 +376,8 @@
     "lastAudit": null,
     "collecting": false,
     "error": null,
-    "watch": "full"
+    "watch": "full",
+    "notes": []
   },
   {
     "id": 119,
@@ -377,7 +396,8 @@
     "lastAudit": null,
     "collecting": false,
     "error": null,
-    "watch": "full"
+    "watch": "full",
+    "notes": []
   },
   {
     "id": 120,
@@ -396,7 +416,8 @@
     "lastAudit": null,
     "collecting": false,
     "error": null,
-    "watch": "full"
+    "watch": "full",
+    "notes": []
   },
   {
     "id": 121,
@@ -415,7 +436,8 @@
     "lastAudit": null,
     "collecting": false,
     "error": "git exited with code 128",
-    "watch": "full"
+    "watch": "full",
+    "notes": []
   },
   {
     "id": 122,
@@ -434,7 +456,8 @@
     "lastAudit": null,
     "collecting": true,
     "error": null,
-    "watch": "full"
+    "watch": "full",
+    "notes": []
   },
   {
     "id": 123,
@@ -453,6 +476,7 @@
     "lastAudit": null,
     "collecting": false,
     "error": null,
-    "watch": "git-only"
+    "watch": "git-only",
+    "notes": []
   }
 ]

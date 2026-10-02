@@ -7,6 +7,7 @@ import type { RepoSummary } from '../../../core/model/types.js';
 import { routeHref } from '../../app/router.js';
 import { h, renderList, svg } from '../../shared/dom.js';
 import { lastAuditLabel, plural, relativeTime } from '../../shared/format.js';
+import { noteCopy, noteSummary } from '../../shared/notes.js';
 import type { AuditAge } from '../../shared/tokens.js';
 import { fitLabel, layoutLots, lotSide, type LotPlacement, type MapLayout } from './layout.js';
 
@@ -53,6 +54,7 @@ export function lotLabel(repo: RepoSummary, now: number): string {
   if (!repo.active) parts.push('inactive');
   if (repo.collecting) parts.push('collecting');
   if (repo.error !== null) parts.push('collection error');
+  for (const note of repo.notes) parts.push(`note: ${noteSummary(note, repo.path)}`);
   return parts.join(', ');
 }
 
@@ -124,6 +126,7 @@ export function createFleetMap(): FleetMap {
         h('span', null, h('b', null, repo.counts.pr), ' PR'),
       ),
       h('div', { class: 'pins' }, repo.lastEventAt === null ? 'no events yet' : `last event ${relativeTime(repo.lastEventAt, now)}`),
+      ...repo.notes.map((note) => h('div', { class: 'note', 'data-testid': 'tip-note' }, noteCopy(note, repo.path).text)),
     );
     const { left, top, placement } = tipPosition(place, tip.offsetWidth, tip.offsetHeight, width, layout.height);
     tip.style.left = `${String(left)}px`;
@@ -314,7 +317,7 @@ function subLabel(repo: RepoSummary): string {
   return repo.highFindings > 0 ? plural(repo.highFindings, 'high finding') : `${String(repo.unreviewed)} to review`;
 }
 
-/** The collecting or error pip in the lot's top-right corner. */
+/** The collecting, error or note pip in the lot's top-right corner; the first that applies. */
 function statusPip(repo: RepoSummary, side: number): SVGElement[] {
   const cx = String(side - 12);
   if (repo.error !== null) {
@@ -322,6 +325,9 @@ function statusPip(repo: RepoSummary, side: number): SVGElement[] {
   }
   if (repo.collecting) {
     return [svg('g', { class: 'pip pip-collecting' }, svg('circle', { class: 'pulse', cx, cy: '12', r: '4' }), svg('circle', { cx, cy: '12', r: '4' }))];
+  }
+  if (repo.notes.length > 0) {
+    return [svg('g', { class: 'pip pip-note', 'data-testid': 'lot-note' }, svg('circle', { cx, cy: '12', r: '7' }), svg('text', { x: cx, y: '15.5' }, 'i'))];
   }
   return [];
 }
