@@ -42,6 +42,16 @@ export interface SseRecord {
   data: Record<string, unknown>;
 }
 
+/**
+ * Repos whose last collect signal received is a `started`. A collection that a
+ * newer one replaced ends without a signal, so the last one per repo decides.
+ */
+function collectsOpen(events: readonly SseRecord[]): number {
+  const last = new Map<unknown, unknown>();
+  for (const record of events) if (record.event === 'collect') last.set(record.data['repoId'], record.data['state']);
+  return [...last.values()].filter((state) => state === 'started').length;
+}
+
 /** Reads GET /api/events continuously and parses every event as it arrives. */
 async function recordSse(port: number): Promise<{ events: SseRecord[]; close: () => void }> {
   const controller = new AbortController();
@@ -114,6 +124,10 @@ export async function startTestDaemon(options: CollectionPluginOptions = {}, ext
       // Let a collection scheduled after a socket response start first.
       await new Promise((resolve) => setTimeout(resolve, 20));
       await waitFor(() => collection.collector().collecting === 0, timeoutMs, 'the collections to finish');
+      // The daemon broadcasts `done` before its count drops, but the SSE
+      // reader gets it a moment later: wait until the last `started` it has seen
+      // has its `done` or `error`, so a late signal never lands after idle().
+      await waitFor(() => collectsOpen(sse.events) === 0, timeoutMs, 'the collect signals to arrive');
     },
   };
   return testDaemon;
