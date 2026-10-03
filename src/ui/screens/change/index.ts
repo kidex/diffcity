@@ -6,7 +6,8 @@
 //
 // States: no Report yet (computing), a Report without files, no WebGL (a
 // message and the touched-file table), or the city, with the HUD around it
-// (hud/): top bar, filters, legend, tooltip, selection card, Fleet card.
+// (hud/): top bar, filters, legend, tooltip, selection card, Fleet card, and
+// the reading panel at its right (panel/): tabs, stop cards and the file view.
 
 import './change.css';
 
@@ -20,7 +21,9 @@ import { cardData, findingsIndex, tipData } from './model/hud.js';
 import type { MarkKind, Marks } from './model/critical.js';
 import type { Filters } from './model/view.js';
 import { clearFilters, pruneFilters, ruleIndex } from './model/view.js';
-import type { FleetPort } from './ports.js';
+import type { Panel } from './panel/index.js';
+import { createPanel } from './panel/index.js';
+import type { DiffPort, FleetPort } from './ports.js';
 import type { CityView, EffectsState, SceneStats } from './scene/view.js';
 import { createCityView, disposal } from './scene/view.js';
 
@@ -34,6 +37,8 @@ export interface ChangeScreenOptions {
   crumb?: boolean;
   /** The audit card of the other repos; without it the card is hidden. */
   fleet?: FleetPort;
+  /** The diff of a file (ADR-027); without it the file view shows only the Report's step diffs. */
+  diffs?: DiffPort;
 }
 
 export interface ChangeScreen {
@@ -45,7 +50,10 @@ export interface ChangeScreen {
 /** The `?scene-debug` hook for tests and benchmarks (window.diffcityScene). */
 export interface SceneDebug {
   ready: boolean;
-  project(fileId: string): { x: number; y: number } | null;
+  /** Client point of a building's centre, or of one of its floors' when `symbolId` names it. */
+  project(fileId: string, symbolId?: string): { x: number; y: number } | null;
+  /** The symbol id of the focused floor of the selected building. */
+  selectedFloor(): string | null;
   stats(): SceneStats | null;
   bench(ms: number): Promise<{ fps: number; drawCalls: number } | null>;
   camera(): { theta: number; phi: number; r: number } | null;
@@ -73,6 +81,8 @@ declare global {
     diffcityMarks?: { files?: Record<string, MarkKind>; symbols?: Record<string, MarkKind> };
     /** Under `?scene-debug`, a FleetPort for tests: the SPA has no audit data to build one from yet. */
     diffcityFleet?: FleetPort;
+    /** Under `?scene-debug`, set to true to mount the screen as the HTML export does: without a DiffPort. */
+    diffcityNoDiffs?: boolean;
   }
 }
 
@@ -83,7 +93,8 @@ function debugEnabled(): boolean {
 function installDebug(view: () => CityView | null): SceneDebug {
   const hook: SceneDebug = {
     ready: false,
-    project: (fileId) => view()?.project(fileId) ?? null,
+    project: (fileId, symbolId) => view()?.project(fileId, symbolId) ?? null,
+    selectedFloor: () => view()?.selectedFloor() ?? null,
     stats: () => view()?.stats() ?? null,
     bench: async (ms) => (await view()?.bench(ms)) ?? null,
     camera: () => view()?.camera() ?? null,
@@ -115,6 +126,7 @@ export function mountChange(element: HTMLElement, options: ChangeScreenOptions):
   let mode: 'computing' | 'empty' | 'fallback' | 'city' | 'pending' | null = null;
   let latest = options.report;
   let hud: Hud | null = null;
+  let panel: Panel | null = null;
   let filters: Filters = clearFilters();
   let findings = findingsIndex({ findings: [] });
   let disposed = false;
@@ -135,6 +147,8 @@ export function mountChange(element: HTMLElement, options: ChangeScreenOptions):
     view = null;
     hud?.dispose();
     hud = null;
+    panel?.dispose();
+    panel = null;
     if (debug !== null) debug.ready = false;
   }
 
@@ -155,6 +169,20 @@ export function mountChange(element: HTMLElement, options: ChangeScreenOptions):
     return hud;
   }
 
+  /** The reading panel for `report`, created on first use; it drives the city's selection and hover. */
+  function panelFor(report: Report): Panel {
+    panel ??= createPanel(
+      {
+        onSelect: (fileId, symbolId) => view?.select(fileId, symbolId),
+        onHover: (fileId) => view?.hover(fileId),
+        diffs: debug !== null && window.diffcityNoDiffs === true ? undefined : options.diffs,
+        reducedMotion,
+      },
+      report,
+    );
+    return panel;
+  }
+
   function startCity(): void {
     mode = 'pending';
     replaceChildren(element);
@@ -163,8 +191,11 @@ export function mountChange(element: HTMLElement, options: ChangeScreenOptions):
       if (disposed || mode !== 'pending' || latest === null) return;
       const screen = hudFor(latest);
       try {
-        replaceChildren(element, screen.bar);
-        view = createCityView(element, latest, {
+        // The city and the reading panel side by side, under the top bar.
+        const work = h('div', { class: 'change-work', 'data-testid': 'change-work' });
+        replaceChildren(element, screen.bar, work);
+        const reading = panelFor(latest);
+        view = createCityView(work, latest, {
           reducedMotion,
           onReady: () => {
             if (debug !== null) debug.ready = true;
@@ -178,8 +209,12 @@ export function mountChange(element: HTMLElement, options: ChangeScreenOptions):
               const rect = view?.element.getBoundingClientRect() ?? element.getBoundingClientRect();
               screen.tip(tipData(info.city, info.building, info.floor, findings), info.clientX - rect.left, info.clientY - rect.top);
             },
-            select(building) {
-              screen.card(building === null ? null : cardData(building));
+            select(building, symbolId) {
+              screen.card(building === null ? null : cardData(building), symbolId);
+              reading.select(building === null ? null : building.id, symbolId);
+            },
+            click(building, floor) {
+              reading.open(building.id, floor?.symbolId ?? null);
             },
             selectionLost(building) {
               screen.toast(`${building.file.path} is no longer in this change`);
@@ -187,6 +222,7 @@ export function mountChange(element: HTMLElement, options: ChangeScreenOptions):
           },
         });
         view.element.append(screen.overlay);
+        work.append(reading.root);
         view.setFilters(filters);
         view.setMarks(debugMarks());
         mode = 'city';
@@ -216,6 +252,7 @@ export function mountChange(element: HTMLElement, options: ChangeScreenOptions):
     }
     if (mode === 'city' && view !== null) {
       hudFor(report);
+      panelFor(report).update(report);
       view.setReport(report);
       view.setFilters(filters);
       view.setMarks(debugMarks());

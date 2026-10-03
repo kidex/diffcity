@@ -39,7 +39,8 @@ export interface Hud {
   update(report: Report, filters: Filters): void;
   /** Shows the tooltip at a point in the coordinates of the overlay, or hides it. */
   tip(data: TipData | null, x: number, y: number): void;
-  card(data: CardData | null): void;
+  /** The selection card; `focus` is the symbol id of the focused floor. */
+  card(data: CardData | null, focus?: string | null): void;
   toast(text: string): void;
   dispose(): void;
 }
@@ -80,8 +81,8 @@ export function createHud(options: HudOptions): Hud {
       if (data === null) tooltip.hide();
       else tooltip.show(data, x, y);
     },
-    card(data) {
-      selection.show(data);
+    card(data, focus = null) {
+      selection.show(data, focus);
     },
     toast(text) {
       toast.textContent = text;

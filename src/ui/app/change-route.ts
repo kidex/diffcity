@@ -13,8 +13,10 @@ import type { ChangeSummary } from '../../core/model/types.js';
 import type { Report } from '../../core/report/types.js';
 import { ApiRequestError } from '../data/api.js';
 import type { DataContext } from '../data/context.js';
+import { createDiffPort } from '../data/diff-port.js';
 import type * as ChangeScreenChunk from '../screens/change/index.js';
 import type { ChangeScreen } from '../screens/change/index.js';
+import type { DiffPort } from '../screens/change/ports.js';
 import { h, replaceChildren } from '../shared/dom.js';
 import {
   aheadBehind,
@@ -67,6 +69,8 @@ export function mountChangeRoute(element: HTMLElement, context: DataContext, cha
   // Not inside .title: the stage hides `.title p` at 980 px and below.
   replaceChildren(stage, h('div', { class: 'change-message' }, h('p', { role: 'status', 'data-testid': 'change-loading' }, 'Loading the change…')));
 
+  // The port of this change; the file view shows the Report's step diffs until a later task renders the whole diff.
+  const diffs: DiffPort = createDiffPort(api, changeId);
   let disposed = false;
   let controller: AbortController | null = null;
   let screen: ChangeScreen | null = null;
@@ -94,7 +98,7 @@ export function mountChangeRoute(element: HTMLElement, context: DataContext, cha
         if (disposed || waiting === undefined) return;
         const { report: latest } = waiting;
         waiting = undefined;
-        screen = module.mountChange(body, { report: latest });
+        screen = module.mountChange(body, { report: latest, diffs });
       },
       () => {
         if (disposed || waiting === undefined) return;

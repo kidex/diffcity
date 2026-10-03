@@ -1,0 +1,140 @@
+/*
+ * The reading panel and the file view (design/mockup.html "reading panel",
+ * direction C's surfaces): header, tabs with counters, stop cards with a rail
+ * and a node, findings, the inline diff and the footer. Colours are tokens.
+ */
+
+.change-work { flex: 1 1 0; min-height: 0; display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(360px, 1fr); }
+.change-work > .city { min-width: 0; }
+
+.read { border-left: 1px solid var(--line); background: var(--panel); display: flex; flex-direction: column; min-height: 0; min-width: 0; }
+.read [hidden] { display: none; }
+.read header { padding: 18px 22px 12px; border-bottom: 1px solid var(--line-soft); }
+.read header h2 { margin: 0; font-size: 16px; font-weight: 600; letter-spacing: -.01em; }
+.read header p { margin: 4px 0 0; color: var(--muted); font-size: 12.5px; }
+.read .tabs { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 12px; }
+.read .tabs button { padding: 6px 10px; border-radius: 7px; color: var(--muted); font-size: 12.5px; font-weight: 500; }
+.read .tabs button:hover { color: var(--ink); }
+.read .tabs button.on { background: var(--panel-2); color: var(--ink); }
+.read .tabs .cnt { margin-left: 5px; color: var(--muted); font-weight: 400; }
+.read .scroll { overflow: auto; flex: 1 1 auto; min-height: 0; padding: 6px 0 24px; }
+.read .scroll:focus-visible { outline-offset: -2px; }
+
+.read .panel-empty { margin: 0; padding: 18px 22px; color: var(--muted); font-size: 13px; }
+
+/* ---------- stop cards ---------- */
+.read .step { padding: 14px 22px 16px 22px; position: relative; cursor: pointer; border-left: 3px solid transparent; }
+.read .step:hover, .read .step.on { background: color-mix(in srgb, var(--panel-2) 70%, transparent); }
+.read .step.on { border-left-color: var(--sig); }
+.read .step .rail { position: absolute; left: 30px; top: 0; bottom: 0; width: 1px; background: var(--line); }
+.read .step:first-of-type .rail { top: 22px; }
+.read .step:last-of-type .rail { bottom: auto; height: 22px; }
+.read .step:only-of-type .rail { display: none; }
+.read .step .node { position: absolute; left: 25px; top: 17px; width: 11px; height: 11px; border-radius: 50%; background: var(--panel); border: 2px solid var(--muted); }
+.read .step.add .node { border-color: var(--add); }
+.read .step.mod .node { border-color: var(--mod); }
+.read .step.sig .node { border-color: var(--sig); }
+.read .step.del .node { border-color: var(--del); }
+.read .step .head { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 8px; padding-left: 24px; }
+.read .step .sym { font-family: var(--mono); font-size: 13px; font-weight: 500; color: var(--ink); overflow-wrap: anywhere; }
+.read .step .file { color: var(--muted); font-size: 12px; font-family: var(--mono); overflow-wrap: anywhere; }
+.read .step .tags { margin-left: auto; display: inline-flex; gap: 6px; align-items: baseline; flex-wrap: wrap; }
+.read .step .why { padding-left: 24px; margin: 4px 0 0; color: var(--ink-2); font-size: 12.5px; overflow-wrap: anywhere; }
+.read .step:focus-visible { outline-offset: -2px; }
+
+/* the inline diff */
+.read .code {
+  margin: 10px 0 0 24px; background: var(--code-bg); border: 1px solid var(--line-soft); border-radius: 8px;
+  font-family: var(--mono); font-size: 12px; line-height: 1.55; overflow-x: auto; padding: 6px 0;
+}
+.read .code .l { display: flex; white-space: pre; padding: 0 12px; min-width: max-content; }
+.read .code .l .g { color: var(--muted); width: 14px; flex: 0 0 auto; user-select: none; }
+.read .code .l.a { background: var(--code-add); }
+.read .code .l.a .g { color: var(--add); }
+.read .code .l.d { background: var(--code-del); }
+.read .code .l.d .g { color: var(--del); }
+.read .code .l.c { color: var(--ink-2); }
+
+/* findings */
+.read .pin { margin: 10px 0 0 24px; display: flex; gap: 10px; align-items: flex-start; padding: 9px 11px; border-radius: 8px; background: var(--panel-2); border: 1px solid var(--line-soft); }
+.read .tab-body > .group > .pin { margin-left: 22px; margin-right: 22px; }
+.read .pin .sev { width: 8px; height: 8px; border-radius: 50%; flex: 0 0 auto; margin-top: 6px; }
+.read .pin .sev.high { background: var(--sev-high); box-shadow: 0 0 0 3px color-mix(in srgb, var(--sev-high) 25%, transparent); }
+.read .pin .sev.med { background: var(--sev-med); }
+.read .pin .sev.low { background: var(--sev-low); }
+.read .pin .body { min-width: 0; }
+.read .pin .t { font-size: 12.5px; color: var(--ink); overflow-wrap: anywhere; }
+.read .pin .t .state { margin-left: 8px; font-size: 11px; color: var(--muted); border: 1px solid var(--line); border-radius: 5px; padding: 0 6px; }
+.read .pin .m { font-size: 12px; color: var(--ink-2); margin-top: 2px; overflow-wrap: anywhere; }
+.read .pin .src { margin-left: auto; flex: 0 0 auto; font-size: 11px; color: var(--muted); border: 1px solid var(--line); border-radius: 5px; padding: 1px 6px; max-width: 14ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.read .pin.fixed, .read .pin.intended { opacity: .72; }
+.read .pin .fix { margin-top: 6px; display: flex; gap: 6px; flex-wrap: wrap; }
+.read .pin .fix button { font-size: 11.5px; color: var(--ink-2); padding: 3px 8px; border-radius: 6px; border: 1px solid var(--line); }
+.read .pin .fix button[aria-disabled="true"] { opacity: .55; cursor: not-allowed; }
+
+/* groups: findings by file, files outside the spec, symbols by file */
+.read .group { padding: 4px 0 10px; }
+.read .group + .group { border-top: 1px solid var(--line-soft); padding-top: 10px; }
+.read .group-head {
+  display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 10px; width: 100%; text-align: left;
+  padding: 6px 22px; color: var(--ink);
+}
+button.group-head:hover { background: color-mix(in srgb, var(--panel-2) 70%, transparent); }
+.read .group-head .path { font-family: var(--mono); font-size: 12.5px; overflow-wrap: anywhere; min-width: 0; }
+.read .group-head .pkg { color: var(--muted); font-size: 12px; font-family: var(--mono); overflow-wrap: anywhere; }
+.read .group-head .tag { margin-left: auto; }
+.read .plain-list { list-style: none; margin: 0; padding: 0; }
+.read .sym-row { display: flex; align-items: center; gap: 8px; width: 100%; padding: 5px 22px 5px 34px; text-align: left; border-left: 3px solid transparent; font-size: 12.5px; }
+.read .sym-row:hover, .read .sym-row.on { background: color-mix(in srgb, var(--panel-2) 70%, transparent); }
+.read .sym-row.on { border-left-color: var(--sig); }
+.read .sym-row i { width: 9px; height: 9px; border-radius: 2px; flex: 0 0 auto; background: var(--c); }
+.read .sym-row.s-del i { background: transparent; border: 1.5px dashed var(--c); }
+.read .sym-row .sym { font-family: var(--mono); color: var(--ink); overflow-wrap: anywhere; min-width: 0; }
+.read .sym-row .tag { margin-left: auto; }
+
+/* ---------- footer ---------- */
+.read .foot { border-top: 1px solid var(--line-soft); padding: 12px 22px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; font-size: 12.5px; color: var(--muted); }
+.read .foot .keys { display: inline-flex; align-items: center; gap: 6px; }
+.read .foot .spacer { flex: 1; }
+
+/* ---------- file view ---------- */
+.read .fileview { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; }
+.read .fv-head { padding: 14px 22px 12px; border-bottom: 1px solid var(--line-soft); }
+.read .fv-back { display: inline-flex; align-items: center; gap: 6px; margin-bottom: 8px; color: var(--muted); font-size: 12.5px; }
+.read .fv-back:hover { color: var(--ink); }
+.read .fv-file { margin: 0; font-family: var(--mono); font-size: 13.5px; font-weight: 500; overflow-wrap: anywhere; }
+.read .fv-meta { margin-top: 8px; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; font-size: 12.5px; color: var(--ink-2); }
+.read .fv-pkg { font-family: var(--mono); font-size: 12px; color: var(--muted); overflow-wrap: anywhere; }
+.read .fv-meta .row { display: flex; gap: 10px; margin-left: auto; }
+.read .fv-meta .row b { font-weight: 600; }
+.read .fv-meta .row .add { color: var(--add); }
+.read .fv-meta .row .mod { color: var(--mod); }
+.read .fv-meta .row .sig { color: var(--sig); }
+.read .fv-meta .row .del { color: var(--del); }
+.read .fv-section { padding: 6px 0 4px; }
+.read .fv-section > h3 { margin: 10px 22px 4px; font-size: 12.5px; font-weight: 500; color: var(--muted); }
+.read .fv-section > .pin { margin-left: 22px; margin-right: 22px; }
+.read .fv-diff .fv-excerpt h4 { margin: 12px 22px 0; font: 500 12px var(--mono); color: var(--ink-2); }
+.read .fv-diff .fv-excerpt.focus h4 { color: var(--ink); text-decoration: underline; text-decoration-color: var(--sig); text-underline-offset: 3px; }
+.read .fv-diff .fv-excerpt .code { margin-left: 22px; margin-right: 22px; }
+.read .fv-diff .fv-excerpt.focus .code { border-color: var(--sig); }
+.read .fv-note { margin: 12px 22px 0; color: var(--muted); font-size: 12.5px; }
+.read .fv-diff .diff-mount { margin: 12px 22px 0; min-height: 0; }
+.read .fv-section .step { cursor: pointer; }
+
+@media (max-width: 980px) {
+  .change-work { grid-template-columns: 1fr; grid-template-rows: 52vh minmax(0, 1fr); }
+  .read { border-left: 0; border-top: 1px solid var(--line); }
+}
+
+/* AA text on the pale ground: the accents are mixed toward the ink */
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) .read .fv-meta .row .add { color: color-mix(in srgb, var(--add) 35%, var(--ink)); }
+  :root:not([data-theme="dark"]) .read .fv-meta .row .mod { color: color-mix(in srgb, var(--mod) 35%, var(--ink)); }
+  :root:not([data-theme="dark"]) .read .fv-meta .row .sig { color: color-mix(in srgb, var(--sig) 40%, var(--ink)); }
+  :root:not([data-theme="dark"]) .read .fv-meta .row .del { color: color-mix(in srgb, var(--del) 45%, var(--ink)); }
+}
+:root[data-theme="light"] .read .fv-meta .row .add { color: color-mix(in srgb, var(--add) 35%, var(--ink)); }
+:root[data-theme="light"] .read .fv-meta .row .mod { color: color-mix(in srgb, var(--mod) 35%, var(--ink)); }
+:root[data-theme="light"] .read .fv-meta .row .sig { color: color-mix(in srgb, var(--sig) 40%, var(--ink)); }
+:root[data-theme="light"] .read .fv-meta .row .del { color: color-mix(in srgb, var(--del) 45%, var(--ink)); }
