@@ -16,6 +16,7 @@
 
 import { relative, sep } from 'node:path';
 import type { ArchiveReason, ChangeKind, ChangeRecord } from '../model/types.js';
+import type { SnapshotPutResult } from '../db/snapshots.js';
 import type { ChangeFields, ChangePlan, ChangeUpdate, Discovered, PrInfo, WorktreeInfo } from './types.js';
 
 /** Precedence inside a group of candidates at the same head (L4). */
@@ -365,13 +366,14 @@ export function reconcile(
 
 /**
  * Review state and last event after a snapshot was stored (ADR-019, Q5), with
- * the result of the snapshot store: a snapshot with new content resets
+ * the result of the snapshot store: a snapshot with new content (a `refreshed`
+ * one included: the bytes changed under an identical Report) resets
  * `approved`; on a dirty change it is also a `collect` event. Null when the
  * change needs no update.
  */
 export function reviewAfterSnapshot(
   change: ChangeRecord,
-  result: 'created' | 'replaced' | 'unchanged',
+  result: SnapshotPutResult,
   now: Date,
 ): ChangeUpdate | null {
   if (result === 'unchanged') return null;

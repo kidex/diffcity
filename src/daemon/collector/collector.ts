@@ -17,7 +17,9 @@
 //    changed, that have none yet, or whose working tree may have new content;
 //    each one is put, then reviewAfterSnapshot applies (`replaced` counts as
 //    changed), with a `collect` event; in the same transaction the change's
-//    review marks are reconciled against the new fingerprints (ADR-028);
+//    review marks are reconciled against the new fingerprints (ADR-028). A put
+//    whose Report is identical but whose fingerprints differ is `refreshed`: the
+//    row takes them in place, marks are reconciled, SSE `review` goes out alone;
 // 6. SSE `repo` and `changes` after the plan, `snapshot` per stored snapshot
 //    followed by `review` (the marks of the change may have turned outdated),
 //    `collect` around the whole collection.
@@ -306,11 +308,14 @@ export function createCollector(options: CollectorOptions): Collector {
       const current = db.changes.get(change.id);
       const update = current === null || current.archivedAt !== null ? null : reviewAfterSnapshot(current, stored, at);
       if (update !== null) db.changes.applyPlan(repo.id, { create: [], update: [update], archive: [] }, iso);
-      db.events.add({ repoId: repo.id, changeId: change.id, type: 'collect', at: iso, payload: { head: computed.headCommit } });
+      // A refreshed snapshot kept its Report: no `collect` event, only the marks moved.
+      if (stored !== 'refreshed') {
+        db.events.add({ repoId: repo.id, changeId: change.id, type: 'collect', at: iso, payload: { head: computed.headCommit } });
+      }
       return { result: stored, listMoved: update !== null };
     });
     if (result !== 'unchanged') {
-      broadcast({ event: 'snapshot', data: { repoId: repo.id, changeId: change.id, head: computed.headCommit } });
+      if (result !== 'refreshed') broadcast({ event: 'snapshot', data: { repoId: repo.id, changeId: change.id, head: computed.headCommit } });
       broadcast({ event: 'review', data: { repoId: repo.id, changeId: change.id } });
     }
     return listMoved;
