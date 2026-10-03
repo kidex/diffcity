@@ -2,11 +2,14 @@
 // hands the new Report to the screen it already mounted. The city gains the
 // new building while the canvas, the camera and the selection stay.
 
-import { expect, test } from '@playwright/test';
+import { test } from '@playwright/test';
 import type { Report } from '../../../../src/core/report/types.js';
 import { fixtures, mockApi } from '../../support/mock-api.js';
-import { camera, openCity, project, selected, stats, waitForCityAttribute } from '../../support/scene.js';
+import { camera, openCity, project, selected, stats, waitForCityAttribute, sceneExpect as expect } from '../../support/scene.js';
 import { emitSse, tagClient } from '../../support/sse.js';
+
+// A first frame on SwiftShader, plus what each spec does after it, can pass the default 30 s.
+test.describe.configure({ timeout: 60_000 });
 
 test('change/update-keeps-camera-and-selection', async ({ page }, testInfo) => {
   await page.emulateMedia({ reducedMotion: 'reduce' });

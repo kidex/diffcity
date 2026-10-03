@@ -3,9 +3,12 @@
 // The frame rate from the bench is recorded as an annotation (SwiftShader
 // here, so it says little about a real GPU).
 
-import { expect, test } from '@playwright/test';
+import { test } from '@playwright/test';
 import { fixtures, mockApi } from '../../support/mock-api.js';
-import { bench, openCity, stats } from '../../support/scene.js';
+import { bench, openCity, stats, sceneExpect as expect } from '../../support/scene.js';
+
+// A first frame on SwiftShader, plus what each spec does after it, can pass the default 30 s.
+test.describe.configure({ timeout: 60_000 });
 
 const BUDGET = 40;
 

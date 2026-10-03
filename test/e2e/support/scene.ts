@@ -40,6 +40,13 @@ export async function openCity(page: Page, changeId = 11): Promise<void> {
  */
 export const CITY_TIMEOUT = 30_000;
 
+/**
+ * `expect` with the city's budget, for specs whose assertions follow the
+ * scene (roof labels, buildings, camera, selection). The page is one frame
+ * loop on SwiftShader: a label or a building shows up when a frame has run.
+ */
+export const sceneExpect = expect.configure({ timeout: CITY_TIMEOUT });
+
 /** Waits until the city has drawn its first frame (`data-ready`). */
 export async function waitForCity(page: Page): Promise<void> {
   await waitForCityAttribute(page, 'data-ready', 'true');

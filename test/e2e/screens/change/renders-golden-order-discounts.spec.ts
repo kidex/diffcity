@@ -3,9 +3,12 @@
 // header, on a live WebGL2 context: a building per file, a lot per package, a
 // roof label with the verdict tag above each touched building only.
 
-import { expect, test } from '@playwright/test';
+import { test } from '@playwright/test';
 import { fixtures, mockApi } from '../../support/mock-api.js';
-import { hasWebgl2, openCity, stats } from '../../support/scene.js';
+import { hasWebgl2, openCity, stats, sceneExpect as expect } from '../../support/scene.js';
+
+// A first frame on SwiftShader, plus what each spec does after it, can pass the default 30 s.
+test.describe.configure({ timeout: 60_000 });
 
 test('change/renders-golden-order-discounts', async ({ page }, testInfo) => {
   await page.emulateMedia({ colorScheme: 'dark', reducedMotion: 'reduce' });

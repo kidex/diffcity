@@ -8,9 +8,12 @@
 // selection, a drag is not a click, a click on empty ground clears, and
 // Escape clears too.
 
-import { expect, test, type Locator, type Page } from '@playwright/test';
+import { test, type Locator, type Page } from '@playwright/test';
 import { fixtures, mockApi } from '../../support/mock-api.js';
-import { hovered, openCity, project, selected, waitForCityAttribute } from '../../support/scene.js';
+import { hovered, openCity, project, selected, waitForCityAttribute, sceneExpect as expect } from '../../support/scene.js';
+
+// A first frame on SwiftShader, plus what each spec does after it, can pass the default 30 s.
+test.describe.configure({ timeout: 60_000 });
 
 const GUARD = 'src/auth/order.guard.ts';
 const MIGRATION = 'db/migrations/20260921_order_discounts.sql';

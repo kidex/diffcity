@@ -2,9 +2,12 @@
 // open (46/30 of the home distance, as in the mockup), except under
 // prefers-reduced-motion, where the first frame is already the home view.
 
-import { expect, test } from '@playwright/test';
+import { test } from '@playwright/test';
 import { fixtures, mockApi } from '../../support/mock-api.js';
-import { camera, firstCamera, openCity, type CameraState } from '../../support/scene.js';
+import { camera, firstCamera, openCity, type CameraState, sceneExpect as expect } from '../../support/scene.js';
+
+// A first frame on SwiftShader, plus what each spec does after it, can pass the default 30 s.
+test.describe.configure({ timeout: 60_000 });
 
 const isHome = async (page: Parameters<typeof camera>[0], state: CameraState): Promise<void> => {
   await page.keyboard.press('r');
