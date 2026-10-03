@@ -16,8 +16,10 @@
 // 5. snapshots, in the worker pool, only for changes whose head or dirty flag
 //    changed, that have none yet, or whose working tree may have new content;
 //    each one is put, then reviewAfterSnapshot applies (`replaced` counts as
-//    changed), with a `collect` event;
-// 6. SSE `repo` and `changes` after the plan, `snapshot` per stored snapshot,
+//    changed), with a `collect` event; in the same transaction the change's
+//    review marks are reconciled against the new fingerprints (ADR-028);
+// 6. SSE `repo` and `changes` after the plan, `snapshot` per stored snapshot
+//    followed by `review` (the marks of the change may have turned outdated),
 //    `collect` around the whole collection.
 //
 // Requests coalesce by the ADR-021 key `<repoId>:sources`: requests for a repo
@@ -62,6 +64,7 @@ import type {
   RepoRecord,
   SseEvent,
 } from '../../core/model/types.js';
+import { reconcileOnSnapshot } from '../../core/review/index.js';
 import type { SnapshotJobInput } from '../../core/report/snapshot.js';
 import { errorMessage, type Logger } from '../log.js';
 import { createGhGate, type GhGate } from './gh.js';
@@ -298,13 +301,18 @@ export function createCollector(options: CollectorOptions): Collector {
         fingerprints: computed.fingerprintsJson,
       });
       if (stored === 'unchanged') return { result: stored, listMoved: false };
+      // Same transaction as the put: no reader sees a new snapshot with stale current marks (ADR-028).
+      reconcileOnSnapshot(db, change.id, stored, computed.fingerprintsJson, iso);
       const current = db.changes.get(change.id);
       const update = current === null || current.archivedAt !== null ? null : reviewAfterSnapshot(current, stored, at);
       if (update !== null) db.changes.applyPlan(repo.id, { create: [], update: [update], archive: [] }, iso);
       db.events.add({ repoId: repo.id, changeId: change.id, type: 'collect', at: iso, payload: { head: computed.headCommit } });
       return { result: stored, listMoved: update !== null };
     });
-    if (result !== 'unchanged') broadcast({ event: 'snapshot', data: { repoId: repo.id, changeId: change.id, head: computed.headCommit } });
+    if (result !== 'unchanged') {
+      broadcast({ event: 'snapshot', data: { repoId: repo.id, changeId: change.id, head: computed.headCommit } });
+      broadcast({ event: 'review', data: { repoId: repo.id, changeId: change.id } });
+    }
     return listMoved;
   }
 
