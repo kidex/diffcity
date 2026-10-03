@@ -18,7 +18,7 @@
     "types": ["node"],
     "noEmit": true
   },
-  "include": ["src", "test", "vitest.config.ts", "vite.config.ts", "scripts/*.d.mts"],
+  "include": ["src", "test", "vitest.config.ts", "vite.config.ts", "vite.standalone.config.ts", "scripts/*.d.mts"],
   // src/ui and its unit tests run in the browser: they have their own
   // tsconfig with the DOM lib (ADR-022), checked by `npm run typecheck`.
   "exclude": ["test/fixtures", "src/ui", "test/unit/ui"]

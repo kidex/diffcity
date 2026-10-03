@@ -19,6 +19,15 @@ const CHANGE_SCREEN_FORBIDDEN = [
     message: 'src/ui/screens/change must not import src/ui/data: it renders from a Report alone (ADR-002, ADR-022).',
   },
 ];
+// The standalone page is what the HTML export is built from (ADR-002): no
+// daemon client (src/ui/data) and no SPA shell (src/ui/app).
+const STANDALONE_FORBIDDEN = [
+  ...UI_FORBIDDEN,
+  {
+    regex: into('(?:ui/)?(?:data|app)'),
+    message: 'src/ui/standalone must not import src/ui/data or src/ui/app: it renders from an embedded Report alone (ADR-002, ADR-022).',
+  },
+];
 const DAEMON_FORBIDDEN = [{ regex: into('cli|ui'), message: 'src/daemon must not import from src/cli or src/ui.' }];
 
 // Value imports from src/core in src/ui: an `import` or re-export that is not
@@ -65,6 +74,7 @@ const CORE_FORBIDDEN = [
   },
 ];
 const UI_RULES = `${UI_TYPE_ONLY_CORE} ${UI_FORBIDDEN[0].message}`;
+const STANDALONE_RULES = `${STANDALONE_FORBIDDEN[1].message} ${UI_RULES}`;
 const CHANGE_SCREEN_RULES = `${CHANGE_SCREEN_FORBIDDEN[1].message} ${UI_RULES}`;
 
 export default tseslint.config(
@@ -101,6 +111,11 @@ export default tseslint.config(
     // The change screen doubles as the HTML export, so it cannot depend on the daemon client.
     files: ['src/ui/screens/change/**'],
     rules: boundary(CHANGE_SCREEN_FORBIDDEN, CHANGE_SCREEN_RULES, UI_CORE_VALUE_IMPORTS),
+  },
+  {
+    // The standalone page mounts the change screen from an embedded Report: no data layer, no shell.
+    files: ['src/ui/standalone/**'],
+    rules: boundary(STANDALONE_FORBIDDEN, STANDALONE_RULES, UI_CORE_VALUE_IMPORTS),
   },
   {
     // The daemon orchestrates src/core; the CLI and the UI are its clients.

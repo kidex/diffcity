@@ -1,0 +1,7 @@
+/* The stage of the standalone page: the change route's layout without its
+   header (src/ui/app/change-route.css is the SPA's and stays out of this
+   entry). */
+.stage.change { display: flex; flex-direction: column; }
+.change-body { flex: 1 0 auto; background: var(--panel); border-top: 1px solid var(--line); }
+.change-body > .change-empty { margin: 0; padding: 18px 22px; color: var(--muted); font-size: 13px; }
+.standalone-error { margin: 0; padding: 18px 22px; color: var(--muted); font-size: 13px; }
