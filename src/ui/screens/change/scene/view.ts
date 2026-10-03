@@ -70,12 +70,21 @@ export interface CityView {
   setReport(report: Report): void;
   /** The filter rows (model/view.ts); the scene dims what they filter out. */
   setFilters(filters: Filters): void;
+  /**
+   * Selects a building (a file id), and the floor of one of its symbols; null clears
+   * it. The same as a click, without the hooks' `click`: the reading panel calls it.
+   */
+  select(fileId: string | null, symbolId?: string | null): void;
+  /** Highlights a building as the pointer does; null removes it. */
+  hover(fileId: string | null): void;
+  /** The symbol id of the focused floor of the selected building, or null. */
+  selectedFloor(): string | null;
   /** The review marks (ADR-028): checked floors are drawn quiet, marked floors stop pulsing. Without marks, none. */
   setMarks(marks: Marks | undefined): void;
   /** What the night effects drew. */
   effects(): EffectsState;
   /** Client point of a building's centre, or null when it is not in the city or behind the camera. */
-  project(fileId: string): { x: number; y: number } | null;
+  project(fileId: string, symbolId?: string): { x: number; y: number } | null;
   stats(): SceneStats;
   camera(): OrbitState;
   /** The camera of the first frame drawn (far out when the intro runs). */
@@ -99,8 +108,10 @@ export interface CityView {
 export interface SceneHooks {
   /** The pointer is over a building (client point), or left them all. */
   hover(info: { building: CityBuilding; floor: CityFloor | undefined; clientX: number; clientY: number; city: City } | null): void;
-  /** The selection changed, or its building was rebuilt by a live update. */
-  select(building: CityBuilding | null): void;
+  /** The selection changed, or its building was rebuilt by a live update; `symbolId` is the focused floor's symbol. */
+  select(building: CityBuilding | null, symbolId: string | null): void;
+  /** A click on a building (not a programmatic selection): with the floor under the pointer. */
+  click?(building: CityBuilding, floor: CityFloor | undefined): void;
   /** The selected file is no longer in the Report. */
   selectionLost(building: CityBuilding): void;
 }
@@ -158,6 +169,8 @@ export function createCityView(host: HTMLElement, report: Report, options: CityV
   let disposed = false;
   let hovered: string | null = null;
   let selected: string | null = null;
+  /** The symbol id of the focused floor of `selected`. */
+  let focusedFloor: string | null = null;
   let filters: Filters = NO_FILTERS;
   let rules: RuleIndex = ruleIndex(report);
   /** The Report on show: findings and steps come from it. */
@@ -292,7 +305,7 @@ export function createCityView(host: HTMLElement, report: Report, options: CityV
       labels.setDimmed(dim, tween !== null);
       element.dataset['filters'] = `verdict=${filters.verdict ?? ''};type=${filters.type ?? ''};rule=${filters.rule ?? ''}`;
     }
-    const paint = focusPaint(baseline, c.shown, hovered, selected);
+    const paint = focusPaint(baseline, c.shown, hovered, selected, focusedFloor);
     c.towers.setPaint(paint);
     c.markers.setPaint(paint);
     stage.request();
@@ -415,11 +428,14 @@ export function createCityView(host: HTMLElement, report: Report, options: CityV
     canvas.style.cursor = '';
     const lost = selected === null || city.byId.has(selected) ? null : (previous?.byId.get(selected) ?? null);
     if (selected !== null && !city.byId.has(selected)) selected = null;
+    // The focused floor stays while its symbol is still a floor of the building.
+    if (selected === null || city.byId.get(selected)?.floors.some((floor) => floor.symbolId === focusedFloor) !== true) focusedFloor = null;
     labels.setFocus(selected, hovered);
     element.dataset['selected'] = selected ?? '';
+    element.dataset['selectedFloor'] = focusedFloor ?? '';
     baseline = null;
     repaint(true);
-    hooks?.select(selected === null ? null : (city.byId.get(selected) ?? null));
+    hooks?.select(selected === null ? null : (city.byId.get(selected) ?? null), focusedFloor);
     if (lost !== null) hooks?.selectionLost(lost);
     settled = false;
     stage.request();
@@ -437,12 +453,17 @@ export function createCityView(host: HTMLElement, report: Report, options: CityV
     element.dataset['hovered'] = id ?? '';
   }
 
-  function select(id: string | null): void {
+  function select(id: string | null, symbolId: string | null = null): void {
+    const building = id === null ? undefined : content?.city.byId.get(id);
+    // A file that is not in the city cannot be selected.
+    if (id !== null && building === undefined) return;
     selected = id;
+    focusedFloor = building?.floors.some((floor) => floor.symbolId === symbolId) === true ? symbolId : null;
     if (labels.setFocus(selected, hovered)) settled = false;
     repaint(false);
     element.dataset['selected'] = id ?? '';
-    hooks?.select(id === null ? null : (content?.city.byId.get(id) ?? null));
+    element.dataset['selectedFloor'] = focusedFloor ?? '';
+    hooks?.select(building ?? null, focusedFloor);
   }
 
   // Shaders compile one scene part at a time before the first frame, in
@@ -482,7 +503,9 @@ export function createCityView(host: HTMLElement, report: Report, options: CityV
       hooks?.hover(null);
     },
     click: (x, y) => {
-      select(pickAt(x, y)?.building.id ?? null);
+      const pick = pickAt(x, y);
+      select(pick?.building.id ?? null, pick?.floor?.symbolId ?? null);
+      if (pick !== null) hooks?.click?.(pick.building, pick.floor);
     },
     clear: () => {
       select(null);
@@ -512,6 +535,9 @@ export function createCityView(host: HTMLElement, report: Report, options: CityV
       const from = options.reducedMotion ? null : (content?.shown ?? null);
       build(cityOf(next), from);
     },
+    select,
+    hover: setHover,
+    selectedFloor: () => focusedFloor,
     setFilters(next) {
       filters = next;
       repaint(true);
@@ -534,10 +560,12 @@ export function createCityView(host: HTMLElement, report: Report, options: CityV
         continuous: animating(),
       };
     },
-    project(fileId) {
+    project(fileId, symbolId) {
       const building = content?.city.byId.get(fileId);
       if (building === undefined) return null;
-      return projectToClient(new Vector3(building.x, building.height * 0.5, building.z), camera, canvas);
+      const floor = symbolId === undefined ? undefined : building.floors.find((candidate) => candidate.symbolId === symbolId);
+      const y = floor === undefined ? building.height * 0.5 : (floor.y0 + floor.y1) / 2;
+      return projectToClient(new Vector3(building.x, y, building.z), camera, canvas);
     },
     stats() {
       return {

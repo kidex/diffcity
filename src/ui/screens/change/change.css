@@ -128,6 +128,7 @@
 .hud .sel-card .floors li.s-same { color: var(--muted); }
 .hud .sel-card .floors .sym { font-family: var(--mono); color: inherit; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .hud .sel-card .floors li:not(.s-same) .sym { color: var(--ink); }
+.hud .sel-card .floors li.focus { box-shadow: inset 2px 0 0 var(--sig); padding-left: 6px; margin-left: -6px; background: color-mix(in srgb, var(--sig) 10%, transparent); }
 .hud .sel-card .floors .st { margin-left: auto; font-size: 11px; color: var(--muted); white-space: nowrap; }
 
 /* the Fleet card (mockup .fleet) */

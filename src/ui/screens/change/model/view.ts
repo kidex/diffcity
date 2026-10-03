@@ -74,6 +74,8 @@ export interface PaintState {
   typeMatch: boolean;
   hovered: boolean;
   selected: boolean;
+  /** The floor is the one a click or the reading panel focused (a symbol): only its floor, in the selected building. */
+  focused: boolean;
   /** The floor pulses (DC-50, model/critical.ts); for a building, its roof strip does. */
   pulse: boolean;
   /** The colour a pulse takes. */
@@ -106,6 +108,7 @@ const base = (): PaintState => ({
   typeMatch: true,
   hovered: false,
   selected: false,
+  focused: false,
   pulse: false,
   pulseColor: 'high',
   checked: 'none',
@@ -154,9 +157,10 @@ export function paintCity(input: PaintInput): CityPaint {
 /**
  * `base` (the paint for the filters alone) with hover and selection laid
  * over it: only the hovered and the selected building change, so a pointer
- * move does not repaint the city.
+ * move does not repaint the city. `focus` is a symbol id: its floor, in the
+ * selected building, is painted as focused.
  */
-export function focusPaint(base: CityPaint, city: City, hover: string | null, selection: string | null): CityPaint {
+export function focusPaint(base: CityPaint, city: City, hover: string | null, selection: string | null, focus: string | null = null): CityPaint {
   const buildings = base.buildings.slice();
   const floors = base.floors.slice();
   for (const id of new Set([hover, selection])) {
@@ -166,7 +170,12 @@ export function focusPaint(base: CityPaint, city: City, hover: string | null, se
     const hovered = id === hover;
     const selected = id === selection;
     buildings[building.index] = { ...state, hovered, selected };
-    floors[building.index] = (base.floors[building.index] ?? []).map((floor) => ({ ...floor, hovered, selected }));
+    floors[building.index] = (base.floors[building.index] ?? []).map((floor, i) => ({
+      ...floor,
+      hovered,
+      selected,
+      focused: selected && focus !== null && building.floors[i]?.symbolId === focus,
+    }));
   }
   return { buildings, floors };
 }

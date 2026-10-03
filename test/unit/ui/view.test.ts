@@ -172,7 +172,7 @@ describe('view', () => {
     const paint = paintCity({ ...input(city, NO_FILTERS), hover: TOTALS, selection: GUARD });
     const totals = city.byId.get(TOTALS);
     const guard = city.byId.get(GUARD);
-    expect(totals && paint.buildings[totals.index]).toEqual({ dimmed: false, typeMatch: true, hovered: true, selected: false, pulse: false, pulseColor: 'high', checked: 'none' });
+    expect(totals && paint.buildings[totals.index]).toEqual({ dimmed: false, typeMatch: true, hovered: true, selected: false, focused: false, pulse: false, pulseColor: 'high', checked: 'none' });
     expect(guard && paint.buildings[guard.index]).toMatchObject({ hovered: false, selected: true });
     expect(guard && paint.floors[guard.index]?.every((floor) => floor.selected && !floor.pulse && floor.checked === 'none')).toBe(true);
     // focusPaint lays the same flags over a filters-only paint, without touching the others.

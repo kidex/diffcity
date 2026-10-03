@@ -87,9 +87,14 @@ export const disposal = (page: Page): Promise<Disposal> => page.evaluate<Disposa
 export const bench = (page: Page, ms: number): Promise<{ fps: number; drawCalls: number }> =>
   page.evaluate<{ fps: number; drawCalls: number }>(`window.diffcityScene.bench(${String(ms)})`);
 
-/** Client point of a building's centre. */
-export async function project(page: Page, fileId: string): Promise<{ x: number; y: number }> {
-  const point = await page.evaluate<{ x: number; y: number } | null>(`window.diffcityScene.project(${JSON.stringify(fileId)})`);
+/** The symbol id of the focused floor of the selected building. */
+export const selectedFloor = (page: Page): Promise<string | null> => page.evaluate<string | null>('window.diffcityScene.selectedFloor()');
+
+/** Client point of a building's centre, or of one of its floors' when `symbolId` is given. */
+export async function project(page: Page, fileId: string, symbolId?: string): Promise<{ x: number; y: number }> {
+  const point = await page.evaluate<{ x: number; y: number } | null>(
+    `window.diffcityScene.project(${JSON.stringify(fileId)}${symbolId === undefined ? '' : `, ${JSON.stringify(symbolId)}`})`,
+  );
   if (point === null) throw new Error(`${fileId} is not on screen`);
   return point;
 }

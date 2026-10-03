@@ -12,7 +12,8 @@ import { countLine } from '../model/hud.js';
 
 export interface SelectionCard {
   root: HTMLElement;
-  show(data: CardData | null): void;
+  /** `focus` is the symbol id of the focused floor, marked in the list. */
+  show(data: CardData | null, focus?: string | null): void;
 }
 
 const statusToken = (status: Status): string => (status === 'same' ? '--same-top' : `--${status}`);
@@ -22,7 +23,7 @@ export function createSelectionCard(): SelectionCard {
   root.hidden = true;
   return {
     root,
-    show(data) {
+    show(data, focus = null) {
       if (data === null) {
         root.hidden = true;
         root.replaceChildren();
@@ -48,7 +49,7 @@ export function createSelectionCard(): SelectionCard {
             swatch.style.setProperty('--c', `var(${statusToken(floor.status)})`);
             return h(
               'li',
-              { class: `s-${floor.status}`, 'data-status': floor.status },
+              { class: `s-${floor.status}${focus !== null && floor.symbolId === focus ? ' focus' : ''}`, 'data-status': floor.status },
               swatch,
               h('span', { class: 'sym' }, floor.name),
               h('span', { class: 'st' }, floor.status === 'same' ? '' : STATUS_LABEL[floor.status]),

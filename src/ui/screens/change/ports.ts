@@ -3,6 +3,56 @@
 // ones it has data for in src/ui/app/ from src/ui/data/. The HTML export
 // passes none.
 
+import type { FileDiff, ReviewMark, ReviewMarkValue, ReviewProgress } from '../../../core/model/types.js';
+
+/**
+ * What the file view reads to show the diff of one file (ADR-027). Structurally
+ * the port of src/ui/data/diff-port.ts, which the SPA builds; the screen never
+ * imports src/ui/data. Without it the file view shows only the Report's step
+ * diffs, with "Full diff is available in the app".
+ */
+export interface DiffPort {
+  /**
+   * The diff of file `path` (a `File.id`) of the latest snapshot; with `symbolId`
+   * (a `Symbol.id` of that file) the answer also carries `focus`.
+   */
+  fileDiff(path: string, symbolId?: string, signal?: AbortSignal): Promise<FileDiff>;
+}
+
+/** The marks, general note and progress of a change (ADR-028). */
+export interface ReviewState {
+  snapshotId: number;
+  marks: ReviewMark[];
+  note: string | null;
+  progress: ReviewProgress;
+}
+
+/** A mark to make: the snapshot is the one the reviewer is looking at. */
+export interface MarkRequest {
+  snapshotId: number;
+  target: { kind: 'file' | 'symbol'; id: string };
+  mark: ReviewMarkValue;
+  note?: string;
+  lines?: { side: 'old' | 'new'; start: number; end: number };
+}
+
+/**
+ * What the screen reads and writes of the review marks (ADR-028). Structurally
+ * the port of src/ui/data/review-port.ts. Without it there are no mark buttons,
+ * no progress and no "hide checked".
+ */
+export interface ReviewPort {
+  /** The marks, note and progress now; null while the change has no snapshot. */
+  load(signal?: AbortSignal): Promise<ReviewState | null>;
+  setMark(request: MarkRequest): Promise<{ mark: ReviewMark; progress: ReviewProgress }>;
+  clearMark(target: MarkRequest['target']): Promise<void>;
+  setNote(note: string): Promise<{ note: string | null }>;
+  /** The markdown summary of the "Needs rewrite" marks; null while there is no snapshot. */
+  summary(signal?: AbortSignal): Promise<string | null>;
+  /** Calls `listener` when the marks of this change moved; returns the function that stops it. */
+  onChange(listener: () => void): () => void;
+}
+
 /** One repo in the Fleet card: the mockup's `name  age  bar` row. */
 export interface FleetCardRow {
   name: string;

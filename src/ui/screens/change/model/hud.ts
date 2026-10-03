@@ -219,6 +219,8 @@ export function tipData(city: City, building: CityBuilding, floor: CityFloor | u
 }
 
 export interface CardFloor {
+  /** The floor's symbol id; null for the single floor of a file without symbols. */
+  symbolId: string | null;
   name: string;
   status: Status;
 }
@@ -239,7 +241,7 @@ export function cardData(building: CityBuilding): CardData {
     tier1: building.tier1,
     path: building.file.path,
     counts: building.counts,
-    floors: [...building.floors].reverse().map((floor) => ({ name: floor.name, status: floor.status })),
+    floors: [...building.floors].reverse().map((floor) => ({ symbolId: floor.symbolId, name: floor.name, status: floor.status })),
   };
 }
 
