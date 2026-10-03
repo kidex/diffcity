@@ -104,6 +104,26 @@ const daemon = spawn(process.execPath, [join(dist, 'cli', 'index.js'), 'up', '--
 });
 daemon.stderr.setEncoding('utf8').on('data', (chunk) => (daemonStderr += chunk));
 
+// The daemon is this script's child, not a detached one: if the script is
+// stopped (a timeout kill, Ctrl-C, a closed terminal) the `finally` below never
+// runs, and the daemon would be left running with PPID 1 (DC-81). Stop it on
+// the way out of every path that can still run code; SIGKILL cannot be caught,
+// so a caller that SIGKILLs the script must sweep the home (the tests do).
+const stopDaemon = () => {
+  if (daemon.exitCode === null && daemon.signalCode === null) daemon.kill('SIGTERM');
+};
+process.on('exit', stopDaemon);
+for (const name of ['SIGTERM', 'SIGINT', 'SIGHUP']) {
+  process.once(name, () => {
+    stopDaemon();
+    const exited = daemon.exitCode !== null ? Promise.resolve() : new Promise((resolveExit) => daemon.once('exit', resolveExit));
+    Promise.race([exited, sleep(5000)])
+      .then(() => daemon.kill('SIGKILL'))
+      .then(() => rm(home, { recursive: true, force: true }))
+      .finally(() => process.exit(128));
+  });
+}
+
 let exitCode = 0;
 let stopListening = () => undefined;
 try {
