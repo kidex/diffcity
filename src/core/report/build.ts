@@ -17,11 +17,15 @@ import {
   readAfterBytes,
   readBeforeBytes,
   resolveChange,
+  sizeAfter,
+  sizeAfterBatch,
+  sizeBefore,
   type ChangedFile,
   type CommandRunner,
   type ResolvedChange,
 } from '../git/index.js';
 import type { FileFingerprint, Fingerprints } from '../model/types.js';
+import { MAX_PARSE_BYTES } from '../parse/file.js';
 import { languageForPath } from '../parse/language.js';
 import { fileVerdict, tier1Matcher, touchedTier1Files } from '../verdict/index.js';
 import { mapLimit } from './limit.js';
@@ -161,22 +165,34 @@ async function describeChanged(change: ResolvedChange, file: ChangedFile): Promi
   const oldPath = file.oldPath ?? file.path;
   // Only code files are read into memory and parsed: the status of anything else comes from git (ADR-008).
   // The others are hashed from a stream, so a large asset never sits in the worker's memory.
-  const readable = !file.binary && (languageForPath(oldPath) !== null || languageForPath(file.path) !== null);
+  // A code file with a side above MAX_PARSE_BYTES counts as one of the others, judged from the object
+  // header or lstat before any read, so before and after always get the same treatment.
+  let readable = !file.binary && (languageForPath(oldPath) !== null || languageForPath(file.path) !== null);
+  if (readable) {
+    const [beforeSize, afterSize] = await Promise.all([
+      file.type === 'add' ? null : sizeBefore(change, oldPath),
+      file.type === 'del' ? null : sizeAfter(change, file.path),
+    ]);
+    readable = (beforeSize ?? 0) <= MAX_PARSE_BYTES && (afterSize ?? 0) <= MAX_PARSE_BYTES;
+  }
   const [beforeBytes, afterBytes] = readable
     ? await Promise.all([
         file.type === 'add' ? null : readBeforeBytes(change, oldPath),
         file.type === 'del' ? null : readAfterBytes(change, file.path),
       ])
     : [null, null];
+  // A file that grew between the size check and the read is dropped from parsing, like an unread one.
+  const grown = (beforeBytes?.length ?? 0) > MAX_PARSE_BYTES || (afterBytes?.length ?? 0) > MAX_PARSE_BYTES;
   const [beforeHash, afterHash] = readable
     ? [sha256(beforeBytes), sha256(afterBytes)]
     : await Promise.all([
         file.type === 'add' ? null : hashBefore(change, oldPath),
         file.type === 'del' ? null : hashAfter(change, file.path),
       ]);
-  const before = beforeBytes?.toString('utf8') ?? null;
-  const after = afterBytes?.toString('utf8') ?? null;
-  const input: FileChange = { path: file.path, change: file.type, binary: file.binary, before, after };
+  const before = grown ? null : (beforeBytes?.toString('utf8') ?? null);
+  const after = grown ? null : (afterBytes?.toString('utf8') ?? null);
+  // binary: git decides the status, with no symbols, for a file that was not parsed.
+  const input: FileChange = { path: file.path, change: file.type, binary: file.binary || !readable || grown, before, after };
   if (oldPath !== file.path) input.oldPath = oldPath;
   const { status, symbols, symbolFingerprints } = await compareFileWithFingerprints(input);
   const fingerprint: FileFingerprint = { before: beforeHash, after: afterHash };
@@ -196,6 +212,17 @@ async function describeUnchanged(path: string, bytes: Buffer | null): Promise<De
   file.symbols = parsed.symbols;
   described.symbolFingerprints = parsed.symbolFingerprints;
   return described;
+}
+
+/** An untouched file above MAX_PARSE_BYTES: hashed from a stream, `same`, no symbols. */
+async function describeUnchangedLarge(change: ResolvedChange, path: string): Promise<Described | null> {
+  const hash = await hashAfter(change, path);
+  if (hash === null) return null;
+  return {
+    input: { path, language: languageOf(path), status: 'same', symbols: [] },
+    fingerprint: { before: hash, after: hash },
+    symbolFingerprints: {},
+  };
 }
 
 /**
@@ -238,9 +265,15 @@ export async function buildReportWithHead(
   const untouchedInputs: (Described | null)[] = [];
   for (let i = 0; i < untouched.length; i += READ_BATCH_SIZE) {
     const paths = untouched.slice(i, i + READ_BATCH_SIZE);
-    const contents = await readAfterBatch(change, paths);
+    // Sizes first: a file above MAX_PARSE_BYTES is hashed from a stream and never joins the buffered batch.
+    const sizes = await sizeAfterBatch(change, paths);
+    const small = paths.filter((_, j) => (sizes[j] ?? 0) <= MAX_PARSE_BYTES);
+    const contents = await readAfterBatch(change, small);
+    const bytesOf = new Map(small.map((path, j) => [path, contents[j] ?? null]));
     untouchedInputs.push(
-      ...(await mapLimit(paths, PARSE_CONCURRENCY, (path, j) => describeUnchanged(path, contents[j] ?? null))),
+      ...(await mapLimit(paths, PARSE_CONCURRENCY, (path) =>
+        bytesOf.has(path) ? describeUnchanged(path, bytesOf.get(path) ?? null) : describeUnchangedLarge(change, path),
+      )),
     );
   }
 
