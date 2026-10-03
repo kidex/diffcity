@@ -160,10 +160,17 @@ export function paintCity(input: PaintInput): CityPaint {
  * move does not repaint the city. `focus` is a symbol id: its floor, in the
  * selected building, is painted as focused.
  */
-export function focusPaint(base: CityPaint, city: City, hover: string | null, selection: string | null, focus: string | null = null): CityPaint {
+export function focusPaint(
+  base: CityPaint,
+  city: City,
+  hover: string | null,
+  selection: string | null,
+  focus: string | null = null,
+  hoverFloor: { id: string; symbolId: string } | null = null,
+): CityPaint {
   const buildings = base.buildings.slice();
   const floors = base.floors.slice();
-  for (const id of new Set([hover, selection])) {
+  for (const id of new Set([hover, selection, hoverFloor?.id ?? null])) {
     const building = id === null ? undefined : city.byId.get(id);
     const state = building === undefined ? undefined : base.buildings[building.index];
     if (building === undefined || state === undefined) continue;
@@ -174,7 +181,9 @@ export function focusPaint(base: CityPaint, city: City, hover: string | null, se
       ...floor,
       hovered,
       selected,
-      focused: selected && focus !== null && building.floors[i]?.symbolId === focus,
+      focused:
+        (selected && focus !== null && building.floors[i]?.symbolId === focus) ||
+        (hoverFloor !== null && id === hoverFloor.id && building.floors[i]?.symbolId === hoverFloor.symbolId),
     }));
   }
   return { buildings, floors };

@@ -54,6 +54,8 @@ export interface SceneDebug {
   project(fileId: string, symbolId?: string): { x: number; y: number } | null;
   /** The symbol id of the focused floor of the selected building. */
   selectedFloor(): string | null;
+  /** The symbol id of the floor the file view's diff is pointing at. */
+  hoveredFloor(): string | null;
   stats(): SceneStats | null;
   bench(ms: number): Promise<{ fps: number; drawCalls: number } | null>;
   camera(): { theta: number; phi: number; r: number } | null;
@@ -95,6 +97,7 @@ function installDebug(view: () => CityView | null): SceneDebug {
     ready: false,
     project: (fileId, symbolId) => view()?.project(fileId, symbolId) ?? null,
     selectedFloor: () => view()?.selectedFloor() ?? null,
+    hoveredFloor: () => view()?.hoveredFloor() ?? null,
     stats: () => view()?.stats() ?? null,
     bench: async (ms) => (await view()?.bench(ms)) ?? null,
     camera: () => view()?.camera() ?? null,
@@ -175,6 +178,7 @@ export function mountChange(element: HTMLElement, options: ChangeScreenOptions):
       {
         onSelect: (fileId, symbolId) => view?.select(fileId, symbolId),
         onHover: (fileId) => view?.hover(fileId),
+        onHoverFloor: (fileId, symbolId) => view?.hoverFloor(fileId, symbolId),
         diffs: debug !== null && window.diffcityNoDiffs === true ? undefined : options.diffs,
         reducedMotion,
       },
@@ -202,6 +206,7 @@ export function mountChange(element: HTMLElement, options: ChangeScreenOptions):
           },
           hooks: {
             hover(info) {
+              reading.hoverFloor(info?.building.id ?? null, info?.floor?.symbolId ?? null);
               if (info === null) {
                 screen.tip(null, 0, 0);
                 return;

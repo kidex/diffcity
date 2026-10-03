@@ -77,6 +77,13 @@ export interface CityView {
   select(fileId: string | null, symbolId?: string | null): void;
   /** Highlights a building as the pointer does; null removes it. */
   hover(fileId: string | null): void;
+  /**
+   * Lights one floor (a symbol of the building) and its building, as the reading
+   * panel's diff does when the pointer is over a symbol's lines; null puts them out.
+   */
+  hoverFloor(fileId: string | null, symbolId?: string | null): void;
+  /** The symbol id of the floor `hoverFloor` lit, or null. */
+  hoveredFloor(): string | null;
   /** The symbol id of the focused floor of the selected building, or null. */
   selectedFloor(): string | null;
   /** The review marks (ADR-028): checked floors are drawn quiet, marked floors stop pulsing. Without marks, none. */
@@ -171,6 +178,8 @@ export function createCityView(host: HTMLElement, report: Report, options: CityV
   let selected: string | null = null;
   /** The symbol id of the focused floor of `selected`. */
   let focusedFloor: string | null = null;
+  /** The floor the reading panel's diff is pointing at. */
+  let hoveredFloor: { id: string; symbolId: string } | null = null;
   let filters: Filters = NO_FILTERS;
   let rules: RuleIndex = ruleIndex(report);
   /** The Report on show: findings and steps come from it. */
@@ -305,7 +314,7 @@ export function createCityView(host: HTMLElement, report: Report, options: CityV
       labels.setDimmed(dim, tween !== null);
       element.dataset['filters'] = `verdict=${filters.verdict ?? ''};type=${filters.type ?? ''};rule=${filters.rule ?? ''}`;
     }
-    const paint = focusPaint(baseline, c.shown, hovered, selected, focusedFloor);
+    const paint = focusPaint(baseline, c.shown, hovered, selected, focusedFloor, hoveredFloor);
     c.towers.setPaint(paint);
     c.markers.setPaint(paint);
     stage.request();
@@ -424,6 +433,8 @@ export function createCityView(host: HTMLElement, report: Report, options: CityV
 
     // Hover does not survive a rebuild; the selection does while its file exists.
     hovered = null;
+    hoveredFloor = null;
+    element.dataset['hoveredFloor'] = '';
     hooks?.hover(null);
     canvas.style.cursor = '';
     const lost = selected === null || city.byId.has(selected) ? null : (previous?.byId.get(selected) ?? null);
@@ -451,6 +462,19 @@ export function createCityView(host: HTMLElement, report: Report, options: CityV
     repaint(false);
     canvas.style.cursor = id === null ? '' : 'pointer';
     element.dataset['hovered'] = id ?? '';
+  }
+
+  function setHoverFloor(id: string | null, symbolId: string | null = null): void {
+    const building = id === null ? undefined : content?.city.byId.get(id);
+    const floor = building?.floors.find((candidate) => candidate.symbolId === symbolId);
+    const next = building !== undefined && floor !== undefined && symbolId !== null ? { id: building.id, symbolId } : null;
+    if (next?.id === hoveredFloor?.id && next?.symbolId === hoveredFloor?.symbolId) return;
+    hoveredFloor = next;
+    element.dataset['hoveredFloor'] = next?.symbolId ?? '';
+    // The pointer is in the panel: the building is lit with the floor.
+    if (next === null) setHover(null);
+    else setHover(next.id);
+    repaint(false);
   }
 
   function select(id: string | null, symbolId: string | null = null): void {
@@ -537,6 +561,8 @@ export function createCityView(host: HTMLElement, report: Report, options: CityV
     },
     select,
     hover: setHover,
+    hoverFloor: setHoverFloor,
+    hoveredFloor: () => hoveredFloor?.symbolId ?? null,
     selectedFloor: () => focusedFloor,
     setFilters(next) {
       filters = next;

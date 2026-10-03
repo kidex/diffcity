@@ -7,6 +7,7 @@
 import type { Locator, Page } from '@playwright/test';
 import type { DiffLine, Finding, Report, Step } from '../../../src/core/report/types.js';
 import { CONTROLLER, finding, GUARD, MIGRATION, SERVICE } from './hud.js';
+import type { ApiData } from './mock-api.js';
 import { fixtures, mockApi } from './mock-api.js';
 import { openCity } from './scene.js';
 
@@ -78,10 +79,10 @@ export function noStepsReport(): Report {
 }
 
 /** Opens change 11 with `report`, reduced motion, the city drawn. Returns the Reports the API answers with: set `[11]` to serve another one. */
-export async function openPanel(page: Page, report: Report = panelReport()): Promise<Record<number, Report>> {
+export async function openPanel(page: Page, report: Report = panelReport(), api: Partial<ApiData> = {}): Promise<Record<number, Report>> {
   const reports: Record<number, Report> = { 11: report };
   await page.emulateMedia({ reducedMotion: 'reduce', colorScheme: 'dark' });
-  await mockApi(page, { reports });
+  await mockApi(page, { ...api, reports });
   await openCity(page);
   return reports;
 }

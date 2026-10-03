@@ -14,7 +14,9 @@ import type { Counters, FileViewData, TabId, Target } from '../model/panel.js';
 import { counters, fileViewData, findingSources, navTargets, stepTarget, stopIsCurrent, summaryLine, TABS } from '../model/panel.js';
 import type { DiffPort } from '../ports.js';
 import type { FileViewRender } from './file-view.js';
-import { renderFileView } from './file-view.js';
+import { DIFF_MOUNT, renderFileView } from './file-view.js';
+import type { DiffView, LineRange } from './fileview/view.js';
+import { createDiffView } from './fileview/view.js';
 import type { TabActions, TabBody } from './lists.js';
 import { bindHover, findingsBody, orderBody, outsideBody, symbolsBody } from './lists.js';
 
@@ -23,6 +25,10 @@ export interface PanelOptions {
   onSelect(fileId: string | null, symbolId: string | null): void;
   /** Lights a building as the pointer would; null puts it out. */
   onHover(fileId: string | null): void;
+  /** The pointer is over the lines of a symbol in the file view's diff (null: none): the city lights its floor. */
+  onHoverFloor?(fileId: string | null, symbolId: string | null): void;
+  /** The line range selected in the file view's diff changed (null: none). */
+  onRange?(fileId: string, range: LineRange | null): void;
   /** Without it the file view shows only the Report's step diffs. */
   diffs?: DiffPort | undefined;
   reducedMotion: boolean;
@@ -34,6 +40,10 @@ export interface Panel {
   update(report: Report): void;
   /** The city's selection changed (or was rebuilt): null for none. */
   select(fileId: string | null, symbolId: string | null): void;
+  /** The city's pointer is over a floor (null: none): the lines of its symbol in the open file's diff are lit. */
+  hoverFloor(fileId: string | null, symbolId: string | null): void;
+  /** The line range selected in the open file's diff, for the review marks (T10); null when none. */
+  lineRange(): { fileId: string; range: LineRange } | null;
   /** A building was clicked in the city: its file view opens at the floor. */
   open(fileId: string, symbolId: string | null): void;
   dispose(): void;
@@ -59,6 +69,16 @@ export function createPanel(options: PanelOptions, first: Report): Panel {
   let tabScroll = 0;
   let fileScroll = 0;
   let scrollFrame: number | undefined;
+  const diffView: DiffView | null =
+    options.diffs === undefined
+      ? null
+      : createDiffView({
+          diffs: options.diffs,
+          onHover: (symbolId) => options.onHoverFloor?.(fileId, symbolId),
+          onRange: (range) => {
+            if (fileId !== null) options.onRange?.(fileId, range);
+          },
+        });
 
   const title = h('h2', null, 'Reading path');
   const summary = h('p', { 'data-testid': 'panel-summary' });
@@ -139,6 +159,7 @@ export function createPanel(options: PanelOptions, first: Report): Panel {
       for (const card of view.stops) card.root.classList.toggle('on', stopIsCurrent(shown, card.stop, selection));
       const focus = selection?.fileId === fileId ? selection.symbolId : null;
       view.area.dataset['focusSymbol'] = focus ?? '';
+      diffView?.focus(focus);
       for (const excerpt of view.excerpts) excerpt.root.classList.toggle('focus', focus !== null && excerpt.symbolId === focus);
     }
     if (scrollTo) scheduleScroll();
@@ -174,7 +195,11 @@ export function createPanel(options: PanelOptions, first: Report): Panel {
       closeFile();
       return;
     }
-    view = renderFileView(fileRoot, data, { actions, back: closeFile, hasDiffPort: options.diffs !== undefined });
+    view = renderFileView(fileRoot, data, { actions, back: closeFile, hasDiffPort: diffView !== null });
+    const mount = view.area.querySelector<HTMLElement>(`.${DIFF_MOUNT}`);
+    if (diffView !== null && mount !== null) {
+      diffView.show(mount, data.placed.file.id, selection?.fileId === fileId ? selection.symbolId : null, report.meta.generatedAt);
+    }
     markCurrent();
   }
 
@@ -186,8 +211,11 @@ export function createPanel(options: PanelOptions, first: Report): Panel {
     scroll.hidden = true;
     header.hidden = true;
     fileRoot.hidden = false;
-    if (same) markCurrent();
-    else {
+    if (same) {
+      markCurrent();
+      // A click on a floor of the open file: the diff goes back to it.
+      if (symbolId !== null) diffView?.focus(symbolId, true);
+    } else {
       renderFile();
       if (view !== null) view.scroll.scrollTop = 0;
     }
@@ -198,6 +226,7 @@ export function createPanel(options: PanelOptions, first: Report): Panel {
     if (fileId === null) return;
     fileId = null;
     view = null;
+    diffView?.hide();
     fileRoot.hidden = true;
     fileRoot.replaceChildren();
     header.hidden = false;
@@ -251,8 +280,16 @@ export function createPanel(options: PanelOptions, first: Report): Panel {
       }
       markCurrent(true);
     },
+    hoverFloor(id, symbolId) {
+      diffView?.hoverSymbol(id !== null && id === fileId ? symbolId : null);
+    },
+    lineRange() {
+      const range = diffView?.range() ?? null;
+      return fileId === null || range === null ? null : { fileId, range };
+    },
     open: openFile,
     dispose() {
+      diffView?.dispose();
       document.removeEventListener('keydown', onKey);
       if (scrollFrame !== undefined) cancelAnimationFrame(scrollFrame);
       root.remove();

@@ -1,0 +1,79 @@
+/*
+ * The full diff in the file view (ADR-027): an editor-like block on the
+ * mockup's code ground. Rows have a fixed height (--dv-row) and are placed
+ * with `top`, so a window of them can stand for 50,000. Colours are tokens:
+ * --code-add / --code-del for the rows, --code-* for the highlight classes.
+ */
+
+.read .dv { margin: 0; }
+.read .dv-bar { display: flex; align-items: center; gap: 8px; padding: 0 0 8px; font-size: 12px; color: var(--muted); }
+.read .dv-bar .spacer { flex: 1; }
+.read .dv-counter { font-family: var(--mono); color: var(--ink-2); min-width: 5ch; text-align: center; }
+.read .dv-step { width: 24px; height: 22px; border-radius: 6px; border: 1px solid var(--line); color: var(--ink-2); font-size: 10px; line-height: 1; }
+.read .dv-step:hover:not(:disabled) { color: var(--ink); background: var(--panel-2); }
+.read .dv-step:disabled { opacity: .45; cursor: default; }
+.read .dv-keys { display: inline-flex; align-items: center; gap: 4px; }
+.read .dv-stats .add { color: var(--add); }
+.read .dv-stats .del { color: var(--del); }
+.read .dv-stale {
+  margin: 0 0 8px; padding: 7px 10px; border-radius: 8px; font-size: 12.5px; color: var(--ink);
+  background: color-mix(in srgb, var(--mod) 16%, transparent); border: 1px solid color-mix(in srgb, var(--mod) 45%, transparent);
+}
+.read .dv-note { margin: 0 0 8px; color: var(--muted); font-size: 12.5px; }
+.read .dv-msg { padding: 14px 12px; border-radius: 8px; background: var(--code-bg); border: 1px solid var(--line-soft); font-size: 12.5px; color: var(--ink-2); }
+.read .dv-msg p { margin: 0; overflow-wrap: anywhere; }
+.read .dv-msg-title { color: var(--ink); font-weight: 500; }
+.read .dv-msg-detail { margin-top: 4px; color: var(--muted); font-family: var(--mono); font-size: 12px; }
+.read .dv-retry { margin-top: 8px; padding: 4px 10px; border-radius: 6px; border: 1px solid var(--line); color: var(--ink-2); font-size: 12px; }
+.read .dv-retry:hover { color: var(--ink); background: var(--panel-2); }
+
+.read .dv-viewport {
+  --dv-lnw: calc(var(--dv-digits, 3) * 1ch + 12px);
+  height: clamp(260px, 58vh, 720px); overflow: auto; position: relative;
+  background: var(--code-bg); border: 1px solid var(--line-soft); border-radius: 8px;
+  font-family: var(--mono); font-size: 12px; line-height: var(--dv-row); color: var(--ink-2);
+}
+.read .dv-viewport:focus-visible { outline-offset: -2px; }
+.read .dv-content { position: relative; min-width: calc(var(--dv-ch, 40) * 1ch + var(--dv-lnw) * 2 + 2ch + 24px); }
+.read .dl { position: absolute; left: 0; right: 0; height: var(--dv-row); display: flex; align-items: stretch; white-space: pre; box-sizing: border-box; }
+.read .dl.add { background-color: var(--code-add); }
+.read .dl.del { background-color: var(--code-del); }
+.read .dl .ln {
+  flex: 0 0 var(--dv-lnw); box-sizing: border-box; padding: 0 6px; text-align: right; color: var(--muted);
+  user-select: none; font: inherit; line-height: var(--dv-row); cursor: pointer;
+}
+.read .dl .ln.none { cursor: default; }
+.read .dl .ln:not(.none):hover { color: var(--ink); text-decoration: underline; }
+.read .dl .gt { flex: 0 0 2ch; text-align: center; user-select: none; color: var(--muted); }
+.read .dl.add .gt { color: var(--add); }
+.read .dl.del .gt { color: var(--del); }
+.read .dl .tx { flex: 1 0 auto; padding-right: 12px; color: var(--code-var); }
+.read .dl.ctx .tx { color: var(--ink-2); }
+.read .dl .cut-mark { color: var(--muted); font-style: italic; }
+
+/* a symbol's lines: a faint edge; lit by hovering them or their floor; the focused symbol stands out */
+.read .dl.sym { box-shadow: inset 2px 0 color-mix(in srgb, var(--sig) 35%, transparent); }
+.read .dl.hot { box-shadow: inset 3px 0 var(--sig); background-image: linear-gradient(color-mix(in srgb, var(--sig) 14%, transparent), color-mix(in srgb, var(--sig) 14%, transparent)); }
+.read .dl.focus { box-shadow: inset 3px 0 var(--sig); }
+.read .dl.picked { background-image: linear-gradient(color-mix(in srgb, var(--sev-low) 24%, transparent), color-mix(in srgb, var(--sev-low) 24%, transparent)); }
+.read .dl.picked .ln { color: var(--ink); }
+
+/* a fold: one line standing for the unchanged lines between hunks */
+.read .dl.fold {
+  align-items: center; padding: 0 12px; width: 100%; text-align: left; color: var(--muted); font: inherit; line-height: var(--dv-row);
+  background: color-mix(in srgb, var(--panel-2) 55%, transparent); border-top: 1px solid var(--line-soft); border-bottom: 1px solid var(--line-soft);
+}
+.read .dl.fold:hover { color: var(--ink); background: var(--panel-2); }
+.read .dl.fold .fold-label::before { content: '⋯ '; }
+
+/* the ten highlight classes */
+.read .hl-kw { color: var(--code-kw); }
+.read .hl-str { color: var(--code-str); }
+.read .hl-num { color: var(--code-num); }
+.read .hl-com { color: var(--code-com); font-style: italic; }
+.read .hl-type { color: var(--code-type); }
+.read .hl-fn { color: var(--code-fn); }
+.read .hl-prop { color: var(--code-prop); }
+.read .hl-op { color: var(--code-op); }
+.read .hl-punc { color: var(--code-punc); }
+.read .hl-var { color: var(--code-var); }
