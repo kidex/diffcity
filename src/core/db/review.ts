@@ -33,7 +33,7 @@ export interface MarkWrite {
   lines: { side: 'old' | 'new'; start: number; end: number } | null;
   /** The target's fingerprint in the snapshot the mark is made against. */
   fingerprint: string;
-  snapshotId: number;
+  snapshotId: number | null;
   at: string;
 }
 
@@ -77,7 +77,7 @@ export function createReviewStore(db: Connection): ReviewStore {
   const list = db.prepare<[number], MarkRow>('SELECT * FROM review_marks WHERE changeId = ? ORDER BY id');
   const count = db.prepare<[number], { n: number }>('SELECT COUNT(*) AS n FROM review_marks WHERE changeId = ?');
   const upsert = db.prepare<
-    [number, string, string, string, string, string | null, string | null, number | null, number | null, string, number, string, string],
+    [number, string, string, string, string, string | null, string | null, number | null, number | null, string, number | null, string, string],
     MarkRow
   >(
     `INSERT INTO review_marks

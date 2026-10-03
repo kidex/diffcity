@@ -6,7 +6,7 @@ import { PassThrough } from 'node:stream';
 import { afterEach } from 'vitest';
 import type { CommandRunner } from '../../../src/core/git/index.js';
 import { sendRequest } from '../../../src/daemon/client.js';
-import { apiPlugin } from '../../../src/daemon/api/plugin.js';
+import { createApiPlugin } from '../../../src/daemon/api/plugin.js';
 import { dbPlugin } from '../../../src/daemon/db.js';
 import { createCollection, type Collection, type CollectionPluginOptions } from '../../../src/daemon/collector/plugin.js';
 import { startDaemon, type RunningDaemon } from '../../../src/daemon/daemon.js';
@@ -88,6 +88,8 @@ async function recordSse(port: number): Promise<{ events: SseRecord[]; close: ()
 export interface TestDaemonOptions {
   /** Also serve the JSON API (/api/repos and the rest). */
   api?: boolean;
+  /** The clock of the API's review writes. */
+  apiNow?: () => Date;
   /**
    * Adds plugins after the collection (the watch plugin, say); they start
    * after it and stop before it.
@@ -101,7 +103,7 @@ export async function startTestDaemon(options: CollectionPluginOptions = {}, ext
   const result = await startDaemon({
     env: home.env,
     port: 0,
-    plugins: [dbPlugin, collection.plugin, ...(extra.api === true ? [apiPlugin] : []), ...(extra.plugins?.(collection) ?? [])],
+    plugins: [dbPlugin, collection.plugin, ...(extra.api === true ? [createApiPlugin(extra.apiNow === undefined ? {} : { now: extra.apiNow })] : []), ...(extra.plugins?.(collection) ?? [])],
     log: createStreamLogger(new PassThrough()),
   });
   if (result.status !== 'started') throw new Error(`daemon did not start: ${result.status}`);
