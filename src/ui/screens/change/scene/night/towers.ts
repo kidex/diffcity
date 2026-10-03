@@ -72,6 +72,8 @@ const GLASS_QUIET = 0.82;
 const GLASS_GHOST = 0.12;
 const HOVER_LIFT = 1.6;
 const SELECTED_LIFT = 1.35;
+/** The strip of the floor a click or the reading panel focused. */
+const FOCUS_LIFT = 2.1;
 const OUTLINE_WIDTH = 1.3;
 const SELECTION_WIDTH = 2.2;
 /** The halo around a pulsing strip under reduced motion: how much wider than the glass, how tall, how bright. */
@@ -511,6 +513,7 @@ export function createTowers(first: City, motion: Motion): Towers {
     a.dimmed === b.dimmed &&
     a.hovered === b.hovered &&
     a.selected === b.selected &&
+    a.focused === b.focused &&
     a.pulse === b.pulse &&
     a.pulseColor === b.pulseColor &&
     a.checked === b.checked;
@@ -542,7 +545,7 @@ export function createTowers(first: City, motion: Motion): Towers {
           if (pulses) gain = STRIP_GAIN;
           else if (marked) gain = CHECKED_GAIN;
           if (dim) stripMesh.setColorAt(slot.strip, fade(scratch.copy(hue).multiplyScalar(stripGain[slot.strip] ?? 1), DIM_STRIP));
-          else stripMesh.setColorAt(slot.strip, scratch.copy(pulses ? pulseColorOf(kind) : hue).multiplyScalar(gain * lift));
+          else stripMesh.setColorAt(slot.strip, scratch.copy(pulses ? pulseColorOf(kind) : hue).multiplyScalar(gain * (floor?.focused === true ? FOCUS_LIFT : lift)));
           owner.gain = gain;
           owner.checked = marked;
         }
