@@ -30,3 +30,22 @@ export function pathStops(city: City, steps: readonly Step[]): PathStop[] {
 export function pathPoints(stops: readonly PathStop[]): CityBuilding[] {
   return stops.map((stop) => stop.building).filter((building, i, all) => i === 0 || all[i - 1] !== building);
 }
+
+/** The grid of the stop-number atlas: `columns` x `rows` cells of `cell` px, never wider or taller than `maxTexture`. */
+export interface AtlasGrid {
+  columns: number;
+  rows: number;
+  cell: number;
+}
+
+/** Fits `count` numbers into a texture of at most `maxTexture` px a side: wide rows first, smaller cells only when even a square grid is too big. */
+export function atlasGrid(count: number, maxTexture: number, cell = 128): AtlasGrid {
+  const n = Math.max(count, 1);
+  for (let size = cell; size > 1; size = Math.floor(size * 0.8)) {
+    const columns = Math.min(n, Math.max(1, Math.floor(maxTexture / size)));
+    const rows = Math.ceil(n / columns);
+    if (rows * size <= maxTexture) return { columns, rows, cell: size };
+  }
+  const columns = Math.min(n, maxTexture);
+  return { columns, rows: Math.ceil(n / columns), cell: 1 };
+}

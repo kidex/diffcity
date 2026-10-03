@@ -39,15 +39,15 @@ export const verdictChips = (report: Report): Counted<Verdict>[] => VERDICTS.map
 export const typeChips = (report: Report): Counted<ChangedStatus>[] => topBar(report).statuses;
 
 /**
- * Row 3: one chip per rule that has a finding on a file, with the number of
- * its findings; in order of first appearance. Empty when the Report has no
+ * Row 3: one chip per rule that has an open finding on a file, with the number of
+ * its open findings; in order of first appearance. Empty when the Report has no
  * rule findings, which hides the row.
  */
 export function ruleChips(report: Report): Counted<string>[] {
   const counts = new Map<string, number>();
   for (const finding of report.findings) {
     const rule = ruleOf(finding.source);
-    if (rule === null || finding.file === '') continue;
+    if (rule === null || finding.file === '' || finding.state !== 'open') continue;
     counts.set(rule, (counts.get(rule) ?? 0) + 1);
   }
   return [...counts].map(([key, count]) => ({ key, count }));
@@ -170,7 +170,7 @@ export const commitsText = (commits: number): string => plural(commits, 'commit'
 
 // ---------- tooltip and selection card ----------
 
-/** Findings of a file by path: all, and the rule violations among them. */
+/** Open findings of a file by path: all, and the rule violations among them (what the city draws as markers). */
 export interface FileFindings {
   total: number;
   rules: number;
@@ -181,7 +181,7 @@ export type FindingsIndex = ReadonlyMap<string, FileFindings>;
 export function findingsIndex(report: Pick<Report, 'findings'>): FindingsIndex {
   const index = new Map<string, FileFindings>();
   for (const finding of report.findings) {
-    if (finding.file === '') continue;
+    if (finding.file === '' || finding.state !== 'open') continue;
     const entry = index.get(finding.file) ?? { total: 0, rules: 0 };
     entry.total += 1;
     if (ruleOf(finding.source) !== null) entry.rules += 1;

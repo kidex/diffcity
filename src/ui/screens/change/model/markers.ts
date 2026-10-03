@@ -1,8 +1,8 @@
 // Where the finding markers go (ADR-026, DC-52): a pin on the roof for every
-// finding; an X instead of a pin when the finding's source starts with
+// open finding; an X instead of a pin when the finding's source starts with
 // `rule:`, on the floor of its symbol or on the roof when it has none. A
-// change-level finding (file '') or one on a file that is not in the city gets
-// none. Pure: no three.js, no DOM.
+// change-level finding (file ''), one on a file that is not in the city and one
+// that is not open (fixed, intended) get none. Pure: no three.js, no DOM.
 
 import type { Finding } from '../../../../core/report/types.js';
 import type { City } from './city.js';
@@ -26,7 +26,8 @@ export function findingMarkers(city: City, findings: readonly Finding[]): Findin
   const used = new Map<string, number>();
   const markers: FindingMarker[] = [];
   for (const finding of findings) {
-    if (finding.file === '') continue;
+    // Only open findings are drawn: fixed and intended ones leave the city.
+    if (finding.file === '' || finding.state !== 'open') continue;
     const building = byPath.get(finding.file);
     if (building === undefined) continue;
     const rule = ruleOf(finding.source) !== null;

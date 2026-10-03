@@ -50,7 +50,7 @@ export function ruleIndex(report: Pick<Report, 'findings'>): RuleIndex {
   const index = new Map<string, Set<string>>();
   for (const finding of report.findings) {
     const rule = ruleOf(finding.source);
-    if (rule === null || finding.file === '') continue;
+    if (rule === null || finding.file === '' || finding.state !== 'open') continue;
     let files = index.get(rule);
     if (files === undefined) {
       files = new Set();
