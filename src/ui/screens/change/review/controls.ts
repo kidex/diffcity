@@ -30,15 +30,15 @@ export interface MarkBar {
 
 const VALUES: ReviewMarkValue[] = ['checked', 'good', 'rewrite'];
 
+/** The keys C G W U are named in each button's title and in the reading panel's footer; the buttons stay small so the bar takes one row where there is room. */
 export function createMarkBar(actions: MarkBarActions): MarkBar {
   const caption = h('div', { class: 'rv-caption', 'data-testid': 'mark-target' });
   const buttons = new Map<string, HTMLButtonElement>();
   const make = (key: string, label: string, shortcut: string, click: () => void): HTMLButtonElement => {
     const button = h(
       'button',
-      { type: 'button', class: `rv-btn ${key}`, 'data-testid': `mark-${key}`, 'aria-keyshortcuts': shortcut, onclick: click },
+      { type: 'button', class: `rv-btn ${key}`, 'data-testid': `mark-${key}`, 'aria-keyshortcuts': shortcut, title: `${label} (${shortcut})`, onclick: click },
       label,
-      h('span', { class: 'k', 'aria-hidden': 'true' }, shortcut),
     );
     buttons.set(key, button);
     return button;
@@ -87,6 +87,8 @@ export function createMarkBar(actions: MarkBarActions): MarkBar {
     set(info, mark, inherited) {
       const marked = info !== null;
       scope.hidden = info?.floor == null;
+      // With the scope switch on screen it says what is marked: the caption stays for screen readers and tests only.
+      caption.classList.toggle('rv-sr', !scope.hidden);
       if (info?.floor != null) {
         floorScope.textContent = `Floor ${info.floor.name}`;
         fileScope.setAttribute('aria-pressed', String(!info.symbol));
@@ -102,6 +104,8 @@ export function createMarkBar(actions: MarkBarActions): MarkBar {
         button.classList.toggle('on', own);
       }
       status.replaceChildren(...(marked ? describe(mark, inherited) : []));
+      // "Not marked" is the default and the buttons say it: it stays for screen readers and tests only.
+      status.classList.toggle('rv-sr', mark === undefined && inherited === undefined);
     },
   };
 }

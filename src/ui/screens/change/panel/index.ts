@@ -137,7 +137,15 @@ export function createPanel(options: PanelOptions, first: Report): Panel {
   function renderChrome(): void {
     summary.textContent = summaryLine(report);
     const hasStops = counts().order > 0;
-    keys.replaceChildren(h('span', { class: 'k' }, 'J'), h('span', { class: 'k' }, 'K'), ` next / previous ${hasStops ? 'stop' : 'symbol'}`);
+    keys.replaceChildren(
+      h('span', { class: 'k' }, 'J'),
+      h('span', { class: 'k' }, 'K'),
+      ` next / previous ${hasStops ? 'stop' : 'symbol'}`,
+      // With review marks the keys that make them are named here, as J and K are.
+      ...(options.review === undefined
+        ? []
+        : [' ', ...['C', 'G', 'W', 'U'].map((key) => h('span', { class: 'k', 'data-testid': 'review-key' }, key)), ' mark']),
+    );
     const found = findingSources(report);
     sources.textContent = found.length === 0 ? '' : sourcesText(found);
     renderTabs();

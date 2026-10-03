@@ -57,8 +57,11 @@ export interface ApiData {
   search: (query: string) => SearchResult[];
   /** The answer of `GET /api/changes/:id/diff`; the default says `unavailable`. May wait: the response is held until it settles. */
   diff: (request: DiffRequest) => DiffReply | Promise<DiffReply>;
-  /** The review marks every change starts with (ADR-028); the default is none. The routes keep the state: see `MockedApi.review`. */
-  review: ReviewSeed;
+  /**
+   * The review state every change starts with (ADR-028). The routes keep it: see `MockedApi.review`. Absent
+   * (the default), the review routes answer 409 `no-snapshot`, so the screen has no review controls.
+   */
+  review?: ReviewSeed;
   /** The review state per change id: pass the same Map to two pages and they share one daemon's marks. */
   reviewMocks: Map<number, ReviewMock>;
 }
@@ -79,7 +82,6 @@ export function defaultApiData(): ApiData {
     archived: { 1: fixtures.repoArchived() },
     reports: { 11: fixtures.reportOrderDiscounts() },
     search: () => results,
-    review: {},
     reviewMocks: new Map(),
     diff: ({ path }) => ({
       snapshotId: 1,
@@ -105,7 +107,7 @@ export async function mockApi(page: Page, overrides: Partial<ApiData> = {}): Pro
   const review = (changeId: number): ReviewMock => {
     let mock = reviews.get(changeId);
     if (mock === undefined) {
-      mock = createReviewMock({ ...data.review, marks: [...(data.review.marks ?? [])] });
+      mock = createReviewMock({ ...data.review, marks: [...(data.review?.marks ?? [])] });
       reviews.set(changeId, mock);
     }
     return mock;
@@ -147,6 +149,8 @@ export async function mockApi(page: Page, overrides: Partial<ApiData> = {}): Pro
       }
       if ((match = /^\/api\/changes\/(\d+)\/review(\/.*)?$/.exec(path))) {
         const id = Number(match[1]);
+        // Without a seed (and no shared state) the daemon has nothing to review: 409 no-snapshot.
+        if (data.review === undefined && !reviews.has(id)) return answer(route, { error: { code: 'no-snapshot', message: 'no snapshot yet' } }, 409);
         return answerReview(route, review(id), data.reports[id], match[2] ?? '');
       }
       if ((match = /^\/api\/changes\/(\d+)\/diff$/.exec(path))) {

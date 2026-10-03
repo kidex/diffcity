@@ -16,7 +16,8 @@ test('panel/works-without-webgl', async ({ page }) => {
     if (message.type() === 'error' && !message.text().includes('Error creating WebGL context')) errors.push(message.text());
   });
   await withoutWebgl(page);
-  await mockApi(page, { reports: { 11: panelReport() } });
+  // The review routes answer (a change with no marks), as the daemon's do for a change with a snapshot.
+  await mockApi(page, { reports: { 11: panelReport() }, review: {} });
   await page.goto('/#/change/11');
 
   await expect(page.getByTestId('no-webgl-note')).toHaveText('3D view needs WebGL');

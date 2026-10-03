@@ -18,19 +18,18 @@
 
 /* ---------- mark buttons ---------- */
 .rv-slot[hidden] { display: none; }
-.rv-bar { display: flex; flex-direction: column; gap: 6px; margin: 8px 0; }
+.rv-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; margin: 8px 0; }
 .rv-caption { font-size: 11.5px; color: var(--muted); }
-.rv-buttons { display: flex; flex-wrap: wrap; gap: 6px; }
+.rv-buttons { display: flex; flex-wrap: wrap; gap: 3px; }
 .rv-btn {
-  display: inline-flex; align-items: center; gap: 6px; padding: 4px 8px; border-radius: 7px; font-size: 12px; font-weight: 500;
+  display: inline-flex; align-items: center; padding: 3px 6px; border-radius: 7px; font-size: 11px; font-weight: 500; white-space: nowrap;
   border: 1px solid var(--line); background: transparent; color: var(--ink-2); pointer-events: auto;
 }
 .rv-btn:hover:not(:disabled) { color: var(--ink); border-color: var(--plot-line); }
 .rv-btn:disabled { opacity: .45; cursor: not-allowed; }
-.rv-btn .k { font-size: 10.5px; padding: 0 4px; }
 .rv-btn.checked.on, .rv-btn.good.on { border-color: var(--add); color: var(--ink); background: color-mix(in srgb, var(--add) 16%, transparent); }
 .rv-btn.rewrite.on { border-color: var(--del); color: var(--ink); background: color-mix(in srgb, var(--del) 16%, transparent); }
-.rv-status { font-size: 12px; color: var(--ink-2); display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; overflow-wrap: anywhere; }
+.rv-status { flex: 1 1 100%; font-size: 12px; color: var(--ink-2); display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; overflow-wrap: anywhere; }
 .rv-status:empty { display: none; }
 .rv-mark { font-weight: 600; }
 .rv-mark.checked, .rv-mark.good { color: color-mix(in srgb, var(--add) 55%, var(--ink)); }
@@ -40,7 +39,7 @@
 .rv-none, .rv-inherited { color: var(--muted); }
 .rv-note { flex: 1 1 100%; margin: 2px 0 0; padding: 6px 8px; border-left: 2px solid var(--del); background: color-mix(in srgb, var(--del) 8%, transparent); white-space: pre-wrap; color: var(--ink); }
 
-.fv-review { margin-top: 10px; }
+.fv-review { margin-top: 6px; }
 .fv-review[hidden] { display: none; }
 .fv-review .rv-bar { margin: 0; }
 
@@ -98,3 +97,6 @@
 }
 .rv-scope-btn:hover { color: var(--ink); }
 .rv-scope-btn.on { color: var(--ink); border-color: var(--sig); background: color-mix(in srgb, var(--sig) 14%, transparent); }
+
+/* ---------- screen readers only: what the buttons already say ---------- */
+.rv-sr { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }

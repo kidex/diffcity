@@ -47,7 +47,7 @@ test('review/check-uncheck-file', async ({ page }) => {
   await viewButton(page, 'checked').click();
   await expect(card(page).getByTestId('mark-current')).toHaveText('Checked');
   await page.keyboard.press('u');
-  await expect(card(page).getByTestId('mark-none')).toBeVisible();
+  await expect(card(page).getByTestId('mark-none')).toHaveText('Not marked');
   await page.keyboard.press('c');
   await expect(card(page).getByTestId('mark-current')).toHaveText('Checked');
   expect(mock.marks.map((mark) => [mark.targetKind, mark.targetId, mark.mark])).toEqual([['file', GUARD, 'checked']]);

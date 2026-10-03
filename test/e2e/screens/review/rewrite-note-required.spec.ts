@@ -53,7 +53,7 @@ test('review/rewrite-note-required', async ({ page }) => {
   await expect(dialog).toBeHidden();
   await expect(cardButton(page, 'rewrite')).toBeFocused();
   expect(await selected(page)).toBe(GUARD);
-  await expect(card(page).getByTestId('mark-none')).toBeVisible();
+  await expect(card(page).getByTestId('mark-none')).toHaveText('Not marked');
 
   // Exactly 2,000 characters go through.
   await cardButton(page, 'rewrite').click();

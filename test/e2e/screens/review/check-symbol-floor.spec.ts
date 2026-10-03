@@ -31,7 +31,7 @@ test('review/check-symbol-floor', async ({ page }) => {
   // Another floor of another file: its own mark, and the first one stays.
   await selectFile(page, SERVICE, APPLY);
   await expect(card(page).getByTestId('mark-target')).toHaveText('Mark floor OrdersService.applyDiscount');
-  await expect(card(page).getByTestId('mark-none')).toBeVisible();
+  await expect(card(page).getByTestId('mark-none')).toHaveText('Not marked');
   await cardButton(page, 'good').click();
   await expect(card(page).getByTestId('mark-current')).toHaveText('Looks good');
   await expect.poll(() => mock.marks.length).toBe(2);

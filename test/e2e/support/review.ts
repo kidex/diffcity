@@ -23,10 +23,10 @@ export interface ReviewPage {
 /** Opens change 11 (the panel Report: stops, findings) with reduced motion and the review routes mocked; `seed` marks and `api` overrides are optional. */
 export async function openReview(
   page: Page,
-  options: { report?: Report; marks?: ReviewMark[]; note?: string | null; api?: Partial<ApiData>; wait?: boolean } = {},
+  options: { report?: Report; marks?: ReviewMark[]; note?: string | null; api?: Partial<ApiData>; wait?: boolean; motion?: 'reduce' | 'no-preference' } = {},
 ): Promise<ReviewPage> {
   const report = options.report ?? panelReport();
-  await page.emulateMedia({ reducedMotion: 'reduce', colorScheme: 'dark' });
+  await page.emulateMedia({ reducedMotion: options.motion ?? 'reduce', colorScheme: 'dark' });
   const api = await mockApi(page, {
     ...options.api,
     reports: { 11: report },

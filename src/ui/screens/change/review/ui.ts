@@ -89,7 +89,8 @@ export function createReviewUi(options: ReviewUiOptions): ReviewUi {
   }
 
   function barFor(entry: Slot): MarkBar {
-    entry.bar ??= createMarkBar({
+    entry.bar ??= createMarkBar(
+      {
       onMark: (value) => {
         const info = targetOf(entry.fileId, entry.symbolId);
         if (info !== null) mark(info, value);
@@ -106,7 +107,8 @@ export function createReviewUi(options: ReviewUiOptions): ReviewUi {
         whole = wholeFile ? { fileId: entry.fileId, symbolId: entry.symbolId } : null;
         api.refresh();
       },
-    });
+    },
+    );
     return entry.bar;
   }
 
