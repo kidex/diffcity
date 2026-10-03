@@ -115,7 +115,7 @@ describe('JSON errors', () => {
     expect(crash.json()).toEqual({ error: { code: 'internal', message: 'internal server error' } });
   });
 
-  it('a non-GET request needs Content-Type application/json and the daemon Origin', async () => {
+  it('a non-GET request needs the daemon Origin, same-origin Fetch metadata and, with a body, JSON', async () => {
     const server = await build();
     server.post('/api/test/action', () => ({ done: true }));
     const url = '/api/test/action';
@@ -124,7 +124,7 @@ describe('JSON errors', () => {
 
     const noOrigin = await server.inject({ method: 'POST', url, payload, headers: { ...HOST, ...json } });
     expect(noOrigin.statusCode).toBe(403);
-    expect(noOrigin.json()).toMatchObject({ error: { code: 'forbidden' } });
+    expect(noOrigin.json()).toMatchObject({ error: { code: 'cross-site' } });
 
     const foreign = await server.inject({ method: 'POST', url, payload, headers: { ...HOST, ...json, origin: 'http://evil.example' } });
     expect(foreign.statusCode).toBe(403);
@@ -135,7 +135,29 @@ describe('JSON errors', () => {
       payload: 'a=1',
       headers: { ...HOST, origin: 'http://127.0.0.1:4321', 'content-type': 'application/x-www-form-urlencoded' },
     });
-    expect(form.statusCode).toBe(403);
+    expect(form.statusCode).toBe(415);
+    expect(form.json()).toMatchObject({ error: { code: 'unsupported-media-type' } });
+
+    for (const type of ['application/json-seq', 'application/jsonx', 'application/json5']) {
+      const lookalike = await server.inject({ method: 'POST', url, payload, headers: { ...HOST, origin: 'http://127.0.0.1:4321', 'content-type': type } });
+      expect(lookalike.statusCode, type).toBe(415);
+    }
+    const withCharset = await server.inject({
+      method: 'POST',
+      url,
+      payload,
+      headers: { ...HOST, origin: 'http://127.0.0.1:4321', 'content-type': 'Application/JSON ; charset=utf-8' },
+    });
+    expect(withCharset.statusCode).toBe(200);
+
+    const fetchSite = await server.inject({
+      method: 'POST',
+      url,
+      payload,
+      headers: { ...HOST, ...json, origin: 'http://127.0.0.1:4321', 'sec-fetch-site': 'same-site' },
+    });
+    expect(fetchSite.statusCode).toBe(403);
+    expect(fetchSite.json()).toMatchObject({ error: { code: 'cross-site' } });
 
     const ok = await server.inject({ method: 'POST', url, payload, headers: { ...HOST, ...json, origin: 'http://localhost:4321' } });
     expect(ok.statusCode).toBe(200);

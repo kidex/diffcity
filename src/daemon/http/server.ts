@@ -1,5 +1,5 @@
 // The daemon's HTTP server (ADR-017): Fastify on 127.0.0.1, a Host check
-// against DNS rebinding, an Origin check for non-GET requests, JSON errors,
+// against DNS rebinding, the write guard for non-GET requests (Origin, Sec-Fetch-Site, JSON; 403 `cross-site` or 415), JSON errors,
 // /api/health, /api/events (SSE) and the UI from dist/ui with an index.html
 // fallback. More /api routes are added by daemon plugins (src/daemon/plugins.ts)
 // before the server listens.
@@ -52,6 +52,12 @@ function allowedOrigin(origin: string | undefined, port: number): boolean {
   return origin === `http://127.0.0.1:${String(port)}` || origin === `http://localhost:${String(port)}`;
 }
 
+/** Whether the request carries a body: a content length above zero or a chunked transfer. */
+function hasBody(request: FastifyRequest): boolean {
+  const length = request.headers['content-length'];
+  return (length !== undefined && length !== '0') || request.headers['transfer-encoding'] !== undefined;
+}
+
 /** Builds the server with its routes registered; the caller listens (or injects). */
 export async function buildHttpServer(options: HttpServerOptions): Promise<FastifyInstance> {
   const app = Fastify({ logger: false, forceCloseConnections: true });
@@ -63,9 +69,14 @@ export async function buildHttpServer(options: HttpServerOptions): Promise<Fasti
       return sendError(reply, 421, 'misdirected-request', 'unexpected Host header');
     }
     if (request.method !== 'GET' && request.method !== 'HEAD') {
-      const contentType = request.headers['content-type'] ?? '';
-      if (!allowedOrigin(request.headers.origin, port) || !/^application\/json\b/i.test(contentType)) {
-        return sendError(reply, 403, 'forbidden', 'non-GET requests need Content-Type application/json and the daemon Origin');
+      // The write guard (ADR-017, ADR-028): the daemon's own page, same-origin, JSON.
+      const origin = request.headers.origin;
+      const site = request.headers['sec-fetch-site'];
+      if (!allowedOrigin(origin, port) || (site !== undefined && site !== 'same-origin')) {
+        return sendError(reply, 403, 'cross-site', 'writes need the daemon Origin and no cross-site Fetch metadata');
+      }
+      if (hasBody(request) && !/^application\/json\s*(;|$)/i.test(request.headers['content-type'] ?? '')) {
+        return sendError(reply, 415, 'unsupported-media-type', 'a request body must be Content-Type application/json');
       }
     }
     return undefined;

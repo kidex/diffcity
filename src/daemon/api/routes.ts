@@ -4,10 +4,11 @@
 
 import type { FastifyInstance } from 'fastify';
 import type { Db, RepoRuntimeLookup } from '../../core/db/index.js';
-import type { ChangeSummary, RepoDetail, RepoSummary, SearchResult } from '../../core/model/types.js';
+import type { ChangeSummary, RepoDetail, RepoSummary, SearchResult, SseEvent } from '../../core/model/types.js';
 import { search } from '../../core/search/index.js';
 import { HttpError } from '../http/errors.js';
 import { isSameOrigin } from './origin.js';
+import { registerReviewRoutes } from './review.js';
 import { parseArchived, parseId, parseLimit, parseSearchQuery, type Query } from './params.js';
 
 export interface ApiDeps {
@@ -22,6 +23,10 @@ export interface ApiDeps {
    * daemon's collection plugin does it (src/daemon/activation.ts).
    */
   open: (repoId: number) => void;
+  /** Sends an SSE signal; the review writes emit `review` and `changes` (ADR-028). A no-op when absent. */
+  broadcast?: (event: SseEvent) => void;
+  /** The clock of review writes; the system clock when absent. */
+  now?: () => Date;
 }
 
 interface IdParams {
@@ -93,4 +98,6 @@ export function registerApiRoutes(http: FastifyInstance, deps: ApiDeps): void {
     const limit = parseLimit(request.query);
     return search(db, q, limit);
   });
+
+  registerReviewRoutes(http, { db, broadcast: deps.broadcast ?? (() => undefined), now: deps.now ?? (() => new Date()) });
 }

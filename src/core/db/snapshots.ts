@@ -1,7 +1,10 @@
 // The snapshots table (ADR-018): one row per (changeId, head); the latest by
 // computedAt is the one shown. A recompute on the same head replaces the row.
-// An identical contentHash writes nothing while that row is the latest; when it
-// is not (the change returned to an older head), only its computedAt is bumped.
+// An identical contentHash and identical fingerprints write nothing while that
+// row is the latest; when it is not (the change returned to an older head), only
+// its computedAt is bumped. The hash covers the Report only, so bytes can change
+// under an identical Report: the row keeps its Report but takes the new
+// fingerprints and merge-base in place (`refreshed`, ADR-028).
 
 import type { Connection } from './driver.js';
 import type { SnapshotRecord, SnapshotSummary } from '../model/types.js';
@@ -30,8 +33,36 @@ export type SnapshotInput = Omit<SnapshotRecord, 'id'>;
  * whose computedAt is bumped), or nothing (`unchanged`) for an identical hash on
  * the latest row.
  * Only `created` and `replaced` warrant a `collect` event and an SSE `snapshot`.
+ * `refreshed`: the latest row has the same contentHash but the fingerprints
+ * differ (bytes changed, the Report did not); they are replaced in place, with
+ * no new row, no new Report and no `collect` event, but the review marks must
+ * be reconciled against them.
  */
-export type SnapshotPutResult = 'created' | 'replaced' | 'unchanged';
+export type SnapshotPutResult = 'created' | 'replaced' | 'refreshed' | 'unchanged';
+
+/**
+ * Whether the incoming serialized Fingerprints say nothing new about the stored
+ * ones: they are null (no fingerprint information, keep what is stored), equal,
+ * or the same data in another key order. An unparsable stored value counts as
+ * different, so a put with valid fingerprints repairs it; the warning never
+ * carries the content.
+ */
+function sameFingerprints(stored: string | null, incoming: string | null, warn: (message: string) => void): boolean {
+  if (incoming === null || stored === incoming) return true;
+  if (stored === null) return false;
+  const canonical = (value: unknown): string =>
+    JSON.stringify(value, (_key, v: unknown) =>
+      typeof v === 'object' && v !== null && !Array.isArray(v)
+        ? Object.fromEntries(Object.entries(v).sort(([x], [y]) => (x < y ? -1 : x > y ? 1 : 0)))
+        : v,
+    );
+  try {
+    return canonical(JSON.parse(stored)) === canonical(JSON.parse(incoming));
+  } catch {
+    warn('a stored snapshot has fingerprints that are not valid JSON; they are replaced by the incoming ones');
+    return false;
+  }
+}
 
 export interface SnapshotStore {
   put(snapshot: SnapshotInput): SnapshotPutResult;
@@ -41,6 +72,8 @@ export interface SnapshotStore {
   latestReport(changeId: number): string | null;
   /** The serialized Fingerprints of `latest`, verbatim; null while there is none or it predates schema v2. Reads only that column. */
   latestFingerprints(changeId: number): string | null;
+  /** The serialized Fingerprints of snapshot `id` of the change, verbatim; null when there is no such snapshot or it predates schema v2. */
+  fingerprintsOf(changeId: number, id: number): string | null;
   /**
    * The touched paths of the latest snapshot of every live change that has one,
    * by the change's `lastEventAt` desc; for search (ADR-017). Reads only the
@@ -74,12 +107,17 @@ function toRecord(row: SnapshotRow): SnapshotRecord {
 
 const LATEST = 'WHERE changeId = ? ORDER BY computedAt DESC, id DESC LIMIT 1';
 
-export function createSnapshotStore(db: Connection): SnapshotStore {
-  const existingHash = db.prepare<[number, string], { id: number; contentHash: string }>(
-    'SELECT id, contentHash FROM snapshots WHERE changeId = ? AND head = ?',
+export function createSnapshotStore(db: Connection, warn: (message: string) => void = () => undefined): SnapshotStore {
+  const existingHash = db.prepare<[number, string], { id: number; contentHash: string; fingerprints: string | null; mergeBase: string | null }>(
+    'SELECT id, contentHash, fingerprints, mergeBase FROM snapshots WHERE changeId = ? AND head = ?',
   );
   const latestId = db.prepare<[number], { id: number }>(`SELECT id FROM snapshots ${LATEST}`);
-  const touch = db.prepare<[string, number]>('UPDATE snapshots SET computedAt = ? WHERE id = ?');
+  const touch = db.prepare<[string, string | null, string | null, number]>(
+    'UPDATE snapshots SET computedAt = ?, mergeBase = COALESCE(?, mergeBase), fingerprints = COALESCE(?, fingerprints) WHERE id = ?',
+  );
+  const refresh = db.prepare<[string | null, string | null, number]>(
+    'UPDATE snapshots SET mergeBase = COALESCE(?, mergeBase), fingerprints = COALESCE(?, fingerprints) WHERE id = ?',
+  );
   // json_valid runs in SQLite, so a report of several MB is checked without a JS parse.
   const isJson = db.prepare<[string], { valid: number }>('SELECT json_valid(?) AS valid');
   const insert = db.prepare<[number, string, number, string, string, string, string, string, string | null, string | null]>(
@@ -94,6 +132,9 @@ export function createSnapshotStore(db: Connection): SnapshotStore {
   const latestFingerprints = db.prepare<[number], { fingerprints: string | null }>(
     `SELECT fingerprints FROM snapshots ${LATEST}`,
   );
+  const fingerprintsOf = db.prepare<[number, number], { fingerprints: string | null }>(
+    'SELECT fingerprints FROM snapshots WHERE changeId = ? AND id = ?',
+  );
   const latest = db.prepare<[number], SnapshotRow>(`SELECT * FROM snapshots ${LATEST}`);
   const latestReport = db.prepare<[number], { report: string }>(`SELECT report FROM snapshots ${LATEST}`);
   const liveTouched = db.prepare<[], { repoId: number; changeId: number; touched: string | null }>(
@@ -107,10 +148,18 @@ export function createSnapshotStore(db: Connection): SnapshotStore {
   const put = (snapshot: SnapshotInput): SnapshotPutResult => {
     const existing = existingHash.get(snapshot.changeId, snapshot.head);
     if (existing?.contentHash === snapshot.contentHash) {
-      if (latestId.get(snapshot.changeId)?.id === existing.id) return 'unchanged';
+      if (latestId.get(snapshot.changeId)?.id === existing.id) {
+        if (sameFingerprints(existing.fingerprints, snapshot.fingerprints, warn)) {
+          if (snapshot.mergeBase !== null && existing.mergeBase !== snapshot.mergeBase) refresh.run(snapshot.mergeBase, null, existing.id);
+          return 'unchanged';
+        }
+        refresh.run(snapshot.mergeBase, snapshot.fingerprints, existing.id);
+        return 'refreshed';
+      }
       // The change came back to an older head with identical content (A -> B -> A):
-      // only computedAt moves, so that row becomes the latest again.
-      touch.run(isoTime(snapshot.computedAt, 'computedAt'), existing.id);
+      // computedAt moves, so that row becomes the latest again, and it takes the
+      // fingerprints just computed (the bytes may differ under the same Report).
+      touch.run(isoTime(snapshot.computedAt, 'computedAt'), snapshot.mergeBase, snapshot.fingerprints, existing.id);
       return 'replaced';
     }
     if (isJson.get(snapshot.report)?.valid !== 1) {
@@ -135,6 +184,7 @@ export function createSnapshotStore(db: Connection): SnapshotStore {
       return row === undefined ? null : toRecord(row);
     },
     latestFingerprints: (changeId) => latestFingerprints.get(changeId)?.fingerprints ?? null,
+    fingerprintsOf: (changeId, id) => fingerprintsOf.get(changeId, id)?.fingerprints ?? null,
     latestReport: (changeId) => latestReport.get(changeId)?.report ?? null,
     liveTouched: () =>
       liveTouched.all().flatMap(({ repoId, changeId, touched }) =>
