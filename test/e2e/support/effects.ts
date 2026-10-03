@@ -35,7 +35,7 @@ export interface Effects {
   checked: Record<string, number[]>;
   gains: Record<string, { floor: number; gain: number }[]>;
   markers: Marker[];
-  path: { stops: number[]; tube: boolean; animated: boolean; visible: boolean } | null;
+  path: { stops: number[]; tube: boolean; animated: boolean; visible: boolean; atlas: { width: number; height: number; max: number } } | null;
   tier: { ring: boolean; opacity: number };
   continuous: boolean;
 }

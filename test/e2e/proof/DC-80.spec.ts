@@ -171,7 +171,7 @@ test('DC-80: night effects on a change from the real daemon', async ({ page, pro
     '3. The reading path: a tube with travelling packets and numbered rings',
     async () => {
       const { path } = await effects(page);
-      expect(path).toEqual({ stops: [1, 2, 3, 4], tube: true, animated: true, visible: true });
+      expect(path).toMatchObject({ stops: [1, 2, 3, 4], tube: true, animated: true, visible: true });
       expect((await stats(page)).drawCalls).toBeLessThanOrEqual(40);
       await page.waitForTimeout(HOLD_MS * 2);
     },

@@ -31,8 +31,8 @@ import {
 import type { WebGLRenderer } from 'three';
 
 import { readToken } from '../../../../shared/tokens.js';
-import type { PathStop } from '../../model/path.js';
-import { pathPoints } from '../../model/path.js';
+import type { AtlasGrid, PathStop } from '../../model/path.js';
+import { atlasGrid, pathPoints } from '../../model/path.js';
 import { colorToken } from '../tokens.js';
 import type { Motion } from './motion.js';
 
@@ -44,8 +44,6 @@ const RING_OUTER = 0.27;
 const RING_Y = 0.02;
 /** The number's quad, and the atlas cell it comes from (4x the CSS size of the number). */
 const NUMBER_SIZE = 0.34;
-const CELL = 128;
-const ATLAS_COLUMNS = 8;
 
 const TUBE_VERTEX = /* glsl */ `
   varying float vAlong;
@@ -78,27 +76,26 @@ export interface Path {
   readonly animated: boolean;
   setVisible(visible: boolean): void;
   /** What is drawn, for the debug hook. */
-  state(): { stops: number[]; tube: boolean; animated: boolean };
+  state(): { stops: number[]; tube: boolean; animated: boolean; atlas: { width: number; height: number; max: number } };
   dispose(): void;
 }
 
-/** Stop numbers in one canvas, a cell each, drawn at 4x. */
-function numberAtlas(stops: readonly PathStop[]): { canvas: HTMLCanvasElement; rows: number } {
-  const columns = Math.min(stops.length, ATLAS_COLUMNS);
-  const rows = Math.ceil(stops.length / columns);
+/** Stop numbers in one canvas, a cell each, drawn at 4x; the grid never exceeds the GPU's texture size. */
+function numberAtlas(stops: readonly PathStop[], grid: AtlasGrid): HTMLCanvasElement {
+  const { columns, rows, cell } = grid;
   const canvas = document.createElement('canvas');
-  canvas.width = columns * CELL;
-  canvas.height = rows * CELL;
+  canvas.width = columns * cell;
+  canvas.height = rows * cell;
   const ctx = canvas.getContext('2d');
   if (ctx === null) throw new Error('2D canvas unavailable');
-  ctx.font = `600 ${String(CELL * 0.62)}px ${readToken('--mono')}`;
+  ctx.font = `600 ${String(cell * 0.62)}px ${readToken('--mono')}`;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.fillStyle = readToken('--ink');
   stops.forEach((stop, i) => {
-    ctx.fillText(String(stop.order), (i % columns) * CELL + CELL / 2, Math.floor(i / columns) * CELL + CELL / 2);
+    ctx.fillText(String(stop.order), (i % columns) * cell + cell / 2, Math.floor(i / columns) * cell + cell / 2);
   });
-  return { canvas, rows };
+  return canvas;
 }
 
 /** The ring's centre: at the building's front-left corner, side by side for stops on the same building. */
@@ -149,14 +146,15 @@ export function createPath(stops: readonly PathStop[], motion: Motion, renderer:
   disposables.push(ringGeometry, ringMaterial, rings);
 
   // Numbers, lying on the ground inside the rings; the text's top is towards -z, as the lot names.
-  const { canvas, rows } = numberAtlas(stops);
+  const grid = atlasGrid(stops.length, renderer.capabilities.maxTextureSize);
+  const canvas = numberAtlas(stops, grid);
+  const { columns, rows } = grid;
   const texture = new CanvasTexture(canvas);
   texture.colorSpace = SRGBColorSpace;
   texture.generateMipmaps = true;
   texture.minFilter = LinearMipmapLinearFilter;
   texture.magFilter = LinearFilter;
   texture.anisotropy = renderer.capabilities.getMaxAnisotropy();
-  const columns = Math.min(stops.length, ATLAS_COLUMNS);
   const positions: number[] = [];
   const uvs: number[] = [];
   const indices: number[] = [];
@@ -190,7 +188,7 @@ export function createPath(stops: readonly PathStop[], motion: Motion, renderer:
     setVisible(visible) {
       group.visible = visible;
     },
-    state: () => ({ stops: stops.map((stop) => stop.order), tube, animated }),
+    state: () => ({ stops: stops.map((stop) => stop.order), tube, animated, atlas: { width: canvas.width, height: canvas.height, max: renderer.capabilities.maxTextureSize } }),
     dispose() {
       for (const item of disposables) item.dispose();
     },

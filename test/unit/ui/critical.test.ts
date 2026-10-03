@@ -7,8 +7,9 @@ import type { File, Finding, Package, Report, Status, Step, Symbol, Verdict } fr
 import { buildCity } from '../../../src/ui/screens/change/model/city.js';
 import type { Marks } from '../../../src/ui/screens/change/model/critical.js';
 import { criticalFloors, phaseOf, PULSE_MAX, PULSE_MIN, PULSE_PERIOD, pulseGain } from '../../../src/ui/screens/change/model/critical.js';
+import { findingsIndex, ruleChips } from '../../../src/ui/screens/change/model/hud.js';
 import { findingMarkers } from '../../../src/ui/screens/change/model/markers.js';
-import { pathPoints, pathStops } from '../../../src/ui/screens/change/model/path.js';
+import { atlasGrid, pathPoints, pathStops } from '../../../src/ui/screens/change/model/path.js';
 import { NO_FILTERS, paintCity, ruleIndex } from '../../../src/ui/screens/change/model/view.js';
 
 function symbol(file: string, name: string, status: Status, start: number): Symbol {
@@ -253,6 +254,26 @@ describe('critical/markers', () => {
   });
 });
 
+describe('markers/open-only', () => {
+  it('draws no pin and no X for a fixed or an intended finding, and the HUD and the rule filter agree', () => {
+    const findings = [
+      finding('p-open', EYES, { severity: 'med' }),
+      finding('p-fixed', EYES, { severity: 'med', state: 'fixed' }),
+      finding('p-intended', RISKY, { severity: 'low', state: 'intended' }),
+      finding('x-open', OK, { source: 'rule:layers', symbolId: `${OK}#trim` }),
+      finding('x-fixed', OK_TWO, { source: 'rule:file-size', state: 'fixed' }),
+      finding('x-intended', OK_TWO, { source: 'rule:layers', state: 'intended' }),
+    ];
+    const data = report(findings);
+    expect(findingMarkers(buildCity(data), findings).map((marker) => marker.findingId)).toEqual(['p-open', 'x-open']);
+    expect(ruleChips(data)).toEqual([{ key: 'layers', count: 1 }]);
+    expect([...ruleIndex(data).keys()]).toEqual(['layers']);
+    expect(findingsIndex(data).get(EYES)).toEqual({ total: 1, rules: 0 });
+    expect(findingsIndex(data).has(RISKY)).toBe(false);
+    expect(findingsIndex(data).has(OK_TWO)).toBe(false);
+  });
+});
+
 describe('critical/path', () => {
   const step = (order: number, fileId: string, symbol: string): Step => ({ order, symbolId: `${fileId}#${symbol}`, fileId, why: 'because', diff: [] });
 
@@ -267,5 +288,23 @@ describe('critical/path', () => {
     ]);
     expect(pathPoints(stops).map((building) => building.id)).toEqual([EYES, OK]);
     expect(pathStops(city, [])).toEqual([]);
+  });
+});
+
+describe('path/atlas-within-texture-limit', () => {
+  it('fits any number of stops into a texture of at most the GPU limit', () => {
+    for (const max of [4096, 8192, 16384]) {
+      for (const count of [1, 8, 64, 513, 1025, 2000, 5000, 20000]) {
+        const grid = atlasGrid(count, max);
+        expect(grid.columns * grid.rows).toBeGreaterThanOrEqual(count);
+        expect(grid.columns * grid.cell).toBeLessThanOrEqual(max);
+        expect(grid.rows * grid.cell).toBeLessThanOrEqual(max);
+        expect(grid.cell).toBeGreaterThanOrEqual(1);
+      }
+    }
+    // Cells keep their size while the grid fits: 2,000 stops in 8,192 px are 64 columns of 128 px.
+    expect(atlasGrid(2000, 8192)).toEqual({ columns: 64, rows: 32, cell: 128 });
+    // Only a grid too big for square cells makes them smaller.
+    expect(atlasGrid(20000, 8192).cell).toBeLessThan(128);
   });
 });

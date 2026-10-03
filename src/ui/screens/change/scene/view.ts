@@ -57,7 +57,7 @@ export interface EffectsState extends TowersState {
   mode: 'animated' | 'static';
   markers: MarkerInfo[];
   /** The reading path: its stops by step number, whether the tube is drawn, whether packets move, whether it is shown (hidden mid-tween). Null without steps. */
-  path: { stops: number[]; tube: boolean; animated: boolean; visible: boolean } | null;
+  path: { stops: number[]; tube: boolean; animated: boolean; visible: boolean; atlas: { width: number; height: number; max: number } } | null;
   /** The tier 1 outer ring: whether there is one and its opacity now. */
   tier: { ring: boolean; opacity: number };
   /** The loop renders continuously: something animates, the tab is visible and motion is on. */
