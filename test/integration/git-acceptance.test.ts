@@ -140,10 +140,14 @@ describe('process execution (ADR-012)', () => {
     expect(sources.length).toBeGreaterThan(0);
     for (const file of sources) {
       const text = await readFile(new URL(file, root), 'utf8');
-      expect(text, file).not.toMatch(/(?<![.\w])(exec|execSync|spawn|spawnSync|execFileSync|fork)\s*\(/);
+      // git/exec.ts alone also uses spawn, for gitStream (output hashed as it arrives, never buffered); still no shell.
+      const streams = file === 'git/exec.ts';
+      const banned = streams ? /(?<![.\w])(exec|execSync|spawnSync|execFileSync|fork)\s*\(/ : /(?<![.\w])(exec|execSync|spawn|spawnSync|execFileSync|fork)\s*\(/;
+      expect(text, file).not.toMatch(banned);
       expect(text, file).not.toMatch(/shell\s*:/);
       if (text.includes('node:child_process')) {
-        expect(text, file).toMatch(/import \{ execFile \} from 'node:child_process'/);
+        const imports = streams ? /import \{ execFile, spawn \} from 'node:child_process'/ : /import \{ execFile \} from 'node:child_process'/;
+        expect(text, file).toMatch(imports);
       }
     }
   });
