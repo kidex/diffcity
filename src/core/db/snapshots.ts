@@ -75,11 +75,26 @@ export interface SnapshotStore {
   /** The serialized Fingerprints of snapshot `id` of the change, verbatim; null when there is no such snapshot or it predates schema v2. */
   fingerprintsOf(changeId: number, id: number): string | null;
   /**
+   * The latest snapshot without its Report, for the diff route (ADR-027): the
+   * id, head, dirty flag, merge-base and serialized Fingerprints. Null while
+   * there is none. Reads no Report, so a cache hit costs no multi-MB read.
+   */
+  latestMeta(changeId: number): SnapshotMeta | null;
+  /**
    * The touched paths of the latest snapshot of every live change that has one,
    * by the change's `lastEventAt` desc; for search (ADR-017). Reads only the
    * `touched` column, never a report.
    */
   liveTouched(): LiveTouched[];
+}
+
+/** The columns of a snapshot that say what it compares, without the Report. */
+export interface SnapshotMeta {
+  id: number;
+  head: string;
+  dirty: boolean;
+  mergeBase: string | null;
+  fingerprints: string | null;
 }
 
 /** The touched paths of a live change's latest snapshot. */
@@ -135,6 +150,9 @@ export function createSnapshotStore(db: Connection, warn: (message: string) => v
   const fingerprintsOf = db.prepare<[number, number], { fingerprints: string | null }>(
     'SELECT fingerprints FROM snapshots WHERE changeId = ? AND id = ?',
   );
+  const latestMeta = db.prepare<[number], { id: number; head: string; dirty: number; mergeBase: string | null; fingerprints: string | null }>(
+    `SELECT id, head, dirty, mergeBase, fingerprints FROM snapshots ${LATEST}`,
+  );
   const latest = db.prepare<[number], SnapshotRow>(`SELECT * FROM snapshots ${LATEST}`);
   const latestReport = db.prepare<[number], { report: string }>(`SELECT report FROM snapshots ${LATEST}`);
   const liveTouched = db.prepare<[], { repoId: number; changeId: number; touched: string | null }>(
@@ -184,6 +202,10 @@ export function createSnapshotStore(db: Connection, warn: (message: string) => v
       return row === undefined ? null : toRecord(row);
     },
     latestFingerprints: (changeId) => latestFingerprints.get(changeId)?.fingerprints ?? null,
+    latestMeta: (changeId) => {
+      const row = latestMeta.get(changeId);
+      return row === undefined ? null : { id: row.id, head: row.head, dirty: row.dirty === 1, mergeBase: row.mergeBase, fingerprints: row.fingerprints };
+    },
     fingerprintsOf: (changeId, id) => fingerprintsOf.get(changeId, id)?.fingerprints ?? null,
     latestReport: (changeId) => latestReport.get(changeId)?.report ?? null,
     liveTouched: () =>

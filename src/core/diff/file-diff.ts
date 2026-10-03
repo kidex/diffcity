@@ -265,6 +265,21 @@ function addStats(rows: readonly RawRow[]): { added: number; removed: number } {
   return { added, removed };
 }
 
+/** A diff with nothing to show: `unavailable`, with the reason. */
+export function unavailableFileDiff(snapshot: { snapshotId: number; head: string; path: string; language: string }, reason: string): FileDiff {
+  return {
+    snapshotId: snapshot.snapshotId,
+    head: snapshot.head,
+    path: snapshot.path,
+    language: snapshot.language,
+    kind: 'unavailable',
+    reason,
+    stale: false,
+    stats: { added: 0, removed: 0 },
+    sizes: { before: null, after: null },
+  };
+}
+
 /**
  * The diff of one file of a snapshot. Never throws for a file that git cannot
  * read: that is `unavailable`, with the reason. `request.path` and

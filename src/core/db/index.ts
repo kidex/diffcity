@@ -21,7 +21,7 @@ export type { AppliedPlan, ChangeArchive, ChangeFields, ChangePlan, ChangeStore,
 export type { EventInput, EventStore } from './events.js';
 export type { MarkWrite, ReviewStore } from './review.js';
 export type { RepoInput, RepoRuntime, RepoRuntimeLookup, RepoStore } from './repos.js';
-export type { LiveTouched, SnapshotInput, SnapshotPutResult, SnapshotStore } from './snapshots.js';
+export type { LiveTouched, SnapshotInput, SnapshotMeta, SnapshotPutResult, SnapshotStore } from './snapshots.js';
 export type { DbPragmas } from './open.js';
 export { BUSY_TIMEOUT_MS } from './open.js';
 export { MIGRATIONS, SCHEMA_VERSION, newerVersionMessage } from './migrations.js';
