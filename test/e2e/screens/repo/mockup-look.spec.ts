@@ -10,6 +10,7 @@ import { join } from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
 import { computed, resolveColour } from '../../support/css.js';
 import { mockApi } from '../../support/mock-api.js';
+import { waitForCity } from '../../support/scene.js';
 
 const NOW = new Date('2026-05-04T12:00:00.000Z');
 
@@ -89,10 +90,12 @@ for (const scheme of ['dark', 'light'] as const) {
 }
 
 test('screenshot of the change city', async ({ page }, testInfo) => {
+  // The real city: its first frame under SwiftShader can take most of CITY_TIMEOUT.
+  test.setTimeout(60_000);
   await page.emulateMedia({ colorScheme: 'dark', reducedMotion: 'reduce' });
   await page.clock.setFixedTime(NOW);
   await openRepo(page, '/#/change/11');
-  await expect(page.getByTestId('city')).toHaveAttribute('data-ready', 'true');
+  await waitForCity(page);
   const path = testInfo.outputPath('repo-change-city.png');
   await page.screenshot({ path, fullPage: true });
   await testInfo.attach('repo-change-city', { path, contentType: 'image/png' });

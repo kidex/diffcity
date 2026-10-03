@@ -14,7 +14,7 @@ import { CLI_DIST, waitFor } from '../../helpers/daemon.js';
 import { createRepo } from '../../helpers/repo.js';
 import { ghStubEnv } from '../support/acceptance.js';
 import { criterion, expect, hideCaption, HOLD_MS, test, titleCard } from '../support/proof.js';
-import { camera, project, stats, waitReady } from '../support/scene.js';
+import { camera, project, stats, waitReady, waitForCityAttribute } from '../support/scene.js';
 
 const TITLE = 'add notes to orders';
 const SESSION = 'src/auth/session.ts';
@@ -94,7 +94,6 @@ test('DC-59: the night data city of a change from the real daemon', async ({ pag
   const report = await getJson<Report>(`${base}/api/changes/${String(change.id)}/report`);
   const files = report.packages.flatMap((pkg) => pkg.files);
   const touched = files.filter((file) => file.status !== 'same');
-  const city = page.getByTestId('city');
 
   await criterion(page, '1. Open the change from the Repo screen', async () => {
     await page.goto(`${base}/?scene-debug#/repo/${String(repoId)}`);
@@ -160,17 +159,17 @@ test('DC-59: the night data city of a change from the real daemon', async ({ pag
   await criterion(page, '5. Hover and select a building, Esc clears', async () => {
     const notes = await project(page, NOTES);
     await page.mouse.move(notes.x, notes.y, { steps: 20 });
-    await expect(city).toHaveAttribute('data-hovered', NOTES);
+    await waitForCityAttribute(page, 'data-hovered', NOTES);
     await page.waitForTimeout(800);
     const session = await project(page, SESSION);
     await page.mouse.move(session.x, session.y, { steps: 20 });
-    await expect(city).toHaveAttribute('data-hovered', SESSION);
+    await waitForCityAttribute(page, 'data-hovered', SESSION);
     await page.waitForTimeout(500);
     await page.mouse.click(session.x, session.y);
-    await expect(city).toHaveAttribute('data-selected', SESSION);
+    await waitForCityAttribute(page, 'data-selected', SESSION);
     await page.waitForTimeout(1200);
     await page.keyboard.press('Escape');
-    await expect(city).toHaveAttribute('data-selected', '');
+    await waitForCityAttribute(page, 'data-selected', '');
   });
 
   await hideCaption(page);
