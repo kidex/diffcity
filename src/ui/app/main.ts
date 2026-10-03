@@ -10,6 +10,7 @@ import '../shared/fonts.js';
 import { createApi } from '../data/api.js';
 import type { DataContext } from '../data/context.js';
 import { connectLive, createCoalescer } from '../data/live.js';
+import { createReviewPort } from '../data/review-port.js';
 import { mountFleet } from '../screens/fleet/index.js';
 import { mountRepo } from '../screens/repo/index.js';
 import { mountChangeRoute } from './change-route.js';
@@ -22,7 +23,14 @@ function required(id: string): HTMLElement {
   return element;
 }
 
-const context: DataContext = { api: createApi(), live: connectLive(), refetch: createCoalescer() };
+const api = createApi();
+const live = connectLive();
+const context: DataContext = {
+  api,
+  live,
+  refetch: createCoalescer(),
+  review: (changeId) => createReviewPort(api, live, changeId),
+};
 const view = required('view');
 const shell = mountShell(required('top'), context, (route) => {
   navigate(route);
