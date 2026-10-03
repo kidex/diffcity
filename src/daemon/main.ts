@@ -10,12 +10,14 @@ import { STARTUP_STAGES, type StartupStage } from './daemon.js';
 import { daemonUrl, runDaemon } from './run.js';
 
 /**
- * Test-only seam: with DIFFCITY_TEST_PAUSE_AT=<stage> the startup prints
- * `paused <stage>` on stdout and waits there until SIGINT/SIGTERM aborts
- * it, so a test can deliver a signal at a chosen startup stage.
+ * Test-only seam: with DIFFCITY_TEST=1 and DIFFCITY_TEST_PAUSE_AT=<stage>
+ * the startup prints `paused <stage>` on stdout and waits there until
+ * SIGINT/SIGTERM aborts it, so a test can deliver a signal at a chosen
+ * startup stage. Without DIFFCITY_TEST=1 the pause variable is ignored.
  */
 const PAUSE_ENV = 'DIFFCITY_TEST_PAUSE_AT';
-const pauseAt = STARTUP_STAGES.find((stage) => stage === process.env[PAUSE_ENV]);
+const pauseAt =
+  process.env['DIFFCITY_TEST'] === '1' ? STARTUP_STAGES.find((stage) => stage === process.env[PAUSE_ENV]) : undefined;
 
 async function pauseStage(stage: StartupStage, signal: AbortSignal): Promise<void> {
   if (stage !== pauseAt || signal.aborted) return;

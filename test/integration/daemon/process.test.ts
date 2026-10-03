@@ -132,7 +132,7 @@ describe('daemon process', () => {
     it.each(stages.flatMap((stage) => (['SIGINT', 'SIGTERM'] as const).map((signal) => [stage, signal] as const)))(
       'daemon/signal-during-start: %s then %s exits 0 and leaves no files',
       async (stage, signal) => {
-        const spawned = daemons.spawnDaemon({ ...temp.env, DIFFCITY_TEST_PAUSE_AT: stage });
+        const spawned = daemons.spawnDaemon({ ...temp.env, DIFFCITY_TEST: '1', DIFFCITY_TEST_PAUSE_AT: stage });
         await waitFor(() => spawned.stdout().includes(`paused ${stage}`), 45_000, `the pause at ${stage}`);
         spawned.child.kill(signal);
         expect(await spawned.exited).toBe(0);
