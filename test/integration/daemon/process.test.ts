@@ -126,6 +126,84 @@ describe('daemon process', () => {
     expect(await readFile(paths.log, 'utf8')).toContain('daemon stopped');
   });
 
+  describe('a signal during startup (DC-56)', () => {
+    const stages = ['begin', 'lock-acquired', 'plugins-set-up', 'http-listening', 'socket-listening', 'daemon-json-written', 'plugins-started'] as const;
+
+    it.each(stages.flatMap((stage) => (['SIGINT', 'SIGTERM'] as const).map((signal) => [stage, signal] as const)))(
+      'daemon/signal-during-start: %s then %s exits 0 and leaves no files',
+      async (stage, signal) => {
+        const spawned = daemons.spawnDaemon({ ...temp.env, DIFFCITY_TEST: '1', DIFFCITY_TEST_PAUSE_AT: stage });
+        await waitFor(() => spawned.stdout().includes(`paused ${stage}`), 45_000, `the pause at ${stage}`);
+        spawned.child.kill(signal);
+        expect(await spawned.exited).toBe(0);
+        for (const file of [paths.daemonJson, paths.socket, paths.lock]) expect(await gone(file), file).toBe(true);
+        expect(spawned.stdout()).not.toContain('listening on');
+      },
+    );
+  });
+
+  describe('the startup pause seam (DC-56)', () => {
+    it.each([{ label: 'unset', extra: {} }, { label: '0', extra: { DIFFCITY_TEST: '0' } }])(
+      'daemon/pause-seam-guarded: DIFFCITY_TEST=$label ignores DIFFCITY_TEST_PAUSE_AT',
+      async ({ extra }) => {
+        const spawned = daemons.spawnDaemon({ ...temp.env, ...extra, DIFFCITY_TEST_PAUSE_AT: 'begin' });
+        const info = await ready();
+        expect(info.pid).toBe(spawned.child.pid);
+        expect(spawned.stdout()).not.toContain('paused');
+        expect(await sendRequest(info.socket, { v: 1, type: 'ping' })).toMatchObject({ ok: true });
+      },
+    );
+  });
+
+  it('daemon/signal-while-waiting: a second daemon waiting for the lock owner exits 0 on SIGINT and leaves the first daemon alone', async () => {
+    const first = daemons.spawnDaemon(temp.env);
+    const info = await ready();
+    const lockBefore = await readFile(paths.lock, 'utf8');
+    const socketBefore = await stat(info.socket);
+    // With daemon.json hidden the lock owner does not look like a running
+    // daemon, so the second one waits in waitForDaemon.
+    const infoText = await readFile(paths.daemonJson, 'utf8');
+    await rm(paths.daemonJson);
+    const second = daemons.spawnDaemon(temp.env);
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+    expect(second.child.exitCode, 'the second daemon is still waiting').toBeNull();
+    expect(second.stdout()).not.toContain('already running');
+    const started = Date.now();
+    second.child.kill('SIGINT');
+    expect(await second.exited).toBe(0);
+    expect(Date.now() - started).toBeLessThan(3000);
+    // The first daemon's files are untouched: the second did not write or remove any.
+    expect(await gone(paths.daemonJson)).toBe(true);
+    expect(await readFile(paths.lock, 'utf8')).toBe(lockBefore);
+    const socketAfter = await stat(info.socket);
+    expect(socketAfter.ino).toBe(socketBefore.ino);
+    expect(first.child.exitCode).toBeNull();
+    expect(isProcessAlive(info.pid)).toBe(true);
+    await writeFile(paths.daemonJson, infoText);
+    expect(await sendRequest(info.socket, { v: 1, type: 'ping' })).toMatchObject({ ok: true });
+    const response = await fetch(`http://127.0.0.1:${String(info.port)}/api/health`);
+    expect(response.status).toBe(200);
+    expect(((await response.json()) as HealthResponse).pid).toBe(info.pid);
+    expect(await readDaemonInfo(paths)).toEqual(info);
+  });
+
+  it('daemon/shutdown-cleans-files: repeated SIGINTs right after daemon.json never hit the default action', async () => {
+    // DIFFCITY_TEST_LOOP raises the count for a soak run.
+    const runs = Number(process.env.DIFFCITY_TEST_LOOP ?? 10);
+    for (let run = 0; run < runs; run++) {
+      const home = await tempHome();
+      try {
+        const spawned = daemons.spawnDaemon(home.env);
+        const info = await waitFor(() => readDaemonInfo(homePaths(home.home)).then((value) => value ?? undefined), 45_000, 'daemon.json');
+        spawned.child.kill('SIGINT');
+        expect(await spawned.exited, `run ${String(run)}`).toBe(0);
+        for (const file of [homePaths(home.home).daemonJson, info.socket, homePaths(home.home).lock]) expect(await gone(file), `run ${String(run)}`).toBe(true);
+      } finally {
+        await home.cleanup();
+      }
+    }
+  }, 300_000);
+
   it('shuts down promptly with an SSE client still connected', async () => {
     const spawned = daemons.spawnDaemon(temp.env);
     const info = await ready();
