@@ -5,6 +5,7 @@
 import type {
   ApiError,
   ChangeSummary,
+  FileDiff,
   HealthResponse,
   RepoDetail,
   RepoSummary,
@@ -62,6 +63,11 @@ export interface Api {
   putNote(changeId: number, note: string): Promise<{ note: string | null }>;
   /** The markdown summary of the "Needs rewrite" marks; null while the change has no snapshot. */
   reviewSummary(changeId: number, signal?: AbortSignal): Promise<string | null>;
+  /**
+   * The diff of one file of the latest snapshot (ADR-027); `path` is a `File.id`, `symbol` a `Symbol.id` of that
+   * file to focus. Rejects with ApiRequestError: 404 `not-in-snapshot`, `no-snapshot` or `not-found`, 400, 403.
+   */
+  diff(changeId: number, path: string, symbol?: string, signal?: AbortSignal): Promise<FileDiff>;
   search(query: string, options?: { limit?: number; signal?: AbortSignal }): Promise<SearchResult[]>;
 }
 
@@ -144,6 +150,11 @@ export function createApi(base = '', fetchImpl: typeof fetch = (...args) => fetc
       }
       if (!response.ok) return fail(response);
       return response.text();
+    },
+    diff(changeId, path, symbol, signal) {
+      const params = new URLSearchParams({ path });
+      if (symbol !== undefined) params.set('symbol', symbol);
+      return get<FileDiff>(`/changes/${String(changeId)}/diff?${params.toString()}`, signal);
     },
     search(query, { limit = 20, signal } = {}) {
       const params = new URLSearchParams({ q: query, limit: String(limit) });

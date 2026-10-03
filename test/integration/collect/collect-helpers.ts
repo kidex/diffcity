@@ -90,6 +90,8 @@ export interface TestDaemonOptions {
   api?: boolean;
   /** The clock of the API's review writes. */
   apiNow?: () => Date;
+  /** Where the diff route computes: this thread (default, vitest cannot load a TypeScript worker) or the built worker. */
+  diffRunner?: 'inline' | 'thread';
   /**
    * Adds plugins after the collection (the watch plugin, say); they start
    * after it and stop before it.
@@ -103,7 +105,7 @@ export async function startTestDaemon(options: CollectionPluginOptions = {}, ext
   const result = await startDaemon({
     env: home.env,
     port: 0,
-    plugins: [dbPlugin, collection.plugin, ...(extra.api === true ? [createApiPlugin(extra.apiNow === undefined ? {} : { now: extra.apiNow })] : []), ...(extra.plugins?.(collection) ?? [])],
+    plugins: [dbPlugin, collection.plugin, ...(extra.api === true ? [createApiPlugin({ ...(extra.apiNow === undefined ? {} : { now: extra.apiNow }), diffPool: { runner: extra.diffRunner ?? 'inline', size: 2 } })] : []), ...(extra.plugins?.(collection) ?? [])],
     log: createStreamLogger(new PassThrough()),
   });
   if (result.status !== 'started') throw new Error(`daemon did not start: ${result.status}`);

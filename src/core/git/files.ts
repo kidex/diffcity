@@ -155,7 +155,26 @@ async function worktreeChanges(root: string, mergeBase: string): Promise<Changed
 
   const diffArgs = ['diff', ...DIFF_FLAGS, mergeBase, '--'];
   if (addable.length === 0) return withOthers(root, parseDiffOutput(await git(root, diffArgs)), others);
+  return withIntentToAddIndex(root, addable, async (env) =>
+    // Without an index copy (see withIntentToAddIndex) the untracked files are plain adds.
+    withOthers(root, parseDiffOutput(await git(root, diffArgs, env === undefined ? {} : { env })), env === undefined ? [...addable, ...others] : others),
+  );
+}
 
+/**
+ * Runs `run` with the environment of a throwaway copy of the index in which
+ * `untracked` (files and symlinks, relative to the root) are marked
+ * intent-to-add, so git diffs them as adds and pairs them up for rename
+ * detection. The repo's own index and object store are never written: the
+ * copy and any object git writes live in os.tmpdir(), removed afterwards.
+ * `run` gets `undefined` when no copy could be made (no index to copy, or an
+ * untracked file vanished before `add`): it then diffs without it.
+ */
+export async function withIntentToAddIndex<T>(
+  root: string,
+  untracked: readonly string[],
+  run: (env: Record<string, string> | undefined) => Promise<T>,
+): Promise<T> {
   const gitPath = async (name: string): Promise<string> =>
     (await git(root, ['rev-parse', '--path-format=absolute', '--git-path', name])).trim();
   const indexFile = await gitPath('index');
@@ -171,8 +190,8 @@ async function worktreeChanges(root: string, mergeBase: string): Promise<Changed
       const { atimeMs, mtimeMs } = await stat(indexFile);
       await utimes(tempIndex, atimeMs / 1000, (mtimeMs - 1000) / 1000);
     } catch {
-      // No index to copy (unusual once HEAD exists): plain diff, untracked files as adds.
-      return await withOthers(root, parseDiffOutput(await git(root, diffArgs)), [...addable, ...others]);
+      // No index to copy (unusual once HEAD exists).
+      return await run(undefined);
     }
     const tempObjects = join(tempDir, 'objects');
     await mkdir(tempObjects);
@@ -188,15 +207,15 @@ async function worktreeChanges(root: string, mergeBase: string): Promise<Changed
       await git(
         root,
         ['-c', 'core.splitIndex=false', 'add', '--intent-to-add', '--pathspec-from-file=-', '--pathspec-file-nul'],
-        { env, input: addable.map((path) => `${path}\0`).join('') },
+        { env, input: untracked.map((path) => `${path}\0`).join('') },
       );
     } catch {
       // Typically an untracked file vanished after ls-files (a bundler's temp
       // file): pathspec did not match. Plain diff for this round; only rename
       // pairing with untracked files is lost.
-      return await withOthers(root, parseDiffOutput(await git(root, diffArgs)), [...addable, ...others]);
+      return await run(undefined);
     }
-    return await withOthers(root, parseDiffOutput(await git(root, diffArgs, { env })), others);
+    return await run(env);
   } finally {
     await rm(tempDir, { recursive: true, force: true });
   }

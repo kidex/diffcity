@@ -6,7 +6,10 @@ import type { FastifyInstance } from 'fastify';
 import type { Db, RepoRuntimeLookup } from '../../core/db/index.js';
 import type { ChangeSummary, RepoDetail, RepoSummary, SearchResult, SseEvent } from '../../core/model/types.js';
 import { search } from '../../core/search/index.js';
+import type { DiffPool } from '../diff/pool.js';
 import { HttpError } from '../http/errors.js';
+import type { Logger } from '../log.js';
+import { registerDiffRoute } from './diff.js';
 import { isSameOrigin } from './origin.js';
 import { registerReviewRoutes } from './review.js';
 import { parseArchived, parseId, parseLimit, parseSearchQuery, type Query } from './params.js';
@@ -27,6 +30,8 @@ export interface ApiDeps {
   broadcast?: (event: SseEvent) => void;
   /** The clock of review writes; the system clock when absent. */
   now?: () => Date;
+  /** Computes file diffs (ADR-027); GET /api/changes/:id/diff is not served without it. */
+  diff?: { pool: DiffPool; log: Logger };
 }
 
 interface IdParams {
@@ -98,6 +103,8 @@ export function registerApiRoutes(http: FastifyInstance, deps: ApiDeps): void {
     const limit = parseLimit(request.query);
     return search(db, q, limit);
   });
+
+  if (deps.diff !== undefined) registerDiffRoute(http, { db, port: deps.port, ...deps.diff });
 
   registerReviewRoutes(http, { db, broadcast: deps.broadcast ?? (() => undefined), now: deps.now ?? (() => new Date()) });
 }

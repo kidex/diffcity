@@ -161,6 +161,19 @@ describe('snapshots: refreshed', () => {
     expect(db.snapshots.latest(change.id)?.computedAt).toBe(T0);
   });
 
+  it('latestMeta reads the id, head, dirty flag, merge-base and fingerprints of the latest snapshot, and nothing for none', () => {
+    expect(db.snapshots.latestMeta(change.id)).toBeNull();
+    db.snapshots.put(snapshotInput(change.id, change.head, { contentHash: 'h1', fingerprints: fp('A'), mergeBase: 'e'.repeat(40), dirty: true }));
+    const latest = db.snapshots.latest(change.id);
+    expect(db.snapshots.latestMeta(change.id)).toEqual({
+      id: latest?.id,
+      head: change.head,
+      dirty: true,
+      mergeBase: 'e'.repeat(40),
+      fingerprints: fp('A'),
+    });
+  });
+
   it('a row written before schema v2 (no fingerprints) is refreshed by the first put with fingerprints', () => {
     const old = snapshotInput(change.id, change.head, { contentHash: 'h1', fingerprints: null, mergeBase: null });
     db.snapshots.put(old);
