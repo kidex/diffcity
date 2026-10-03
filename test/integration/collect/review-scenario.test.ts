@@ -120,8 +120,10 @@ describe('review session on a working-tree change', () => {
 
 describe('review session: an edit that leaves the Report as it was', () => {
   // The snapshot's content hash covers the Report only: bytes can change under an
-  // identical Report. The put is then `refreshed` (DC-74) and the marks are reconciled.
-  it('a body edit with an identical Report still outdates the file mark', async () => {
+  // identical Report. The put is then `refreshed` (DC-74): the marks are reconciled
+  // in the same transaction, an approved change goes back to unreviewed, and a later
+  // revert (A-B-A) does not bring the marks back.
+  it('a literal edit with an identical Report outdates the symbol and file marks, resets approved, and stays outdated after a revert', async () => {
     const repo = await sampleRepo();
     await repo.write({ 'src/cart/total.ts': TOTAL_EDIT_1 });
     const test = await startTestDaemon({ gh: ghNotInstalled() }, { api: true });
@@ -132,24 +134,59 @@ describe('review session: an edit that leaves the Report as it was', () => {
     const port = test.daemon.info.port;
     const change = db.changes.listLive(tracked.repo.id).find((c) => c.kind === 'draft');
     if (change === undefined) throw new Error('draft not collected');
+    const reviewPath = `/api/changes/${String(change.id)}/review`;
+    const read = async (): Promise<{ snapshotId: number; marks: ReviewMark[]; progress: ReviewProgress }> =>
+      (await call(port, 'GET', reviewPath)).json() as { snapshotId: number; marks: ReviewMark[]; progress: ReviewProgress };
     const snapshot = db.snapshots.latest(change.id);
     if (snapshot === null) throw new Error('no snapshot');
     const report = JSON.parse(snapshot.report) as Report;
     const file = report.packages.flatMap((p) => p.files).find((f) => f.path === 'src/cart/total.ts');
     if (file === undefined) throw new Error('total.ts not in the report');
-    const marked = await call(port, 'PUT', `/api/changes/${String(change.id)}/review/marks`, {
-      body: { snapshotId: snapshot.id, target: { kind: 'file', id: file.id }, mark: 'checked' },
-    });
-    expect(marked.status).toBe(200);
+    const symbol = file.symbols.find((s) => s.name === 'total');
+    if (symbol === undefined) throw new Error('symbol total missing');
+    const mark = async (target: { kind: 'file' | 'symbol'; id: string }): Promise<void> => {
+      const res = await call(port, 'PUT', `${reviewPath}/marks`, { body: { snapshotId: snapshot.id, target, mark: 'checked' } });
+      expect(res.status).toBe(200);
+    };
+    await mark({ kind: 'symbol', id: symbol.id });
+    await mark({ kind: 'file', id: file.id });
+    const marked = await read();
+    expect(marked.marks.map((m) => m.state)).toEqual(['current', 'current']);
+    expect(marked.progress.touched.done).toBeGreaterThan(0);
+    const doneBefore = marked.progress.touched.done;
+    const outdatedBefore = marked.progress.outdated;
+    db.changes.applyPlan(tracked.repo.id, { create: [], update: [{ id: change.id, reviewState: 'approved' }], archive: [] }, new Date().toISOString());
+    expect(db.changes.get(change.id)?.reviewState).toBe('approved');
 
-    // Same length, same statuses: only the literal changes.
-    await repo.write({ 'src/cart/total.ts': TOTAL_EDIT_1.replace('0)', '1)') });
-    const again = await test.track(repo.dir);
-    if (!again.ok) throw new Error(again.error);
-    await new Promise((resolve) => setTimeout(resolve, 1500));
-    await test.idle();
+    const collectAfter = async (content: string): Promise<void> => {
+      const before = db.snapshots.latest(change.id);
+      await repo.write({ 'src/cart/total.ts': content });
+      const again = await test.track(repo.dir);
+      if (!again.ok) throw new Error(again.error);
+      // The Report hash stays equal, so wait on the stored fingerprints instead.
+      await waitFor(() => db.snapshots.latest(change.id)?.fingerprints !== before?.fingerprints, 20_000, 'the refreshed fingerprints');
+      await test.idle();
+    };
 
-    const body = (await call(port, 'GET', `/api/changes/${String(change.id)}/review`)).json() as { marks: ReviewMark[] };
-    expect(body.marks.map((m) => m.state)).toEqual(['outdated']);
+    // Same length, same statuses: only the literal changes (A -> B).
+    await collectAfter(TOTAL_EDIT_1.replace('0)', '1)'));
+    const afterEdit = db.snapshots.latest(change.id);
+    expect(afterEdit?.contentHash).toBe(snapshot.contentHash);
+    expect(afterEdit?.id).toBe(snapshot.id);
+    const outdated = await read();
+    expect(outdated.marks.map((m) => [m.targetKind, m.state]).sort()).toEqual([
+      ['file', 'outdated'],
+      ['symbol', 'outdated'],
+    ]);
+    expect(outdated.progress.touched.done).toBeLessThan(doneBefore);
+    expect(outdated.progress.outdated).toBeGreaterThan(outdatedBefore);
+    expect(db.changes.get(change.id)?.reviewState).toBe('unreviewed');
+
+    // Revert (B -> A): the marks stay outdated, they do not come back.
+    await collectAfter(TOTAL_EDIT_1);
+    const reverted = await read();
+    expect(reverted.marks.map((m) => m.state)).toEqual(['outdated', 'outdated']);
+    expect(reverted.progress.touched.done).toBe(outdated.progress.touched.done);
+    expect(reverted.progress.outdated).toBe(outdated.progress.outdated);
   });
 });
