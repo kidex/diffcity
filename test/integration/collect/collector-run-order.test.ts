@@ -96,6 +96,8 @@ describe('collector run order', () => {
       touched: [],
       contentHash: 'hash-1',
       headCommit: head,
+      mergeBase: head,
+      fingerprintsJson: '{"files":{},"symbols":{}}',
     });
     expect(await first).toEqual({ ok: true });
     expect(db.db.repos.get(stored.id)?.collectError).toMatch(/parse exploded/);

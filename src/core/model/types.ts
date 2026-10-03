@@ -114,6 +114,10 @@ export interface SnapshotRecord {
   /** sha256 of the report with `meta.generatedAt` emptied. */
   contentHash: string;
   computedAt: string;
+  /** The merge-base the before state was read from; null on a snapshot written before schema v2. */
+  mergeBase: string | null;
+  /** The serialized Fingerprints (ADR-027), verbatim; null on a snapshot written before schema v2. */
+  fingerprints: string | null;
 }
 
 /** A row of `events`. `changeId` is null for repo-level events (an agent run on a clean base). */
@@ -125,6 +129,95 @@ export interface EventRecord {
   at: string;
   /** Parsed JSON payload; null when the event has none. */
   payload: unknown;
+}
+
+// ---------------------------------------------------------------------------
+// Fingerprints (ADR-027) and review marks (ADR-028)
+
+/** Hashes of one file's bytes (ADR-027): sha256 hex, null on the side where the file does not exist. */
+export interface FileFingerprint {
+  before: string | null;
+  after: string | null;
+  /** The path in the before state, for a renamed file. */
+  oldPath?: string;
+}
+
+/**
+ * What a snapshot fingerprints (ADR-027): `files` is keyed by `File.id`, every
+ * file of the Report has an entry; `symbols` by `Symbol.id`, the hash covers the
+ * symbol's before slice + `\0` + after slice. Untouched files have `before === after`.
+ */
+export interface Fingerprints {
+  files: Record<string, FileFingerprint>;
+  symbols: Record<string, string>;
+}
+
+/** Syntax highlight class of a span in a diff row (ADR-027). */
+export type HighlightClass = 'kw' | 'str' | 'num' | 'com' | 'type' | 'fn' | 'prop' | 'op' | 'punc' | 'var';
+
+/** One row of a file diff (ADR-027). */
+export interface DiffRow {
+  kind: 'ctx' | 'add' | 'del';
+  /** Line number in before; null on an added row. */
+  old: number | null;
+  /** Line number in after; null on a deleted row. */
+  new: number | null;
+  /** At most 4,000 characters; `cut: true` when the line was longer. */
+  text: string;
+  cut?: true;
+  hl?: [start: number, end: number, cls: HighlightClass][];
+}
+
+/** The diff of one file between before and after (ADR-027). */
+export interface FileDiff {
+  snapshotId: number;
+  head: string;
+  path: string;
+  oldPath?: string;
+  language: string;
+  kind: 'text' | 'binary' | 'too-large' | 'unchanged' | 'unavailable';
+  /** For `unavailable` and `too-large`. */
+  reason?: string;
+  /** The working tree changed since the snapshot. */
+  stale: boolean;
+  stats: { added: number; removed: number };
+  /** Bytes. */
+  sizes: { before: number | null; after: number | null };
+  rows?: DiffRow[];
+  hunks?: { first: number; last: number }[];
+  folds?: { first: number; last: number }[];
+  symbols?: { id: string; first: number; last: number }[];
+  focus?: { id: string; first: number; last: number };
+}
+
+/** What a review mark says about its target (ADR-028). */
+export type ReviewMarkValue = 'checked' | 'good' | 'rewrite';
+
+/** A reviewer's mark on a file or symbol of a change (ADR-028); a row of `review_marks`. */
+export interface ReviewMark {
+  targetKind: 'file' | 'symbol';
+  /** `File.id` or `Symbol.id` of the Report. */
+  targetId: string;
+  /** The file the target is in. */
+  filePath: string;
+  mark: ReviewMarkValue;
+  /** Required for `rewrite`, 1..2000 characters. */
+  note: string | null;
+  lines: { side: 'old' | 'new'; start: number; end: number } | null;
+  /** `outdated` once the target's fingerprint changed since the mark. */
+  state: 'current' | 'outdated';
+  createdAt: string;
+  updatedAt: string;
+  outdatedAt: string | null;
+}
+
+/** How far the review of a change has got (ADR-028); computed in the daemon. */
+export interface ReviewProgress {
+  attention: { done: number; total: number };
+  touched: { done: number; total: number };
+  rewrite: number;
+  outdated: number;
+  allAttentionDone: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -227,6 +320,7 @@ export type SseEvent =
   | { event: 'repo'; data: { repoId: number } }
   | { event: 'changes'; data: { repoId: number } }
   | { event: 'snapshot'; data: { repoId: number; changeId: number; head: string } }
+  | { event: 'review'; data: { repoId: number; changeId: number } }
   | {
       event: 'collect';
       data: { repoId: number; state: 'started' | 'done' } | { repoId: number; state: 'error'; error: string };

@@ -5,7 +5,7 @@
 // stringifies a report of several MB.
 
 import { createHash } from 'node:crypto';
-import type { SnapshotSummary } from '../model/types.js';
+import type { Fingerprints, SnapshotSummary } from '../model/types.js';
 import { buildReportWithHead } from './build.js';
 import type { Report } from './types.js';
 
@@ -33,6 +33,10 @@ export interface ComputedSnapshot {
   contentHash: string;
   /** The sha the after state was built on. */
   headCommit: string;
+  /** The merge-base the before state was read from. */
+  mergeBase: string;
+  /** The serialized Fingerprints (ADR-027), stored verbatim in `snapshots.fingerprints`. */
+  fingerprintsJson: string;
 }
 
 /** sha256 hex of the report serialized with `meta.generatedAt` emptied (ADR-018). */
@@ -42,7 +46,12 @@ export function contentHashOf(report: Report): string {
 }
 
 /** The snapshot columns of a report. Pure. */
-export function snapshotFromReport(report: Report, headCommit: string): ComputedSnapshot {
+export function snapshotFromReport(
+  report: Report,
+  headCommit: string,
+  mergeBase: string,
+  fingerprints: Fingerprints,
+): ComputedSnapshot {
   const touched = report.packages.flatMap((pkg) => pkg.files.filter((file) => file.status !== 'same').map((file) => file.path));
   return {
     reportJson: JSON.stringify(report),
@@ -50,17 +59,19 @@ export function snapshotFromReport(report: Report, headCommit: string): Computed
     touched,
     contentHash: contentHashOf(report),
     headCommit,
+    mergeBase,
+    fingerprintsJson: JSON.stringify(fingerprints),
   };
 }
 
 /** Builds the Report of a change and its snapshot columns. */
 export async function computeSnapshot(input: SnapshotJobInput): Promise<ComputedSnapshot> {
-  const { report, headCommit } = await buildReportWithHead({
+  const { report, headCommit, mergeBase, fingerprints } = await buildReportWithHead({
     repoDir: input.repoDir,
     base: input.base,
     head: input.head,
     now: input.now === undefined ? undefined : new Date(input.now),
     trustConfig: input.trustConfig,
   });
-  return snapshotFromReport(report, headCommit);
+  return snapshotFromReport(report, headCommit, mergeBase, fingerprints);
 }

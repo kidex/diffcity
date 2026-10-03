@@ -2,7 +2,7 @@
 // shell). Git runs with GIT_OPTIONAL_LOCKS=0 so reading a repo never takes the
 // index lock the user's own git commands need (ADR-012).
 
-import { execFile } from 'node:child_process';
+import { execFile, spawn } from 'node:child_process';
 import { devNull } from 'node:os';
 import { GUARDED_CONFIG_PATTERN, configEnv, configOverrides, parseScopedConfig } from './guard.js';
 
@@ -216,6 +216,51 @@ export async function gitRaw(cwd: string, args: readonly string[], options: GitC
     Object.assign(env, configEnv(configOverrides(parseScopedConfig(lookup.stdout.toString('utf8'))), env));
   }
   return spawnGit(cwd, args, env, options.input);
+}
+
+/**
+ * Runs git and hands stdout to `onChunk` as it arrives, never holding it in
+ * memory, so output of any size can be hashed (a blob of several GB, say).
+ * Resolves with the exit code and stderr; rejects when git cannot be spawned
+ * or `onChunk` throws. Only for subcommands that cannot run a filter driver
+ * (`cat-file blob`, `ls-tree`, ...): the config lookup gitRaw does for the
+ * others is not made here, and a subcommand that needs it throws.
+ */
+export function gitStream(
+  cwd: string,
+  args: readonly string[],
+  onChunk: (chunk: Buffer) => void,
+): Promise<{ exitCode: number; stderr: string }> {
+  if (mayRunFilters(args)) throw new GitError('git-failed', `git ${args.join(' ')} cannot be streamed: it may run a filter driver`);
+  return new Promise((resolve, reject) => {
+    const child = spawn('git', [...SAFE_CONFIG, ...args], { cwd, env: gitEnv(), windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
+    const stderr: Buffer[] = [];
+    let stderrSize = 0;
+    let failure: Error | null = null;
+    child.stderr.on('data', (chunk: Buffer) => {
+      // Diagnostics only: keep the first 64 KiB.
+      if (stderrSize < 65_536) {
+        stderr.push(chunk);
+        stderrSize += chunk.length;
+      }
+    });
+    child.stdout.on('data', (chunk: Buffer) => {
+      if (failure !== null) return;
+      try {
+        onChunk(chunk);
+      } catch (error) {
+        failure = error instanceof Error ? error : new Error(String(error));
+        child.kill();
+      }
+    });
+    child.on('error', (error) => {
+      reject(new GitError('git-failed', `git ${args.join(' ')} failed: ${error.message}`, { cause: error }));
+    });
+    child.on('close', (code) => {
+      if (failure !== null) reject(failure);
+      else resolve({ exitCode: code ?? 1, stderr: Buffer.concat(stderr).toString('utf8') });
+    });
+  });
 }
 
 /** Runs git; resolves with stdout as UTF-8, rejects with a GitError on a non-zero exit. */

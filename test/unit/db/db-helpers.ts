@@ -116,6 +116,8 @@ export function snapshotInput(changeId: number, head: string, overrides: Partial
     touched: ['src/auth/session.ts', 'src/orders/cart.ts'],
     contentHash: 'hash-1',
     computedAt: T0,
+    mergeBase: 'c'.repeat(40),
+    fingerprints: '{"files":{},"symbols":{}}',
     ...overrides,
   };
 }

@@ -17,6 +17,8 @@ interface SnapshotRow {
   touched: string;
   contentHash: string;
   computedAt: string;
+  mergeBase: string | null;
+  fingerprints: string | null;
 }
 
 /** A computed snapshot to store; `report` is the serialized Report, stored verbatim. */
@@ -37,6 +39,8 @@ export interface SnapshotStore {
   latest(changeId: number): SnapshotRecord | null;
   /** The serialized Report of `latest`, verbatim, or null while there is none. */
   latestReport(changeId: number): string | null;
+  /** The serialized Fingerprints of `latest`, verbatim; null while there is none or it predates schema v2. Reads only that column. */
+  latestFingerprints(changeId: number): string | null;
   /**
    * The touched paths of the latest snapshot of every live change that has one,
    * by the change's `lastEventAt` desc; for search (ADR-017). Reads only the
@@ -63,6 +67,8 @@ function toRecord(row: SnapshotRow): SnapshotRecord {
     touched: JSON.parse(row.touched) as string[],
     contentHash: row.contentHash,
     computedAt: row.computedAt,
+    mergeBase: row.mergeBase,
+    fingerprints: row.fingerprints,
   };
 }
 
@@ -76,13 +82,17 @@ export function createSnapshotStore(db: Connection): SnapshotStore {
   const touch = db.prepare<[string, number]>('UPDATE snapshots SET computedAt = ? WHERE id = ?');
   // json_valid runs in SQLite, so a report of several MB is checked without a JS parse.
   const isJson = db.prepare<[string], { valid: number }>('SELECT json_valid(?) AS valid');
-  const insert = db.prepare<[number, string, number, string, string, string, string, string]>(
-    `INSERT INTO snapshots (changeId, head, dirty, report, summary, touched, contentHash, computedAt)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+  const insert = db.prepare<[number, string, number, string, string, string, string, string, string | null, string | null]>(
+    `INSERT INTO snapshots (changeId, head, dirty, report, summary, touched, contentHash, computedAt, mergeBase, fingerprints)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   );
-  const replace = db.prepare<[number, string, string, string, string, string, number, string]>(
-    `UPDATE snapshots SET dirty = ?, report = ?, summary = ?, touched = ?, contentHash = ?, computedAt = ?
+  const replace = db.prepare<[number, string, string, string, string, string, string | null, string | null, number, string]>(
+    `UPDATE snapshots SET dirty = ?, report = ?, summary = ?, touched = ?, contentHash = ?, computedAt = ?,
+       mergeBase = ?, fingerprints = ?
      WHERE changeId = ? AND head = ?`,
+  );
+  const latestFingerprints = db.prepare<[number], { fingerprints: string | null }>(
+    `SELECT fingerprints FROM snapshots ${LATEST}`,
   );
   const latest = db.prepare<[number], SnapshotRow>(`SELECT * FROM snapshots ${LATEST}`);
   const latestReport = db.prepare<[number], { report: string }>(`SELECT report FROM snapshots ${LATEST}`);
@@ -111,10 +121,10 @@ export function createSnapshotStore(db: Connection): SnapshotStore {
     const summary = JSON.stringify(snapshot.summary);
     const touched = JSON.stringify(snapshot.touched);
     if (existing === undefined) {
-      insert.run(snapshot.changeId, snapshot.head, dirty, snapshot.report, summary, touched, snapshot.contentHash, computedAt);
+      insert.run(snapshot.changeId, snapshot.head, dirty, snapshot.report, summary, touched, snapshot.contentHash, computedAt, snapshot.mergeBase, snapshot.fingerprints);
       return 'created';
     }
-    replace.run(dirty, snapshot.report, summary, touched, snapshot.contentHash, computedAt, snapshot.changeId, snapshot.head);
+    replace.run(dirty, snapshot.report, summary, touched, snapshot.contentHash, computedAt, snapshot.mergeBase, snapshot.fingerprints, snapshot.changeId, snapshot.head);
     return 'replaced';
   };
 
@@ -124,6 +134,7 @@ export function createSnapshotStore(db: Connection): SnapshotStore {
       const row = latest.get(changeId);
       return row === undefined ? null : toRecord(row);
     },
+    latestFingerprints: (changeId) => latestFingerprints.get(changeId)?.fingerprints ?? null,
     latestReport: (changeId) => latestReport.get(changeId)?.report ?? null,
     liveTouched: () =>
       liveTouched.all().flatMap(({ repoId, changeId, touched }) =>

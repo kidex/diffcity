@@ -77,8 +77,48 @@ CREATE TABLE events (
 CREATE INDEX events_repo_at ON events(repoId, at);
 `;
 
+/**
+ * Schema v2: the merge-base and the fingerprints of a snapshot (ADR-027) and
+ * the reviewer's marks and notes (ADR-028). The new snapshot columns are
+ * nullable, so the rows of a v1 database migrate in place.
+ */
+const V2 = `
+ALTER TABLE snapshots ADD COLUMN mergeBase TEXT;
+ALTER TABLE snapshots ADD COLUMN fingerprints TEXT;
+
+CREATE TABLE review_marks (
+  id INTEGER PRIMARY KEY,
+  changeId INTEGER NOT NULL REFERENCES changes(id) ON DELETE CASCADE,
+  targetKind TEXT NOT NULL CHECK (targetKind IN ('file','symbol')),
+  targetId TEXT NOT NULL,
+  filePath TEXT NOT NULL,
+  mark TEXT NOT NULL CHECK (mark IN ('checked','good','rewrite')),
+  note TEXT,
+  lineSide TEXT CHECK (lineSide IN ('old','new')),
+  lineStart INTEGER,
+  lineEnd INTEGER,
+  fingerprint TEXT NOT NULL,
+  snapshotId INTEGER REFERENCES snapshots(id) ON DELETE SET NULL,
+  state TEXT NOT NULL DEFAULT 'current' CHECK (state IN ('current','outdated')),
+  outdatedAt TEXT,
+  createdAt TEXT NOT NULL,
+  updatedAt TEXT NOT NULL,
+  UNIQUE (changeId, targetKind, targetId),
+  CHECK (mark <> 'rewrite' OR (note IS NOT NULL AND length(note) BETWEEN 1 AND 2000)),
+  CHECK ((lineStart IS NULL AND lineEnd IS NULL AND lineSide IS NULL)
+      OR (lineSide IS NOT NULL AND lineStart >= 1 AND lineEnd >= lineStart))
+);
+CREATE INDEX review_marks_change ON review_marks(changeId, state);
+
+CREATE TABLE review_notes (
+  changeId INTEGER PRIMARY KEY REFERENCES changes(id) ON DELETE CASCADE,
+  note TEXT NOT NULL CHECK (length(note) <= 4000),
+  updatedAt TEXT NOT NULL
+);
+`;
+
 /** The migrations in order; index i holds the SQL that produces version i + 1. */
-export const MIGRATIONS: readonly string[] = [V1];
+export const MIGRATIONS: readonly string[] = [V1, V2];
 
 /** The schema version this code writes. */
 export const SCHEMA_VERSION = MIGRATIONS.length;

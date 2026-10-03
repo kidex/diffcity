@@ -1,23 +1,27 @@
 // Assembles the Report of one change (SPEC.md section 4.1, ADR-011).
 // `diffcity diff --json` calls buildReport in-process; the daemon will too.
 
+import { createHash } from 'node:crypto';
 import { posix } from 'node:path';
 import { ConfigError, loadConfig, type DiffcityConfig } from '../config/index.js';
-import { compareFile, unchangedSymbols, type FileChange } from '../diff/status.js';
+import { compareFileWithFingerprints, unchangedSymbolsWithFingerprints, type FileChange } from '../diff/status.js';
 import {
   changedFiles,
   computeMeta,
   findRepoRoot,
   listHeadFiles,
   looksBinary,
-  readAfter,
   readAfterBatch,
-  readBefore,
+  hashAfter,
+  hashBefore,
+  readAfterBytes,
+  readBeforeBytes,
   resolveChange,
   type ChangedFile,
   type CommandRunner,
   type ResolvedChange,
 } from '../git/index.js';
+import type { FileFingerprint, Fingerprints } from '../model/types.js';
 import { languageForPath } from '../parse/language.js';
 import { fileVerdict, tier1Matcher, touchedTier1Files } from '../verdict/index.js';
 import { mapLimit } from './limit.js';
@@ -142,30 +146,56 @@ export function assembleReport(
   };
 }
 
-async function describeChanged(change: ResolvedChange, file: ChangedFile): Promise<ReportFileInput> {
-  const oldPath = file.oldPath ?? file.path;
-  // Only code files are read: the status of anything else comes from git (ADR-008).
-  const readable = !file.binary && (languageForPath(oldPath) !== null || languageForPath(file.path) !== null);
-  const [before, after] = readable
-    ? await Promise.all([
-        file.type === 'add' ? null : readBefore(change, oldPath),
-        file.type === 'del' ? null : readAfter(change, file.path),
-      ])
-    : [null, null];
-  const input: FileChange = { path: file.path, change: file.type, binary: file.binary, before, after };
-  if (oldPath !== file.path) input.oldPath = oldPath;
-  const { status, symbols } = await compareFile(input);
-  return { path: file.path, language: languageOf(file.path), status, symbols };
+/** A described file, with what the fingerprints need. */
+interface Described {
+  input: ReportFileInput;
+  fingerprint: FileFingerprint;
+  symbolFingerprints: Record<string, string>;
 }
 
-async function describeUnchanged(path: string, bytes: Buffer | null): Promise<ReportFileInput | null> {
+function sha256(bytes: Uint8Array | null): string | null {
+  return bytes === null ? null : createHash('sha256').update(bytes).digest('hex');
+}
+
+async function describeChanged(change: ResolvedChange, file: ChangedFile): Promise<Described> {
+  const oldPath = file.oldPath ?? file.path;
+  // Only code files are read into memory and parsed: the status of anything else comes from git (ADR-008).
+  // The others are hashed from a stream, so a large asset never sits in the worker's memory.
+  const readable = !file.binary && (languageForPath(oldPath) !== null || languageForPath(file.path) !== null);
+  const [beforeBytes, afterBytes] = readable
+    ? await Promise.all([
+        file.type === 'add' ? null : readBeforeBytes(change, oldPath),
+        file.type === 'del' ? null : readAfterBytes(change, file.path),
+      ])
+    : [null, null];
+  const [beforeHash, afterHash] = readable
+    ? [sha256(beforeBytes), sha256(afterBytes)]
+    : await Promise.all([
+        file.type === 'add' ? null : hashBefore(change, oldPath),
+        file.type === 'del' ? null : hashAfter(change, file.path),
+      ]);
+  const before = beforeBytes?.toString('utf8') ?? null;
+  const after = afterBytes?.toString('utf8') ?? null;
+  const input: FileChange = { path: file.path, change: file.type, binary: file.binary, before, after };
+  if (oldPath !== file.path) input.oldPath = oldPath;
+  const { status, symbols, symbolFingerprints } = await compareFileWithFingerprints(input);
+  const fingerprint: FileFingerprint = { before: beforeHash, after: afterHash };
+  if (oldPath !== file.path) fingerprint.oldPath = oldPath;
+  return { input: { path: file.path, language: languageOf(file.path), status, symbols }, fingerprint, symbolFingerprints };
+}
+
+async function describeUnchanged(path: string, bytes: Buffer | null): Promise<Described | null> {
   // Gone between listing and reading: not part of this state any more.
   if (bytes === null) return null;
+  const hash = sha256(bytes);
   const file: ReportFileInput = { path, language: languageOf(path), status: 'same', symbols: [] };
+  const described: Described = { input: file, fingerprint: { before: hash, after: hash }, symbolFingerprints: {} };
   // A code extension on binary content (an MPEG-TS `.ts`, say) has no symbols; git's rule decides.
-  if (looksBinary(bytes)) return file;
-  file.symbols = await unchangedSymbols(path, bytes.toString('utf8'));
-  return file;
+  if (looksBinary(bytes)) return described;
+  const parsed = await unchangedSymbolsWithFingerprints(path, bytes.toString('utf8'));
+  file.symbols = parsed.symbols;
+  described.symbolFingerprints = parsed.symbolFingerprints;
+  return described;
 }
 
 /**
@@ -177,8 +207,15 @@ export async function buildReport(options: BuildReportOptions): Promise<Report> 
   return (await buildReportWithHead(options)).report;
 }
 
-/** buildReport, plus the sha the after state is built on (the `--head` commit, or HEAD for the working tree). */
-export async function buildReportWithHead(options: BuildReportOptions): Promise<{ report: Report; headCommit: string }> {
+/**
+ * buildReport, plus the sha the after state is built on (the `--head` commit,
+ * or HEAD for the working tree), the merge-base the before state is read from,
+ * and the fingerprints of files and symbols (ADR-027). The Report itself does
+ * not carry them.
+ */
+export async function buildReportWithHead(
+  options: BuildReportOptions,
+): Promise<{ report: Report; headCommit: string; mergeBase: string; fingerprints: Fingerprints }> {
   const root = await findRepoRoot(options.repoDir);
   const config = await loadConfig(root, { trusted: options.trustConfig });
   const isTier1 = tier1For(config);
@@ -198,7 +235,7 @@ export async function buildReportWithHead(options: BuildReportOptions): Promise<
   const untouched = headFiles.filter((path) => !touched.has(path) && languageForPath(path) !== null);
 
   const touchedInputs = await mapLimit(changed, PARSE_CONCURRENCY, (file) => describeChanged(change, file));
-  const untouchedInputs: (ReportFileInput | null)[] = [];
+  const untouchedInputs: (Described | null)[] = [];
   for (let i = 0; i < untouched.length; i += READ_BATCH_SIZE) {
     const paths = untouched.slice(i, i + READ_BATCH_SIZE);
     const contents = await readAfterBatch(change, paths);
@@ -207,10 +244,16 @@ export async function buildReportWithHead(options: BuildReportOptions): Promise<
     );
   }
 
+  const described = [...touchedInputs, ...untouchedInputs.filter((input): input is Described => input !== null)];
   const report = assembleReport(
     meta,
-    [...touchedInputs, ...untouchedInputs.filter((input): input is ReportFileInput => input !== null)],
+    described.map((entry) => entry.input),
     isTier1,
   );
-  return { report, headCommit: change.headCommit };
+  const fingerprints: Fingerprints = { files: {}, symbols: {} };
+  for (const entry of described) {
+    fingerprints.files[entry.input.path] = entry.fingerprint;
+    Object.assign(fingerprints.symbols, entry.symbolFingerprints);
+  }
+  return { report, headCommit: change.headCommit, mergeBase: change.mergeBase, fingerprints };
 }
