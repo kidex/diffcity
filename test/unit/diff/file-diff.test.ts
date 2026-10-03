@@ -308,6 +308,21 @@ describe('filediff/stale-worktree', () => {
   });
 });
 
+describe('filediff/untracked-unreadable-unavailable', () => {
+  it('is unavailable, not an empty unchanged file, when the temporary index of an untracked file cannot be made', async () => {
+    const change = await featureChange({ 'README.md': 'docs\n' }, { 'README.md': 'docs\n' }, repos);
+    await change.repo.git('checkout', '--quiet', 'main');
+    await change.repo.write({ 'src/new.ts': 'a\nb\n' });
+    const mergeBase = await change.repo.head();
+    const request = { ...change.request('src/new.ts', { worktree: true, after: 'a\nb\n' }), mergeBase };
+    const noIndex = { ...change.git, withUntrackedIndex: <T>(_paths: readonly string[], fn: (env: Record<string, string> | undefined) => Promise<T>) => fn(undefined) };
+    const diff = await computeFileDiff(request, noIndex);
+    expect(diff.kind).toBe('unavailable');
+    expect(diff.reason).toBeDefined();
+    expect(diff.rows).toBeUndefined();
+  });
+});
+
 describe('filediff/unavailable', () => {
   it('is unavailable without a merge-base and when git cannot read the object', async () => {
     const change = await featureChange({ 'src/cart.ts': lines(3) }, { 'src/cart.ts': lines(3, { 1: 'x' }) }, repos);

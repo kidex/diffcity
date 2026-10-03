@@ -358,12 +358,14 @@ export async function computeFileDiff(request: FileDiffRequest, git: DiffGit): P
       return await tooLarge('A side of this file is larger than 2 MiB.', untracked);
     }
 
-    const output = await withIndex(untracked, (env) =>
-      git.run(['diff', ...DIFF_FLAGS, '--histogram', '--unified=1000000', ...revisions, '--', ...pathspec], {
+    const output = await withIndex(untracked, (env) => {
+      // Without the temporary index git would show nothing for an untracked file.
+      if (untracked && env === undefined) throw new Unavailable('git cannot read this untracked file: it is gone or the index is missing.');
+      return git.run(['diff', ...DIFF_FLAGS, '--histogram', '--unified=1000000', ...revisions, '--', ...pathspec], {
         maxOutput: MAX_DIFF_OUTPUT_BYTES,
         ...(env === undefined ? {} : { env }),
-      }),
-    ).catch((error: unknown) => {
+      });
+    }).catch((error: unknown) => {
       if (error instanceof GitError && error.code === 'output-limit') return null;
       throw error;
     });
