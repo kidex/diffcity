@@ -126,6 +126,39 @@ describe('daemon process', () => {
     expect(await readFile(paths.log, 'utf8')).toContain('daemon stopped');
   });
 
+  describe('a signal during startup (DC-56)', () => {
+    const stages = ['begin', 'lock-acquired', 'plugins-set-up', 'http-listening', 'socket-listening', 'daemon-json-written', 'plugins-started'] as const;
+
+    it.each(stages.flatMap((stage) => (['SIGINT', 'SIGTERM'] as const).map((signal) => [stage, signal] as const)))(
+      'daemon/signal-during-start: %s then %s exits 0 and leaves no files',
+      async (stage, signal) => {
+        const spawned = daemons.spawnDaemon({ ...temp.env, DIFFCITY_TEST_PAUSE_AT: stage });
+        await waitFor(() => spawned.stdout().includes(`paused ${stage}`), 45_000, `the pause at ${stage}`);
+        spawned.child.kill(signal);
+        expect(await spawned.exited).toBe(0);
+        for (const file of [paths.daemonJson, paths.socket, paths.lock]) expect(await gone(file), file).toBe(true);
+        expect(spawned.stdout()).not.toContain('listening on');
+      },
+    );
+  });
+
+  it('daemon/shutdown-cleans-files: repeated SIGINTs right after daemon.json never hit the default action', async () => {
+    // DIFFCITY_TEST_LOOP raises the count for a soak run.
+    const runs = Number(process.env.DIFFCITY_TEST_LOOP ?? 10);
+    for (let run = 0; run < runs; run++) {
+      const home = await tempHome();
+      try {
+        const spawned = daemons.spawnDaemon(home.env);
+        const info = await waitFor(() => readDaemonInfo(homePaths(home.home)).then((value) => value ?? undefined), 45_000, 'daemon.json');
+        spawned.child.kill('SIGINT');
+        expect(await spawned.exited, `run ${String(run)}`).toBe(0);
+        for (const file of [homePaths(home.home).daemonJson, info.socket, homePaths(home.home).lock]) expect(await gone(file), `run ${String(run)}`).toBe(true);
+      } finally {
+        await home.cleanup();
+      }
+    }
+  }, 300_000);
+
   it('shuts down promptly with an SSE client still connected', async () => {
     const spawned = daemons.spawnDaemon(temp.env);
     const info = await ready();
