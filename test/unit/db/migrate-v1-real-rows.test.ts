@@ -1,7 +1,8 @@
 // A v1 database with several rows in every table survives the v2 migration,
-// and the v1 SQL used to build it is the one main shipped.
+// and the v1 SQL used to build it is the one main shipped (kept verbatim in
+// test/fixtures/db/migration-v1.sql, so the check needs no git history).
 
-import { execFileSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 import { afterEach, describe, expect, it } from 'vitest';
 import { MIGRATIONS, openDb } from '../../../src/core/db/index.js';
 import { T0, rawConnection, tempDbPath } from './db-helpers.js';
@@ -12,12 +13,9 @@ afterEach(() => {
 });
 
 describe('db/migrate-v1-to-v2: rows', () => {
-  it('the v1 migration SQL is byte-identical to the one on main before DC-69', () => {
-    // e45a665 is main before this task: it still has only the v1 migration.
-    const old = execFileSync('git', ['show', 'e45a665:src/core/db/migrations.ts'], { encoding: 'utf8' });
-    expect(old).toContain(MIGRATIONS[0]?.trim().split('\n')[0] ?? '??');
-    const sql = MIGRATIONS[0] ?? '';
-    for (const line of sql.split('\n').filter((l) => l.trim() !== '')) expect(old).toContain(line);
+  it('the v1 migration SQL is byte-identical to the one main shipped before DC-69', () => {
+    const shipped = readFileSync(new URL('../../fixtures/db/migration-v1.sql', import.meta.url), 'utf8');
+    expect(MIGRATIONS[0]).toBe(shipped);
   });
 
   it('every v1 row survives with mergeBase and fingerprints null', () => {
