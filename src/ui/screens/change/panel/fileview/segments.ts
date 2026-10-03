@@ -19,7 +19,7 @@ export const hlClass = (cls: HighlightClass): string => `hl-${cls}`;
  * an earlier one, run past the text or name an unknown class are skipped.
  */
 export function segments(text: string, hl: DiffRow['hl']): Piece[] {
-  if (hl === undefined || hl.length === 0) return text === '' ? [] : [{ text }];
+  if (!Array.isArray(hl) || hl.length === 0) return text === '' ? [] : [{ text }];
   const pieces: Piece[] = [];
   let at = 0;
   const ranges = hl.filter((range) => Array.isArray(range));
