@@ -308,6 +308,52 @@ describe('filediff/stale-worktree', () => {
   });
 });
 
+describe('filediff/crlf-rows', () => {
+  it('gives rows without a carriage return, with the right line numbers, and not stale when unchanged since the snapshot', async () => {
+    const crlf = (text: string): string => text.replace(/\n/g, '\r\n');
+    const before = crlf('one\ntwo\nthree\nfour\n');
+    const after = crlf('one\n2\nthree\nfour\nfive\n');
+    const change = await featureChange({ 'src/win.ts': before }, { 'src/win.ts': after }, repos);
+    const diff = await computeFileDiff(change.request('src/win.ts'), change.git);
+    expect(diff).toMatchObject({ kind: 'text', stale: false, stats: { added: 2, removed: 1 } });
+    expect(diff.rows?.map((row) => [row.kind, row.old, row.new, row.text])).toEqual([
+      ['ctx', 1, 1, 'one'],
+      ['del', 2, null, 'two'],
+      ['add', null, 2, '2'],
+      ['ctx', 3, 3, 'three'],
+      ['ctx', 4, 4, 'four'],
+      ['add', null, 5, 'five'],
+    ]);
+    expect(diff.rows?.some((row) => row.text.includes('\r'))).toBe(false);
+  });
+});
+
+describe('filediff/no-newline-at-end-clean', () => {
+  it('gives the right rows and stale false for a file that loses its final newline', async () => {
+    const change = await featureChange({ 'src/a.ts': 'a\nb\nc\n' }, { 'src/a.ts': 'a\nb\nc' }, repos);
+    const diff = await computeFileDiff(change.request('src/a.ts'), change.git);
+    expect(diff).toMatchObject({ kind: 'text', stale: false, stats: { added: 1, removed: 1 } });
+    expect(diff.rows?.map((row) => [row.kind, row.old, row.new, row.text])).toEqual([
+      ['ctx', 1, 1, 'a'],
+      ['ctx', 2, 2, 'b'],
+      ['del', 3, null, 'c'],
+      ['add', null, 3, 'c'],
+    ]);
+  });
+
+  it('gives the right rows and stale false for a file that gains its final newline', async () => {
+    const change = await featureChange({ 'src/a.ts': 'a\nb\nc' }, { 'src/a.ts': 'a\nb\nc\n' }, repos);
+    const diff = await computeFileDiff(change.request('src/a.ts'), change.git);
+    expect(diff).toMatchObject({ kind: 'text', stale: false, stats: { added: 1, removed: 1 } });
+    expect(diff.rows?.map((row) => [row.kind, row.old, row.new, row.text])).toEqual([
+      ['ctx', 1, 1, 'a'],
+      ['ctx', 2, 2, 'b'],
+      ['del', 3, null, 'c'],
+      ['add', null, 3, 'c'],
+    ]);
+  });
+});
+
 describe('filediff/untracked-unreadable-unavailable', () => {
   it('is unavailable, not an empty unchanged file, when the temporary index of an untracked file cannot be made', async () => {
     const change = await featureChange({ 'README.md': 'docs\n' }, { 'README.md': 'docs\n' }, repos);

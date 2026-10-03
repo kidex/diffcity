@@ -3,7 +3,8 @@
 // path hardening, symlinks, cross-site, repo-configured commands, snapshots
 // that predate the file view and the refresh of a dirty change (DC-74).
 
-import { chmod, mkdir, mkdtemp, readdir, rm, symlink, writeFile } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
+import { chmod, mkdir, readFile, mkdtemp, readdir, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -369,5 +370,52 @@ describe('api/diff-not-stale-after-refresh', () => {
     expect(added(refreshed).join('\n')).toContain('a + b, 1');
     expect(added(refreshed).join('\n')).not.toContain('a + b, 0');
     expect((await tax()).stale).toBe(false);
+  });
+});
+
+describe('api/diff-real-index-untouched', () => {
+  it('leaves .git/index byte-identical and no temporary index directory behind, for an untracked file of a dirty change', async () => {
+    const { port, changeId, repo } = await draftWithTwoEdits();
+    const hash = async (): Promise<string> => createHash('sha256').update(await readFile(join(repo.dir, '.git', 'index'))).digest('hex');
+    const tempIndexes = async (): Promise<string[]> => (await readdir(tmpdir())).filter((name) => name.startsWith('diffcity-index-'));
+    // tax.ts is untracked, total.ts is a tracked edit.
+    expect(await repo.status()).toContain('?? src/cart/tax.ts');
+    const beforeHash = await hash();
+    const beforeDirs = await tempIndexes();
+    for (const path of ['src/cart/tax.ts', 'src/cart/total.ts']) {
+      const answer = await call(port, 'GET', diffUrl(changeId, path));
+      expect(answer.status, path).toBe(200);
+      expect((answer.json() as FileDiff).kind, path).toBe('text');
+    }
+    expect(await hash()).toBe(beforeHash);
+    expect(await repo.status()).toContain('?? src/cart/tax.ts');
+    expect((await tempIndexes()).filter((name) => !beforeDirs.includes(name))).toEqual([]);
+  });
+});
+
+describe('api/diff-cache-dropped-on-new-snapshot', () => {
+  it('serves fresh content once a new snapshot of the change exists', async () => {
+    const { test, port, changeId, repo } = await draftWithTwoEdits();
+    const db = test.collection.db();
+    const first = db.snapshots.latest(changeId);
+    if (first === null) throw new Error('no snapshot');
+    const added = async (): Promise<string> => {
+      const diff = (await call(port, 'GET', diffUrl(changeId, 'src/cart/tax.ts'))).json() as FileDiff;
+      return (diff.rows ?? []).filter((row) => row.kind === 'add').map((row) => row.text).join('\n');
+    };
+    expect(await added()).toContain('0.2');
+    expect(await added()).toContain('0.2');
+
+    // A new function changes the Report: the dirty snapshot of the same head is replaced (new contentHash), not just refreshed.
+    await repo.write({ 'src/cart/tax.ts': `${TAX.replace('0.2', '0.5')}export function fee(): number {\n  return 1;\n}\n` });
+    const again = await test.track(repo.dir);
+    if (!again.ok) throw new Error(again.error);
+    await waitFor(() => db.snapshots.latest(changeId)?.contentHash !== first.contentHash, 20_000, 'a replaced snapshot');
+    await test.idle();
+
+    const fresh = await added();
+    expect(fresh).toContain('0.5');
+    expect(fresh).toContain('fee');
+    expect(fresh).not.toContain('0.2');
   });
 });
