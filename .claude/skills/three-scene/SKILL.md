@@ -22,6 +22,11 @@ Look: "Night data city" (ADR-026, SPEC.md section 6). `design/directions/c` is t
 | `index.ts` | `mountChange(el, { report }) → { update(report), unmount }`; states: `null` → "Computing the first snapshot of this change…", no files → "No files in this change", no WebGL → `fallback.ts`, else the city; installs `window.diffcityScene` under `?scene-debug` |
 | `fallback.ts` | "3D view needs WebGL" and the touched-file table (status, verdict, tier 1) |
 | `model/city.ts` | pure layout (no three, no DOM, unit-tested in Node): `buildCity(report, { rowWidth? })`, `sideOf`, `floorsOf`, `labelledBuildings` |
+| `model/view.ts` | pure: the mockup's filter rules (`Filters {verdict, type, rule}`, `toggleVerdict/Type/Rule`, `clearFilters`, `ruleIndex`, `pruneFilters`) and `paintCity` / `focusPaint`, which give every building and floor a `PaintState` (`dimmed`, `typeMatch`, `hovered`, `selected`, `pulse`, `checked`; pulse and checked stay at their defaults) |
+| `model/hud.ts` | pure: what the HUD shows from the Report: top-bar counters (`summary`), verdict / type / rule chips, check chips (`report.checks`, unknown state reads not-checked), `changeLevel` ("CI failed" for a pipeline rule's change-level finding or a pipeline check with violations, else a count), tooltip and card data |
+| `model/tween.ts` | pure: `tweenCity(from, to, t)`, `needsTween`, `easeOut`, `TWEEN_MS = 400` |
+| `ports.ts` | `FleetPort`, `FleetCard`, `FleetCardRow`: types only; without a port the Fleet card is not drawn |
+| `hud/` | plain DOM (textContent / `h()`): `topbar` (counters, eyes badge, check chips, change-level pills, Export PlantUML and Approve as `aria-disabled` with "Arrives in a later version"; own breadcrumb only with `crumb: true`), `filters` (three rows, Rules hidden without rule findings), `legend` (X entry with rule findings), `tooltip`, `card` (selection card), `fleet`, `index` (title, hint, toast) |
 | `scene/view.ts` | ties it together: stage, content (ground, lots, towers), labels, orbit, picker; `setReport` rebuilds content and keeps camera, selection and the row width; rebuilds on a colour-scheme change; `dispose()` |
 | `scene/stage.ts` | `WebGLRenderer`, AgX at exposure 1.1, `EffectComposer` on a half-float 4x MSAA target: `RenderPass` (counting its draw calls) → `UnrealBloomPass` (strength `--c-bloom`, radius 0.4, threshold 0.9; it already works at half resolution) → `OutputPass`; pixel ratio `min(dpr, 2)`; `ResizeObserver`; frames only on request; `runContinuously(ms)` for the bench; `dispose()` frees passes, targets and the context (`forceContextLoss`) |
 | `scene/orbit.ts` | the mockup's orbit as plain math plus `bindOrbit` (listeners on an `AbortController`, removed on unmount) |
@@ -79,6 +84,16 @@ Environment: `RoomEnvironment` through `PMREMGenerator` (sigma 0.04), intensity 
 - Intro: `r` from 46 / 30 of home to home in 1.4 s, ease-out cubic, starting with the first drawn frame; skipped under `prefers-reduced-motion`.
 - `update(report)` keeps the camera; only the home (for `R`) and the limits follow the new city.
 
+## HUD and filters
+
+- `mountChange(el, { report, crumb?, fleet? })`: the top bar sits above the city, everything else is one overlay inside `.city`. The filters live in `index.ts`, survive `update(report)` and are pruned of a rule the new Report no longer has.
+- The scene never decides what is dimmed: `view.setFilters` and hover / selection go through `paintCity` + `focusPaint` (hover only patches the two buildings concerned), and `towers.setPaint(paint)` maps the states to instance colours. A dimmed part fades toward `--c-void` (glass, strips, outlines, skeleton vertices; beams go black); the glass material is white and each instance carries its colour. Hover lifts strips x1.6 and doubles the outline. Labels of dimmed buildings get `.is-dim`.
+- Hover reports building, floor and pointer to the HUD tooltip; selection to the card; a selected file that leaves the Report clears the selection and shows a toast.
+
+## Live update tween
+
+`setReport` builds the new city and, unless reduced motion or `needsTween` says nothing moved, tweens from what is on screen: buildings in both Reports move and grow over 400 ms (ease-out), new ones rise, removed ones sink. Lots and ground take the new layout at once; only the towers are rebuilt per frame (same instanced meshes, so the draw-call budget holds); roof labels are hidden (`.is-tweening`) until the end. The clock starts with the first frame drawn. Frames are requested only while the tween runs. Camera, selection and filters stay.
+
 ## Interaction
 
 - Hover: pointer cursor, outline x2, strips x1.6, `.is-hover` label.
@@ -91,8 +106,8 @@ Every geometry, material, texture and render target is disposed on rebuild and o
 
 ## Testing
 
-- Unit (Node): `test/unit/ui/city-layout.test.ts`, `test/unit/ui/orbit.test.ts`.
-- e2e screens: `test/e2e/screens/change/*.spec.ts` with `test/e2e/support/scene.ts`. Open `/?scene-debug#/change/<id>` and wait for `window.diffcityScene.ready`. The hook has `project(fileId)` (client point of a building), `stats()` (draw calls, buildings, floors, lots, labels, frames, GPU memory), `bench(ms)` (fps and draw calls while rendering every frame), `camera()`, `firstCamera()`, `selected()`, `hovered()` and `disposal` (views alive, what the last one left). `[data-testid="city"]` carries `data-ready`, `data-selected` and `data-hovered` without the hook.
+- Unit (Node): `test/unit/ui/city-layout.test.ts`, `orbit.test.ts`, `view.test.ts`, `hud-model.test.ts`, `tween.test.ts`.
+- e2e screens: `test/e2e/screens/change/*.spec.ts` with `test/e2e/support/scene.ts`. Open `/?scene-debug#/change/<id>` and wait for `window.diffcityScene.ready`. The hook has `project(fileId)` (client point of a building), `stats()` (draw calls, buildings, floors, lots, labels, frames, GPU memory), `bench(ms)` (fps and draw calls while rendering every frame), `paint()` (dimmed building ids and dimmed floor indices), `shown()` (x, z and height of every building as drawn, mid-tween included), `tweening()`, `tweenTrace()` (heights of the newest tweened building on each frame), `camera()`, `firstCamera()`, `selected()`, `hovered()` and `disposal` (views alive, what the last one left). `[data-testid="city"]` carries `data-ready`, `data-selected`, `data-hovered` and `data-filters` (`verdict=eyes;type=;rule=`) without the hook. Under the hook, `window.diffcityFleet` is read as the FleetPort (the SPA has no audit data to build one from).
 - Headless Chromium runs WebGL on SwiftShader (`--use-angle=swiftshader --enable-unsafe-swiftshader` in `test/playwright.config.ts`); frames there take long, so never assert on timing.
 - `test/fixtures/ui/gen-large-city.mjs` writes the seeded 2,000-file Report (`test/fixtures/ui/generated/`, not committed) in the global setup.
 - Acceptance: `test/e2e/acceptance/city-from-daemon-report.spec.ts` against the real daemon.
