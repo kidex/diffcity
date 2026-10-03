@@ -88,3 +88,13 @@
   font-family: var(--mono); font-size: 12px; line-height: 1.5; color: var(--ink); background: var(--code-bg); border: 1px solid var(--line-soft); border-radius: 8px;
 }
 .rv-phase { margin: 0; font-size: 12.5px; color: var(--muted); }
+
+/* ---------- what a mark goes on: the whole file or the focused floor ---------- */
+.rv-scope { display: flex; flex-wrap: wrap; gap: 4px; }
+.rv-scope[hidden] { display: none; }
+.rv-scope-btn {
+  padding: 2px 8px; border-radius: 6px; font-size: 11.5px; border: 1px solid var(--line); color: var(--muted); background: transparent;
+  max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--mono); pointer-events: auto;
+}
+.rv-scope-btn:hover { color: var(--ink); }
+.rv-scope-btn.on { color: var(--ink); border-color: var(--sig); background: color-mix(in srgb, var(--sig) 14%, transparent); }

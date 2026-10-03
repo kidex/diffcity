@@ -15,6 +15,8 @@ export interface MarkBarActions {
   onMark(mark: Exclude<ReviewMarkValue, 'rewrite'>): void;
   onRewrite(): void;
   onUndo(): void;
+  /** The reviewer chose the whole file (true) or the focused floor (false) as the target. */
+  onScope(wholeFile: boolean): void;
 }
 
 export interface MarkBar {
@@ -54,8 +56,12 @@ export function createMarkBar(actions: MarkBarActions): MarkBar {
       actions.onUndo();
     }),
   );
+  const fileScope = h('button', { type: 'button', class: 'rv-scope-btn', 'data-testid': 'mark-scope-file', onclick: () => { actions.onScope(true); } }, 'This file');
+  const floorScope = h('button', { type: 'button', class: 'rv-scope-btn', 'data-testid': 'mark-scope-floor', onclick: () => { actions.onScope(false); } });
+  const scope = h('div', { class: 'rv-scope', role: 'group', 'aria-label': 'What to mark', 'data-testid': 'mark-scope' }, fileScope, floorScope);
+  scope.hidden = true;
   const status = h('div', { class: 'rv-status', 'data-testid': 'mark-status', 'aria-live': 'polite' });
-  const root = h('div', { class: 'rv-bar', 'data-testid': 'mark-bar' }, caption, row, status);
+  const root = h('div', { class: 'rv-bar', 'data-testid': 'mark-bar' }, caption, scope, row, status);
 
   function describe(mark: ReviewMark | undefined, inherited: ReviewMark | undefined): (HTMLElement | string)[] {
     if (mark === undefined) {
@@ -80,6 +86,14 @@ export function createMarkBar(actions: MarkBarActions): MarkBar {
     root,
     set(info, mark, inherited) {
       const marked = info !== null;
+      scope.hidden = info?.floor == null;
+      if (info?.floor != null) {
+        floorScope.textContent = `Floor ${info.floor.name}`;
+        fileScope.setAttribute('aria-pressed', String(!info.symbol));
+        floorScope.setAttribute('aria-pressed', String(info.symbol));
+        fileScope.classList.toggle('on', !info.symbol);
+        floorScope.classList.toggle('on', info.symbol);
+      }
       caption.textContent = info === null ? 'Untouched files cannot be marked' : info.symbol ? `Mark floor ${info.label}` : 'Mark this file';
       for (const [key, button] of buttons) {
         const own = mark?.mark === key && mark.state === 'current';

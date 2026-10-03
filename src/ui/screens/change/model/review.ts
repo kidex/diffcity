@@ -115,23 +115,27 @@ export interface TargetInfo {
   filePath: string;
   /** "this file" or the symbol's name, for the buttons' caption. */
   label: string;
+  /** The target is a symbol. */
   symbol: boolean;
+  /** The focused floor, when there is one, whichever the target is: the reviewer can switch between the floor and the whole file. */
+  floor: { id: string; name: string } | null;
 }
 
 /**
  * The target of the review actions for the selected file and focused floor:
- * the symbol when `symbolId` names one of the file's, else the file. Null for
- * a file that is not in the Report or is untouched (ADR-028: untouched files
- * cannot be marked).
+ * the focused symbol, else the file; `wholeFile` puts the mark on the file
+ * even when a floor is focused. Null for a file that is not in the Report or
+ * is untouched (ADR-028: untouched files cannot be marked).
  */
-export function targetFor(report: Report, fileId: string, symbolId: string | null): TargetInfo | null {
+export function targetFor(report: Report, fileId: string, symbolId: string | null, wholeFile = false): TargetInfo | null {
   for (const pkg of report.packages) {
     for (const file of pkg.files) {
       if (file.id !== fileId) continue;
       if (file.status === 'same') return null;
       const symbol = symbolId === null ? undefined : file.symbols.find((candidate) => candidate.id === symbolId);
-      if (symbol !== undefined) return { target: { kind: 'symbol', id: symbol.id }, filePath: file.path, label: symbol.name, symbol: true };
-      return { target: { kind: 'file', id: file.id }, filePath: file.path, label: 'this file', symbol: false };
+      const floor = symbol === undefined ? null : { id: symbol.id, name: symbol.name };
+      if (symbol !== undefined && !wholeFile) return { target: { kind: 'symbol', id: symbol.id }, filePath: file.path, label: symbol.name, symbol: true, floor };
+      return { target: { kind: 'file', id: file.id }, filePath: file.path, label: 'this file', symbol: false, floor };
     }
   }
   return null;

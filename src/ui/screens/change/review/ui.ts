@@ -48,12 +48,15 @@ interface Slot {
 export function createReviewUi(options: ReviewUiOptions): ReviewUi {
   const { controller } = options;
   const slots = new Map<HTMLElement, Slot>();
+  /** The selection the reviewer chose "This file" for while a floor is focused: another floor or file goes back to the floor. */
+  let whole: { fileId: string; symbolId: string | null } | null = null;
   let rewrite: Dialog | null = null;
   let summary: SummaryDialog | null = null;
 
   const targetOf = (fileId: string, symbolId: string | null): TargetInfo | null => {
     const report = options.report();
-    return report === null ? null : targetFor(report, fileId, symbolId);
+    const chosen = whole !== null && whole.fileId === fileId && whole.symbolId === symbolId;
+    return report === null ? null : targetFor(report, fileId, symbolId, chosen);
   };
 
   function mark(info: TargetInfo, value: Exclude<ReviewMarkValue, 'rewrite'>): void {
@@ -113,6 +116,10 @@ export function createReviewUi(options: ReviewUiOptions): ReviewUi {
             const info = targetOf(created.fileId, created.symbolId);
             if (info !== null) undo(info);
           },
+          onScope: (wholeFile) => {
+            whole = wholeFile ? { fileId: created.fileId, symbolId: created.symbolId } : null;
+            api.refresh();
+          },
         }),
       };
       entry = created;
@@ -144,7 +151,7 @@ export function createReviewUi(options: ReviewUiOptions): ReviewUi {
     { signal: keys.signal },
   );
 
-  return {
+  const api: ReviewUi = {
     fill,
     refresh() {
       for (const [slot, entry] of slots) {
@@ -166,4 +173,5 @@ export function createReviewUi(options: ReviewUiOptions): ReviewUi {
       slots.clear();
     },
   };
+  return api;
 }
