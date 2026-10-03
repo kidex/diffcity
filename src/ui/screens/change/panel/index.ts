@@ -58,6 +58,7 @@ export function createPanel(options: PanelOptions, first: Report): Panel {
   let view: FileViewRender | null = null;
   let tabScroll = 0;
   let fileScroll = 0;
+  let scrollFrame: number | undefined;
 
   const title = h('h2', null, 'Reading path');
   const summary = h('p', { 'data-testid': 'panel-summary' });
@@ -140,10 +141,22 @@ export function createPanel(options: PanelOptions, first: Report): Panel {
       view.area.dataset['focusSymbol'] = focus ?? '';
       for (const excerpt of view.excerpts) excerpt.root.classList.toggle('focus', focus !== null && excerpt.symbolId === focus);
     }
-    if (scrollTo && view === null) {
+    if (scrollTo) scheduleScroll();
+  }
+
+  /**
+   * Brings the current card into view in the tabs, on the next frame: a click
+   * that opens the file view selects first, and the tabs must keep the scroll
+   * position they had when it opened.
+   */
+  function scheduleScroll(): void {
+    if (scrollFrame !== undefined) return;
+    scrollFrame = requestAnimationFrame(() => {
+      scrollFrame = undefined;
+      if (view !== null || scroll.hidden) return;
       const current = scroll.querySelector<HTMLElement>('.step.on, .sym-row.on');
       current?.scrollIntoView({ block: 'nearest', behavior: options.reducedMotion ? 'auto' : 'smooth' });
-    }
+    });
   }
 
   function showTab(next: TabId): void {
@@ -241,6 +254,7 @@ export function createPanel(options: PanelOptions, first: Report): Panel {
     open: openFile,
     dispose() {
       document.removeEventListener('keydown', onKey);
+      if (scrollFrame !== undefined) cancelAnimationFrame(scrollFrame);
       root.remove();
     },
   };
