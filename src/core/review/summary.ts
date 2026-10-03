@@ -46,7 +46,7 @@ function oneLine(text: string): string {
  */
 function escapeLine(line: string): string {
   return line
-    .replace(/^(\s*)([#>+*=~`<|_-])/, '$1\\$2')
+    .replace(/^(\s*)([#>+*=~`<|_\\-])/, '$1\\$2')
     .replace(/^(\s*\d+)([.)])/, '$1\\$2');
 }
 
