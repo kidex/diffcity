@@ -1,6 +1,7 @@
 // Playwright Test (ADR-023). Two projects by default:
 // - screens: the UI against a mocked API (page.route + JSON fixtures), served
-//   by a test-only static server; video, trace and screenshot kept on failure;
+//   by a test-only static server; trace and screenshot kept on failure, video
+//   too outside CI; CI shards it over parallel jobs (--shard, .github/workflows/ci.yml);
 // - acceptance: each spec starts its own daemon in a fresh temporary home,
 //   one worker so timed specs never share the machine with each other; CI
 //   runs it alone, after the screens (.github/workflows/ci.yml).
@@ -67,7 +68,9 @@ const defaultProjects: Project[] = [
   {
     name: 'screens',
     testDir: './e2e/screens',
-    use: { ...browser, baseURL: `http://127.0.0.1:${String(PORT)}` },
+    // CI keeps traces and screenshots of a failure but records no video: the
+    // recorder shares the runner's CPU with the SwiftShader frame loop.
+    use: { ...browser, baseURL: `http://127.0.0.1:${String(PORT)}`, ...(CI ? { video: 'off' as const } : {}) },
   },
   {
     name: 'acceptance',
