@@ -49,8 +49,8 @@ export interface DiffView {
    * Report's `generatedAt`) moved; another file is loaded from scratch.
    */
   show(mount: HTMLElement, path: string, symbolId: string | null, generation: string): void;
-  /** The symbol the reading panel focused: the view scrolls to its lines. */
-  focus(symbolId: string | null): void;
+  /** The symbol the reading panel focused: the view scrolls to its lines. `again` scrolls back to a symbol that was already focused (a click on its floor). */
+  focus(symbolId: string | null, again?: boolean): void;
   /** The city's pointer is over this symbol's floor (null: none): its lines are lit. */
   hoverSymbol(symbolId: string | null): void;
   /** The selected line range, for the review marks. */
@@ -81,6 +81,7 @@ export function createDiffView(options: DiffViewOptions): DiffView {
   const viewport = h('div', { class: 'dv-viewport', tabindex: 0, role: 'region', 'data-testid': 'diff-viewport' }, content);
   const root = h('div', { class: 'dv', 'data-testid': 'diff-view' }, bar, stale, note, slot, viewport);
   root.style.setProperty('--dv-row', `${String(ROW_HEIGHT)}px`);
+  root.dataset['range'] = '';
 
   // ---------- state ----------
   let attached = false;
@@ -106,6 +107,8 @@ export function createDiffView(options: DiffViewOptions): DiffView {
   /** The scroll offset the code last set, so its own scroll events are not read as the reader's. */
   let expectedTop = -1;
   let lastTop = 0;
+  /** The reader scrolled since the last jump to a hunk. */
+  let moved = false;
   const mounted = new Map<number, HTMLElement>();
   
   const viewportHeight = (): number => viewport.clientHeight || FALLBACK_HEIGHT;
@@ -333,10 +336,18 @@ export function createDiffView(options: DiffViewOptions): DiffView {
 
   function step(direction: 'next' | 'prev'): void {
     if (!showsRows()) return;
+    if (moved) {
+      // The reader scrolled since the last jump: go on from the hunk at the top of the viewport.
+      const top = itemRows(items, Math.min(items.list.length - 1, Math.floor(viewport.scrollTop / ROW_HEIGHT))).first;
+      const reading = hunkAtRow(hunks, top + LEAD);
+      hunkIndex = reading < 0 && direction === 'prev' ? 1 : reading;
+      moved = false;
+    }
     const to = stepHunk(hunkIndex, hunks.length, direction);
     const hunk = hunks[to];
     if (hunk === undefined) return;
     hunkIndex = to;
+    moved = false;
     updateBar();
     reveal(hunk.first);
   }
@@ -416,13 +427,7 @@ export function createDiffView(options: DiffViewOptions): DiffView {
     }
     expectedTop = -1;
     lastTop = viewport.scrollTop;
-    // The reader moved: the counter follows what is at the top.
-    const top = itemRows(items, Math.min(items.list.length - 1, Math.floor(viewport.scrollTop / ROW_HEIGHT))).first;
-    const reading = hunkAtRow(hunks, top + LEAD);
-    if (reading !== hunkIndex) {
-      hunkIndex = reading;
-      updateBar();
-    }
+    moved = true;
     render();
   });
 
@@ -483,8 +488,8 @@ export function createDiffView(options: DiffViewOptions): DiffView {
       focusId = symbolId;
       load(false);
     },
-    focus(symbolId) {
-      if (symbolId === focusId) return;
+    focus(symbolId, again = false) {
+      if (symbolId === focusId && !(again && symbolId !== null)) return;
       focusId = symbolId;
       if (diff !== null && showsRows()) applyFocus(true);
     },

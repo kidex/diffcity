@@ -211,8 +211,11 @@ export function createPanel(options: PanelOptions, first: Report): Panel {
     scroll.hidden = true;
     header.hidden = true;
     fileRoot.hidden = false;
-    if (same) markCurrent();
-    else {
+    if (same) {
+      markCurrent();
+      // A click on a floor of the open file: the diff goes back to it.
+      if (symbolId !== null) diffView?.focus(symbolId, true);
+    } else {
       renderFile();
       if (view !== null) view.scroll.scrollTop = 0;
     }
