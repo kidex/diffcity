@@ -142,6 +142,51 @@ describe('daemon process', () => {
     );
   });
 
+  describe('the startup pause seam (DC-56)', () => {
+    it.each([{ label: 'unset', extra: {} }, { label: '0', extra: { DIFFCITY_TEST: '0' } }])(
+      'daemon/pause-seam-guarded: DIFFCITY_TEST=$label ignores DIFFCITY_TEST_PAUSE_AT',
+      async ({ extra }) => {
+        const spawned = daemons.spawnDaemon({ ...temp.env, ...extra, DIFFCITY_TEST_PAUSE_AT: 'begin' });
+        const info = await ready();
+        expect(info.pid).toBe(spawned.child.pid);
+        expect(spawned.stdout()).not.toContain('paused');
+        expect(await sendRequest(info.socket, { v: 1, type: 'ping' })).toMatchObject({ ok: true });
+      },
+    );
+  });
+
+  it('daemon/signal-while-waiting: a second daemon waiting for the lock owner exits 0 on SIGINT and leaves the first daemon alone', async () => {
+    const first = daemons.spawnDaemon(temp.env);
+    const info = await ready();
+    const lockBefore = await readFile(paths.lock, 'utf8');
+    const socketBefore = await stat(info.socket);
+    // With daemon.json hidden the lock owner does not look like a running
+    // daemon, so the second one waits in waitForDaemon.
+    const infoText = await readFile(paths.daemonJson, 'utf8');
+    await rm(paths.daemonJson);
+    const second = daemons.spawnDaemon(temp.env);
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+    expect(second.child.exitCode, 'the second daemon is still waiting').toBeNull();
+    expect(second.stdout()).not.toContain('already running');
+    const started = Date.now();
+    second.child.kill('SIGINT');
+    expect(await second.exited).toBe(0);
+    expect(Date.now() - started).toBeLessThan(3000);
+    // The first daemon's files are untouched: the second did not write or remove any.
+    expect(await gone(paths.daemonJson)).toBe(true);
+    expect(await readFile(paths.lock, 'utf8')).toBe(lockBefore);
+    const socketAfter = await stat(info.socket);
+    expect(socketAfter.ino).toBe(socketBefore.ino);
+    expect(first.child.exitCode).toBeNull();
+    expect(isProcessAlive(info.pid)).toBe(true);
+    await writeFile(paths.daemonJson, infoText);
+    expect(await sendRequest(info.socket, { v: 1, type: 'ping' })).toMatchObject({ ok: true });
+    const response = await fetch(`http://127.0.0.1:${String(info.port)}/api/health`);
+    expect(response.status).toBe(200);
+    expect(((await response.json()) as HealthResponse).pid).toBe(info.pid);
+    expect(await readDaemonInfo(paths)).toEqual(info);
+  });
+
   it('daemon/shutdown-cleans-files: repeated SIGINTs right after daemon.json never hit the default action', async () => {
     // DIFFCITY_TEST_LOOP raises the count for a soak run.
     const runs = Number(process.env.DIFFCITY_TEST_LOOP ?? 10);
