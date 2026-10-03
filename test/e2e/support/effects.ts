@@ -152,11 +152,6 @@ export function marksFor(report: Report): { files: Record<string, string>; symbo
   };
 }
 
-/** Sets the marks the page's city is opened with (the `?scene-debug` hook). Call before `page.goto`. */
-export async function openWithMarks(page: Page, marks: unknown): Promise<void> {
-  await page.addInitScript(`window.diffcityMarks = ${JSON.stringify(marks)};`);
-}
-
 /**
  * Makes the page report `hidden` for `document.visibilityState` and tells it,
  * as a browser does when the tab goes away or comes back.

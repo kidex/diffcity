@@ -7,6 +7,8 @@ import { fileURLToPath } from 'node:url';
 import type { Page, Route } from '@playwright/test';
 import type { ApiError, ChangeSummary, FileDiff, RepoDetail, RepoSummary, SearchResult } from '../../../src/core/model/types.js';
 import type { Report } from '../../../src/core/report/types.js';
+import type { ReviewMock, ReviewSeed } from './review-api.js';
+import { answerReview, createReviewMock } from './review-api.js';
 
 const fixturesDir = fileURLToPath(new URL('../../fixtures/ui/', import.meta.url));
 
@@ -55,12 +57,16 @@ export interface ApiData {
   search: (query: string) => SearchResult[];
   /** The answer of `GET /api/changes/:id/diff`; the default says `unavailable`. May wait: the response is held until it settles. */
   diff: (request: DiffRequest) => DiffReply | Promise<DiffReply>;
+  /** The review marks every change starts with (ADR-028); the default is none. The routes keep the state: see `MockedApi.review`. */
+  review: ReviewSeed;
 }
 
 export interface MockedApi {
   /** Every mocked request, in order. */
   readonly requests: URL[];
   count(pathname: string): number;
+  /** The review state of a change (marks, note, writes made, hooks to fail or hold a write), created on first use. */
+  review(changeId: number): ReviewMock;
 }
 
 export function defaultApiData(): ApiData {
@@ -71,6 +77,7 @@ export function defaultApiData(): ApiData {
     archived: { 1: fixtures.repoArchived() },
     reports: { 11: fixtures.reportOrderDiscounts() },
     search: () => results,
+    review: {},
     diff: ({ path }) => ({
       snapshotId: 1,
       head: 'aaaaaaa',
@@ -91,6 +98,15 @@ export async function mockApi(page: Page, overrides: Partial<ApiData> = {}): Pro
   const data = { ...defaultApiData(), ...overrides };
   const requests: URL[] = [];
   let diffCalls = 0;
+  const reviews = new Map<number, ReviewMock>();
+  const review = (changeId: number): ReviewMock => {
+    let mock = reviews.get(changeId);
+    if (mock === undefined) {
+      mock = createReviewMock({ ...data.review, marks: [...(data.review.marks ?? [])] });
+      reviews.set(changeId, mock);
+    }
+    return mock;
+  };
 
   const answer = async (route: Route, body: unknown, status = 200): Promise<void> => {
     await route.fulfill({ status, json: body });
@@ -126,6 +142,10 @@ export async function mockApi(page: Page, overrides: Partial<ApiData> = {}): Pro
         const report = data.reports[Number(match[1])];
         return report ? answer(route, report) : answer(route, { error: { code: 'no-snapshot', message: 'no snapshot yet' } }, 404);
       }
+      if ((match = /^\/api\/changes\/(\d+)\/review(\/.*)?$/.exec(path))) {
+        const id = Number(match[1]);
+        return answerReview(route, review(id), data.reports[id], match[2] ?? '');
+      }
       if ((match = /^\/api\/changes\/(\d+)\/diff$/.exec(path))) {
         const reply = await data.diff({ changeId: Number(match[1]), path: url.searchParams.get('path') ?? '', symbol: url.searchParams.get('symbol'), call: diffCalls++ });
         // A held request the page gave up on (an aborted fetch) cannot be answered any more.
@@ -145,5 +165,6 @@ export async function mockApi(page: Page, overrides: Partial<ApiData> = {}): Pro
   return {
     requests,
     count: (pathname) => requests.filter((url) => url.pathname === pathname).length,
+    review,
   };
 }

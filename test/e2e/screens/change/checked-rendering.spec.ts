@@ -1,14 +1,15 @@
 // e2e/change/checked-rendering (ADR-026, DC-50, ADR-028): review marks change
-// what is drawn. The ReviewPort is wired in a later task, so the page hands the
-// scene a fake overlay through the `?scene-debug` hook (window.diffcityMarks).
+// what is drawn. The marks come through the ReviewPort from the mock API's
+// review routes, seeded here.
 // A marked floor stops pulsing and its strip drops to 0.35x with the glass at
 // 0.6; a checked file gets a check mark on the roof (so does one whose changed floors are all checked); "needs rewrite" gets a
 // notch on the floor and a plate on the roof; an outdated mark looks unchecked.
 
 import { test } from '@playwright/test';
-import { DTO, effects, effectsReport, floorIndex, openWithMarks, symbolId } from '../../support/effects.js';
+import { DTO, effects, effectsReport, floorIndex, symbolId } from '../../support/effects.js';
 import { GUARD, MIGRATION, SERVICE } from '../../support/hud.js';
 import { mockApi } from '../../support/mock-api.js';
+import { marksFromOverlay } from '../../support/review-api.js';
 import { openCity, sceneExpect as expect } from '../../support/scene.js';
 
 test.describe.configure({ timeout: 90_000 });
@@ -17,8 +18,7 @@ test('change/checked-rendering', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'no-preference' });
   const report = effectsReport();
   const calcTotal = floorIndex(report, SERVICE, 'OrdersService.calcTotal');
-  await mockApi(page, { reports: { 11: report } });
-  await openWithMarks(page, {
+  const overlay = {
     // The whole migration is looked over: no pulse, a check mark on its roof, a half-strength outline.
     files: { [MIGRATION]: 'good' },
     symbols: {
@@ -29,7 +29,8 @@ test('change/checked-rendering', async ({ page }) => {
       // An outdated mark looks unchecked: the floor still pulses.
       [symbolId(report, DTO, 'CreateOrderDto.from')]: 'outdated',
     },
-  });
+  };
+  await mockApi(page, { reports: { 11: report }, review: { marks: marksFromOverlay(report, overlay) } });
   await openCity(page);
 
   const state = await effects(page);
