@@ -1,0 +1,158 @@
+// One review session end to end on a real in-process daemon and a real git
+// repository (ADR-028): mark, edit the working tree, watch the mark go
+// outdated and the progress drop, leave a rewrite note, read it in the
+// summary, delete it, and fail a cross-site write.
+
+import { describe, expect, it } from 'vitest';
+import type { ReviewMark, ReviewProgress } from '../../../src/core/model/types.js';
+import type { Report } from '../../../src/core/report/types.js';
+import { waitFor } from '../../helpers/daemon.js';
+import { isolateGitConfig } from '../../helpers/git-env.js';
+import { call } from '../../helpers/review-api.js';
+import { cleanupAfterEach, ghNotInstalled, sampleRepo, startTestDaemon } from './collect-helpers.js';
+
+isolateGitConfig();
+cleanupAfterEach();
+
+const TOTAL_EDIT_1 = 'export function total(items: number[]): number {\n  return items.reduce((a, b) => a + b, 0);\n}\n';
+// One more line: the Report changes, so the draft stores a new snapshot.
+const TOTAL_EDIT_2 = 'export function total(items: number[]): number {\n  const sum = items.reduce((a, b) => a + b, 0);\n  return sum;\n}\n';
+const TAX = 'export function tax(amount: number): number {\n  return amount * 0.2;\n}\n';
+
+interface ReviewBody {
+  snapshotId: number;
+  marks: ReviewMark[];
+  progress: ReviewProgress;
+}
+
+describe('review session on a working-tree change', () => {
+  it('mark -> progress -> edit -> outdated -> rewrite note -> summary -> delete, and a cross-site write changes nothing', async () => {
+    const repo = await sampleRepo();
+    await repo.write({ 'src/cart/total.ts': TOTAL_EDIT_1, 'src/cart/tax.ts': TAX });
+    const test = await startTestDaemon({ gh: ghNotInstalled() }, { api: true });
+    const tracked = await test.track(repo.dir);
+    if (!tracked.ok) throw new Error(tracked.error);
+    await test.idle();
+
+    const db = test.collection.db();
+    const port = test.daemon.info.port;
+    const change = db.changes.listLive(tracked.repo.id).find((c) => c.kind === 'draft');
+    if (change === undefined) throw new Error('draft not collected');
+    const path = (rest = ''): string => `/api/changes/${String(change.id)}/review${rest}`;
+    const read = async (): Promise<ReviewBody> => (await call(port, 'GET', path())).json() as ReviewBody;
+    const report = (): Report => {
+      const snapshot = db.snapshots.latest(change.id);
+      if (snapshot === null) throw new Error('no snapshot');
+      return JSON.parse(snapshot.report) as Report;
+    };
+    const fileOf = (name: string) => {
+      const found = report().packages.flatMap((p) => p.files).find((f) => f.path === name);
+      if (found === undefined) throw new Error(`${name} not in the report`);
+      return found;
+    };
+    const put = (snapshotId: number, body: object) => call(port, 'PUT', path('/marks'), { body: { snapshotId, ...body } });
+
+    // 1. A `checked` file mark counts in the progress.
+    const before = await read();
+    expect(before.marks).toEqual([]);
+    expect(before.progress.touched.done).toBe(0);
+    const total = before.progress.touched.total;
+    expect(total).toBe(2);
+    const checked = await put(before.snapshotId, { target: { kind: 'file', id: fileOf('src/cart/total.ts').id }, mark: 'checked' });
+    expect(checked.status).toBe(200);
+    expect((await read()).progress.touched).toEqual({ done: 1, total });
+    expect((await read()).progress.outdated).toBe(0);
+
+    // 2. An edit in the working tree, then a collect: the mark is outdated, the progress drops.
+    await repo.write({ 'src/cart/total.ts': TOTAL_EDIT_2 });
+    const again = await test.track(repo.dir);
+    if (!again.ok) throw new Error(again.error);
+    const firstHash = db.snapshots.latest(change.id)?.contentHash;
+    await waitFor(() => db.snapshots.latest(change.id)?.contentHash !== firstHash, 20_000, 'the snapshot of the edited tree');
+    await test.idle();
+    const outdated = await read();
+    // A draft's snapshot is replaced in place, so the id may stay.
+    expect(outdated.marks.map((m) => [m.filePath, m.mark, m.state])).toEqual([['src/cart/total.ts', 'checked', 'outdated']]);
+    expect(outdated.progress.touched).toEqual({ done: 0, total });
+    expect(outdated.progress.outdated).toBe(1);
+
+    // 3. A rewrite mark on a symbol with a note and lines shows in the summary under its file.
+    const totalFile = fileOf('src/cart/total.ts');
+    const symbol = totalFile.symbols.find((s) => s.name === 'total');
+    if (symbol === undefined) throw new Error('symbol total missing');
+    const rewrite = await put(outdated.snapshotId, {
+      target: { kind: 'symbol', id: symbol.id },
+      mark: 'rewrite',
+      note: 'Start the sum from zero.',
+      lines: { side: 'new', start: 2, end: 2 },
+    });
+    expect(rewrite.status).toBe(200);
+    const summary = await call(port, 'GET', path('/summary'));
+    expect(summary.status).toBe(200);
+    expect(summary.text).toContain('## Needs rewrite (1)');
+    expect(summary.text).toContain('### src/cart/total.ts\n- `total`, lines 2–2: Start the sum from zero.\n');
+    expect(summary.text).not.toContain('src/cart/tax.ts');
+
+    // 4. A cross-site write is refused and changes nothing.
+    const snapshotNow = (await read()).snapshotId;
+    const marksNow = JSON.stringify((await read()).marks);
+    const foreign = await call(port, 'PUT', path('/marks'), {
+      headers: { origin: 'https://evil.example', 'sec-fetch-site': 'cross-site', 'content-type': 'application/json' },
+      body: { snapshotId: snapshotNow, target: { kind: 'file', id: fileOf('src/cart/tax.ts').id }, mark: 'good' },
+    });
+    expect(foreign.status).toBe(403);
+    expect(JSON.stringify((await read()).marks)).toBe(marksNow);
+    const foreignDelete = await call(port, 'DELETE', `${path('/marks')}?kind=symbol&id=${encodeURIComponent(symbol.id)}`, {
+      headers: { origin: 'https://evil.example', 'sec-fetch-site': 'cross-site' },
+    });
+    expect(foreignDelete.status).toBe(403);
+    expect(JSON.stringify((await read()).marks)).toBe(marksNow);
+
+    // 5. A same-site DELETE removes the rewrite mark and the summary forgets it.
+    const del = await call(port, 'DELETE', `${path('/marks')}?kind=symbol&id=${encodeURIComponent(symbol.id)}`);
+    expect(del.status).toBe(204);
+    expect((await read()).marks.map((m) => m.mark)).toEqual(['checked']);
+    const empty = await call(port, 'GET', path('/summary'));
+    expect(empty.text).toContain('## Needs rewrite (0)');
+    expect(empty.text).not.toContain('Start the sum from zero.');
+  });
+});
+
+describe('review session: an edit that leaves the Report as it was', () => {
+  // KNOWN DEFECT (Jira Bug linked to DC-73): the snapshot's content hash covers the
+  // Report only, so a working-tree edit that changes bytes but not the Report (same
+  // statuses, ranges and counts) is stored as `unchanged` and its marks are never
+  // reconciled. ADR-028 wants the mark outdated, because its fingerprint differs.
+  // `it.fails` turns red once the defect is fixed: switch it to `it` then.
+  it.fails('a body edit with an identical Report still outdates the file mark', async () => {
+    const repo = await sampleRepo();
+    await repo.write({ 'src/cart/total.ts': TOTAL_EDIT_1 });
+    const test = await startTestDaemon({ gh: ghNotInstalled() }, { api: true });
+    const tracked = await test.track(repo.dir);
+    if (!tracked.ok) throw new Error(tracked.error);
+    await test.idle();
+    const db = test.collection.db();
+    const port = test.daemon.info.port;
+    const change = db.changes.listLive(tracked.repo.id).find((c) => c.kind === 'draft');
+    if (change === undefined) throw new Error('draft not collected');
+    const snapshot = db.snapshots.latest(change.id);
+    if (snapshot === null) throw new Error('no snapshot');
+    const report = JSON.parse(snapshot.report) as Report;
+    const file = report.packages.flatMap((p) => p.files).find((f) => f.path === 'src/cart/total.ts');
+    if (file === undefined) throw new Error('total.ts not in the report');
+    const marked = await call(port, 'PUT', `/api/changes/${String(change.id)}/review/marks`, {
+      body: { snapshotId: snapshot.id, target: { kind: 'file', id: file.id }, mark: 'checked' },
+    });
+    expect(marked.status).toBe(200);
+
+    // Same length, same statuses: only the literal changes.
+    await repo.write({ 'src/cart/total.ts': TOTAL_EDIT_1.replace('0)', '1)') });
+    const again = await test.track(repo.dir);
+    if (!again.ok) throw new Error(again.error);
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+    await test.idle();
+
+    const body = (await call(port, 'GET', `/api/changes/${String(change.id)}/review`)).json() as { marks: ReviewMark[] };
+    expect(body.marks.map((m) => m.state)).toEqual(['outdated']);
+  });
+});

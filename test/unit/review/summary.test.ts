@@ -166,6 +166,84 @@ describe('summary/note-cannot-break-structure', () => {
     expect(quoted).not.toMatch(/^> (```|~~~|<|---|===|>|-|\*|\+|\d+\.|\||___)/);
   });
 
+  // Lines of a note that stress indentation, blank handling and the escape itself.
+  const HOSTILE_LINES = [
+    ...NASTY,
+    '\t# tab heading',
+    '\t- tab list',
+    '\t```',
+    '   ',
+    '\t',
+    '',
+    '\\# backslash heading',
+    '\\',
+    '\\\\ double backslash',
+    '  ## indented heading',
+  ];
+  const BLOCK_START = /^(?:[#>+*=~`<|_-]|\d+[.)])/;
+
+  it.each(HOSTILE_LINES)('a note line %j is text in bullet continuation lines and in the quote', (nasty) => {
+    const note = `before\n${nasty}\nafter`;
+    const text = renderSummary({
+      ...base,
+      note,
+      report: sampleReport(),
+      marks: [mark('symbol', 's-total', { note }), mark('file', 'f-tax', { note })],
+    });
+    const lines = text.split('\n');
+    let continuations = 0;
+    let quotes = 0;
+    let inBullet = false;
+    for (const line of lines) {
+      if (line.startsWith('- ')) {
+        inBullet = true;
+        continue;
+      }
+      if (line === '' || line.startsWith('#')) {
+        inBullet = false;
+        continue;
+      }
+      // After a bullet, every line up to the next blank one is a continuation and keeps its 2-space indent.
+      if (inBullet) {
+        expect(line.startsWith('  '), `continuation ${JSON.stringify(line)} is indented`).toBe(true);
+        const body = line.slice(2).trimStart();
+        expect(BLOCK_START.test(body), `continuation ${JSON.stringify(line)} starts no block`).toBe(false);
+        continuations += 1;
+      } else if (line.startsWith('>')) {
+        expect(line.startsWith('> '), `quote ${JSON.stringify(line)}`).toBe(true);
+        const body = line.slice(2).trimStart();
+        expect(BLOCK_START.test(body), `quote ${JSON.stringify(line)} starts no block`).toBe(false);
+        quotes += 1;
+      } else {
+        throw new Error(`stray line ${JSON.stringify(line)}`);
+      }
+    }
+    // before / nasty / after on two bullets (2 continuation lines each), and on the quote (3 lines).
+    expect(continuations).toBe(4);
+    expect(quotes).toBe(3);
+    // The note never merges into or removes a section.
+    expect(lines.filter((line) => line.startsWith('### '))).toEqual(['### src/cart/total.ts', '### src/cart/tax.ts']);
+    expect(lines.filter((line) => line.startsWith('## '))).toEqual(['## Needs rewrite (2)']);
+  });
+
+  it('a leading backslash is itself escaped, in bullets and in the quote', () => {
+    const note = 'x\n\\# not escaped by the author\n\t\\y';
+    const text = renderSummary({ ...base, note, report: sampleReport(), marks: [mark('symbol', 's-total', { note })] });
+    const lines = text.split('\n');
+    expect(lines).toContain('  \\\\# not escaped by the author');
+    expect(lines).toContain('  \t\\\\y');
+    expect(lines).toContain('> \\\\# not escaped by the author');
+    expect(lines).toContain('> \t\\\\y');
+  });
+
+  it('empty and whitespace-only note lines keep the bullet together, with no empty line inside it', () => {
+    const note = 'a\n\n   \n\t\nb';
+    const text = renderSummary({ ...base, note: null, report: sampleReport(), marks: [mark('symbol', 's-total', { note })] });
+    const lines = text.split('\n');
+    const start = lines.indexOf('- `total`: a');
+    expect(lines.slice(start, start + 5)).toEqual(['- `total`: a', '  ', '     ', '  \t', '  b']);
+  });
+
   it('a header field with line breaks stays one line', () => {
     const text = renderSummary({ ...base, ref: 'branch:x\n## Evil', note: null, report: sampleReport(), marks: [] });
     expect(text.split('\n')[0]).toBe('# Review of branch:x ## Evil in sample-shop (head abcdef0)');
