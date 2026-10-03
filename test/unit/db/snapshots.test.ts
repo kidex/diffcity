@@ -126,12 +126,60 @@ describe('snapshots', () => {
     expect(() => db.snapshots.put(snapshotInput(9999, change.head))).toThrow(/FOREIGN KEY constraint failed/);
     expect(rowCount()).toBe(0);
   });
+});
 
-  it('an unchanged put (same content hash) leaves mergeBase and fingerprints as stored (ADR-028)', () => {
-    db.snapshots.put(snapshotInput(change.id, change.head, { fingerprints: '{"files":{},"symbols":{}}' }));
-    const result = db.snapshots.put(snapshotInput(change.id, change.head, { fingerprints: '{"files":{"a":{"before":null,"after":"x"}},"symbols":{}}', mergeBase: 'd'.repeat(40) }));
-    expect(result).toBe('unchanged');
-    expect(db.snapshots.latestFingerprints(change.id)).toBe('{"files":{},"symbols":{}}');
-    expect(db.snapshots.latest(change.id)?.mergeBase).toBe('c'.repeat(40));
+describe('snapshots: refreshed', () => {
+  const fp = (after: string): string => JSON.stringify({ files: { 'f-a': { before: 'b', after } }, symbols: {} });
+
+  it('snapshots/put-refreshed-same-report-new-fingerprints: same Report hash, other fingerprints: the latest row takes them in place', () => {
+    const first = snapshotInput(change.id, change.head, { contentHash: 'h1', fingerprints: fp('A'), mergeBase: 'a'.repeat(40) });
+    expect(db.snapshots.put(first)).toBe('created');
+    const before = db.snapshots.latest(change.id);
+
+    const again = { ...first, fingerprints: fp('B'), mergeBase: 'b'.repeat(40), computedAt: daysAfter(T0, 1), report: '{"meta":{"ignored":true}}' };
+    expect(db.snapshots.put(again)).toBe('refreshed');
+
+    expect(rowCount()).toBe(1);
+    const after = db.snapshots.latest(change.id);
+    expect(after).toEqual({ ...before, fingerprints: fp('B'), mergeBase: 'b'.repeat(40) });
+    expect(after?.contentHash).toBe('h1');
+    expect(after?.report).toBe(before?.report);
+    expect(after?.computedAt).toBe(before?.computedAt);
+    // Now identical to the stored fingerprints: nothing more to do.
+    expect(db.snapshots.put(again)).toBe('unchanged');
+  });
+
+  it('snapshots/put-unchanged-same-report-same-fingerprints: identical hash and fingerprints stay unchanged, whatever the key order', () => {
+    const input = snapshotInput(change.id, change.head, {
+      contentHash: 'h1',
+      fingerprints: '{"files":{"a":{"before":"1","after":"2"},"b":{"before":null,"after":"3"}},"symbols":{"s":"x","t":"y"}}',
+    });
+    db.snapshots.put(input);
+    const reordered = '{"symbols":{"t":"y","s":"x"},"files":{"b":{"after":"3","before":null},"a":{"after":"2","before":"1"}}}';
+    expect(db.snapshots.put({ ...input, fingerprints: reordered, computedAt: daysAfter(T0, 1) })).toBe('unchanged');
+    expect(db.snapshots.latest(change.id)?.computedAt).toBe(T0);
+  });
+
+  it('a row written before schema v2 (no fingerprints) is refreshed by the first put with fingerprints', () => {
+    const old = snapshotInput(change.id, change.head, { contentHash: 'h1', fingerprints: null, mergeBase: null });
+    db.snapshots.put(old);
+    expect(db.snapshots.put({ ...old, fingerprints: fp('A'), mergeBase: 'c'.repeat(40) })).toBe('refreshed');
+    expect(db.snapshots.latestFingerprints(change.id)).toBe(fp('A'));
+  });
+
+  it('a merge-base-only difference is stored quietly and stays unchanged', () => {
+    const input = snapshotInput(change.id, change.head, { contentHash: 'h1', fingerprints: fp('A'), mergeBase: null });
+    db.snapshots.put(input);
+    expect(db.snapshots.put({ ...input, mergeBase: 'd'.repeat(40) })).toBe('unchanged');
+    expect(db.snapshots.latest(change.id)?.mergeBase).toBe('d'.repeat(40));
+  });
+
+  it('snapshots/put-a-b-a-writes-fingerprints: a return to an older head with the same Report takes the fresh fingerprints and merge-base', () => {
+    const a = snapshotInput(change.id, change.head, { contentHash: 'h1', fingerprints: fp('A') });
+    db.snapshots.put(a);
+    db.snapshots.put(snapshotInput(change.id, sha(), { contentHash: 'h2', computedAt: daysAfter(T0, 1) }));
+    expect(db.snapshots.put({ ...a, fingerprints: fp('Z'), mergeBase: 'e'.repeat(40), computedAt: daysAfter(T0, 2) })).toBe('replaced');
+    expect(db.snapshots.latest(change.id)).toMatchObject({ fingerprints: fp('Z'), mergeBase: 'e'.repeat(40) });
   });
 });
+

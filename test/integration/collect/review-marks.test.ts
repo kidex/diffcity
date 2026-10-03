@@ -102,3 +102,60 @@ describe('sse/review-after-snapshot', () => {
     expect(names()).toHaveLength(4);
   });
 });
+
+/** A draft with a marked file, then a same-length edit that leaves the Report as it was (DC-74). */
+async function refreshedEdit() {
+  const repo = await sampleRepo();
+  const body = (n: number): string => `export function total(items: number[]): number {\n  return items.reduce((a, b) => a + b, ${String(n)});\n}\n`;
+  await repo.write({ 'src/cart/total.ts': body(0) });
+  const test = await startTestDaemon({ gh: ghNotInstalled() }, { api: true });
+  const tracked = await test.track(repo.dir);
+  if (!tracked.ok) throw new Error(tracked.error);
+  await test.idle();
+  const db = test.collection.db();
+  const change = db.changes.listLive(tracked.repo.id).find((c) => c.kind === 'draft');
+  if (change === undefined) throw new Error('draft not collected');
+  const first = db.snapshots.latest(change.id);
+  if (first === null) throw new Error('no snapshot');
+  const file = (JSON.parse(first.report) as Report).packages.flatMap((p) => p.files).find((f) => f.path === 'src/cart/total.ts');
+  if (file === undefined) throw new Error('total.ts missing');
+  const marked = await call(test.daemon.info.port, 'PUT', `/api/changes/${String(change.id)}/review/marks`, {
+    body: { snapshotId: first.id, target: { kind: 'file', id: file.id }, mark: 'checked' },
+  });
+  expect(marked.status).toBe(200);
+  db.changes.applyPlan(tracked.repo.id, { create: [], update: [{ id: change.id, reviewState: 'approved' }], archive: [] }, new Date().toISOString());
+  const collects = (): number => db.events.listForRepo(tracked.repo.id).filter((e) => e.type === 'collect' && e.changeId === change.id).length;
+  // The mark's own SSE signals arrive first; count from after them.
+  await waitFor(() => test.events().some((e) => e.event === 'review'), 5000, 'the review signal of the mark');
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  const before = { collects: collects(), signals: test.events().length };
+
+  await repo.write({ 'src/cart/total.ts': body(1) });
+  const again = await test.track(repo.dir);
+  if (!again.ok) throw new Error(again.error);
+  await waitFor(() => db.review.list(change.id)[0]?.state === 'outdated', 15_000, 'the mark to turn outdated');
+  await test.idle();
+  return { test, db, change, first, repoId: tracked.repo.id, collects, before };
+}
+
+describe('collect/refreshed-outdates-checked-mark', () => {
+  it('bytes changing under an identical Report: the mark is outdated, the snapshot row is the same row, approved resets, no collect event row', async () => {
+    const { db, change, first, collects, before } = await refreshedEdit();
+    const after = db.snapshots.latest(change.id);
+    expect(after).toMatchObject({ id: first.id, contentHash: first.contentHash, report: first.report });
+    expect(after?.fingerprints).not.toBe(first.fingerprints);
+    expect(collects()).toBe(before.collects);
+    expect(db.changes.get(change.id)?.reviewState).toBe('unreviewed');
+    expect(db.review.list(change.id)[0]).toMatchObject({ state: 'outdated' });
+  });
+});
+
+describe('sse/refreshed-emits-review-not-snapshot', () => {
+  it('a refreshed put sends review for the change and no snapshot', async () => {
+    const { test, change, repoId, before } = await refreshedEdit();
+    const signals = test.events().slice(before.signals).filter((e) => e.event === 'snapshot' || e.event === 'review');
+    expect(signals.map((e) => e.event)).toEqual(['review']);
+    expect(signals[0]?.data).toEqual({ repoId, changeId: change.id });
+  });
+});
+

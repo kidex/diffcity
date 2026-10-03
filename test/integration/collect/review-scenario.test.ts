@@ -119,12 +119,9 @@ describe('review session on a working-tree change', () => {
 });
 
 describe('review session: an edit that leaves the Report as it was', () => {
-  // KNOWN DEFECT (Jira Bug linked to DC-73): the snapshot's content hash covers the
-  // Report only, so a working-tree edit that changes bytes but not the Report (same
-  // statuses, ranges and counts) is stored as `unchanged` and its marks are never
-  // reconciled. ADR-028 wants the mark outdated, because its fingerprint differs.
-  // `it.fails` turns red once the defect is fixed: switch it to `it` then.
-  it.fails('a body edit with an identical Report still outdates the file mark', async () => {
+  // The snapshot's content hash covers the Report only: bytes can change under an
+  // identical Report. The put is then `refreshed` (DC-74) and the marks are reconciled.
+  it('a body edit with an identical Report still outdates the file mark', async () => {
     const repo = await sampleRepo();
     await repo.write({ 'src/cart/total.ts': TOTAL_EDIT_1 });
     const test = await startTestDaemon({ gh: ghNotInstalled() }, { api: true });

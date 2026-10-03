@@ -100,7 +100,7 @@ describe('review stored in a database', () => {
     const snapshot = snapshotInput(changeId, 'a'.repeat(40), { contentHash: 'h1', fingerprints: fingerprintsOf('A') });
     expect(temp.db.snapshots.put(snapshot)).toBe('created');
     mark(marked('A'));
-    const again = temp.db.snapshots.put({ ...snapshot, fingerprints: fingerprintsOf('B') });
+    const again = temp.db.snapshots.put({ ...snapshot });
     expect(again).toBe('unchanged');
     expect(reconcileOnSnapshot(temp.db, changeId, again, fingerprintsOf('B'), '2026-09-01T11:00:00.000Z')).toBe(0);
     expect(first()?.state).toBe('current');
@@ -119,4 +119,28 @@ describe('review stored in a database', () => {
     expect(first()?.state).toBe('current');
     expect(first()?.outdatedAt).toBeNull();
   });
+
+  it('review/outdated-on-refreshed-put: a refreshed put (same Report, other bytes) outdates the changed file mark', () => {
+    const snapshot = snapshotInput(changeId, 'a'.repeat(40), { contentHash: 'h1', fingerprints: fingerprintsOf('A') });
+    expect(temp.db.snapshots.put(snapshot)).toBe('created');
+    mark(marked('A'));
+    const refreshed = temp.db.snapshots.put({ ...snapshot, fingerprints: fingerprintsOf('B') });
+    expect(refreshed).toBe('refreshed');
+    expect(reconcileOnSnapshot(temp.db, changeId, refreshed, fingerprintsOf('B'), '2026-09-01T11:00:00.000Z')).toBe(1);
+    expect(first()?.state).toBe('outdated');
+  });
+
+  it('review/refreshed-put-keeps-other-symbol-marks: only the symbol whose slice changed is outdated', () => {
+    const fps = (b: string): string => JSON.stringify({ files: {}, symbols: { s1: 'one', s2: b } });
+    const snapshot = snapshotInput(changeId, 'a'.repeat(40), { contentHash: 'h1', fingerprints: fps('two') });
+    temp.db.snapshots.put(snapshot);
+    for (const [id, fingerprint] of [['s1', 'one'], ['s2', 'two']] as const) {
+      temp.db.review.upsert({ changeId, target: { kind: 'symbol', id }, filePath: 'src/cart/total.ts', mark: 'good', note: null, lines: null, fingerprint, snapshotId: null, at: T });
+    }
+    const refreshed = temp.db.snapshots.put({ ...snapshot, fingerprints: fps('two-edited') });
+    expect(refreshed).toBe('refreshed');
+    reconcileOnSnapshot(temp.db, changeId, refreshed, fps('two-edited'), '2026-09-01T11:00:00.000Z');
+    expect(temp.db.review.list(changeId).map((m) => [m.targetId, m.state])).toEqual([['s1', 'current'], ['s2', 'outdated']]);
+  });
 });
+

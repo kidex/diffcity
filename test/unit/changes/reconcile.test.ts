@@ -507,6 +507,17 @@ describe('reviewAfterSnapshot (ADR-019, Q5)', () => {
     });
   });
 
+  it('changes/refreshed-resets-approved: a refreshed snapshot (bytes changed under an identical Report) counts as new content', () => {
+    expect(reviewAfterSnapshot(record({ id: 5, reviewState: 'approved' }), 'refreshed', NOW)).toEqual({ id: 5, reviewState: 'unreviewed' });
+    // On a dirty change it is also a `collect` last event, like `replaced`.
+    expect(reviewAfterSnapshot(record({ id: 5, reviewState: 'approved', dirty: true }), 'refreshed', NOW)).toEqual({
+      id: 5,
+      reviewState: 'unreviewed',
+      lastEventType: 'collect',
+      lastEventAt: NOW_ISO,
+    });
+  });
+
   it('an identical snapshot changes nothing', () => {
     expect(reviewAfterSnapshot(record({ reviewState: 'approved', dirty: true }), 'unchanged', NOW)).toBeNull();
   });
