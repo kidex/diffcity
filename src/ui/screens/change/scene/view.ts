@@ -11,6 +11,10 @@ import type { Report } from '../../../../core/report/types.js';
 import { h } from '../../../shared/dom.js';
 import type { City, CityBuilding, CityFloor } from '../model/city.js';
 import { buildCity } from '../model/city.js';
+import type { Critical, Marks } from '../model/critical.js';
+import { criticalFloors } from '../model/critical.js';
+import { findingMarkers } from '../model/markers.js';
+import { pathStops } from '../model/path.js';
 import type { CityPaint, Filters, RuleIndex } from '../model/view.js';
 import { focusPaint, NO_FILTERS, paintCity, ruleIndex } from '../model/view.js';
 import { easeOut, needsTween, TWEEN_MS, tweenCity } from '../model/tween.js';
@@ -18,8 +22,13 @@ import { LabelLayer } from './labels.js';
 import { createGround } from './night/ground.js';
 import type { FatLines } from './night/lines.js';
 import { createLots } from './night/lots.js';
+import type { MarkerInfo, Markers } from './night/markers.js';
+import { createMarkers } from './night/markers.js';
+import { breathe, createMotion } from './night/motion.js';
+import type { Path } from './night/path.js';
+import { createPath } from './night/path.js';
 import { createTowers } from './night/towers.js';
-import type { Towers } from './night/towers.js';
+import type { Towers, TowersState } from './night/towers.js';
 import type { OrbitState } from './orbit.js';
 import { bindOrbit, homeFor, Orbit, orbitPosition } from './orbit.js';
 import type { Pick } from './picking.js';
@@ -42,12 +51,29 @@ export interface SceneStats {
   builds: number;
 }
 
+/** What the night effects drew, for the debug hook (read-only). */
+export interface EffectsState extends TowersState {
+  /** The pulse runs ('animated') or holds its static glow with a halo ('static', reduced motion). */
+  mode: 'animated' | 'static';
+  markers: MarkerInfo[];
+  /** The reading path: its stops by step number, whether the tube is drawn, whether packets move, whether it is shown (hidden mid-tween). Null without steps. */
+  path: { stops: number[]; tube: boolean; animated: boolean; visible: boolean } | null;
+  /** The tier 1 outer ring: whether there is one and its opacity now. */
+  tier: { ring: boolean; opacity: number };
+  /** The loop renders continuously: something animates, the tab is visible and motion is on. */
+  continuous: boolean;
+}
+
 export interface CityView {
   readonly element: HTMLElement;
   /** Shows a new Report: buildings in both Reports tween, new ones rise, removed ones sink; camera, selection and filters stay. */
   setReport(report: Report): void;
   /** The filter rows (model/view.ts); the scene dims what they filter out. */
   setFilters(filters: Filters): void;
+  /** The review marks (ADR-028): checked floors are drawn quiet, marked floors stop pulsing. Without marks, none. */
+  setMarks(marks: Marks | undefined): void;
+  /** What the night effects drew. */
+  effects(): EffectsState;
   /** Client point of a building's centre, or null when it is not in the city or behind the camera. */
   project(fileId: string): { x: number; y: number } | null;
   stats(): SceneStats;
@@ -100,6 +126,11 @@ interface Content {
   /** The scene parts, compiled one per task before the first frame. */
   parts: Object3D[];
   towers: Towers;
+  markers: Markers;
+  /** Null without steps. */
+  path: Path | null;
+  /** The tier 1 outer ring, which breathes. */
+  ring: FatLines | null;
   /** Lot outlines; the towers' own are `towers.lines`. */
   lotLines: FatLines[];
   picker: Picker;
@@ -129,6 +160,12 @@ export function createCityView(host: HTMLElement, report: Report, options: CityV
   let selected: string | null = null;
   let filters: Filters = NO_FILTERS;
   let rules: RuleIndex = ruleIndex(report);
+  /** The Report on show: findings and steps come from it. */
+  let lastReport = report;
+  let marks: Marks | undefined;
+  /** The floors that pulse for the Report and the marks (model/critical.ts). */
+  let critical: ReadonlyMap<string, Critical> = criticalFloors(report);
+  const motion = createMotion(options.reducedMotion);
   let tween: Tween | null = null;
   let trace: { id: string; heights: number[] } | null = null;
   /** Times the towers' instanced buffers were built, for the stats. */
@@ -167,7 +204,12 @@ export function createCityView(host: HTMLElement, report: Report, options: CityV
         applyCamera();
         firstCamera ??= { ...orbit.state };
         if (moving) cameraMoved(now);
-        return stepTween(now) || moving;
+        if (!options.reducedMotion) {
+          motion.time.value = now / 1000;
+          const ring = content?.ring;
+          if (ring) ring.material.opacity = breathe(motion.time.value);
+        }
+        return stepTween(now) || moving || animating();
       },
       afterFrame: () => {
         labels.render(stage.camera);
@@ -213,6 +255,13 @@ export function createCityView(host: HTMLElement, report: Report, options: CityV
   const sky = new HemisphereLight();
   scene.add(sky);
 
+  /** Something animates, motion is on and the tab is visible: only then does the loop run on its own (ADR-026). */
+  function animating(): boolean {
+    const c = content;
+    if (c === null || options.reducedMotion || document.visibilityState !== 'visible') return false;
+    return c.towers.pulsing > 0 || c.path?.animated === true || c.ring !== null;
+  }
+
   function cameraMoved(now = performance.now()): void {
     cameraMovedAt = now;
     settled = false;
@@ -237,13 +286,15 @@ export function createCityView(host: HTMLElement, report: Report, options: CityV
     const c = content;
     if (c === null) return;
     if (full || baseline === null) {
-      baseline = paintCity({ city: c.shown, filters, rules, hover: null, selection: null });
+      baseline = paintCity({ city: c.shown, filters, rules, hover: null, selection: null, critical, marks });
       const dim = new Set<string>();
       for (const building of c.shown.buildings) if (baseline.buildings[building.index]?.dimmed === true) dim.add(building.id);
       labels.setDimmed(dim, tween !== null);
       element.dataset['filters'] = `verdict=${filters.verdict ?? ''};type=${filters.type ?? ''};rule=${filters.rule ?? ''}`;
     }
-    c.towers.setPaint(focusPaint(baseline, c.shown, hovered, selected));
+    const paint = focusPaint(baseline, c.shown, hovered, selected);
+    c.towers.setPaint(paint);
+    c.markers.setPaint(paint);
     stage.request();
   }
 
@@ -255,10 +306,11 @@ export function createCityView(host: HTMLElement, report: Report, options: CityV
   function showCity(shown: City): void {
     const c = content;
     if (c === null) return;
+    c.markers.update(shown);
     if (!c.towers.update(shown)) {
       scene.remove(c.towers.group);
       c.towers.dispose();
-      const towers = createTowers(shown);
+      const towers = createTowers(shown, motion);
       towerBuilds += 1;
       scene.add(towers.group);
       for (const line of towers.lines) line.material.resolution.set(stage.size.x, stage.size.y);
@@ -279,8 +331,9 @@ export function createCityView(host: HTMLElement, report: Report, options: CityV
     showCity(frame);
     if (trace !== null) trace.heights.push(frame.byId.get(trace.id)?.height ?? 0);
     if (progress >= 1) {
-      // The labels come back at the final positions.
+      // The labels and the path come back at the final positions.
       labels.setDimmed(labels.dimmedIds, false);
+      content.path?.setVisible(true);
       return false;
     }
     return true;
@@ -309,23 +362,34 @@ export function createCityView(host: HTMLElement, report: Report, options: CityV
       if (followed !== undefined) trace = { id: followed.id, heights: [] };
     }
     const shown = tween === null ? city : tweenCity(tween.from, city, 0);
-    const towers = createTowers(shown);
+    const towers = createTowers(shown, motion);
     towerBuilds += 1;
-    scene.add(ground.mesh, lots.group, towers.group);
+    const markers = createMarkers(findingMarkers(city, lastReport.findings), shown);
+    const path = createPath(pathStops(city, lastReport.steps), motion, renderer);
+    // Built for the Report's own city, so it waits for the tween to end.
+    path?.setVisible(tween === null);
+    scene.add(ground.mesh, lots.group, towers.group, markers.group);
+    if (path !== null) scene.add(path.group);
     for (const line of [...lots.lines, ...towers.lines]) line.material.resolution.set(stage.size.x, stage.size.y);
     labels.setCity(city);
     const made: Content = {
       city,
       shown,
       towers,
+      markers,
+      path,
+      ring: lots.ring,
       lotLines: lots.lines,
-      parts: [ground.mesh, lots.group, towers.group],
+      parts: [ground.mesh, lots.group, towers.group, markers.group, ...(path === null ? [] : [path.group])],
       picker: new Picker(city),
       dispose() {
-        scene.remove(ground.mesh, lots.group, made.towers.group);
+        scene.remove(ground.mesh, lots.group, made.towers.group, markers.group);
+        if (path !== null) scene.remove(path.group);
         ground.dispose();
         lots.dispose();
         made.towers.dispose();
+        markers.dispose();
+        path?.dispose();
       },
     };
     content = made;
@@ -384,7 +448,6 @@ export function createCityView(host: HTMLElement, report: Report, options: CityV
   // Shaders compile one scene part at a time before the first frame, in
   // parallel where the GPU supports it, so opening a change does not freeze
   // the page while they compile.
-  let lastReport = report;
   const first = build(cityOf(report));
   const isDisposed = (): boolean => disposed;
   // A new Report or a theme change disposes `first`; its materials are not compiled then.
@@ -432,6 +495,11 @@ export function createCityView(host: HTMLElement, report: Report, options: CityV
     build(cityOf(lastReport));
   };
   scheme.addEventListener('change', onScheme);
+  // Back on screen: the loop starts again if something animates.
+  const onVisible = (): void => {
+    if (document.visibilityState === 'visible') stage.request();
+  };
+  document.addEventListener('visibilitychange', onVisible);
 
   return {
     element,
@@ -439,6 +507,7 @@ export function createCityView(host: HTMLElement, report: Report, options: CityV
       if (disposed) return;
       lastReport = next;
       rules = ruleIndex(next);
+      critical = criticalFloors(next, marks);
       // A tween in progress continues from what is on screen.
       const from = options.reducedMotion ? null : (content?.shown ?? null);
       build(cityOf(next), from);
@@ -446,6 +515,24 @@ export function createCityView(host: HTMLElement, report: Report, options: CityV
     setFilters(next) {
       filters = next;
       repaint(true);
+    },
+    setMarks(next) {
+      marks = next;
+      critical = criticalFloors(lastReport, marks);
+      repaint(true);
+    },
+    effects() {
+      const c = content;
+      const state = c?.towers.state() ?? { pulsing: 0, halos: 0, pulse: {}, checked: {}, gains: {} };
+      const path = c?.path ?? null;
+      return {
+        ...state,
+        mode: options.reducedMotion ? 'static' : 'animated',
+        markers: c?.markers.list() ?? [],
+        path: path === null ? null : { ...path.state(), visible: path.group.visible },
+        tier: { ring: c?.ring != null, opacity: c?.ring?.material.opacity ?? 1 },
+        continuous: animating(),
+      };
     },
     project(fileId) {
       const building = content?.city.byId.get(fileId);
@@ -505,6 +592,7 @@ export function createCityView(host: HTMLElement, report: Report, options: CityV
       unbind();
       clearTimeout(restTimer);
       scheme.removeEventListener('change', onScheme);
+      document.removeEventListener('visibilitychange', onVisible);
       content?.dispose();
       content = null;
       scene.remove(sky);
