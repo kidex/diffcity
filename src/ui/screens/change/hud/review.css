@@ -1,0 +1,90 @@
+/*
+ * Review marks (ADR-028): the progress in the top bar, the "Hide checked" chip,
+ * the mark buttons on the selection card and in the file view header, the
+ * mark line of the tooltip, and the two dialogs (Needs rewrite, Review summary).
+ * Colours are tokens: Checked and Looks good read as the added colour, Needs
+ * rewrite as the removed one, and a mark that went outdated as the modified one.
+ */
+
+/* ---------- progress ---------- */
+.hud-bar .rv-progress { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 10px; font-size: 12.5px; color: var(--ink-2); }
+.hud-bar .rv-progress[hidden], .hud-bar .btn[hidden] { display: none; }
+.rv-progress .rv-headline { font-weight: 600; color: var(--ink); }
+.rv-progress.done .rv-headline { color: color-mix(in srgb, var(--add) 55%, var(--ink)); }
+.rv-progress small { color: var(--muted); font-size: 12px; }
+.rv-progress small.rv-stale { color: color-mix(in srgb, var(--mod) 55%, var(--ink)); }
+.rv-bar-track { width: 72px; height: 4px; border-radius: 2px; background: var(--line); overflow: hidden; display: inline-block; }
+.rv-bar-track i { display: block; height: 100%; background: var(--add); }
+
+/* ---------- mark buttons ---------- */
+.rv-slot[hidden] { display: none; }
+.rv-bar { display: flex; flex-direction: column; gap: 6px; margin: 8px 0; }
+.rv-caption { font-size: 11.5px; color: var(--muted); }
+.rv-buttons { display: flex; flex-wrap: wrap; gap: 6px; }
+.rv-btn {
+  display: inline-flex; align-items: center; gap: 6px; padding: 4px 8px; border-radius: 7px; font-size: 12px; font-weight: 500;
+  border: 1px solid var(--line); background: transparent; color: var(--ink-2); pointer-events: auto;
+}
+.rv-btn:hover:not(:disabled) { color: var(--ink); border-color: var(--plot-line); }
+.rv-btn:disabled { opacity: .45; cursor: not-allowed; }
+.rv-btn .k { font-size: 10.5px; padding: 0 4px; }
+.rv-btn.checked.on, .rv-btn.good.on { border-color: var(--add); color: var(--ink); background: color-mix(in srgb, var(--add) 16%, transparent); }
+.rv-btn.rewrite.on { border-color: var(--del); color: var(--ink); background: color-mix(in srgb, var(--del) 16%, transparent); }
+.rv-status { font-size: 12px; color: var(--ink-2); display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; overflow-wrap: anywhere; }
+.rv-status:empty { display: none; }
+.rv-mark { font-weight: 600; }
+.rv-mark.checked, .rv-mark.good { color: color-mix(in srgb, var(--add) 55%, var(--ink)); }
+.rv-mark.rewrite { color: color-mix(in srgb, var(--del) 55%, var(--ink)); }
+.rv-lines { font-family: var(--mono); font-size: 11.5px; color: var(--muted); }
+.rv-outdated { color: color-mix(in srgb, var(--mod) 55%, var(--ink)); font-weight: 500; }
+.rv-none, .rv-inherited { color: var(--muted); }
+.rv-note { flex: 1 1 100%; margin: 2px 0 0; padding: 6px 8px; border-left: 2px solid var(--del); background: color-mix(in srgb, var(--del) 8%, transparent); white-space: pre-wrap; color: var(--ink); }
+
+.fv-review { margin-top: 10px; }
+.fv-review[hidden] { display: none; }
+.fv-review .rv-bar { margin: 0; }
+
+/* ---------- tooltip ---------- */
+.hud .tip .mark-tip { margin-top: 6px; display: flex; flex-wrap: wrap; gap: 2px 8px; align-items: baseline; }
+.hud .tip .mark-tip b { font-weight: 600; }
+.hud .tip .mark-tip.checked b, .hud .tip .mark-tip.good b { color: color-mix(in srgb, var(--add) 55%, var(--ink)); }
+.hud .tip .mark-tip.rewrite b { color: color-mix(in srgb, var(--del) 55%, var(--ink)); }
+.hud .tip .mark-tip .outdated { color: color-mix(in srgb, var(--mod) 55%, var(--ink)); }
+.hud .tip .mark-tip p { flex: 1 1 100%; margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 6em; overflow: hidden; }
+.hud .chip.hide-checked { border-style: dashed; }
+.hud .chip.hide-checked.on { border-style: solid; }
+
+/* ---------- dialogs ---------- */
+.rv-backdrop {
+  position: fixed; inset: 0; z-index: 30; display: flex; justify-content: center; align-items: flex-start; padding-top: 10vh;
+  background: color-mix(in srgb, var(--bg-deep) 62%, transparent);
+}
+.rv-dialog {
+  width: min(640px, calc(100vw - 32px)); max-height: 80vh; overflow: auto; display: flex; flex-direction: column; gap: 12px;
+  padding: 18px 20px; border-radius: 12px; background: var(--panel); border: 1px solid var(--line); color: var(--ink-2);
+  box-shadow: 0 14px 40px rgb(0 0 0 / 0.35);
+}
+.rv-dialog:focus { outline: none; }
+.rv-title { margin: 0; font-size: 16px; font-weight: 600; color: var(--ink); overflow-wrap: anywhere; }
+.rv-body { display: flex; flex-direction: column; gap: 8px; min-height: 0; }
+.rv-lede { margin: 0; font-size: 12.5px; color: var(--muted); font-family: var(--mono); overflow-wrap: anywhere; }
+.rv-label { font-size: 12.5px; font-weight: 500; color: var(--ink); }
+.rv-input {
+  font: inherit; font-size: 13px; color: var(--ink); background: var(--code-bg); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px;
+  width: 100%; box-sizing: border-box; resize: vertical;
+}
+.rv-input[aria-invalid="true"] { border-color: var(--del); }
+.rv-side { width: auto; }
+.rv-line { width: 84px; }
+.rv-meta { display: flex; align-items: center; gap: 10px; }
+.rv-hint { font-size: 12px; color: var(--muted); margin: 0; }
+.rv-error { margin: 0; font-size: 12.5px; color: color-mix(in srgb, var(--del) 55%, var(--ink)); }
+.rv-error[hidden] { display: none; }
+.rv-lines-field { display: flex; align-items: center; gap: 8px; border: 0; padding: 0; margin: 0; font-size: 12.5px; }
+.rv-lines-field legend { padding: 0; margin-bottom: 4px; color: var(--ink); font-weight: 500; }
+.rv-actions { display: flex; justify-content: flex-end; align-items: center; gap: 8px; }
+.rv-summary {
+  margin: 0; padding: 10px 12px; max-height: 38vh; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere;
+  font-family: var(--mono); font-size: 12px; line-height: 1.5; color: var(--ink); background: var(--code-bg); border: 1px solid var(--line-soft); border-radius: 8px;
+}
+.rv-phase { margin: 0; font-size: 12.5px; color: var(--muted); }

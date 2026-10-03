@@ -190,6 +190,16 @@ export function findingsIndex(report: Pick<Report, 'findings'>): FindingsIndex {
   return index;
 }
 
+/** What a tooltip says about the review mark of what is under the pointer (ADR-028). */
+export interface MarkTip {
+  /** The mark as the buttons name it: "Checked", "Looks good", "Needs rewrite". */
+  label: string;
+  mark: 'checked' | 'good' | 'rewrite';
+  /** "changed since you checked it" for a mark that went outdated. */
+  hint: string | null;
+  note: string | null;
+}
+
 export interface TipData {
   verdict: Verdict;
   file: string;
@@ -203,6 +213,8 @@ export interface TipData {
   findings: number;
   /** Rule violations among them; 0 hides the line. */
   violations: number;
+  /** The review mark of the floor (else the file) under the pointer; absent without review marks. */
+  mark?: MarkTip | null;
 }
 
 export function tipData(city: City, building: CityBuilding, floor: CityFloor | undefined, findings: FindingsIndex): TipData {

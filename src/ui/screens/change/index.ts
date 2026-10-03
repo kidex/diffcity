@@ -18,12 +18,16 @@ import { fallbackView } from './fallback.js';
 import type { Hud } from './hud/index.js';
 import { createHud } from './hud/index.js';
 import { cardData, findingsIndex, tipData } from './model/hud.js';
-import type { MarkKind, Marks } from './model/critical.js';
+import { marksOf, progressView, tipMark } from './model/review.js';
 import type { Filters } from './model/view.js';
-import { clearFilters, pruneFilters, ruleIndex } from './model/view.js';
+import { clearFilters, pruneFilters, ruleIndex, toggleHideChecked } from './model/view.js';
 import type { Panel } from './panel/index.js';
 import { createPanel } from './panel/index.js';
-import type { DiffPort, FleetPort } from './ports.js';
+import type { DiffPort, FleetPort, ReviewPort } from './ports.js';
+import type { ReviewController } from './review/controller.js';
+import { createReviewController } from './review/controller.js';
+import type { ReviewUi } from './review/ui.js';
+import { createReviewUi } from './review/ui.js';
 import type { CityView, EffectsState, SceneStats } from './scene/view.js';
 import { createCityView, disposal } from './scene/view.js';
 
@@ -39,6 +43,8 @@ export interface ChangeScreenOptions {
   fleet?: FleetPort;
   /** The diff of a file (ADR-027); without it the file view shows only the Report's step diffs. */
   diffs?: DiffPort;
+  /** The review marks (ADR-028): mark buttons, progress, "Hide checked" and the summary; without it the screen has none of them. */
+  review?: ReviewPort;
 }
 
 export interface ChangeScreen {
@@ -79,8 +85,6 @@ export interface SceneDebug {
 declare global {
   interface Window {
     diffcityScene?: SceneDebug;
-    /** Under `?scene-debug`, review marks for tests, by file id and symbol id: the ReviewPort is not wired to the city yet. Read when the city opens and on every update. */
-    diffcityMarks?: { files?: Record<string, MarkKind>; symbols?: Record<string, MarkKind> };
     /** Under `?scene-debug`, a FleetPort for tests: the SPA has no audit data to build one from yet. */
     diffcityFleet?: FleetPort;
     /** Under `?scene-debug`, set to true to mount the screen as the HTML export does: without a DiffPort. */
@@ -136,12 +140,42 @@ export function mountChange(element: HTMLElement, options: ChangeScreenOptions):
   const debug = debugEnabled() ? installDebug(() => view) : null;
   const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-  /** The marks the test page set, as the scene takes them; undefined outside the debug hook. */
-  const debugMarks = (): Marks | undefined => {
-    const given = debug === null ? undefined : window.diffcityMarks;
-    if (given === undefined) return undefined;
-    return { files: new Map(Object.entries(given.files ?? {})), symbols: new Map(Object.entries(given.symbols ?? {})) };
-  };
+  /** The selected building and focused floor, as the review actions need them. */
+  let selection: { fileId: string; symbolId: string | null } | null = null;
+  const controller: ReviewController | null =
+    options.review === undefined
+      ? null
+      : createReviewController({
+          port: options.review,
+          toast: (text) => {
+            hud?.toast(text);
+          },
+        });
+  const reviewUi: ReviewUi | null =
+    controller === null
+      ? null
+      : createReviewUi({
+          controller,
+          report: () => latest,
+          selection: () => selection,
+          range: () => panel?.lineRange() ?? null,
+        });
+  const stopReview = controller?.onChange(syncReview);
+
+  /** Brings the city, the progress, the filters and every mark button in line with the review state. */
+  function syncReview(): void {
+    if (controller === null) return;
+    const state = controller.state();
+    // "Hide checked" goes with the marks: without a review state there is nothing to hide.
+    if (state === null && filters.hideChecked === true) {
+      filters = toggleHideChecked(filters);
+      if (latest !== null) hud?.update(latest, filters);
+      view?.setFilters(filters);
+    }
+    hud?.progress(state === null ? null : progressView(state.progress));
+    view?.setMarks(marksOf(state));
+    reviewUi?.refresh();
+  }
 
   const message = (testId: string, text: string): HTMLElement => h('p', { class: 'change-empty', role: 'status', 'data-testid': testId }, text);
 
@@ -160,6 +194,14 @@ export function mountChange(element: HTMLElement, options: ChangeScreenOptions):
     hud ??= createHud({
       crumb: options.crumb ?? false,
       fleet: options.fleet ?? (debug === null ? undefined : window.diffcityFleet),
+      review:
+        reviewUi === null
+          ? undefined
+          : {
+              onSummary: (trigger) => {
+                reviewUi.openSummary(trigger);
+              },
+            },
       onFilters(next) {
         filters = next;
         if (latest !== null) hud?.update(latest, filters);
@@ -180,6 +222,14 @@ export function mountChange(element: HTMLElement, options: ChangeScreenOptions):
         onHover: (fileId) => view?.hover(fileId),
         onHoverFloor: (fileId, symbolId) => view?.hoverFloor(fileId, symbolId),
         diffs: debug !== null && window.diffcityNoDiffs === true ? undefined : options.diffs,
+        review:
+          reviewUi === null
+            ? undefined
+            : {
+                fill: (slot, fileId, symbolId) => {
+                  reviewUi.fill(slot, fileId, symbolId);
+                },
+              },
         reducedMotion,
       },
       report,
@@ -212,10 +262,14 @@ export function mountChange(element: HTMLElement, options: ChangeScreenOptions):
                 return;
               }
               const rect = view?.element.getBoundingClientRect() ?? element.getBoundingClientRect();
-              screen.tip(tipData(info.city, info.building, info.floor, findings), info.clientX - rect.left, info.clientY - rect.top);
+              const tip = tipData(info.city, info.building, info.floor, findings);
+              if (controller !== null) tip.mark = tipMark(controller.state(), info.building.id, info.floor?.symbolId ?? null);
+              screen.tip(tip, info.clientX - rect.left, info.clientY - rect.top);
             },
             select(building, symbolId) {
+              selection = building === null ? null : { fileId: building.id, symbolId };
               screen.card(building === null ? null : cardData(building), symbolId);
+              if (building !== null) reviewUi?.fill(screen.cardReviewSlot, building.id, symbolId);
               reading.select(building === null ? null : building.id, symbolId);
             },
             click(building, floor) {
@@ -229,12 +283,13 @@ export function mountChange(element: HTMLElement, options: ChangeScreenOptions):
         view.element.append(screen.overlay);
         work.append(reading.root);
         view.setFilters(filters);
-        view.setMarks(debugMarks());
         mode = 'city';
+        syncReview();
       } catch {
         mode = 'fallback';
         element.classList.remove('has-city');
         replaceChildren(element, screen.bar, fallbackView(latest));
+        syncReview();
       }
     });
   }
@@ -260,7 +315,8 @@ export function mountChange(element: HTMLElement, options: ChangeScreenOptions):
       panelFor(report).update(report);
       view.setReport(report);
       view.setFilters(filters);
-      view.setMarks(debugMarks());
+      view.setMarks(marksOf(controller?.state() ?? null));
+      reviewUi?.refresh();
       return;
     }
     if (mode === 'pending') return;
@@ -278,6 +334,9 @@ export function mountChange(element: HTMLElement, options: ChangeScreenOptions):
     },
     unmount() {
       disposed = true;
+      stopReview?.();
+      reviewUi?.dispose();
+      controller?.dispose();
       dropView();
       element.classList.remove('has-city');
       element.replaceChildren();

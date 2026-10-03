@@ -10,7 +10,7 @@ import { VERDICT_LABEL } from '../../../shared/format.js';
 import { verdictToken } from '../../../shared/tokens.js';
 import { ruleChips, typeChips, verdictChips } from '../model/hud.js';
 import type { Filters } from '../model/view.js';
-import { clearFilters, toggleRule, toggleType, toggleVerdict } from '../model/view.js';
+import { clearFilters, toggleHideChecked, toggleRule, toggleType, toggleVerdict } from '../model/view.js';
 
 /** The mockup's type labels. */
 const TYPE_LABEL = { add: 'Added', mod: 'Modified', sig: 'Signature changed', del: 'Removed' } as const;
@@ -31,7 +31,8 @@ interface Chip {
 
 export interface FilterRows {
   root: HTMLElement;
-  update(report: Report, filters: Filters): void;
+  /** `review`: the screen has review marks, so "Hide checked" is offered. */
+  update(report: Report, filters: Filters, review?: boolean): void;
 }
 
 /** Brings a chip button in line with `chip`; the content is rebuilt only when it changed, so focus and hover are undisturbed. */
@@ -79,7 +80,7 @@ export function createFilterRows(onFilters: (filters: Filters) => void): FilterR
 
   return {
     root,
-    update(report, filters) {
+    update(report, filters, review = false) {
       current = filters;
       draw(
         verdictRow,
@@ -120,6 +121,20 @@ export function createFilterRows(onFilters: (filters: Filters) => void): FilterR
           set(clearFilters());
         },
       });
+      if (review) {
+        types.push({
+          key: 't-hide-checked',
+          testId: 'filter-hide-checked',
+          label: 'Hide checked',
+          count: null,
+          token: null,
+          className: 'hide-checked',
+          on: current.hideChecked === true,
+          click: () => {
+            set(toggleHideChecked(current));
+          },
+        });
+      }
       draw(typeRow, types);
       const rules = ruleChips(report);
       ruleRow.hidden = rules.length === 0;

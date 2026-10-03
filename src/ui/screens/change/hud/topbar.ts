@@ -54,7 +54,13 @@ function disabledButton(label: string, primary: boolean, testId: string): HTMLEl
   );
 }
 
-export function renderTopBar(bar: HTMLElement, report: Report, withCrumb: boolean): void {
+/** Nodes the review adds to the bar when the screen has a ReviewPort: the progress, and the summary button. */
+export interface BarExtras {
+  progress?: HTMLElement | undefined;
+  summary?: HTMLElement | undefined;
+}
+
+export function renderTopBar(bar: HTMLElement, report: Report, withCrumb: boolean, extras: BarExtras = {}): void {
   const counters = topBar(report);
   const eyes = counters.eyes;
   const level = changeLevel(report);
@@ -74,6 +80,7 @@ export function renderTopBar(bar: HTMLElement, report: Report, withCrumb: boolea
       h('span', { class: 'dot', 'aria-hidden': 'true' }),
       eyes === 0 ? 'No files need your eyes before merge' : `${String(eyes)} ${eyes === 1 ? 'file needs' : 'files need'} your eyes before merge`,
     ),
+    extras.progress,
     level === null
       ? null
       : h(
@@ -105,6 +112,7 @@ export function renderTopBar(bar: HTMLElement, report: Report, withCrumb: boolea
     h(
       'div',
       { class: 'actions' },
+      extras.summary,
       disabledButton('Export PlantUML', false, 'export-plantuml'),
       disabledButton('Approve when tier 1 is read', true, 'approve'),
     ),
