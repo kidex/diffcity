@@ -7,18 +7,152 @@
 
 /* ---------- city ---------- */
 .stage.change:has(> .change-body.has-city) { overflow: hidden; }
-.change-body.has-city { position: relative; flex: 1 1 0; min-height: 320px; background: var(--c-void); }
-.city { position: absolute; inset: 0; overflow: hidden; }
+.change-body.has-city { display: flex; flex-direction: column; flex: 1 1 0; min-height: 420px; background: var(--c-void); }
+.city { position: relative; flex: 1 1 0; min-height: 0; overflow: hidden; }
 .city canvas.scene { position: absolute; inset: 0; width: 100%; height: 100%; display: block; cursor: grab; touch-action: none; }
 .city canvas.scene:active { cursor: grabbing; }
 .city .labels { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
-.city .hint {
-  position: absolute; right: 22px; top: 14px; z-index: 1; pointer-events: none;
-  color: var(--muted); font-size: 12px; text-align: right;
+
+/* ---------- HUD: top bar (the mockup's .top without the brand and search) ---------- */
+.hud-bar {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 8px 22px;
+  padding: 12px 22px; flex: 0 0 auto;
+  border-bottom: 1px solid var(--line);
+  background: color-mix(in srgb, var(--bg-deep) 85%, transparent);
 }
-.city .hint .kbd {
-  display: inline-block; font-family: var(--mono); font-size: 11px; line-height: 1;
-  border: 1px solid var(--line); border-radius: 4px; padding: 2px 5px; margin-top: 4px; color: var(--ink-2);
+.hud-bar .crumb { margin: 0; }
+.hud-bar .stats { margin-left: 0; }
+.hud-bar .actions { margin-left: auto; }
+.hud-bar .tier.quiet { color: var(--muted); background: transparent; border-color: var(--line); }
+.hud-bar .tier.quiet .dot { background: var(--muted); box-shadow: none; }
+.hud-bar .stat .sw.add { background: var(--add); }
+.hud-bar .stat .sw.mod { background: var(--mod); }
+.hud-bar .stat .sw.sig { background: var(--sig); }
+.hud-bar .stat .sw.del { background: var(--del); }
+.hud-bar .btn[aria-disabled="true"] { opacity: .55; cursor: not-allowed; }
+.hud-bar .btn[aria-disabled="true"]:hover { color: var(--ink-2); border-color: var(--line); }
+.hud-bar .btn.primary[aria-disabled="true"]:hover { color: var(--bg-deep); border-color: var(--ink); opacity: .55; }
+.change-level { display: flex; gap: 8px; }
+.level-pill {
+  display: inline-flex; align-items: center; padding: 5px 11px; border-radius: 999px; font-size: 12.5px; font-weight: 500;
+  color: color-mix(in srgb, var(--del) 55%, var(--ink)); background: color-mix(in srgb, var(--del) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--del) 55%, transparent);
+}
+.check-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.check-chip {
+  display: inline-flex; align-items: center; gap: 7px; padding: 4px 10px 4px 8px; border-radius: 999px;
+  border: 1px solid var(--line); color: var(--ink-2); font: 500 12px/1.3 var(--mono); max-width: 36ch;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.check-chip i { width: 8px; height: 8px; border-radius: 50%; flex: 0 0 auto; background: var(--muted); }
+.check-chip.passed i { background: var(--add); }
+.check-chip.violations { border-color: color-mix(in srgb, var(--del) 55%, transparent); }
+.check-chip.violations i { background: var(--del); }
+.check-chip.pending i { background: var(--mod); }
+.check-chip.not-checked { border-style: dashed; color: var(--muted); }
+.check-chip.error { border-style: dashed; border-color: color-mix(in srgb, var(--del) 55%, transparent); }
+.check-chip.error i { background: transparent; border: 1.5px solid var(--del); }
+
+/* ---------- HUD over the city ---------- */
+.hud { position: absolute; inset: 0; z-index: 2; pointer-events: none; overflow: hidden; }
+.hud-head { position: absolute; left: 22px; top: 18px; max-width: calc(100% - 340px); display: flex; flex-direction: column; gap: 12px; }
+.hud-title h1 { margin: 0; font-size: 20px; font-weight: 600; letter-spacing: -.02em; }
+.hud-title p { margin: 4px 0 0; color: var(--muted); font-size: 13px; max-width: 64ch; }
+.hud-filters { display: flex; flex-direction: column; gap: 6px; }
+.hud-filters .chips[hidden] { display: none; }
+.hud .chip {
+  pointer-events: auto; background: color-mix(in srgb, var(--bg-deep) 70%, transparent);
+  border-color: color-mix(in srgb, var(--plot-line) 70%, transparent); backdrop-filter: blur(14px);
+  transition: border-color .15s ease, color .15s ease;
+}
+.hud .chip i { background: var(--c); }
+.hud .chips.types .chip i { border-radius: 2px; }
+.hud .chip.rule { font-family: var(--mono); font-size: 12px; }
+.hud .chip.on { border-color: var(--ink-2); color: var(--ink); }
+.hud .chip.clear { border-style: dashed; color: var(--muted); }
+.hud .chips.rules { align-items: center; }
+.hud .rule-list { display: contents; }
+.hud .row-label { color: var(--muted); font-size: 12px; margin-right: 2px; }
+.hud .hint {
+  position: absolute; right: 22px; top: 14px; color: var(--muted); font-size: 12px; text-align: right;
+}
+.hud .hint .k { margin-left: 3px; background: color-mix(in srgb, var(--bg-deep) 60%, transparent); }
+
+.hud .legend {
+  position: absolute; left: 22px; bottom: 18px; display: flex; gap: 14px; flex-wrap: wrap; color: var(--ink-2); font-size: 12.5px;
+  max-width: calc(100% - 360px);
+}
+.hud .legend span { display: inline-flex; align-items: center; gap: 6px; }
+.hud .legend span[hidden] { display: none; }
+.hud .legend i { width: 12px; height: 12px; border-radius: 3px; display: inline-block; background: var(--c); }
+.hud .legend i.dot { border-radius: 50%; width: 9px; height: 9px; }
+.hud .legend i.del { background: transparent; border: 1.5px dashed var(--c); }
+.hud .legend i.x { background: transparent; color: var(--del); font: 600 14px/1 var(--mono); width: 12px; height: 12px; text-align: center; }
+.hud .legend .g { display: inline-flex; gap: 12px; padding-right: 12px; margin-right: 2px; border-right: 1px solid var(--line); }
+
+/* tooltip and selection card */
+.hud .tip, .hud .card {
+  position: absolute; background: color-mix(in srgb, var(--bg-deep) 82%, transparent); border: 1px solid color-mix(in srgb, var(--plot-line) 70%, transparent);
+  border-radius: 12px; box-shadow: 0 20px 50px rgb(0 0 0 / 0.5); font-size: 12.5px; color: var(--ink-2); backdrop-filter: blur(14px);
+}
+.hud .tip { left: 0; top: 0; pointer-events: none; opacity: 0; transform: translateY(4px); transition: opacity .12s ease, transform .12s ease; padding: 10px 12px; min-width: 230px; z-index: 5; }
+.hud .tip.show { opacity: 1; transform: translateY(0); }
+.hud .tip .f, .hud .card .f { font-family: var(--mono); font-size: 12px; color: var(--ink); overflow-wrap: anywhere; }
+.hud .tip .p { color: var(--muted); font-size: 11.5px; margin-bottom: 6px; }
+.hud .row { display: flex; gap: 10px; }
+.hud .row b { font-weight: 600; }
+.hud .row .add { color: var(--add); } .hud .row .mod { color: var(--mod); } .hud .row .del { color: var(--del); } .hud .row .sig { color: var(--sig); }
+.hud .tip .pins { margin-top: 6px; display: flex; align-items: center; gap: 6px; }
+.hud .tip .pins:empty { display: none; }
+.hud .tip .pins .n { margin-left: auto; }
+.hud .tip .pins.violations { color: color-mix(in srgb, var(--del) 55%, var(--ink)); margin-top: 2px; }
+.hud .v { display: inline-flex; align-items: center; gap: 6px; margin-bottom: 6px; font-weight: 500; color: var(--c); }
+.hud .v i { width: 8px; height: 8px; border-radius: 50%; display: inline-block; background: var(--c); }
+
+.hud-corner {
+  position: absolute; right: 22px; bottom: 18px; width: 300px; max-height: calc(100% - 120px);
+  display: flex; flex-direction: column; gap: 12px; align-items: stretch; justify-content: flex-end; min-height: 0;
+}
+.hud-corner > * { pointer-events: auto; }
+.hud-corner .card { position: static; padding: 12px 14px; }
+.hud .sel-card { overflow: auto; min-height: 0; }
+.hud .sel-card[hidden], .hud .fleet-card[hidden], .hud .toast[hidden] { display: none; }
+.hud .sel-card .head { display: flex; align-items: baseline; gap: 8px; }
+.hud .sel-card .head .v { margin-bottom: 4px; }
+.hud .sel-card .tag.tier { font-size: 11px; padding: 1px 6px; border-radius: 5px; color: var(--tier); background: color-mix(in srgb, var(--tier) 14%, transparent); }
+.hud .sel-card .row { margin: 6px 0 8px; }
+.hud .sel-card ol { list-style: none; margin: 0; padding: 0; }
+.hud .sel-card .floors li { display: flex; gap: 8px; align-items: center; padding: 3px 0; border-top: 1px solid color-mix(in srgb, var(--line) 60%, transparent); font-size: 12px; }
+.hud .sel-card .floors li i { width: 9px; height: 9px; border-radius: 2px; background: var(--c); flex: 0 0 auto; }
+.hud .sel-card .floors li.s-del i { background: transparent; border: 1.5px dashed var(--c); }
+.hud .sel-card .floors li.s-same { color: var(--muted); }
+.hud .sel-card .floors .sym { font-family: var(--mono); color: inherit; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hud .sel-card .floors li:not(.s-same) .sym { color: var(--ink); }
+.hud .sel-card .floors .st { margin-left: auto; font-size: 11px; color: var(--muted); white-space: nowrap; }
+
+/* the Fleet card (mockup .fleet) */
+.hud .fleet-card h3 { margin: 0 0 8px; font-size: 12.5px; font-weight: 500; color: var(--muted); display: flex; justify-content: space-between; gap: 10px; }
+.hud .fleet-card h3 a { color: var(--ink-2); text-decoration: none; }
+.hud .fleet-card h3 a:hover { color: var(--ink); }
+.hud .fleet-card .r { display: grid; grid-template-columns: 1fr auto; gap: 4px 10px; align-items: center; font-size: 12.5px; padding: 4px 0; }
+.hud .fleet-card .r .n { font-family: var(--mono); font-size: 12px; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hud .fleet-card .r .age { color: var(--muted); }
+.hud .fleet-card .r.stale .age { color: color-mix(in srgb, var(--del) 55%, var(--ink)); font-weight: 500; }
+.hud .fleet-card .bar { grid-column: 1 / -1; height: 3px; border-radius: 2px; background: var(--line-soft); overflow: hidden; }
+.hud .fleet-card .bar i { display: block; height: 100%; background: var(--add); }
+.hud .fleet-card .r.stale .bar i { background: var(--del); }
+.hud .fleet-card .r.aging .bar i { background: var(--mod); }
+
+.hud .toast {
+  position: absolute; left: 50%; bottom: 64px; transform: translateX(-50%); max-width: min(90%, 560px);
+  padding: 9px 14px; border-radius: 10px; font-size: 12.5px; color: var(--ink); overflow-wrap: anywhere;
+  background: color-mix(in srgb, var(--bg-deep) 92%, transparent); border: 1px solid var(--mod); pointer-events: auto;
+}
+
+@media (max-width: 980px) {
+  .hud-title p, .hud .hint { display: none; }
+  .hud-bar .stats { display: none; }
+  .hud .legend { display: none; }
 }
 
 /* holographic verdict tags over the file name */
@@ -44,8 +178,11 @@
 }
 .labels .roof.is-selected .badge { border-color: var(--sig); }
 .labels .roof.is-selected .file, .labels .roof.is-hover .file { color: var(--ink); text-decoration: underline; text-decoration-color: var(--sig); text-underline-offset: 3px; }
+.labels .roof.is-dim { opacity: .12; }
 .labels .roof.is-occluded, .labels .roof.is-crowded { opacity: 0; }
 .labels .roof.is-hover, .labels .roof.is-selected { opacity: 1; z-index: 1; }
+/* while the buildings move in a live update, the labels wait for them */
+.labels .roof.is-tweening { opacity: 0 !important; }
 @media (prefers-color-scheme: light) {
   :root:not([data-theme="dark"]) .labels .roof .badge { color: color-mix(in srgb, var(--c) 70%, black); }
   :root:not([data-theme="dark"]) .labels .roof .file { text-shadow: 0 0 6px var(--bg), 0 0 2px var(--bg); }
@@ -74,3 +211,21 @@
 .touched-files td { white-space: nowrap; width: 1%; }
 /* the mockup's .tag.tier (its .tier class is the top bar's pill) */
 .touched-files .tag.tier1 { color: var(--tier); background: color-mix(in srgb, var(--tier) 14%, transparent); }
+
+/* ---------- AA text on the pale ground: the accents are mixed toward the ink ---------- */
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) .hud .row .add { color: color-mix(in srgb, var(--add) 35%, var(--ink)); }
+  :root:not([data-theme="dark"]) .hud .row .mod { color: color-mix(in srgb, var(--mod) 35%, var(--ink)); }
+  :root:not([data-theme="dark"]) .hud .row .sig { color: color-mix(in srgb, var(--sig) 40%, var(--ink)); }
+  :root:not([data-theme="dark"]) .hud .row .del { color: color-mix(in srgb, var(--del) 45%, var(--ink)); }
+  :root:not([data-theme="dark"]) .hud .v { color: color-mix(in srgb, var(--c) 40%, var(--ink)); }
+  :root:not([data-theme="dark"]) .hud-bar .tier:not(.quiet) { color: color-mix(in srgb, var(--tier) 45%, var(--ink)); }
+  :root:not([data-theme="dark"]) .hud .sel-card .tag.tier { color: color-mix(in srgb, var(--tier) 45%, var(--ink)); }
+}
+:root[data-theme="light"] .hud .row .add { color: color-mix(in srgb, var(--add) 35%, var(--ink)); }
+:root[data-theme="light"] .hud .row .mod { color: color-mix(in srgb, var(--mod) 35%, var(--ink)); }
+:root[data-theme="light"] .hud .row .sig { color: color-mix(in srgb, var(--sig) 40%, var(--ink)); }
+:root[data-theme="light"] .hud .row .del { color: color-mix(in srgb, var(--del) 45%, var(--ink)); }
+:root[data-theme="light"] .hud .v { color: color-mix(in srgb, var(--c) 40%, var(--ink)); }
+:root[data-theme="light"] .hud-bar .tier:not(.quiet) { color: color-mix(in srgb, var(--tier) 45%, var(--ink)); }
+:root[data-theme="light"] .hud .sel-card .tag.tier { color: color-mix(in srgb, var(--tier) 45%, var(--ink)); }

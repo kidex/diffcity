@@ -53,6 +53,9 @@ export class LabelLayer {
   private city: City | null = null;
   private selected: string | null = null;
   private hovered: string | null = null;
+  /** Ids of the buildings the filters dim. */
+  private dimmed: ReadonlySet<string> = new Set();
+  private tweening = false;
   private eye: Vector3 | null = null;
   private readonly anchor = new Vector3();
 
@@ -77,6 +80,22 @@ export class LabelLayer {
     this.clear();
     this.city = city;
     this.arrange();
+  }
+
+  get dimmedIds(): ReadonlySet<string> {
+    return this.dimmed;
+  }
+
+  /** Fades the labels of the buildings the filters dim (ids), and shows or hides every label while a live-update tween plays. */
+  setDimmed(ids: ReadonlySet<string>, tweening: boolean): void {
+    this.dimmed = ids;
+    this.tweening = tweening;
+    for (const entry of this.entries) this.mark(entry);
+  }
+
+  private mark(entry: Entry): void {
+    entry.element.classList.toggle('is-dim', this.dimmed.has(entry.building.id));
+    entry.element.classList.toggle('is-tweening', this.tweening);
   }
 
   /**
@@ -149,6 +168,7 @@ export class LabelLayer {
     for (const entry of entries) {
       entry.element.classList.toggle('is-selected', entry.building.id === this.selected);
       entry.element.classList.toggle('is-hover', entry.building.id === this.hovered);
+      this.mark(entry);
     }
     return changed;
   }
