@@ -6,7 +6,7 @@ import { execFile, spawn } from 'node:child_process';
 import { devNull } from 'node:os';
 import { GUARDED_CONFIG_PATTERN, configEnv, configOverrides, parseScopedConfig } from './guard.js';
 
-export type GitErrorCode = 'not-a-repo' | 'no-commits' | 'no-base' | 'bad-ref' | 'bad-path' | 'git-failed';
+export type GitErrorCode = 'not-a-repo' | 'no-commits' | 'no-base' | 'bad-ref' | 'bad-path' | 'git-failed' | 'output-limit';
 
 export class GitError extends Error {
   readonly code: GitErrorCode;
@@ -137,6 +137,11 @@ export interface GitCallOptions {
   env?: Record<string, string>;
   /** Written to git's stdin. */
   input?: string;
+  /**
+   * Largest stdout accepted, in bytes. Past it git is stopped and the call
+   * rejects with a GitError `output-limit`. Defaults to a limit no source file reaches.
+   */
+  maxOutput?: number;
 }
 
 /**
@@ -162,7 +167,13 @@ function mayRunFilters(args: readonly string[]): boolean {
   return args.some((arg) => arg.startsWith('--filters') || arg.startsWith('--textconv'));
 }
 
-function spawnGit(cwd: string, args: readonly string[], env: NodeJS.ProcessEnv, input: string | undefined): Promise<GitResult> {
+function spawnGit(
+  cwd: string,
+  args: readonly string[],
+  env: NodeJS.ProcessEnv,
+  input: string | undefined,
+  maxOutput: number = GIT_MAX_BUFFER,
+): Promise<GitResult> {
   return new Promise((resolve, reject) => {
     const child = execFile(
       'git',
@@ -171,7 +182,7 @@ function spawnGit(cwd: string, args: readonly string[], env: NodeJS.ProcessEnv, 
         cwd,
         env,
         encoding: 'buffer',
-        maxBuffer: GIT_MAX_BUFFER,
+        maxBuffer: maxOutput,
         windowsHide: true,
       },
       (error, stdout, stderr) => {
@@ -184,7 +195,8 @@ function spawnGit(cwd: string, args: readonly string[], env: NodeJS.ProcessEnv, 
           resolve({ stdout, stderr: stderrText, exitCode: error.code });
           return;
         }
-        reject(new GitError('git-failed', `git ${args.join(' ')} failed: ${error.message}`, { cause: error }));
+        const code = error.code === 'ERR_CHILD_PROCESS_STDIO_MAXBUFFER' ? 'output-limit' : 'git-failed';
+        reject(new GitError(code, `git ${args.join(' ')} failed: ${error.message}`, { cause: error }));
       },
     );
     // git may exit before reading all of its input (e.g. it fails at startup);
@@ -215,7 +227,7 @@ export async function gitRaw(cwd: string, args: readonly string[], options: GitC
     }
     Object.assign(env, configEnv(configOverrides(parseScopedConfig(lookup.stdout.toString('utf8'))), env));
   }
-  return spawnGit(cwd, args, env, options.input);
+  return spawnGit(cwd, args, env, options.input, options.maxOutput);
 }
 
 /**

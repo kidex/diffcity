@@ -1,6 +1,8 @@
 #!/usr/bin/env node
-// Copies the tree-sitter wasm grammars and their licenses from node_modules
-// into grammars/, which ships in the npm package (ADR-013).
+// Copies the tree-sitter wasm grammars, their licenses and the highlights.scm
+// queries from node_modules into grammars/, which ships in the npm package
+// (ADR-013, ADR-027). The queries sit next to the wasm files as
+// <package>.highlights.scm (and .highlights-jsx.scm for the JSX additions).
 // Runs on `prepare`: after `npm install` / `npm ci` in the repo and before `npm pack`.
 import { copyFileSync, existsSync, mkdirSync } from 'node:fs';
 import { createRequire } from 'node:module';
@@ -18,6 +20,7 @@ const grammars = [
     [
       ['tree-sitter-typescript.wasm', 'tree-sitter-typescript.wasm'],
       ['tree-sitter-tsx.wasm', 'tree-sitter-tsx.wasm'],
+      ['queries/highlights.scm', 'tree-sitter-typescript.highlights.scm'],
       ['LICENSE', 'LICENSE-tree-sitter-typescript'],
     ],
   ],
@@ -25,6 +28,8 @@ const grammars = [
     'tree-sitter-javascript',
     [
       ['tree-sitter-javascript.wasm', 'tree-sitter-javascript.wasm'],
+      ['queries/highlights.scm', 'tree-sitter-javascript.highlights.scm'],
+      ['queries/highlights-jsx.scm', 'tree-sitter-javascript.highlights-jsx.scm'],
       ['LICENSE', 'LICENSE-tree-sitter-javascript'],
     ],
   ],
