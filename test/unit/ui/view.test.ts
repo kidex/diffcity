@@ -7,6 +7,7 @@
 import { describe, expect, it } from 'vitest';
 import type { File, Finding, Package, Report, Status, Symbol, Verdict } from '../../../src/core/report/types.js';
 import { buildCity } from '../../../src/ui/screens/change/model/city.js';
+import type { Marks } from '../../../src/ui/screens/change/model/critical.js';
 import type { City } from '../../../src/ui/screens/change/model/city.js';
 import type { Filters, PaintInput } from '../../../src/ui/screens/change/model/view.js';
 import {
@@ -17,6 +18,7 @@ import {
   pruneFilters,
   ruleIndex,
   ruleOf,
+  toggleHideChecked,
   toggleRule,
   toggleType,
   toggleVerdict,
@@ -141,6 +143,50 @@ describe('view', () => {
     expect(dimmedIds(city, clearFilters())).toEqual([]);
     // A fresh object each time: nothing shares state.
     expect(clearFilters()).not.toBe(NO_FILTERS);
+  });
+
+  it('view/hide-checked: files and floors with a current mark are dimmed, outdated ones are not, and it combines with the other rows by AND', () => {
+    const marks: Marks = {
+      // The whole guard is marked at file level; the cart has one of its changed floors marked; totals has all three changed floors marked, one for rewrite.
+      files: new Map([[GUARD, 'good']]),
+      symbols: new Map([
+        [`${CART}#add`, 'outdated'],
+        [`${TOTALS}#sum`, 'checked'],
+        [`${TOTALS}#tax`, 'rewrite'],
+        [`${TOTALS}#old`, 'good'],
+      ]),
+    };
+    const paint = (filters: Filters, given: Marks | undefined = marks) => paintCity({ ...input(city, filters), marks: given });
+    const hidden = (filters: Filters, given?: Marks): string[] => {
+      const result = paint(filters, given);
+      return city.buildings.filter((building) => result.buildings[building.index]?.dimmed === true).map((building) => building.id).sort();
+    };
+    const on = toggleHideChecked(NO_FILTERS);
+    expect(on).toEqual({ verdict: null, type: null, rule: null, hideChecked: true });
+    // The guard (file mark) and totals (every changed floor marked) go; the cart's only mark is outdated; the log is untouched and never hidden.
+    expect(hidden(on)).toEqual([GUARD, TOTALS].sort());
+    // Off again: nothing is hidden, and without marks "hide checked" hides nothing.
+    expect(hidden(toggleHideChecked(on))).toEqual([]);
+    expect(hidden(on, {})).toEqual([]);
+    // Floors: the guard's floors inherit the file's mark; totals' three are marked; the cart's outdated floor stays.
+    const floors = (id: string): boolean[] => {
+      const building = city.byId.get(id);
+      return (building && paint(on).floors[building.index]?.map((floor) => floor.dimmed)) ?? [];
+    };
+    expect(floors(GUARD)).toEqual([true, true]);
+    expect(floors(TOTALS)).toEqual([true, true, true]);
+    expect(floors(CART)).toEqual([false, false]);
+    // A building with one marked floor stays; only that floor is hidden.
+    const partial: Marks = { symbols: new Map([[`${TOTALS}#sum`, 'checked']]) };
+    expect(hidden(on, partial)).toEqual([]);
+    const totals = city.byId.get(TOTALS);
+    expect(totals && paint(on, partial).floors[totals.index]?.map((floor) => floor.dimmed)).toEqual([true, false, false]);
+    // AND with the verdict row: "ok" dims the guard anyway, hide checked adds totals.
+    expect(hidden(toggleVerdict(on, 'ok'))).toEqual([GUARD, LOG, TOTALS].sort());
+    // "Show everything" clears it too, and the rows keep their own shape when it is off.
+    expect(clearFilters()).toEqual(NO_FILTERS);
+    expect(toggleVerdict(on, 'eyes')).toEqual({ verdict: 'eyes', type: null, rule: null, hideChecked: true });
+    expect(toggleHideChecked(toggleVerdict(on, 'eyes'))).toEqual({ verdict: 'eyes', type: null, rule: null });
   });
 
   it('view/rules-filter-dims: buildings with no finding of the rule are dimmed; change-level findings belong to no building', () => {
