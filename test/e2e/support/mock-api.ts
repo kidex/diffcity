@@ -59,6 +59,8 @@ export interface ApiData {
   diff: (request: DiffRequest) => DiffReply | Promise<DiffReply>;
   /** The review marks every change starts with (ADR-028); the default is none. The routes keep the state: see `MockedApi.review`. */
   review: ReviewSeed;
+  /** The review state per change id: pass the same Map to two pages and they share one daemon's marks. */
+  reviewMocks: Map<number, ReviewMock>;
 }
 
 export interface MockedApi {
@@ -78,6 +80,7 @@ export function defaultApiData(): ApiData {
     reports: { 11: fixtures.reportOrderDiscounts() },
     search: () => results,
     review: {},
+    reviewMocks: new Map(),
     diff: ({ path }) => ({
       snapshotId: 1,
       head: 'aaaaaaa',
@@ -98,7 +101,7 @@ export async function mockApi(page: Page, overrides: Partial<ApiData> = {}): Pro
   const data = { ...defaultApiData(), ...overrides };
   const requests: URL[] = [];
   let diffCalls = 0;
-  const reviews = new Map<number, ReviewMock>();
+  const reviews = data.reviewMocks;
   const review = (changeId: number): ReviewMock => {
     let mock = reviews.get(changeId);
     if (mock === undefined) {

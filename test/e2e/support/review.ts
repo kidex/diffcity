@@ -10,7 +10,7 @@ import { GUARD } from './hud.js';
 import type { ApiData, MockedApi } from './mock-api.js';
 import { mockApi } from './mock-api.js';
 import { panelReport, PLACE } from './panel.js';
-import { project, sceneExpect as expect, openCity, waitForCityAttribute } from './scene.js';
+import { project, sceneExpect as expect, openCity, selectedFloor, waitForCityAttribute } from './scene.js';
 
 export { PLACE };
 
@@ -36,11 +36,24 @@ export async function openReview(
   return { api, report };
 }
 
-/** Clicks the centre of a building (or of one floor) and waits for the selection. */
+/**
+ * Selects a building and, with `symbolId`, focuses that floor. A click on the
+ * building lands on whichever floor is under the pointer, so the floor is then
+ * set through its stop card in the file view (the symbol must be a stop of the
+ * reading path in the Report).
+ */
 export async function selectFile(page: Page, fileId: string = GUARD, symbolId?: string): Promise<void> {
-  const point = await project(page, fileId, symbolId);
+  // The selection card sits over the city's bottom right corner and can cover the building: clear it first.
+  if (await card(page).isVisible()) {
+    await page.keyboard.press('Escape');
+    await waitForCityAttribute(page, 'data-selected', '');
+  }
+  const point = await project(page, fileId);
   await page.mouse.click(point.x, point.y);
   await waitForCityAttribute(page, 'data-selected', fileId);
+  if (symbolId === undefined) return;
+  await page.locator(`[data-testid="file-view"] [data-testid="stop-card"][data-symbol="${symbolId}"]`).click();
+  await expect.poll(() => selectedFloor(page)).toBe(symbolId);
 }
 
 export const card = (page: Page): Locator => page.getByTestId('selection-card');
