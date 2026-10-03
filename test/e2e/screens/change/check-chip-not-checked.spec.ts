@@ -6,7 +6,7 @@
 import { expect, test } from '@playwright/test';
 import { fixtures, mockApi } from '../../support/mock-api.js';
 import { ruleReport, withChecks } from '../../support/hud.js';
-import { withoutWebgl } from '../../support/scene.js';
+import { sceneExpect, withoutWebgl } from '../../support/scene.js';
 
 test('change/check-chip-not-checked', async ({ page }) => {
   await withoutWebgl(page);
@@ -19,6 +19,7 @@ test('change/check-chip-not-checked', async ({ page }) => {
   ] as never);
   await mockApi(page, { reports });
   await page.goto('/#/change/11');
+  await sceneExpect(page.getByTestId('hud-bar')).toBeVisible();
 
   const chips = page.getByRole('list', { name: 'Rule checks' }).getByTestId('check-chip');
   await expect(chips).toHaveCount(7);
@@ -40,7 +41,7 @@ test('change/check-chip-not-checked', async ({ page }) => {
   // No checks in the Report: no chips.
   reports[11] = fixtures.reportGolden();
   await page.reload();
-  await expect(page.getByTestId('hud-bar')).toBeVisible();
+  await sceneExpect(page.getByTestId('hud-bar')).toBeVisible();
   await expect(page.getByTestId('check-chip')).toHaveCount(0);
   await expect(page.getByTestId('check-chips')).toHaveCount(0);
 });
