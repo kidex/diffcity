@@ -3,12 +3,13 @@
 // building rises from the ground, and the camera, the selection and the
 // filters stay. The tween is traced by the scene's debug hook (the height the
 // new building had on each frame), never timed, because SwiftShader frames are
-// slow. The scene keeps its draw-call budget and goes back to on-demand
-// rendering when the tween ends.
+// slow. The scene keeps its draw-call budget and asks for no more frames
+// when the tween ends.
 
 import { test } from '@playwright/test';
 import type { Report } from '../../../../src/core/report/types.js';
 import { fixtures, mockApi } from '../../support/mock-api.js';
+import { setTabVisible } from '../../support/effects.js';
 import { GUARD } from '../../support/hud.js';
 import { camera, openCity, project, selected, stats, waitForCityAttribute, sceneExpect as expect } from '../../support/scene.js';
 import { emitSse, tagClient } from '../../support/sse.js';
@@ -79,7 +80,8 @@ test('change/live-update-new-building-rises', async ({ page }, testInfo) => {
   expect(scene.buildings).toBe(18);
   expect(scene.drawCalls).toBeLessThanOrEqual(40);
 
-  // On-demand again: once the labels have settled, no frame is drawn while nothing changes.
+  // The tween asked for no more frames once it ended: with the tab hidden (the golden Report's pulse and tier 1 breathing would otherwise keep the loop running), no frame is drawn once the labels have settled.
+  await setTabVisible(page, false);
   await expect
     .poll(
       async () => {

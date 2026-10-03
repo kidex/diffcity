@@ -51,7 +51,7 @@ test('change/mockup-parity-hud', async ({ page }) => {
   await expect(page.getByRole('group', { name: 'Filter by rule' })).toHaveCount(0);
 
   // Legend.
-  const legend = page.getByRole('list', { name: 'Legend' });
+  const legend = page.getByRole('group', { name: 'Legend' });
   for (const label of ['needs your eyes', 'risky', 'outside the spec', 'reviewed, fine', 'added', 'modified', 'signature', 'removed', 'untouched']) await expect(legend).toContainText(label);
   await expect(page.getByTestId('legend-rule-x')).toBeHidden();
 
