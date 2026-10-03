@@ -22,6 +22,7 @@
     "clean": "node scripts/clean-dist.mjs",
     "build:node": "node scripts/clean-dist.mjs --node && tsc -p tsconfig.build.json",
     "build:ui": "vite build",
+    "build:standalone": "vite build --config vite.standalone.config.ts",
     "build": "npm run build:node && npm run build:ui",
     "dev:ui": "vite",
     "design:directions": "vite --config design/directions/vite.config.ts --host 127.0.0.1 --port 4400",
