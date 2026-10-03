@@ -87,3 +87,18 @@ describe('ui/review-port', () => {
     expect(calls).toBe(2);
   });
 });
+
+describe('ui/review-port-methods', () => {
+  it('setMark, clearMark and setNote call the review routes of their change', async () => {
+    const { fetch, seen } = stub((url) => (url.includes('/marks?') ? new Response(null, { status: 204 }) : json({ mark: {}, progress: {}, note: null })));
+    const port = createReviewPort(createApi('', fetch), {} as Live, 9);
+    await port.setMark({ snapshotId: 1, target: { kind: 'file', id: 'f' }, mark: 'checked' });
+    await port.clearMark({ kind: 'file', id: 'f' });
+    await port.setNote('');
+    expect(seen.map((s) => [s.init?.method, s.url])).toEqual([
+      ['PUT', '/api/changes/9/review/marks'],
+      ['DELETE', '/api/changes/9/review/marks?kind=file&id=f'],
+      ['PUT', '/api/changes/9/review/note'],
+    ]);
+  });
+});

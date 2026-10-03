@@ -7,9 +7,10 @@
 //   - `<symbol name>`, lines <start>–<end>: <note>
 //   - Whole file: <note>
 //
-// Notes are inserted as text: every line after the first is indented under its
-// bullet and a leading `#` is escaped, so a note cannot open a heading or a
-// section. The result is at most SUMMARY_MAX_BYTES; past that it ends with
+// Notes are inserted as text. Every line after the first of a bullet note is
+// indented under its bullet; the general note is a blockquote, one `> ` per
+// line. In both, a character that would start a block is backslash-escaped, so
+// a note cannot open a heading, fence, comment, list or setext underline. The result is at most SUMMARY_MAX_BYTES; past that it ends with
 // "… N more notes not shown".
 
 import type { ReviewMark } from '../model/types.js';
@@ -37,8 +38,16 @@ function oneLine(text: string): string {
   return text.replace(/[\u0000-\u001f\u007f\u0085\u2028\u2029]+/g, ' ').trim();
 }
 
+/**
+ * Neutralises a line that would start a block: a backslash before a leading
+ * heading, quote, list, rule, setext underline, fence, HTML or table character,
+ * and before the dot of a leading `1.`. The text stays readable and is still
+ * text, whatever it holds.
+ */
 function escapeLine(line: string): string {
-  return line.replace(/^(\s*)#/, '$1\\#');
+  return line
+    .replace(/^(\s*)([#>+*=~`<|_-])/, '$1\\$2')
+    .replace(/^(\s*\d+)([.)])/, '$1\\$2');
 }
 
 function rawLines(note: string): string[] {
@@ -88,11 +97,12 @@ export function renderSummary(input: SummaryInput): string {
   const entries = entriesOf(input);
   let out = `# Review of ${oneLine(input.ref)} in ${oneLine(input.repoName)} (head ${oneLine(input.head).slice(0, 7)})\n\n`;
   const general = input.note?.trim() ?? '';
-  if (general !== '') out += `${rawLines(general).map(escapeLine).join('\n')}\n\n`;
+  // A blockquote closes with the note: an unclosed fence or comment cannot reach the sections below.
+  if (general !== '') out += `${rawLines(general).map((line) => `> ${escapeLine(line)}`).join('\n')}\n\n`;
   out += `## Needs rewrite (${String(entries.length)})\n`;
 
   // The trailer is reserved up front, so it always fits.
-  const trailer = (hidden: number): string => `\n… ${String(hidden)} more notes not shown\n`;
+  const trailer = (hidden: number): string => `\n… ${String(hidden)} more ${hidden === 1 ? 'note' : 'notes'} not shown\n`;
   const reserve = bytes(trailer(entries.length));
   let lastFile: string | null = null;
   for (const [index, entry] of entries.entries()) {

@@ -138,6 +138,18 @@ describe('JSON errors', () => {
     expect(form.statusCode).toBe(415);
     expect(form.json()).toMatchObject({ error: { code: 'unsupported-media-type' } });
 
+    for (const type of ['application/json-seq', 'application/jsonx', 'application/json5']) {
+      const lookalike = await server.inject({ method: 'POST', url, payload, headers: { ...HOST, origin: 'http://127.0.0.1:4321', 'content-type': type } });
+      expect(lookalike.statusCode, type).toBe(415);
+    }
+    const withCharset = await server.inject({
+      method: 'POST',
+      url,
+      payload,
+      headers: { ...HOST, origin: 'http://127.0.0.1:4321', 'content-type': 'Application/JSON ; charset=utf-8' },
+    });
+    expect(withCharset.statusCode).toBe(200);
+
     const fetchSite = await server.inject({
       method: 'POST',
       url,

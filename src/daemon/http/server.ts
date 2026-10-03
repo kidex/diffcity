@@ -75,7 +75,7 @@ export async function buildHttpServer(options: HttpServerOptions): Promise<Fasti
       if (!allowedOrigin(origin, port) || (site !== undefined && site !== 'same-origin')) {
         return sendError(reply, 403, 'cross-site', 'writes need the daemon Origin and no cross-site Fetch metadata');
       }
-      if (hasBody(request) && !/^application\/json\b/i.test(request.headers['content-type'] ?? '')) {
+      if (hasBody(request) && !/^application\/json\s*(;|$)/i.test(request.headers['content-type'] ?? '')) {
         return sendError(reply, 415, 'unsupported-media-type', 'a request body must be Content-Type application/json');
       }
     }

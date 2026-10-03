@@ -10,8 +10,8 @@ import type { Live, Unsubscribe } from './live.js';
 export interface ReviewPort {
   /** The marks, note and progress now; null while the change has no snapshot. */
   load(signal?: AbortSignal): Promise<ReviewState | null>;
-  mark(request: MarkRequest): ReturnType<Api['putMark']>;
-  unmark(target: MarkRequest['target']): Promise<void>;
+  setMark(request: MarkRequest): ReturnType<Api['putMark']>;
+  clearMark(target: MarkRequest['target']): Promise<void>;
   setNote(note: string): Promise<{ note: string | null }>;
   /** The markdown summary of the "Needs rewrite" marks; null while there is no snapshot. */
   summary(signal?: AbortSignal): Promise<string | null>;
@@ -23,8 +23,8 @@ export interface ReviewPort {
 export function createReviewPort(api: Api, live: Live, changeId: number): ReviewPort {
   return {
     load: (signal) => api.review(changeId, signal),
-    mark: (request) => api.putMark(changeId, request),
-    unmark: (target) => api.deleteMark(changeId, target),
+    setMark: (request) => api.putMark(changeId, request),
+    clearMark: (target) => api.deleteMark(changeId, target),
     setNote: (note) => api.putNote(changeId, note),
     summary: (signal) => api.reviewSummary(changeId, signal),
     onChange(listener) {

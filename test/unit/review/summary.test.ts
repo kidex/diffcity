@@ -46,7 +46,7 @@ describe('summary/rewrite-only', () => {
       [
         TITLE,
         '',
-        'Mostly fine, two things to redo.',
+        '> Mostly fine, two things to redo.',
         '',
         '## Needs rewrite (2)',
         '',
@@ -106,16 +106,22 @@ describe('summary/line-range', () => {
 });
 
 describe('summary/note-cannot-break-structure', () => {
+  const hostile = 'first line\n## Injected\n# Title\n   # indented heading\r\n### Third';
+
   it('a note with "\\n## Injected" and "\\n# Title" stays under its bullet', () => {
-    const hostile = 'first line\n## Injected\n# Title\n   # indented heading\r\n### Third';
     const text = renderSummary({
       ...base,
       note: 'general\n## Injected general\n# Title general',
       report: sampleReport(),
       marks: [mark('symbol', 's-total', { note: hostile }), mark('file', 'f-tax', { note: hostile })],
     });
-    // Only the structure the renderer wrote: the title, the section and one heading per file.
-    expect(headingLines(text)).toEqual([TITLE, '## Needs rewrite (2)', '### src/cart/total.ts', '### src/cart/tax.ts']);
+    // Only the structure the renderer wrote, plus the quoted general note.
+    expect(headingLines(text).filter((line) => !line.startsWith('>'))).toEqual([
+      TITLE,
+      '## Needs rewrite (2)',
+      '### src/cart/total.ts',
+      '### src/cart/tax.ts',
+    ]);
     const lines = text.split('\n');
     const start = lines.indexOf('- `total`: first line');
     expect(lines.slice(start, start + 5)).toEqual([
@@ -125,9 +131,39 @@ describe('summary/note-cannot-break-structure', () => {
       '     \\# indented heading',
       '  \\### Third',
     ]);
-    // The general note, a paragraph of its own, cannot open a section either.
-    expect(lines).toContain('\\## Injected general');
-    expect(lines).toContain('\\# Title general');
+    expect(lines).toContain('> \\## Injected general');
+    expect(lines).toContain('> \\# Title general');
+  });
+
+  // Every line a note contributes is either on a bullet line, indented under it,
+  // or in the general note's blockquote; nothing of a note sits at column 0
+  // unquoted, so no markdown construct can reach the structure after it.
+  const NASTY = ['```', '~~~ js', '<!--', '<div>', '---', '===', '> x', '- x', '* x', '+ x', '1. x', '| a | b |', '___', '    code', '[ref]: http://example.test'];
+
+  it.each(NASTY)('a note line "%s" in the general note and in a bullet note leaves the structure intact', (nasty) => {
+    const note = `before\n${nasty}\nafter`;
+    const text = renderSummary({
+      ...base,
+      note,
+      report: sampleReport(),
+      marks: [mark('symbol', 's-total', { note }), mark('symbol', 's-round', { note: `second\n${nasty}` }), mark('file', 'f-tax', { note })],
+    });
+    const lines = text.split('\n');
+    const structural = (line: string): boolean =>
+      line === '' || line === TITLE || line === '## Needs rewrite (3)' || line.startsWith('### src/cart/') || line.startsWith('- ');
+    for (const line of lines) {
+      // Unindented, unquoted lines are structure only.
+      if (!line.startsWith('> ') && !line.startsWith('  ')) expect(structural(line), `line ${JSON.stringify(line)}`).toBe(true);
+    }
+    // The section heading appears once, after the whole general note, and the bullets are all there.
+    expect(lines.filter((line) => line === '## Needs rewrite (3)')).toHaveLength(1);
+    expect(lines.filter((line) => line.startsWith('- '))).toEqual(['- `total`: before', '- `roundCents`: second', '- Whole file: before']);
+    const general = lines.filter((line) => line.startsWith('> '));
+    expect(general).toHaveLength(3);
+    expect(lines.indexOf('## Needs rewrite (3)')).toBeGreaterThan(lines.lastIndexOf(general[2] ?? ''));
+    // A block-starting character of the note is escaped, so it is text.
+    const quoted = general[1] ?? '';
+    expect(quoted).not.toMatch(/^> (```|~~~|<|---|===|>|-|\*|\+|\d+\.|\||___)/);
   });
 
   it('a header field with line breaks stays one line', () => {
@@ -158,6 +194,24 @@ describe('summary/cap-32k', () => {
     expect(shown).toBeLessThan(400);
     expect(text.trimEnd().endsWith(`… ${String(400 - shown)} more notes not shown`)).toBe(true);
     expect(text).toContain('## Needs rewrite (400)');
+  });
+
+  it('a single hidden note is "1 more note", in the singular', () => {
+    const files = Array.from({ length: 20 }, (_, f) =>
+      file(`g${String(f)}`, `src/gen/g-${String(f)}.ts`, 'mod', 'ok', Array.from({ length: 10 }, (_, s) => sym(`g${String(f)}s${String(s)}`, `fn${String(s)}`))),
+    );
+    const report: Report = { ...sampleReport(), packages: [{ id: 'p', path: 'src/gen', tier1: false, files }] };
+    const all = files.flatMap((f) => f.symbols.map((s) => s.id));
+    // Find the count at which exactly one note is cut.
+    for (let n = 1; n <= all.length; n += 1) {
+      const marks = all.slice(0, n).map((id) => mark('symbol', id, { note: 'n'.repeat(1900) }));
+      const text = renderSummary({ ...base, note: null, report, marks });
+      if (text.endsWith('\n… 1 more note not shown\n')) {
+        expect(text).not.toContain('1 more notes');
+        return;
+      }
+    }
+    throw new Error('no count hid exactly one note');
   });
 
   it('under the cap there is no trailer', () => {
