@@ -90,6 +90,8 @@ for (const scheme of ['dark', 'light'] as const) {
 }
 
 test('screenshot of the change city', async ({ page }, testInfo) => {
+  // The real city: its first frame under SwiftShader can take most of CITY_TIMEOUT.
+  test.setTimeout(60_000);
   await page.emulateMedia({ colorScheme: 'dark', reducedMotion: 'reduce' });
   await page.clock.setFixedTime(NOW);
   await openRepo(page, '/#/change/11');

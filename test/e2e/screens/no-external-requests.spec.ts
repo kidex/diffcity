@@ -3,7 +3,7 @@
 
 import { expect, test, type Request } from '@playwright/test';
 import { mockApi } from '../support/mock-api.js';
-import { waitForCity } from '../support/scene.js';
+import { withoutWebgl } from '../support/scene.js';
 
 const SORA_FILE = /\/assets\/sora-[\w-]+\.woff2$/;
 const PLEX_FILE = /\/assets\/ibm-plex-mono-[\w-]+\.woff2$/;
@@ -14,6 +14,8 @@ test('every request stays on 127.0.0.1, fonts included', async ({ page, context 
     urls.push(request.url());
   };
   context.on('request', record);
+  // The claim is about requests, not the scene: run the change screen without WebGL.
+  await withoutWebgl(page);
   await mockApi(page);
 
   await page.goto('/#/');
@@ -21,7 +23,7 @@ test('every request stays on 127.0.0.1, fonts included', async ({ page, context 
   await page.goto('/#/repo/1');
   await page.goto('/#/change/11');
   await expect(page.getByRole('navigation', { name: 'Breadcrumb' })).toContainText('feature/order-discounts');
-  await waitForCity(page);
+  await expect(page.getByTestId('no-webgl-note')).toBeVisible();
   await page.keyboard.press('ControlOrMeta+k');
   await page.getByRole('combobox').pressSequentially('order');
   await expect(page.getByRole('option')).toHaveCount(4);
