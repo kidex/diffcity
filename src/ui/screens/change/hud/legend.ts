@@ -18,7 +18,7 @@ export function createLegend(): { root: HTMLElement; update(hasRuleFindings: boo
   marker.hidden = true;
   const root = h(
     'div',
-    { class: 'legend', role: 'list', 'aria-label': 'Legend', 'data-testid': 'legend' },
+    { class: 'legend', role: 'group', 'aria-label': 'Legend', 'data-testid': 'legend' },
     h(
       'span',
       { class: 'g' },
