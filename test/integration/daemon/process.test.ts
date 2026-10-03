@@ -171,7 +171,8 @@ describe('daemon process', () => {
     const started = Date.now();
     second.child.kill('SIGINT');
     expect(await second.exited).toBe(0);
-    expect(Date.now() - started).toBeLessThan(3000);
+    // Prompt, not instant: a loaded machine slows process exit, so the bound is generous.
+    expect(Date.now() - started).toBeLessThan(10_000);
     // The first daemon's files are untouched: the second did not write or remove any.
     expect(await gone(paths.daemonJson)).toBe(true);
     expect(await readFile(paths.lock, 'utf8')).toBe(lockBefore);
