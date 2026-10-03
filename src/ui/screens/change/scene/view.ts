@@ -9,8 +9,11 @@ import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 
 import type { Report } from '../../../../core/report/types.js';
 import { h } from '../../../shared/dom.js';
-import type { City, CityBuilding } from '../model/city.js';
+import type { City, CityBuilding, CityFloor } from '../model/city.js';
 import { buildCity } from '../model/city.js';
+import type { CityPaint, Filters, RuleIndex } from '../model/view.js';
+import { focusPaint, NO_FILTERS, paintCity, ruleIndex } from '../model/view.js';
+import { easeOut, needsTween, TWEEN_MS, tweenCity } from '../model/tween.js';
 import { LabelLayer } from './labels.js';
 import { createGround } from './night/ground.js';
 import type { FatLines } from './night/lines.js';
@@ -19,6 +22,7 @@ import { createTowers } from './night/towers.js';
 import type { Towers } from './night/towers.js';
 import type { OrbitState } from './orbit.js';
 import { bindOrbit, homeFor, Orbit, orbitPosition } from './orbit.js';
+import type { Pick } from './picking.js';
 import { Picker, projectToClient } from './picking.js';
 import { Stage } from './stage.js';
 import { colorToken, numberToken } from './tokens.js';
@@ -38,7 +42,10 @@ export interface SceneStats {
 
 export interface CityView {
   readonly element: HTMLElement;
+  /** Shows a new Report: buildings in both Reports tween, new ones rise, removed ones sink; camera, selection and filters stay. */
   setReport(report: Report): void;
+  /** The filter rows (model/view.ts); the scene dims what they filter out. */
+  setFilters(filters: Filters): void;
   /** Client point of a building's centre, or null when it is not in the city or behind the camera. */
   project(fileId: string): { x: number; y: number } | null;
   stats(): SceneStats;
@@ -47,15 +54,34 @@ export interface CityView {
   firstCamera(): OrbitState | null;
   selected(): string | null;
   hovered(): string | null;
+  /** What the filters dim, by file id: whole buildings, and dimmed floor indices. */
+  paint(): { dimmed: string[]; floors: Record<string, number[]> };
+  /** The buildings as shown right now (mid-tween included): ground position and height. */
+  shown(): Record<string, { x: number; z: number; height: number }>;
+  /** True while a live-update tween plays. */
+  tweening(): boolean;
+  /** Heights the newest tweened building had on each frame of the last tween, for tests. */
+  tweenTrace(): { id: string; heights: number[] } | null;
   /** Renders every frame for `ms` and reports the frame rate and the scene's draw calls. */
   bench(ms: number): Promise<{ fps: number; drawCalls: number }>;
   dispose(): void;
+}
+
+/** What the HUD hears from the scene. */
+export interface SceneHooks {
+  /** The pointer is over a building (client point), or left them all. */
+  hover(info: { building: CityBuilding; floor: CityFloor | undefined; clientX: number; clientY: number; city: City } | null): void;
+  /** The selection changed, or its building was rebuilt by a live update. */
+  select(building: CityBuilding | null): void;
+  /** The selected file is no longer in the Report. */
+  selectionLost(building: CityBuilding): void;
 }
 
 export interface CityViewOptions {
   reducedMotion: boolean;
   /** Called once, after the first frame is on screen. */
   onReady?: () => void;
+  hooks?: SceneHooks;
 }
 
 /** The camera counts as resting this long after it last moved; labels are re-ranked and occluded then. */
@@ -65,13 +91,24 @@ const REST_MS = 120;
 export const disposal = { live: 0, lastGeometries: -1, lastTextures: -1 };
 
 interface Content {
+  /** The Report's city: what picking, labels and the layout use. */
   city: City;
+  /** The city the towers draw right now: `city`, or a frame of the tween toward it. */
+  shown: City;
   /** The scene parts, compiled one per task before the first frame. */
   parts: Object3D[];
   towers: Towers;
-  lines: FatLines[];
+  /** Lot outlines; the towers' own are `towers.lines`. */
+  lotLines: FatLines[];
   picker: Picker;
   dispose(): void;
+}
+
+/** A live-update tween in progress; it starts with the first frame drawn after it was set. */
+interface Tween {
+  from: City;
+  to: City;
+  startedAt: number | null;
 }
 
 /** Throws when WebGL2 is not available; the caller shows the fallback. */
@@ -81,14 +118,6 @@ export function createCityView(host: HTMLElement, report: Report, options: CityV
     'div',
     { class: 'city', 'data-testid': 'city' },
     canvas,
-    h(
-      'div',
-      { class: 'hint' },
-      'Drag to orbit, scroll to zoom',
-      h('br'),
-      h('span', { class: 'kbd' }, 'R'),
-      ' reset view',
-    ),
   );
   host.append(element);
 
@@ -96,6 +125,13 @@ export function createCityView(host: HTMLElement, report: Report, options: CityV
   let disposed = false;
   let hovered: string | null = null;
   let selected: string | null = null;
+  let filters: Filters = NO_FILTERS;
+  let rules: RuleIndex = ruleIndex(report);
+  let tween: Tween | null = null;
+  let trace: { id: string; heights: number[] } | null = null;
+  /** The paint of the shown city for the filters alone: hover and selection are laid over it. */
+  let baseline: CityPaint | null = null;
+  const hooks = options.hooks;
   /** Labels are ranked and occluded for the current camera, selection and hover. */
   let settled = false;
   let cameraMovedAt = Number.NEGATIVE_INFINITY;
@@ -127,7 +163,7 @@ export function createCityView(host: HTMLElement, report: Report, options: CityV
         applyCamera();
         firstCamera ??= { ...orbit.state };
         if (moving) cameraMoved(now);
-        return moving;
+        return stepTween(now) || moving;
       },
       afterFrame: () => {
         labels.render(stage.camera);
@@ -152,7 +188,7 @@ export function createCityView(host: HTMLElement, report: Report, options: CityV
       },
       onResize: (width, height) => {
         labels.setSize(width, height);
-        for (const line of content?.lines ?? []) line.material.resolution.set(width, height);
+        for (const line of [...(content?.lotLines ?? []), ...(content?.towers.lines ?? [])]) line.material.resolution.set(width, height);
       },
     });
   } catch (error) {
@@ -192,7 +228,55 @@ export function createCityView(host: HTMLElement, report: Report, options: CityV
     camera.updateMatrixWorld();
   }
 
-  function build(city: City): Content {
+  /** Brings the towers' paint in line with the filters, hover and selection; `full` recomputes the filter paint too. */
+  function repaint(full: boolean): void {
+    const c = content;
+    if (c === null) return;
+    if (full || baseline === null) {
+      baseline = paintCity({ city: c.shown, filters, rules, hover: null, selection: null });
+      const dim = new Set<string>();
+      for (const building of c.shown.buildings) if (baseline.buildings[building.index]?.dimmed === true) dim.add(building.id);
+      labels.setDimmed(dim, tween !== null);
+      element.dataset['filters'] = `verdict=${filters.verdict ?? ''};type=${filters.type ?? ''};rule=${filters.rule ?? ''}`;
+    }
+    c.towers.setPaint(focusPaint(baseline, c.shown, hovered, selected));
+    stage.request();
+  }
+
+  /** Draws `shown` (the Report's city, or a frame of the tween toward it) in new towers. */
+  function showCity(shown: City): void {
+    const c = content;
+    if (c === null) return;
+    scene.remove(c.towers.group);
+    c.towers.dispose();
+    const towers = createTowers(shown);
+    scene.add(towers.group);
+    for (const line of towers.lines) line.material.resolution.set(stage.size.x, stage.size.y);
+    c.towers = towers;
+    c.shown = shown;
+    repaint(true);
+  }
+
+  /** One frame of the tween; true while it still has frames to draw. */
+  function stepTween(now: number): boolean {
+    const running = tween;
+    if (running === null || content === null) return false;
+    running.startedAt ??= now;
+    const progress = Math.min(1, (now - running.startedAt) / TWEEN_MS);
+    const frame = tweenCity(running.from, running.to, easeOut(progress));
+    if (progress >= 1) tween = null;
+    showCity(frame);
+    if (trace !== null) trace.heights.push(frame.byId.get(trace.id)?.height ?? 0);
+    if (progress >= 1) {
+      // The labels come back at the final positions.
+      labels.setDimmed(labels.dimmedIds, false);
+      return false;
+    }
+    return true;
+  }
+
+  function build(city: City, from: City | null = null): Content {
+    const previous = content?.city ?? null;
     content?.dispose();
     const voidColor = colorToken('--c-void');
     const { bounds } = city;
@@ -205,24 +289,33 @@ export function createCityView(host: HTMLElement, report: Report, options: CityV
 
     const ground = createGround(bounds);
     const lots = createLots(city, renderer);
-    const towers = createTowers(city);
+    // A tween starts with its first frame drawn; the first frame it draws is its start.
+    tween = from !== null && needsTween(from, city) ? { from, to: city, startedAt: null } : null;
+    trace = null;
+    if (tween !== null) {
+      const added = city.buildings.find((building) => !tween?.from.byId.has(building.id));
+      if (added !== undefined) trace = { id: added.id, heights: [] };
+    }
+    const shown = tween === null ? city : tweenCity(tween.from, city, 0);
+    const towers = createTowers(shown);
     scene.add(ground.mesh, lots.group, towers.group);
-    const lines = [...lots.lines, ...towers.lines];
-    for (const line of lines) line.material.resolution.set(stage.size.x, stage.size.y);
+    for (const line of [...lots.lines, ...towers.lines]) line.material.resolution.set(stage.size.x, stage.size.y);
     labels.setCity(city);
-    content = {
+    const made: Content = {
       city,
+      shown,
       towers,
-      lines,
+      lotLines: lots.lines,
       parts: [ground.mesh, lots.group, towers.group],
       picker: new Picker(city),
       dispose() {
-        scene.remove(ground.mesh, lots.group, towers.group);
+        scene.remove(ground.mesh, lots.group, made.towers.group);
         ground.dispose();
         lots.dispose();
-        towers.dispose();
+        made.towers.dispose();
       },
     };
+    content = made;
 
     const home = homeFor(bounds.span);
     camera.far = home.r * 2 + bounds.span * 4;
@@ -241,35 +334,38 @@ export function createCityView(host: HTMLElement, report: Report, options: CityV
 
     // Hover does not survive a rebuild; the selection does while its file exists.
     hovered = null;
+    hooks?.hover(null);
     canvas.style.cursor = '';
+    const lost = selected === null || city.byId.has(selected) ? null : (previous?.byId.get(selected) ?? null);
     if (selected !== null && !city.byId.has(selected)) selected = null;
-    towers.setSelected(selected);
     labels.setFocus(selected, hovered);
     element.dataset['selected'] = selected ?? '';
+    baseline = null;
+    repaint(true);
+    hooks?.select(selected === null ? null : (city.byId.get(selected) ?? null));
+    if (lost !== null) hooks?.selectionLost(lost);
     settled = false;
     stage.request();
-    return content;
+    return made;
   }
 
-  const buildingAt = (clientX: number, clientY: number): CityBuilding | null =>
-    content?.picker.pick(clientX, clientY, canvas, camera)?.building ?? null;
+  const pickAt = (clientX: number, clientY: number): Pick | null => content?.picker.pick(clientX, clientY, canvas, camera) ?? null;
 
   function setHover(id: string | null): void {
     if (id === hovered) return;
     hovered = id;
     if (labels.setFocus(selected, hovered)) settled = false;
-    content?.towers.setHover(id);
+    repaint(false);
     canvas.style.cursor = id === null ? '' : 'pointer';
     element.dataset['hovered'] = id ?? '';
-    stage.request();
   }
 
   function select(id: string | null): void {
     selected = id;
     if (labels.setFocus(selected, hovered)) settled = false;
-    content?.towers.setSelected(id);
+    repaint(false);
     element.dataset['selected'] = id ?? '';
-    stage.request();
+    hooks?.select(id === null ? null : (content?.city.byId.get(id) ?? null));
   }
 
   // Shaders compile one scene part at a time before the first frame, in
@@ -300,13 +396,17 @@ export function createCityView(host: HTMLElement, report: Report, options: CityV
       stage.request();
     },
     hover: (x, y) => {
-      setHover(buildingAt(x, y)?.id ?? null);
+      const pick = pickAt(x, y);
+      setHover(pick?.building.id ?? null);
+      if (pick === null || content === null) hooks?.hover(null);
+      else hooks?.hover({ building: pick.building, floor: pick.floor, clientX: x, clientY: y, city: content.city });
     },
     leave: () => {
       setHover(null);
+      hooks?.hover(null);
     },
     click: (x, y) => {
-      select(buildingAt(x, y)?.id ?? null);
+      select(pickAt(x, y)?.building.id ?? null);
     },
     clear: () => {
       select(null);
@@ -325,7 +425,14 @@ export function createCityView(host: HTMLElement, report: Report, options: CityV
     setReport(next) {
       if (disposed) return;
       lastReport = next;
-      build(cityOf(next));
+      rules = ruleIndex(next);
+      // A tween in progress continues from what is on screen.
+      const from = options.reducedMotion ? null : (content?.shown ?? null);
+      build(cityOf(next), from);
+    },
+    setFilters(next) {
+      filters = next;
+      repaint(true);
     },
     project(fileId) {
       const building = content?.city.byId.get(fileId);
@@ -348,6 +455,25 @@ export function createCityView(host: HTMLElement, report: Report, options: CityV
     firstCamera: () => (firstCamera === null ? null : { ...firstCamera }),
     selected: () => selected,
     hovered: () => hovered,
+    paint() {
+      const dimmed: string[] = [];
+      const floors: Record<string, number[]> = {};
+      const c = content;
+      if (c === null || baseline === null) return { dimmed, floors };
+      for (const building of c.shown.buildings) {
+        if (baseline.buildings[building.index]?.dimmed === true) dimmed.push(building.id);
+        const dimFloors = (baseline.floors[building.index] ?? []).flatMap((floor, i) => (floor.dimmed ? [i] : []));
+        if (dimFloors.length > 0) floors[building.id] = dimFloors;
+      }
+      return { dimmed, floors };
+    },
+    shown() {
+      const result: Record<string, { x: number; z: number; height: number }> = {};
+      for (const building of content?.shown.buildings ?? []) result[building.id] = { x: building.x, z: building.z, height: building.height };
+      return result;
+    },
+    tweening: () => tween !== null,
+    tweenTrace: () => (trace === null ? null : { id: trace.id, heights: [...trace.heights] }),
     bench(ms) {
       return new Promise((resolve) => {
         const start = stage.frames;

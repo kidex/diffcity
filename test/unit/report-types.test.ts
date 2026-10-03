@@ -1,5 +1,6 @@
 import { describe, expect, expectTypeOf, it } from 'vitest';
 import type {
+  RuleCheck,
   DiffLine,
   File,
   Finding,
@@ -90,6 +91,7 @@ describe('Report types (SPEC.md 4.1)', () => {
       packages: Package[];
       steps: Step[];
       findings: Finding[];
+      checks?: RuleCheck[];
       summary: {
         files: number;
         byStatus: Record<Status, number>;
@@ -123,7 +125,7 @@ describe('Report types (SPEC.md 4.1)', () => {
       id: string;
       source: string;
       severity: 'high' | 'med' | 'low';
-      category: 'security' | 'correctness' | 'scope' | 'style' | 'tests';
+      category: 'security' | 'correctness' | 'scope' | 'style' | 'tests' | 'architecture';
       file: string;
       line: number;
       symbolId?: string;
@@ -131,6 +133,14 @@ describe('Report types (SPEC.md 4.1)', () => {
       message: string;
       fix?: string;
       state: 'open' | 'intended' | 'fixed';
+    }>();
+    expectTypeOf<RuleCheck>().toEqualTypeOf<{
+      ruleId: string;
+      kind: 'file-size' | 'layers' | 'pipeline' | 'cve';
+      state: 'passed' | 'violations' | 'not-checked' | 'pending' | 'error';
+      reason?: string;
+      findings: number;
+      checkedAt: string;
     }>();
   });
 });
