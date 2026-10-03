@@ -13,17 +13,19 @@ import type { DaemonContext, DaemonPlugin } from './plugin.js';
 
 const opened = new WeakMap<DaemonContext, Promise<Db>>();
 
-async function open(path: string): Promise<Db> {
+async function open(path: string, warn: (message: string) => void): Promise<Db> {
   suppressSqliteExperimentalWarning();
   const { openDb } = await import('../core/db/index.js');
-  return openDb(path);
+  return openDb(path, { warn });
 }
 
 /** The database of this daemon (context.paths.db), opened on the first call. A failed open is retried on the next call. */
 export function getDb(context: DaemonContext): Promise<Db> {
   let db = opened.get(context);
   if (db === undefined) {
-    db = open(context.paths.db);
+    db = open(context.paths.db, (message) => {
+      context.log.warn(message);
+    });
     opened.set(context, db);
     const pending = db;
     // Only this open's own entry is dropped: a close and a new getDb may have replaced it meanwhile.

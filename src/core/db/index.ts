@@ -62,13 +62,13 @@ function purge(db: Connection, now: string): number {
  * migrating it to schema v1 when needed. Throws for a database written by a
  * newer diffcity.
  */
-export function openDb(path: string): Db {
+export function openDb(path: string, options: { warn?: (message: string) => void } = {}): Db {
   const db = openConnection(path);
   return {
     path,
     repos: createRepoStore(db),
     changes: createChangeStore(db),
-    snapshots: createSnapshotStore(db),
+    snapshots: createSnapshotStore(db, options.warn),
     events: createEventStore(db),
     review: createReviewStore(db),
     transaction: (fn) => db.transaction(fn, { immediate: true }),

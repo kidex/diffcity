@@ -40,17 +40,28 @@ export type SnapshotInput = Omit<SnapshotRecord, 'id'>;
  */
 export type SnapshotPutResult = 'created' | 'replaced' | 'refreshed' | 'unchanged';
 
-/** Whether two serialized Fingerprints hold the same data, whatever the key order. */
-function sameFingerprints(a: string | null, b: string | null): boolean {
-  if (a === b) return true;
-  if (a === null || b === null) return false;
+/**
+ * Whether the incoming serialized Fingerprints say nothing new about the stored
+ * ones: they are null (no fingerprint information, keep what is stored), equal,
+ * or the same data in another key order. An unparsable stored value counts as
+ * different, so a put with valid fingerprints repairs it; the warning never
+ * carries the content.
+ */
+function sameFingerprints(stored: string | null, incoming: string | null, warn: (message: string) => void): boolean {
+  if (incoming === null || stored === incoming) return true;
+  if (stored === null) return false;
   const canonical = (value: unknown): string =>
     JSON.stringify(value, (_key, v: unknown) =>
       typeof v === 'object' && v !== null && !Array.isArray(v)
         ? Object.fromEntries(Object.entries(v).sort(([x], [y]) => (x < y ? -1 : x > y ? 1 : 0)))
         : v,
     );
-  return canonical(JSON.parse(a)) === canonical(JSON.parse(b));
+  try {
+    return canonical(JSON.parse(stored)) === canonical(JSON.parse(incoming));
+  } catch {
+    warn('a stored snapshot has fingerprints that are not valid JSON; they are replaced by the incoming ones');
+    return false;
+  }
 }
 
 export interface SnapshotStore {
@@ -96,16 +107,16 @@ function toRecord(row: SnapshotRow): SnapshotRecord {
 
 const LATEST = 'WHERE changeId = ? ORDER BY computedAt DESC, id DESC LIMIT 1';
 
-export function createSnapshotStore(db: Connection): SnapshotStore {
+export function createSnapshotStore(db: Connection, warn: (message: string) => void = () => undefined): SnapshotStore {
   const existingHash = db.prepare<[number, string], { id: number; contentHash: string; fingerprints: string | null; mergeBase: string | null }>(
     'SELECT id, contentHash, fingerprints, mergeBase FROM snapshots WHERE changeId = ? AND head = ?',
   );
   const latestId = db.prepare<[number], { id: number }>(`SELECT id FROM snapshots ${LATEST}`);
   const touch = db.prepare<[string, string | null, string | null, number]>(
-    'UPDATE snapshots SET computedAt = ?, mergeBase = ?, fingerprints = ? WHERE id = ?',
+    'UPDATE snapshots SET computedAt = ?, mergeBase = COALESCE(?, mergeBase), fingerprints = COALESCE(?, fingerprints) WHERE id = ?',
   );
   const refresh = db.prepare<[string | null, string | null, number]>(
-    'UPDATE snapshots SET mergeBase = ?, fingerprints = ? WHERE id = ?',
+    'UPDATE snapshots SET mergeBase = COALESCE(?, mergeBase), fingerprints = COALESCE(?, fingerprints) WHERE id = ?',
   );
   // json_valid runs in SQLite, so a report of several MB is checked without a JS parse.
   const isJson = db.prepare<[string], { valid: number }>('SELECT json_valid(?) AS valid');
@@ -138,8 +149,8 @@ export function createSnapshotStore(db: Connection): SnapshotStore {
     const existing = existingHash.get(snapshot.changeId, snapshot.head);
     if (existing?.contentHash === snapshot.contentHash) {
       if (latestId.get(snapshot.changeId)?.id === existing.id) {
-        if (sameFingerprints(existing.fingerprints, snapshot.fingerprints)) {
-          if (existing.mergeBase !== snapshot.mergeBase) refresh.run(snapshot.mergeBase, existing.fingerprints, existing.id);
+        if (sameFingerprints(existing.fingerprints, snapshot.fingerprints, warn)) {
+          if (snapshot.mergeBase !== null && existing.mergeBase !== snapshot.mergeBase) refresh.run(snapshot.mergeBase, null, existing.id);
           return 'unchanged';
         }
         refresh.run(snapshot.mergeBase, snapshot.fingerprints, existing.id);
