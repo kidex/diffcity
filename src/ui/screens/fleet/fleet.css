@@ -6,7 +6,7 @@
  * reading panel's .step (hover background, --sig left rule).
  */
 
-/* audit age → the colour every lot, gradient stop and legend swatch uses */
+/* audit age → the colour every lot and legend swatch uses */
 .audit-fresh { --lot: var(--audit-fresh); }
 .audit-aging { --lot: var(--audit-aging); }
 .audit-stale { --lot: var(--audit-stale); }
@@ -16,33 +16,35 @@
 
 /* ---------- map ---------- */
 .fleet-map { position: relative; margin: 0; flex: 0 0 auto; min-height: 320px; }
-.fleet-map::before {
-  content: ""; position: absolute; inset: 0; pointer-events: none;
-  background-image:
-    linear-gradient(var(--grid) 1px, transparent 1px),
-    linear-gradient(90deg, var(--grid) 1px, transparent 1px);
-  background-size: 28px 28px;
-  background-position: center top;
-  opacity: .7;
-  -webkit-mask-image: radial-gradient(ellipse 70% 75% at 50% 52%, #000 35%, transparent 100%);
-  mask-image: radial-gradient(ellipse 70% 75% at 50% 52%, #000 35%, transparent 100%);
-}
+/* the ground grid: thin strokes drawn by map.ts, faded toward the edges in steps */
+.fleet-ground { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.fleet-ground .glow { fill: var(--panel-2); }
+/* the glow is drawn by map.ts (see groundGlow) while the map is on screen */
+.stage.fleet:has(.fleet-map) { background: var(--bg); }
+.fleet-ground path { fill: none; stroke: var(--grid); stroke-width: 1; }
 .fleet-map > .title { position: absolute; left: 22px; top: 18px; padding: 0; pointer-events: none; z-index: 1; }
 .fleet-svg { position: relative; display: block; width: 100%; overflow: visible; }
 
 .lot { cursor: pointer; outline: none; transition: transform .45s cubic-bezier(.2, .7, .2, 1), opacity .2s ease; }
 .lot.inactive { opacity: .5; }
-.lot .shadow {
-  fill: var(--bg-deep); opacity: .55; filter: blur(7px);
-  transition: opacity .18s ease, transform .18s ease;
-}
+.lot .shadow { transition: transform .18s ease; }
+/* three stacked rects stand in for a 7px blur; the alpha is on each fill, so
+   no group needs an offscreen layer */
+.lot .shadow rect { fill: var(--bg-deep); fill-opacity: .28; transition: fill-opacity .18s ease; }
 .lot .side { fill: color-mix(in srgb, var(--lot) 30%, var(--bg-deep)); }
 .lot .face { transition: transform .18s ease; }
-.lot .top { stroke: none; }
-.face-hi { stop-color: color-mix(in srgb, var(--lot) 26%, var(--panel-2)); }
-.face-lo { stop-color: color-mix(in srgb, var(--lot) 10%, var(--plot)); }
-.lot .texture { fill: url(#fleet-plot); opacity: .45; }
-.fleet-svg .plot-line { fill: none; stroke: var(--plot-line); stroke-width: 1; opacity: .5; }
+/* the face: eight solid strips from --face-hi (top) to --face-lo (bottom), clipped to the lot; a gradient
+   fill costs seconds of first-paint raster on software-rendered browsers (DC-86) */
+.lot .slab { --face-hi: color-mix(in srgb, var(--lot) 26%, var(--panel-2)); --face-lo: color-mix(in srgb, var(--lot) 10%, var(--plot)); }
+.lot .face-band.b0 { fill: color-mix(in srgb, var(--face-hi) 93.8%, var(--face-lo)); }
+.lot .face-band.b1 { fill: color-mix(in srgb, var(--face-hi) 81.2%, var(--face-lo)); }
+.lot .face-band.b2 { fill: color-mix(in srgb, var(--face-hi) 68.8%, var(--face-lo)); }
+.lot .face-band.b3 { fill: color-mix(in srgb, var(--face-hi) 56.2%, var(--face-lo)); }
+.lot .face-band.b4 { fill: color-mix(in srgb, var(--face-hi) 43.8%, var(--face-lo)); }
+.lot .face-band.b5 { fill: color-mix(in srgb, var(--face-hi) 31.2%, var(--face-lo)); }
+.lot .face-band.b6 { fill: color-mix(in srgb, var(--face-hi) 18.8%, var(--face-lo)); }
+.lot .face-band.b7 { fill: color-mix(in srgb, var(--face-hi) 6.2%, var(--face-lo)); }
+.lot .texture { fill: none; stroke: var(--plot-line); stroke-width: 1; stroke-opacity: .15; }
 .lot .edge { fill: none; stroke: color-mix(in srgb, var(--lot) 80%, transparent); stroke-width: 1.5; transition: stroke .18s ease; }
 .lot .ring { fill: none; stroke: var(--sig); stroke-width: 2; opacity: 0; }
 .lot .count { fill: var(--ink); font-family: var(--sans); font-weight: 600; letter-spacing: -.02em; text-anchor: middle; }
@@ -54,7 +56,8 @@
 .lot.collecting .sub { fill: var(--sig); }
 
 .lot:hover .face, .lot.hot .face, .lot:focus-visible .face { transform: translateY(-3px); }
-.lot:hover .shadow, .lot.hot .shadow, .lot:focus-visible .shadow { opacity: .85; transform: translateY(3px); }
+.lot:hover .shadow, .lot.hot .shadow, .lot:focus-visible .shadow { transform: translateY(3px); }
+.lot:hover .shadow rect, .lot.hot .shadow rect, .lot:focus-visible .shadow rect { fill-opacity: .43; }
 .lot:hover .edge, .lot.hot .edge, .lot:focus-visible .edge { stroke: var(--ink-2); }
 .lot:focus-visible .ring { opacity: 1; }
 
@@ -93,9 +96,10 @@
 .fleet-map .legend i.audit { background: var(--lot); }
 .fleet-map .legend i.size {
   width: 14px; height: 14px; border: 1.5px solid var(--plot-line);
-  background: linear-gradient(var(--plot-line), var(--plot-line)) left bottom / 7px 7px no-repeat;
+  position: relative;
 }
-.fleet-map .legend i.dim { background: var(--audit-never); opacity: .5; }
+.fleet-map .legend i.size::after { content: ""; position: absolute; left: 0; bottom: 0; width: 7px; height: 7px; background: var(--plot-line); }
+.fleet-map .legend i.dim { background: color-mix(in srgb, var(--audit-never) 50%, transparent); }
 
 /* ---------- list ---------- */
 .fleet-list { flex: 1 0 auto; background: var(--panel); border-top: 1px solid var(--line); }
