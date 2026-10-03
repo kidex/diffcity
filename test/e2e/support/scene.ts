@@ -90,6 +90,9 @@ export const bench = (page: Page, ms: number): Promise<{ fps: number; drawCalls:
 /** The symbol id of the focused floor of the selected building. */
 export const selectedFloor = (page: Page): Promise<string | null> => page.evaluate<string | null>('window.diffcityScene.selectedFloor()');
 
+/** The symbol id of the floor the file view's diff is pointing at. */
+export const hoveredFloor = (page: Page): Promise<string | null> => page.evaluate<string | null>('window.diffcityScene.hoveredFloor()');
+
 /** Client point of a building's centre, or of one of its floors' when `symbolId` is given. */
 export async function project(page: Page, fileId: string, symbolId?: string): Promise<{ x: number; y: number }> {
   const point = await page.evaluate<{ x: number; y: number } | null>(

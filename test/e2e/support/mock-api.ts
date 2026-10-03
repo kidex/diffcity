@@ -5,7 +5,7 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import type { Page, Route } from '@playwright/test';
-import type { ApiError, ChangeSummary, RepoDetail, RepoSummary, SearchResult } from '../../../src/core/model/types.js';
+import type { ApiError, ChangeSummary, FileDiff, RepoDetail, RepoSummary, SearchResult } from '../../../src/core/model/types.js';
 import type { Report } from '../../../src/core/report/types.js';
 
 const fixturesDir = fileURLToPath(new URL('../../fixtures/ui/', import.meta.url));
@@ -32,6 +32,18 @@ export const fixtures = {
   searchResults: () => load('search-results.json') as SearchResult[],
 };
 
+/** One request of the diff route, as the `diff` handler sees it. */
+export interface DiffRequest {
+  changeId: number;
+  path: string;
+  symbol: string | null;
+  /** How many requests of this change's diff route came before this one. */
+  call: number;
+}
+
+/** What the diff route answers: a FileDiff, or an error status and its body. */
+export type DiffReply = FileDiff | { status: number; body: unknown };
+
 export interface ApiData {
   repos: RepoSummary[];
   details: RepoDetail[];
@@ -41,6 +53,8 @@ export interface ApiData {
   reports: Record<number, Report>;
   /** The search answer for a query; the default returns search-results.json for any query. */
   search: (query: string) => SearchResult[];
+  /** The answer of `GET /api/changes/:id/diff`; the default says `unavailable`. May wait: the response is held until it settles. */
+  diff: (request: DiffRequest) => DiffReply | Promise<DiffReply>;
 }
 
 export interface MockedApi {
@@ -57,6 +71,17 @@ export function defaultApiData(): ApiData {
     archived: { 1: fixtures.repoArchived() },
     reports: { 11: fixtures.reportOrderDiscounts() },
     search: () => results,
+    diff: ({ path }) => ({
+      snapshotId: 1,
+      head: 'aaaaaaa',
+      path,
+      language: 'typescript',
+      kind: 'unavailable',
+      reason: 'no diff in this mock',
+      stale: false,
+      stats: { added: 0, removed: 0 },
+      sizes: { before: null, after: null },
+    }),
   };
 }
 
@@ -65,6 +90,7 @@ const notFound = (message: string): ApiError => ({ error: { code: 'not-found', m
 export async function mockApi(page: Page, overrides: Partial<ApiData> = {}): Promise<MockedApi> {
   const data = { ...defaultApiData(), ...overrides };
   const requests: URL[] = [];
+  let diffCalls = 0;
 
   const answer = async (route: Route, body: unknown, status = 200): Promise<void> => {
     await route.fulfill({ status, json: body });
@@ -99,6 +125,17 @@ export async function mockApi(page: Page, overrides: Partial<ApiData> = {}): Pro
       if ((match = /^\/api\/changes\/(\d+)\/report$/.exec(path))) {
         const report = data.reports[Number(match[1])];
         return report ? answer(route, report) : answer(route, { error: { code: 'no-snapshot', message: 'no snapshot yet' } }, 404);
+      }
+      if ((match = /^\/api\/changes\/(\d+)\/diff$/.exec(path))) {
+        const reply = await data.diff({ changeId: Number(match[1]), path: url.searchParams.get('path') ?? '', symbol: url.searchParams.get('symbol'), call: diffCalls++ });
+        // A held request the page gave up on (an aborted fetch) cannot be answered any more.
+        try {
+          if ('status' in reply) await answer(route, reply.body, reply.status);
+          else await answer(route, reply);
+        } catch {
+          // The page aborted the request while it was held.
+        }
+        return;
       }
       if (path === '/api/search') return answer(route, data.search(url.searchParams.get('q') ?? ''));
       return answer(route, notFound(`no mock for ${path}`), 404);
