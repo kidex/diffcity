@@ -41,6 +41,8 @@ export interface SnapshotStore {
   latestReport(changeId: number): string | null;
   /** The serialized Fingerprints of `latest`, verbatim; null while there is none or it predates schema v2. Reads only that column. */
   latestFingerprints(changeId: number): string | null;
+  /** The serialized Fingerprints of snapshot `id` of the change, verbatim; null when there is no such snapshot or it predates schema v2. */
+  fingerprintsOf(changeId: number, id: number): string | null;
   /**
    * The touched paths of the latest snapshot of every live change that has one,
    * by the change's `lastEventAt` desc; for search (ADR-017). Reads only the
@@ -94,6 +96,9 @@ export function createSnapshotStore(db: Connection): SnapshotStore {
   const latestFingerprints = db.prepare<[number], { fingerprints: string | null }>(
     `SELECT fingerprints FROM snapshots ${LATEST}`,
   );
+  const fingerprintsOf = db.prepare<[number, number], { fingerprints: string | null }>(
+    'SELECT fingerprints FROM snapshots WHERE changeId = ? AND id = ?',
+  );
   const latest = db.prepare<[number], SnapshotRow>(`SELECT * FROM snapshots ${LATEST}`);
   const latestReport = db.prepare<[number], { report: string }>(`SELECT report FROM snapshots ${LATEST}`);
   const liveTouched = db.prepare<[], { repoId: number; changeId: number; touched: string | null }>(
@@ -135,6 +140,7 @@ export function createSnapshotStore(db: Connection): SnapshotStore {
       return row === undefined ? null : toRecord(row);
     },
     latestFingerprints: (changeId) => latestFingerprints.get(changeId)?.fingerprints ?? null,
+    fingerprintsOf: (changeId, id) => fingerprintsOf.get(changeId, id)?.fingerprints ?? null,
     latestReport: (changeId) => latestReport.get(changeId)?.report ?? null,
     liveTouched: () =>
       liveTouched.all().flatMap(({ repoId, changeId, touched }) =>

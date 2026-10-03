@@ -13,11 +13,13 @@ import { createChangeStore, type ChangeStore } from './changes.js';
 import { createEventStore, type EventStore } from './events.js';
 import { openConnection, readPragmas, type DbPragmas } from './open.js';
 import { createRepoStore, type RepoStore } from './repos.js';
+import { createReviewStore, type ReviewStore } from './review.js';
 import { createSnapshotStore, type SnapshotStore } from './snapshots.js';
 import { retentionCutoff } from './time.js';
 
 export type { AppliedPlan, ChangeArchive, ChangeFields, ChangePlan, ChangeStore, ChangeUpdate } from './changes.js';
 export type { EventInput, EventStore } from './events.js';
+export type { MarkWrite, ReviewStore } from './review.js';
 export type { RepoInput, RepoRuntime, RepoRuntimeLookup, RepoStore } from './repos.js';
 export type { LiveTouched, SnapshotInput, SnapshotPutResult, SnapshotStore } from './snapshots.js';
 export type { DbPragmas } from './open.js';
@@ -32,6 +34,7 @@ export interface Db {
   readonly changes: ChangeStore;
   readonly snapshots: SnapshotStore;
   readonly events: EventStore;
+  readonly review: ReviewStore;
   /**
    * Runs `fn` in one IMMEDIATE transaction (a savepoint when nested, so
    * applyPlan and event writes can be grouped); rolls back when it throws.
@@ -67,6 +70,7 @@ export function openDb(path: string): Db {
     changes: createChangeStore(db),
     snapshots: createSnapshotStore(db),
     events: createEventStore(db),
+    review: createReviewStore(db),
     transaction: (fn) => db.transaction(fn, { immediate: true }),
     purgeArchived: (now) => purge(db, now),
     pragmas: () => readPragmas(db),
