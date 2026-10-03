@@ -10,6 +10,8 @@ export interface Report {
   /** Execution path. */
   steps: Step[];
   findings: Finding[];
+  /** One per configured rule (phase 4). */
+  checks?: RuleCheck[];
   summary: {
     files: number;
     byStatus: Record<Status, number>;
@@ -66,7 +68,7 @@ export interface Finding {
   /** 'claude' | 'semgrep' | 'eslint' | ... */
   source: string;
   severity: 'high' | 'med' | 'low';
-  category: 'security' | 'correctness' | 'scope' | 'style' | 'tests';
+  category: 'security' | 'correctness' | 'scope' | 'style' | 'tests' | 'architecture';
   file: string;
   line: number;
   /** Resolved on import. */
@@ -75,4 +77,13 @@ export interface Finding {
   message: string;
   fix?: string;
   state: 'open' | 'intended' | 'fixed';
+}
+
+export interface RuleCheck {
+  ruleId: string;
+  kind: 'file-size' | 'layers' | 'pipeline' | 'cve';
+  state: 'passed' | 'violations' | 'not-checked' | 'pending' | 'error';
+  reason?: string;
+  findings: number;
+  checkedAt: string;
 }

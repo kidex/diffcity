@@ -4,7 +4,7 @@
 // counters come from Report.summary where it has them; the Rules row counts
 // rule findings, which no summary carries. Pure: no DOM, no three.js.
 
-import type { Report, Status, Verdict } from '../../../../core/report/types.js';
+import type { Report, RuleCheck as CoreRuleCheck, Status, Verdict } from '../../../../core/report/types.js';
 import { CHANGED_STATUSES, VERDICTS } from '../../../shared/format.js';
 import type { City, CityBuilding, CityFloor } from './city.js';
 import type { ChangedStatus } from './view.js';
@@ -55,16 +55,15 @@ export function ruleChips(report: Report): Counted<string>[] {
 
 // ---------- rule checks (SPEC.md section 4.1: Report.checks, phase 4) ----------
 
-export type CheckState = 'passed' | 'violations' | 'not-checked' | 'pending' | 'error';
+export type CheckState = CoreRuleCheck['state'];
 
-/** One configured rule's check, as the daemon reports it. */
+/** A check as read from the Report: `kind` and `checkedAt` are not needed beyond the pipeline test. */
 export interface RuleCheck {
   ruleId: string;
   kind: string;
   state: CheckState;
   reason?: string;
   findings: number;
-  checkedAt?: string;
 }
 
 export interface CheckChip {
@@ -79,13 +78,13 @@ export interface CheckChip {
 const CHECK_STATES: ReadonlySet<string> = new Set<CheckState>(['passed', 'violations', 'not-checked', 'pending', 'error']);
 
 /**
- * The Report's checks. `checks` is optional in the data model, and the core
- * type does not declare it yet, so it is read defensively; an entry without
+ * The Report's checks. `checks` is optional in the data model and comes from
+ * JSON, so it is read defensively; an entry without
  * a rule id is dropped, and an unknown state counts as `not-checked`: a
  * check that cannot be read is never shown as passed.
  */
 export function checksOf(report: Report): RuleCheck[] {
-  const raw = (report as { checks?: unknown }).checks;
+  const raw: unknown = report.checks;
   if (!Array.isArray(raw)) return [];
   const checks: RuleCheck[] = [];
   for (const entry of raw as unknown[]) {
@@ -150,7 +149,8 @@ export interface ChangeLevel {
  */
 export function changeLevel(report: Report): ChangeLevel | null {
   const pipelines = new Set(checksOf(report).filter((check) => check.kind === 'pipeline').map((check) => check.ruleId));
-  let ciFailed = false;
+  // A pipeline check that reports violations is a failed CI run, finding or not.
+  let ciFailed = checksOf(report).some((check) => check.kind === 'pipeline' && check.state === 'violations');
   let others = 0;
   for (const finding of report.findings) {
     if (finding.file !== '') continue;

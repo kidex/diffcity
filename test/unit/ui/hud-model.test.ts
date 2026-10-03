@@ -99,6 +99,9 @@ describe('hud model', () => {
     expect(changeLevel(report)).toEqual({ ciFailed: true, others: 0 });
     report.findings.push(finding('e', 'claude', ''));
     expect(changeLevel(report)).toEqual({ ciFailed: true, others: 1 });
+    // A pipeline check with violations is a failed CI run on its own.
+    report.findings = [];
+    expect(changeLevel(report)).toEqual({ ciFailed: true, others: 0 });
   });
 
   it('tooltip and card fields come from the building, the floor and the findings of its file', () => {
