@@ -183,4 +183,14 @@ describe('view', () => {
     const cart = city.byId.get(CART);
     expect(cart && focused.buildings[cart.index]).toBe(cart && base.buildings[cart.index]);
   });
+
+  it('focusPaint lights one floor of an unselected building for the diff\'s hover', () => {
+    const base = paintCity(input(city, NO_FILTERS));
+    const guard = city.byId.get(GUARD);
+    const symbolId = guard?.floors[0]?.symbolId;
+    if (guard === undefined || typeof symbolId !== 'string') throw new Error('fixture has no guard floor');
+    const lit = focusPaint(base, city, GUARD, null, null, { id: GUARD, symbolId });
+    expect(lit.floors[guard.index]?.map((floor) => floor.focused)).toEqual(guard.floors.map((floor) => floor.symbolId === symbolId));
+    expect(lit.buildings[guard.index]).toMatchObject({ hovered: true, selected: false });
+  });
 });
