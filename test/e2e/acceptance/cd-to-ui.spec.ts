@@ -155,6 +155,15 @@ const test = base.extend<{ world: World }>({
   },
 });
 
+// No SwiftShader here (the config gives every project its WebGL arguments for the
+// change screen's city; nothing in this file draws WebGL). With them the first
+// heavy raster of the Fleet (the lots' blurred shadows, the masked ground grid)
+// runs on SwiftShader's CPU rasteriser and blocks the renderer for 2 s locally
+// and 4 s on a cold CI runner, in which the SSE events and the refetch wait: the
+// UI shows the lot that long after the API has it (DC-85). Default headless
+// rasterisation has no such stall.
+test.use({ launchOptions: { args: [] } });
+
 /** Polls the API until sample-shop lists its 3 changes, each with stats. */
 async function waitForChanges(baseURL: string, name: string): Promise<RepoDetail> {
   const deadline = Date.now() + OBSERVE_MS;
