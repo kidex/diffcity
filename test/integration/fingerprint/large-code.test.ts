@@ -2,6 +2,8 @@
 // from a stream and its entry follows git, as a non-code file's does (ADR-008).
 
 import { createHash } from 'node:crypto';
+import { symlink } from 'node:fs/promises';
+import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type * as GitLayer from '../../../src/core/git/index.js';
 import { MAX_PARSE_BYTES } from '../../../src/core/parse/file.js';
@@ -123,5 +125,70 @@ describe('code files above the parse limit', () => {
     expect(fingerprints.files['src/shrink.ts']).toEqual({ before: sha(big), after: sha(small) });
     expect(buffered).not.toContain('src/grow.ts');
     expect(buffered).not.toContain('src/shrink.ts');
+  }, 120_000);
+  it('fingerprint/large-code: a rename whose old blob alone is over the limit has no symbols, status per git, both fingerprints', async () => {
+    const old = codeOfSize('legacy', MAX_PARSE_BYTES + 4096, 1);
+    const renamed = old.slice(0, old.length - 4096 * 2);
+    expect(Buffer.byteLength(renamed)).toBeLessThanOrEqual(MAX_PARSE_BYTES);
+    const repo = await createRepo({ files: { 'src/legacy.ts': old, 'README.md': 'base\n' } });
+    repos.push(repo);
+    await repo.branch('feature/rename');
+    await repo.commit('rename', { 'src/legacy.ts': null, 'src/modern.ts': renamed });
+
+    const { report, fingerprints } = await buildReportWithHead({ ...options(repo), head: 'feature/rename' });
+    const entry = symbolsOf(report, 'src/modern.ts');
+    expect(entry).toBeDefined();
+    expect(entry?.symbols).toEqual([]);
+    expect(entry?.status).toBe('mod');
+    expect(symbolsOf(report, 'src/legacy.ts')).toBeUndefined();
+    expect(fingerprints.files['src/modern.ts']).toEqual({ before: sha(old), after: sha(renamed), oldPath: 'src/legacy.ts' });
+    expect(buffered).not.toContain('src/legacy.ts');
+    expect(buffered).not.toContain('src/modern.ts');
+  }, 120_000);
+
+  it('fingerprint/large-code: an untouched over-limit file whose path has a newline and a space is same, no symbols, hashed', async () => {
+    const path = 'gen/odd name\nbundle.ts';
+    const huge = codeOfSize('odd', 3 * MIB);
+    const repo = await createRepo({ files: { [path]: huge, 'src/a.ts': 'export const a = 1;\n' } });
+    repos.push(repo);
+    await repo.branch('feature/odd');
+    await repo.commit('edit', { 'src/a.ts': 'export const a = 2;\n' });
+
+    const { report, fingerprints } = await buildReportWithHead({ ...options(repo), head: 'feature/odd' });
+    expect(symbolsOf(report, path)).toMatchObject({ status: 'same', symbols: [] });
+    expect(fingerprints.files[path]).toEqual({ before: sha(huge), after: sha(huge) });
+    expect(buffered).not.toContain(path);
+  }, 120_000);
+
+  it('fingerprint/large-code: ADR-033 a whitespace-only change gives mod above the limit and same below it (5.1)', async () => {
+    const big = codeOfSize('spaced', 3 * MIB, 1);
+    const small = codeOfSize('spaced', 1024, 1);
+    const spaced = (text: string): string => text.replace('{ return', '{    return');
+    expect(spaced(big)).not.toBe(big);
+    const repo = await createRepo({ files: { 'src/big.ts': big, 'src/small.ts': small } });
+    repos.push(repo);
+    await repo.branch('feature/space');
+    await repo.commit('whitespace', { 'src/big.ts': spaced(big), 'src/small.ts': spaced(small) });
+
+    const { report } = await buildReportWithHead({ ...options(repo), head: 'feature/space' });
+    expect(symbolsOf(report, 'src/big.ts')).toMatchObject({ status: 'mod', symbols: [] });
+    expect(symbolsOf(report, 'src/small.ts')).toMatchObject({ status: 'same' });
+  }, 120_000);
+
+  it('fingerprint/large-code: a working-tree symlink to a huge file is sized by its link text and not followed', async () => {
+    const huge = codeOfSize('target', 40 * MIB);
+    const repo = await createRepo({ files: { 'gen/huge.ts': huge, 'src/a.ts': 'export const a = 1;\n' } });
+    repos.push(repo);
+    await repo.branch('feature/link');
+    await symlink('../gen/huge.ts', join(repo.dir, 'src', 'link.ts'));
+
+    const { report, fingerprints } = await buildReportWithHead(options(repo));
+    const link = symbolsOf(report, 'src/link.ts');
+    expect(link).toBeDefined();
+    expect(link?.symbols).toEqual([]);
+    expect(fingerprints.files['src/link.ts']?.after).toBe(sha('../gen/huge.ts'));
+    expect(fingerprints.files['gen/huge.ts']).toEqual({ before: sha(huge), after: sha(huge) });
+    expect(buffered).not.toContain('gen/huge.ts');
+    expect(buffered.filter((p) => p === 'src/link.ts').length).toBeLessThanOrEqual(2);
   }, 120_000);
 });
