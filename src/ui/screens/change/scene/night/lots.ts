@@ -1,6 +1,7 @@
 // Lots (ADR-026): a dark plate per package (one instanced mesh), its outline
 // (one batched fat-line draw for the ordinary lots, one for tier 1 lots in
-// --tier), a static outer ring around tier 1 lots, and the package names
+// --tier), an outer ring around tier 1 lots (one more draw whose opacity
+// breathes under motion, see motion.ts), and the package names
 // lying on the ground, drawn into one texture atlas so every name is the same
 // single draw call.
 
@@ -142,6 +143,8 @@ function namesMesh(city: City, renderer: WebGLRenderer): { mesh: Mesh; dispose()
 export interface Lots {
   group: Group;
   lines: FatLines[];
+  /** The tier 1 outer ring: its material's opacity breathes (null when there is no tier 1 lot). */
+  ring: FatLines | null;
   dispose(): void;
 }
 
@@ -169,10 +172,13 @@ export function createLots(city: City, renderer: WebGLRenderer): Lots {
   group.add(plates);
 
   const lines: FatLines[] = [];
+  let outer: FatLines | null = null;
   if (plain.length > 0) lines.push(fatLines(plain, colorToken('--plot-line'), 1));
   if (tier.length > 0) {
     lines.push(fatLines(tier, colorToken('--tier').multiplyScalar(1.8), 1.8));
-    lines.push(fatLines(ring, colorToken('--tier').multiplyScalar(1.2), 1));
+    // Transparent, so its opacity can breathe (night/motion.ts).
+    outer = fatLines(ring, colorToken('--tier').multiplyScalar(1.2), 1, true);
+    lines.push(outer);
   }
   for (const line of lines) group.add(line.object);
 
@@ -182,6 +188,7 @@ export function createLots(city: City, renderer: WebGLRenderer): Lots {
   return {
     group,
     lines,
+    ring: outer,
     dispose() {
       plateGeometry.dispose();
       plateMaterial.dispose();

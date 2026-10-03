@@ -4,6 +4,7 @@
 // here, so it says little about a real GPU).
 
 import { test } from '@playwright/test';
+import { effects, marksFor, openWithMarks, withEveryEffect } from '../../support/effects.js';
 import { fixtures, mockApi } from '../../support/mock-api.js';
 import { bench, openCity, stats, sceneExpect as expect } from '../../support/scene.js';
 
@@ -33,4 +34,39 @@ for (const [name, report] of [
     expect(measured.drawCalls).toBeLessThanOrEqual(BUDGET);
     testInfo.annotations.push({ type: 'bench', description: `${name}: ${String(measured.drawCalls)} draw calls, ${String(measured.fps)} fps` });
   });
+}
+
+// Every effect on: pulse (or its static glow and halo), beams, pins, rule X
+// markers, check and rewrite markers, the reading path with its rings and
+// numbers, and the tier 1 ring, in both motion modes.
+for (const [name, report] of [
+  ['golden', fixtures.reportGolden],
+  ['2,000 files', fixtures.reportLargeCity],
+] as const) {
+  for (const motion of ['no-preference', 'reduce'] as const) {
+    test(`change/draw-call-budget: ${name} with every effect on, motion ${motion}`, async ({ page }, testInfo) => {
+      test.setTimeout(150_000);
+      await page.emulateMedia({ reducedMotion: motion });
+      const data = withEveryEffect(report());
+      await mockApi(page, { reports: { 11: data } });
+      await openWithMarks(page, marksFor(data));
+      await openCity(page);
+
+      const shown = await effects(page);
+      // Every effect is really on.
+      expect(shown.pulsing).toBeGreaterThan(0);
+      expect(shown.halos).toBe(motion === 'reduce' ? shown.pulsing : 0);
+      expect(shown.path?.tube).toBe(true);
+      expect(shown.tier.ring).toBe(true);
+      const kinds = new Set(shown.markers.map((marker) => marker.kind));
+      expect([...kinds].sort()).toEqual(['check', 'notch', 'pin', 'rewrite', 'x']);
+
+      const scene = await stats(page);
+      expect(scene.drawCalls).toBeGreaterThan(0);
+      expect(scene.drawCalls).toBeLessThanOrEqual(BUDGET);
+      const measured = await bench(page, 1500);
+      expect(measured.drawCalls).toBeLessThanOrEqual(BUDGET);
+      testInfo.annotations.push({ type: 'bench', description: `${name}, motion ${motion}: ${String(measured.drawCalls)} draw calls, ${String(measured.fps)} fps` });
+    });
+  }
 }

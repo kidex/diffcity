@@ -10,6 +10,8 @@
 
 import type { Report, Status, Verdict } from '../../../../core/report/types.js';
 import type { City, CityBuilding } from './city.js';
+import type { Critical, Marks, PulseColor } from './critical.js';
+import { floorMark } from './critical.js';
 
 /** The statuses a type filter can select: `same` floors are never a type. */
 export type ChangedStatus = Exclude<Status, 'same'>;
@@ -48,7 +50,7 @@ export function ruleIndex(report: Pick<Report, 'findings'>): RuleIndex {
   const index = new Map<string, Set<string>>();
   for (const finding of report.findings) {
     const rule = ruleOf(finding.source);
-    if (rule === null || finding.file === '') continue;
+    if (rule === null || finding.file === '' || finding.state !== 'open') continue;
     let files = index.get(rule);
     if (files === undefined) {
       files = new Set();
@@ -72,9 +74,11 @@ export interface PaintState {
   typeMatch: boolean;
   hovered: boolean;
   selected: boolean;
-  /** Critical floor pulse (DC-50, filled by a later task). */
+  /** The floor pulses (DC-50, model/critical.ts); for a building, its roof strip does. */
   pulse: boolean;
-  /** Review mark (DC-73, filled by a later task). */
+  /** The colour a pulse takes. */
+  pulseColor: PulseColor;
+  /** The review mark (ADR-028): of a floor, its own or its file's; of a building, the file's, or what its floors add up to. */
   checked: Checked;
 }
 
@@ -91,9 +95,31 @@ export interface PaintInput {
   rules: RuleIndex;
   hover: string | null;
   selection: string | null;
+  /** The floors that pulse, by file id (`criticalFloors`); none without it. */
+  critical?: ReadonlyMap<string, Critical> | undefined;
+  /** The review marks; none without them. */
+  marks?: Marks | undefined;
 }
 
-const base = (): PaintState => ({ dimmed: false, typeMatch: true, hovered: false, selected: false, pulse: false, checked: 'none' });
+const base = (): PaintState => ({
+  dimmed: false,
+  typeMatch: true,
+  hovered: false,
+  selected: false,
+  pulse: false,
+  pulseColor: 'high',
+  checked: 'none',
+});
+
+/** What a building's marks add up to: a rewrite anywhere, else its file's mark, else every changed floor checked or good. */
+function buildingMark(building: CityBuilding, floors: readonly Checked[], marks: Marks | undefined): Checked {
+  if (floors.includes('rewrite')) return 'rewrite';
+  const own = marks?.files?.get(building.id);
+  if (own !== undefined) return own;
+  const changed = building.floors.flatMap((floor, i) => (floor.status === 'same' ? [] : [floors[i] ?? 'none']));
+  if (changed.length > 0 && changed.every((mark) => mark === 'checked' || mark === 'good')) return changed.every((mark) => mark === 'good') ? 'good' : 'checked';
+  return 'none';
+}
 
 /** Whether `building` passes the verdict and rule rows of `filters`. */
 function passesRows(building: CityBuilding, filters: Filters, rules: RuleIndex): boolean {
@@ -104,7 +130,7 @@ function passesRows(building: CityBuilding, filters: Filters, rules: RuleIndex):
 
 /** The paint state of every building and floor of `city` for the filters, hover and selection. */
 export function paintCity(input: PaintInput): CityPaint {
-  const { city, filters, rules, hover, selection } = input;
+  const { city, filters, rules, hover, selection, critical, marks } = input;
   const buildings: PaintState[] = [];
   const floors: PaintState[][] = [];
   for (const building of city.buildings) {
@@ -113,10 +139,13 @@ export function paintCity(input: PaintInput): CityPaint {
     const dimmed = !passesRows(building, filters, rules) || !typeMatch;
     const hovered = building.id === hover;
     const selected = building.id === selection;
-    buildings[building.index] = { ...base(), dimmed, typeMatch, hovered, selected };
-    floors[building.index] = building.floors.map((floor) => {
+    const hot = critical?.get(building.id);
+    const pulseColor = hot?.color ?? 'high';
+    const marked = building.floors.map((floor): Checked => floorMark(marks, building.file, floor) ?? 'none');
+    buildings[building.index] = { ...base(), dimmed, typeMatch, hovered, selected, pulse: hot?.roof === true, pulseColor, checked: buildingMark(building, marked, marks) };
+    floors[building.index] = building.floors.map((floor, i) => {
       const match = type === null || floor.status === type;
-      return { ...base(), dimmed: dimmed || !match, typeMatch: match, hovered, selected };
+      return { ...base(), dimmed: dimmed || !match, typeMatch: match, hovered, selected, pulse: hot?.floors.has(i) === true, pulseColor, checked: marked[i] ?? 'none' };
     });
   }
   return { buildings, floors };

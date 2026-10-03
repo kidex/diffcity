@@ -17,10 +17,11 @@ import { fallbackView } from './fallback.js';
 import type { Hud } from './hud/index.js';
 import { createHud } from './hud/index.js';
 import { cardData, findingsIndex, tipData } from './model/hud.js';
+import type { MarkKind, Marks } from './model/critical.js';
 import type { Filters } from './model/view.js';
 import { clearFilters, pruneFilters, ruleIndex } from './model/view.js';
 import type { FleetPort } from './ports.js';
-import type { CityView, SceneStats } from './scene/view.js';
+import type { CityView, EffectsState, SceneStats } from './scene/view.js';
 import { createCityView, disposal } from './scene/view.js';
 
 export const COMPUTING = 'Computing the first snapshot of this change…';
@@ -59,6 +60,8 @@ export interface SceneDebug {
   tweening(): boolean;
   /** Heights the newest tweened building had on each frame of the last tween. */
   tweenTrace(): { id: string; heights: number[] } | null;
+  /** What the night effects drew: pulsing strips and their phases, halos, markers, the reading path, the tier 1 ring, and whether the loop runs on its own. */
+  effects(): EffectsState | null;
   /** Views alive, and the renderer's geometries and textures just before the last view released its context. */
   disposal: typeof disposal;
 }
@@ -66,6 +69,8 @@ export interface SceneDebug {
 declare global {
   interface Window {
     diffcityScene?: SceneDebug;
+    /** Under `?scene-debug`, review marks for tests, by file id and symbol id: the ReviewPort is not wired to the city yet. Read when the city opens and on every update. */
+    diffcityMarks?: { files?: Record<string, MarkKind>; symbols?: Record<string, MarkKind> };
     /** Under `?scene-debug`, a FleetPort for tests: the SPA has no audit data to build one from yet. */
     diffcityFleet?: FleetPort;
   }
@@ -89,6 +94,7 @@ function installDebug(view: () => CityView | null): SceneDebug {
     shown: () => view()?.shown() ?? null,
     tweening: () => view()?.tweening() ?? false,
     tweenTrace: () => view()?.tweenTrace() ?? null,
+    effects: () => view()?.effects() ?? null,
     disposal,
   };
   window.diffcityScene = hook;
@@ -114,6 +120,13 @@ export function mountChange(element: HTMLElement, options: ChangeScreenOptions):
   let disposed = false;
   const debug = debugEnabled() ? installDebug(() => view) : null;
   const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  /** The marks the test page set, as the scene takes them; undefined outside the debug hook. */
+  const debugMarks = (): Marks | undefined => {
+    const given = debug === null ? undefined : window.diffcityMarks;
+    if (given === undefined) return undefined;
+    return { files: new Map(Object.entries(given.files ?? {})), symbols: new Map(Object.entries(given.symbols ?? {})) };
+  };
 
   const message = (testId: string, text: string): HTMLElement => h('p', { class: 'change-empty', role: 'status', 'data-testid': testId }, text);
 
@@ -175,6 +188,7 @@ export function mountChange(element: HTMLElement, options: ChangeScreenOptions):
         });
         view.element.append(screen.overlay);
         view.setFilters(filters);
+        view.setMarks(debugMarks());
         mode = 'city';
       } catch {
         mode = 'fallback';
@@ -204,6 +218,7 @@ export function mountChange(element: HTMLElement, options: ChangeScreenOptions):
       hudFor(report);
       view.setReport(report);
       view.setFilters(filters);
+      view.setMarks(debugMarks());
       return;
     }
     if (mode === 'pending') return;
