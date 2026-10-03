@@ -12,6 +12,7 @@ export interface SceneStats {
   frames: number;
   geometries: number;
   textures: number;
+  builds: number;
 }
 
 export interface CameraState {

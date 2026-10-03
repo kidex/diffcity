@@ -38,6 +38,8 @@ export interface SceneStats {
   /** GPU resources the renderer holds right now. */
   geometries: number;
   textures: number;
+  /** Times the towers' instanced buffers were built: once per Report, again only when a tween frame needs another instance count. */
+  builds: number;
 }
 
 export interface CityView {
@@ -129,6 +131,8 @@ export function createCityView(host: HTMLElement, report: Report, options: CityV
   let rules: RuleIndex = ruleIndex(report);
   let tween: Tween | null = null;
   let trace: { id: string; heights: number[] } | null = null;
+  /** Times the towers' instanced buffers were built, for the stats. */
+  let towerBuilds = 0;
   /** The paint of the shown city for the filters alone: hover and selection are laid over it. */
   let baseline: CityPaint | null = null;
   const hooks = options.hooks;
@@ -243,16 +247,23 @@ export function createCityView(host: HTMLElement, report: Report, options: CityV
     stage.request();
   }
 
-  /** Draws `shown` (the Report's city, or a frame of the tween toward it) in new towers. */
+  /**
+   * Draws `shown` (the Report's city, or a frame of the tween toward it): in
+   * place while it needs as many instances as the towers have, in new towers
+   * only when the count changes (ADR-026).
+   */
   function showCity(shown: City): void {
     const c = content;
     if (c === null) return;
-    scene.remove(c.towers.group);
-    c.towers.dispose();
-    const towers = createTowers(shown);
-    scene.add(towers.group);
-    for (const line of towers.lines) line.material.resolution.set(stage.size.x, stage.size.y);
-    c.towers = towers;
+    if (!c.towers.update(shown)) {
+      scene.remove(c.towers.group);
+      c.towers.dispose();
+      const towers = createTowers(shown);
+      towerBuilds += 1;
+      scene.add(towers.group);
+      for (const line of towers.lines) line.material.resolution.set(stage.size.x, stage.size.y);
+      c.towers = towers;
+    }
     c.shown = shown;
     repaint(true);
   }
@@ -293,11 +304,13 @@ export function createCityView(host: HTMLElement, report: Report, options: CityV
     tween = from !== null && needsTween(from, city) ? { from, to: city, startedAt: null } : null;
     trace = null;
     if (tween !== null) {
-      const added = city.buildings.find((building) => !tween?.from.byId.has(building.id));
-      if (added !== undefined) trace = { id: added.id, heights: [] };
+      // The newest building, or else the first one that moves.
+      const followed = city.buildings.find((building) => !tween?.from.byId.has(building.id)) ?? city.buildings[0];
+      if (followed !== undefined) trace = { id: followed.id, heights: [] };
     }
     const shown = tween === null ? city : tweenCity(tween.from, city, 0);
     const towers = createTowers(shown);
+    towerBuilds += 1;
     scene.add(ground.mesh, lots.group, towers.group);
     for (const line of [...lots.lines, ...towers.lines]) line.material.resolution.set(stage.size.x, stage.size.y);
     labels.setCity(city);
@@ -449,6 +462,7 @@ export function createCityView(host: HTMLElement, report: Report, options: CityV
         frames: stage.frames,
         geometries: renderer.info.memory.geometries,
         textures: renderer.info.memory.textures,
+        builds: towerBuilds,
       };
     },
     camera: () => ({ ...orbit.state }),

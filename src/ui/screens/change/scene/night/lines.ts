@@ -43,6 +43,8 @@ export interface FatLines {
   material: LineMaterial;
   /** Rewrites the colour of segments [first, first + count) and uploads them. */
   setColor(first: number, count: number, color: Color): void;
+  /** Rewrites every segment's end points in the buffer that is there (same number of segments) and uploads them. */
+  setPositions(positions: readonly number[]): void;
   dispose(): void;
 }
 
@@ -72,6 +74,13 @@ export function fatLines(positions: readonly number[], colors: readonly number[]
         array.set([color.r, color.g, color.b, color.r, color.g, color.b], s * 6);
       }
       buffer.addUpdateRange(first * 6, count * 6);
+      buffer.needsUpdate = true;
+    },
+    setPositions(next) {
+      const start = geometry.getAttribute('instanceStart') as InterleavedBufferAttribute | undefined;
+      if (start === undefined) return;
+      const buffer = start.data as InstancedInterleavedBuffer;
+      (buffer.array as Float32Array).set(next);
       buffer.needsUpdate = true;
     },
     dispose() {
