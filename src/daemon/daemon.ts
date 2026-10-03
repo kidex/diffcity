@@ -36,7 +36,22 @@ export interface StartDaemonOptions {
   ownerWaitMs?: number;
   /** Defaults to SHUTDOWN_TIMEOUT_MS. */
   stopTimeoutMs?: number;
+  /**
+   * Aborted by the caller on SIGINT/SIGTERM during startup: startDaemon stops at
+   * the next step, closes what is open, removes the files it created, releases
+   * the lock and resolves `{ status: 'aborted' }`.
+   */
+  signal?: AbortSignal;
+  /**
+   * Test seam: awaited after each startup stage (see StartupStage), before the
+   * abort check. The daemon script uses it to pause a startup at a chosen stage.
+   */
+  onStage?: (stage: StartupStage) => void | Promise<void>;
 }
+
+/** The startup steps, in order; each name is reached once the step has completed. */
+export const STARTUP_STAGES = ['begin', 'lock-acquired', 'plugins-set-up', 'http-listening', 'socket-listening', 'daemon-json-written', 'plugins-started'] as const;
+export type StartupStage = (typeof STARTUP_STAGES)[number];
 
 export interface RunningDaemon {
   readonly info: DaemonInfo;
@@ -58,7 +73,8 @@ export interface RunningDaemon {
 export type StartResult =
   | { status: 'started'; daemon: RunningDaemon }
   | { status: 'already-running'; info: DaemonInfo; version: string }
-  | { status: 'port-in-use'; port: number };
+  | { status: 'port-in-use'; port: number }
+  | { status: 'aborted' };
 
 export async function startDaemon(options: StartDaemonOptions = {}): Promise<StartResult> {
   const env = options.env ?? process.env;
@@ -73,13 +89,25 @@ export async function startDaemon(options: StartDaemonOptions = {}): Promise<Sta
     if (ownsLog) log.close();
     return result;
   };
+  // Runs the test seam, then tells whether the caller asked to abort.
+  const reached = async (stage: StartupStage): Promise<boolean> => {
+    await options.onStage?.(stage);
+    return options.signal?.aborted === true;
+  };
+  const aborted = new Promise<void>((resolve) => {
+    if (options.signal?.aborted === true) resolve();
+    else options.signal?.addEventListener('abort', () => { resolve(); }, { once: true });
+  });
+
+  if (await reached('begin')) return fail({ status: 'aborted' });
 
   // The single instance: the lock, or the daemon that owns it.
   let lock = await acquireLock(paths, { pid });
   if (!lock.acquired) {
     const owner = lock.owner;
-    const running = await waitForDaemon(paths, { timeoutMs: options.ownerWaitMs ?? OWNER_WAIT_MS });
+    const running = await waitForDaemon(paths, { timeoutMs: options.ownerWaitMs ?? OWNER_WAIT_MS, stop: aborted });
     if (running !== null) return fail({ status: 'already-running', info: running.info, version: running.version });
+    if (options.signal?.aborted === true) return fail({ status: 'aborted' });
     log.warn(`lock owner pid ${String(owner)} does not answer ping; taking the lock as stale`);
     lock = await acquireLock(paths, { pid, isAlive: (candidate) => candidate !== owner && isProcessAlive(candidate) });
     if (!lock.acquired) {
@@ -88,6 +116,11 @@ export async function startDaemon(options: StartDaemonOptions = {}): Promise<Sta
       fail(null);
       throw new Error(`another daemon (pid ${String(lock.owner)}) holds ${paths.lock} but does not answer`);
     }
+  }
+
+  if (await reached('lock-acquired')) {
+    await releaseLock(paths, pid);
+    return fail({ status: 'aborted' });
   }
 
   const startedAt = new Date().toISOString();
@@ -204,11 +237,19 @@ export async function startDaemon(options: StartDaemonOptions = {}): Promise<Sta
     return shutdownPromise;
   }
 
+  // The signal arrived during startup: the regular shutdown closes what is open
+  // and removes the files created so far, and releases the lock.
+  const abortStart = async (): Promise<StartResult> => {
+    await shutdown('signal during startup');
+    return { status: 'aborted' };
+  };
+
   try {
     for (const plugin of plugins) {
       setUp.push(plugin);
       await plugin.setup?.(context, http);
     }
+    if (await reached('plugins-set-up')) return await abortStart();
     const wanted = await resolvePort(paths, options.port);
     try {
       await http.listen({ host: HTTP_HOST, port: wanted });
@@ -221,13 +262,17 @@ export async function startDaemon(options: StartDaemonOptions = {}): Promise<Sta
       return fail({ status: 'port-in-use', port: wanted });
     }
     port = (http.server.address() as AddressInfo).port;
+    if (await reached('http-listening')) return await abortStart();
     await socketServer.listen();
+    if (await reached('socket-listening')) return await abortStart();
 
     const info: DaemonInfo = { pid, port, socket: paths.socket, version, startedAt };
     await writeDaemonInfo(paths, info);
+    if (await reached('daemon-json-written')) return await abortStart();
     log.info(`daemon v${version} ready on http://${HTTP_HOST}:${String(port)} (pid ${String(pid)}, socket ${paths.socket})`);
 
     for (const plugin of plugins) await plugin.start?.(context);
+    if (await reached('plugins-started')) return await abortStart();
     const daemon: RunningDaemon = {
       info,
       context,
