@@ -1,0 +1,34 @@
+name: e2e setup
+description: Node, dependencies, Chromium with its system dependencies, and zsh, for the Playwright jobs.
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@v7
+      with:
+        node-version: 22
+        cache: npm
+    - run: npm ci
+      shell: bash
+    - name: Read the Playwright version
+      id: playwright
+      shell: bash
+      run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
+    - name: Cache the Playwright browsers
+      id: browsers
+      uses: actions/cache@v6
+      with:
+        path: ~/.cache/ms-playwright
+        key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}
+    - name: Install Chromium
+      if: steps.browsers.outputs.cache-hit != 'true'
+      shell: bash
+      run: npx playwright install --with-deps chromium
+    - name: Install Chromium system dependencies
+      if: steps.browsers.outputs.cache-hit == 'true'
+      shell: bash
+      run: npx playwright install-deps chromium
+    # The cd-to-UI acceptance spec runs scenario A in every installed shell;
+    # the runner ships bash, zsh has to be installed.
+    - name: Install zsh
+      shell: bash
+      run: sudo apt-get update && sudo apt-get install -y --no-install-recommends zsh
