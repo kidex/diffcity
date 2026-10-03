@@ -1,10 +1,11 @@
 // Playwright Test (ADR-023). Two projects by default:
 // - screens: the UI against a mocked API (page.route + JSON fixtures), served
 //   by a test-only static server; trace and screenshot kept on failure, video
-//   too outside CI; CI shards it over parallel jobs (--shard, .github/workflows/ci.yml);
+//   too outside CI; CI splits its spec files over parallel jobs
+//   (scripts/e2e-shard.mjs, .github/workflows/ci.yml);
 // - acceptance: each spec starts its own daemon in a fresh temporary home,
 //   one worker so timed specs never share the machine with each other; CI
-//   runs it alone, after the screens (.github/workflows/ci.yml).
+//   runs it in a job of its own, beside the screens shards.
 //
 // A third project, proof, records a video of one task's acceptance criteria
 // (e2e/proof/DC-<nr>.spec.ts). It exists only in proof mode: DIFFCITY_PROOF
