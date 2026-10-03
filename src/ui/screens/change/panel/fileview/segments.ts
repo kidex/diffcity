@@ -22,7 +22,8 @@ export function segments(text: string, hl: DiffRow['hl']): Piece[] {
   if (hl === undefined || hl.length === 0) return text === '' ? [] : [{ text }];
   const pieces: Piece[] = [];
   let at = 0;
-  for (const [start, end, cls] of [...hl].sort((a, b) => a[0] - b[0] || a[1] - b[1])) {
+  const ranges = hl.filter((range) => Array.isArray(range));
+  for (const [start, end, cls] of ranges.sort((a, b) => a[0] - b[0] || a[1] - b[1])) {
     if (!CLASSES.has(cls) || !Number.isInteger(start) || !Number.isInteger(end)) continue;
     const from = Math.max(start, 0);
     const to = Math.min(end, text.length);
