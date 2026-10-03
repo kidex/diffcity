@@ -66,7 +66,6 @@ export function createHud(options: HudOptions): Hud {
   const selection = createSelectionCard();
   const fleetCard = fleet === undefined ? null : createFleetCard(fleet);
   const progress = h('div', { class: 'rv-progress', 'data-testid': 'progress' });
-  progress.hidden = true;
   const summaryButton = h(
     'button',
     {
@@ -80,7 +79,6 @@ export function createHud(options: HudOptions): Hud {
     },
     'Review summary',
   );
-  summaryButton.hidden = true;
   let reviewReady = false;
   let shown: { report: Report; filters: Filters } | null = null;
   const toast = h('div', { class: 'toast', role: 'status', 'data-testid': 'toast' });
@@ -96,26 +94,26 @@ export function createHud(options: HudOptions): Hud {
     tooltip.root,
   );
 
-  const extras = options.review === undefined ? {} : { progress, summary: summaryButton };
+  /** Only with a review state: before it, and without a port, the bar has none of these nodes. */
+  const extras = (): { progress?: HTMLElement; summary?: HTMLElement } => (options.review !== undefined && reviewReady ? { progress, summary: summaryButton } : {});
 
   return {
     bar,
     overlay,
     update(report, current) {
       shown = { report, filters: current };
-      renderTopBar(bar, report, crumb, extras);
+      renderTopBar(bar, report, crumb, extras());
       filters.update(report, current, reviewReady);
       legend.update(ruleChips(report).length > 0);
     },
     cardReviewSlot: selection.reviewSlot,
     progress(view) {
-      progress.hidden = view === null;
-      summaryButton.hidden = view === null;
       if (view !== null) renderProgress(progress, view);
-      if (reviewReady !== (view !== null)) {
-        reviewReady = view !== null;
-        if (shown !== null) filters.update(shown.report, shown.filters, reviewReady);
-      }
+      if (reviewReady === (view !== null)) return;
+      reviewReady = view !== null;
+      if (shown === null) return;
+      renderTopBar(bar, shown.report, crumb, extras());
+      filters.update(shown.report, shown.filters, reviewReady);
     },
     tip(data, x, y) {
       if (data === null) tooltip.hide();

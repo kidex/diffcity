@@ -40,7 +40,8 @@ const isEditable = (target: EventTarget | null): boolean =>
   (target.isContentEditable || target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement);
 
 interface Slot {
-  bar: MarkBar;
+  /** Built when there is a review state to show; no controls exist before. */
+  bar: MarkBar | null;
   fileId: string;
   symbolId: string | null;
 }
@@ -87,44 +88,51 @@ export function createReviewUi(options: ReviewUiOptions): ReviewUi {
     void controller.clear(info.target);
   }
 
+  function barFor(entry: Slot): MarkBar {
+    entry.bar ??= createMarkBar({
+      onMark: (value) => {
+        const info = targetOf(entry.fileId, entry.symbolId);
+        if (info !== null) mark(info, value);
+      },
+      onRewrite: () => {
+        const info = targetOf(entry.fileId, entry.symbolId);
+        if (info !== null) askRewrite(info, entry.fileId);
+      },
+      onUndo: () => {
+        const info = targetOf(entry.fileId, entry.symbolId);
+        if (info !== null) undo(info);
+      },
+      onScope: (wholeFile) => {
+        whole = wholeFile ? { fileId: entry.fileId, symbolId: entry.symbolId } : null;
+        api.refresh();
+      },
+    });
+    return entry.bar;
+  }
+
   function render(slot: HTMLElement, entry: Slot): void {
     const state = controller.state();
-    slot.hidden = state === null;
-    if (state === null) return;
+    if (state === null) {
+      // No review state (no snapshot, or not read yet): no controls at all.
+      entry.bar = null;
+      slot.replaceChildren();
+      slot.hidden = true;
+      return;
+    }
+    const bar = barFor(entry);
+    if (bar.root.parentElement !== slot) slot.replaceChildren(bar.root);
+    slot.hidden = false;
     const info = targetOf(entry.fileId, entry.symbolId);
     const own = info === null ? undefined : markOf(state, info.target);
     const inherited = info !== null && info.symbol ? markOf(state, { kind: 'file', id: entry.fileId }) : undefined;
-    entry.bar.set(info, own, inherited);
+    bar.set(info, own, inherited);
   }
 
   function fill(slot: HTMLElement, fileId: string, symbolId: string | null): void {
     let entry = slots.get(slot);
     if (entry === undefined) {
-      const created: Slot = {
-        fileId,
-        symbolId,
-        bar: createMarkBar({
-          onMark: (value) => {
-            const info = targetOf(created.fileId, created.symbolId);
-            if (info !== null) mark(info, value);
-          },
-          onRewrite: () => {
-            const info = targetOf(created.fileId, created.symbolId);
-            if (info !== null) askRewrite(info, created.fileId);
-          },
-          onUndo: () => {
-            const info = targetOf(created.fileId, created.symbolId);
-            if (info !== null) undo(info);
-          },
-          onScope: (wholeFile) => {
-            whole = wholeFile ? { fileId: created.fileId, symbolId: created.symbolId } : null;
-            api.refresh();
-          },
-        }),
-      };
-      entry = created;
+      entry = { fileId, symbolId, bar: null };
       slots.set(slot, entry);
-      slot.replaceChildren(entry.bar.root);
     }
     entry.fileId = fileId;
     entry.symbolId = symbolId;
