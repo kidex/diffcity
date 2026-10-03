@@ -3,6 +3,13 @@ import { extractSqlSymbols, normalizeSql } from './sql.js';
 import type { ParsedSymbol } from './types.js';
 import { parseSource } from './typescript.js';
 
+/**
+ * A file above this many bytes, on either side, is neither read whole nor
+ * parsed: it is hashed from a stream and its status comes from git, as for a
+ * non-code file (ADR-008). Same figure as the diff view's side limit (ADR-027).
+ */
+export const MAX_PARSE_BYTES = 2 * 1024 * 1024;
+
 /** One version of a source file: its top-level symbols and its whole-file normal form. */
 export interface ParsedFile {
   symbols: ParsedSymbol[];

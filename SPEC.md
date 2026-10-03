@@ -178,6 +178,7 @@ A file's status = the "heaviest" status among its symbols, in the order sig > ad
 - The signature is the declared text: parameter names, types, defaults, explicit return type and `async`. Inferred types are ignored, so renaming a parameter gives `sig` and a change to an inferred return type alone gives `mod` (ADR-006).
 - Changes to whitespace or comments only, including a reformat, give `same`. Directive comments (`@ts-ignore`, `@ts-expect-error`, `eslint-disable`) count as body changes and give `mod` (ADR-005).
 - A touched file with no changed symbol (a non-code file, a binary, a TS file with only import changes, a pure rename) takes its status from git: `add`, `del` or `mod` (ADR-008).
+- A code file larger than 2 MiB on either side is not parsed and is treated as a non-code file: no symbols, status from git. A whitespace- or comment-only change to such a file therefore gives `mod`, not `same` (ADR-033).
 
 ### 5.2 File verdict
 

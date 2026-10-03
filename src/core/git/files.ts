@@ -366,6 +366,77 @@ export async function readAfterBytes(change: ResolvedChange, path: string): Prom
   }
 }
 
+async function blobSize(root: string, commit: string, path: string): Promise<number | null> {
+  const repoPath = checkRepoPath(path);
+  const result = await gitRaw(root, ['cat-file', '-s', `${commit}:${repoPath}`]);
+  const size = Number(result.stdout.toString('utf8').trim());
+  if (result.exitCode === 0 && Number.isSafeInteger(size) && size >= 0) return size;
+  await assertBlobAbsent(root, commit, repoPath);
+  return null;
+}
+
+/** Size in bytes of `path` in the before state, from the object header (nothing is read), or null when it does not exist there. */
+export async function sizeBefore(change: ResolvedChange, path: string): Promise<number | null> {
+  return blobSize(change.root, change.mergeBase, path);
+}
+
+/**
+ * Size in bytes of `path` in the after state, or null when it does not exist
+ * there. A commit answers from the object header (`git cat-file -s`); the
+ * working tree from lstat. Nothing is read. Same file set as readAfterBytes.
+ */
+export async function sizeAfter(change: ResolvedChange, path: string): Promise<number | null> {
+  if (!change.worktree) return blobSize(change.root, change.headCommit, path);
+  const absPath = await confinedWorktreePath(change.root, path);
+  if (absPath === null) return null;
+  try {
+    const stats = await lstat(absPath);
+    return stats.isSymbolicLink() || stats.isFile() ? stats.size : null;
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === 'ENOENT' || code === 'ENOTDIR') return null;
+    throw error;
+  }
+}
+
+/** sizeAfter for many paths, in input order; a commit uses one `git cat-file --batch-check` call. */
+export async function sizeAfterBatch(change: ResolvedChange, paths: readonly string[]): Promise<(number | null)[]> {
+  const results = new Array<number | null>(paths.length).fill(null);
+  const batched: { index: number; path: string }[] = [];
+  if (change.worktree) {
+    for (let i = 0; i < paths.length; i += WORKTREE_READ_CONCURRENCY) {
+      await Promise.all(
+        paths.slice(i, i + WORKTREE_READ_CONCURRENCY).map(async (path, j) => {
+          results[i + j] = await sizeAfter(change, path);
+        }),
+      );
+    }
+    return results;
+  }
+  await Promise.all(
+    paths.map(async (path, index) => {
+      if (/[\r\n]/.test(path)) results[index] = await sizeAfter(change, path);
+      else batched.push({ index, path: checkRepoPath(path) });
+    }),
+  );
+  if (batched.length === 0) return results;
+  const input = batched.map(({ path }) => `${change.headCommit}:${path}\n`).join('');
+  const result = await gitRaw(change.root, ['cat-file', '--batch-check'], { input });
+  if (result.exitCode !== 0) throw new GitError('git-failed', `git cat-file --batch-check failed: ${result.stderr.trim()}`);
+  const lines = result.stdout.toString('utf8').split('\n');
+  await Promise.all(
+    batched.map(async ({ index, path }, i) => {
+      const line = lines[i] ?? '';
+      const [, type, sizeText = ''] = line.split(' ');
+      const size = Number.parseInt(sizeText, 10);
+      if (type === 'blob' && Number.isSafeInteger(size)) results[index] = size;
+      // Missing: an absent path or a blob a partial clone lacks; blobSize tells them apart.
+      else if (line.endsWith(' missing')) results[index] = await sizeAfter(change, path);
+    }),
+  );
+  return results;
+}
+
 async function hashBlob(root: string, commit: string, path: string): Promise<string | null> {
   const repoPath = checkRepoPath(path);
   const hash = createHash('sha256');
