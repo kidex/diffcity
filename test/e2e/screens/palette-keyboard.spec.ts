@@ -4,6 +4,7 @@
 import { expect, test, type Page } from '@playwright/test';
 import type { SearchResult } from '../../../src/core/model/types.js';
 import { fixtures, mockApi } from '../support/mock-api.js';
+import { withoutWebgl } from '../support/scene.js';
 
 const dialog = (page: Page) => page.getByRole('dialog', { name: 'Quick search' });
 const input = (page: Page) => page.getByRole('combobox', { name: 'Search repos, branches and files' });
@@ -21,6 +22,8 @@ function search(query: string): SearchResult[] {
 
 async function openHome(page: Page) {
   const api = await mockApi(page, { search });
+  // Opening a change from the palette must not start a WebGL context the specs do not look at.
+  await withoutWebgl(page);
   await page.goto('/#/');
   await expect(page.getByTestId('daemon')).toHaveAttribute('data-state', 'connected');
   return api;
@@ -88,8 +91,7 @@ test('Enter opens the selected result and closes the palette', async ({ page }) 
   await page.keyboard.press('ArrowDown');
   await page.keyboard.press('Enter');
   await expect(page).toHaveURL(/#\/change\/11$/);
-  // The city's first frame compiles shaders; on SwiftShader that holds the page for a few seconds.
-  await expect(page.getByTestId('city')).toHaveAttribute('data-ready', 'true', { timeout: 30_000 });
+  await expect(page.getByTestId('no-webgl-note')).toBeVisible();
   await expect(dialog(page)).toBeHidden();
   await expect(page.getByRole('navigation', { name: 'Breadcrumb' })).toContainText('feature/order-discounts');
 

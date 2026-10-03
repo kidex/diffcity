@@ -2,9 +2,12 @@
 // zooms within limits, R resets the view; hover shows the pointer, click
 // selects with the violet outline and Escape clears the selection.
 
-import { expect, test } from '@playwright/test';
+import { test } from '@playwright/test';
 import { fixtures, mockApi } from '../../support/mock-api.js';
-import { camera, hovered, openCity, project, selected } from '../../support/scene.js';
+import { camera, hovered, openCity, project, selected, sceneExpect as expect } from '../../support/scene.js';
+
+// A first frame on SwiftShader, plus what each spec does after it, can pass the default 30 s.
+test.describe.configure({ timeout: 60_000 });
 
 test('change/orbit-zoom-reset', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' });

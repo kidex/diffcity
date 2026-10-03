@@ -3,9 +3,12 @@
 // view gave back the same GPU resources before closing its context, and the
 // JS heap is back where it was after the first trip.
 
-import { expect, test } from '@playwright/test';
+import { test } from '@playwright/test';
 import { fixtures, mockApi } from '../../support/mock-api.js';
-import { disposal, openCity, waitReady } from '../../support/scene.js';
+import { disposal, openCity, waitReady, sceneExpect as expect } from '../../support/scene.js';
+
+// A first frame on SwiftShader, plus what each spec does after it, can pass the default 30 s.
+test.describe.configure({ timeout: 60_000 });
 
 const ROUND_TRIPS = 10;
 

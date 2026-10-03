@@ -3,11 +3,13 @@
 
 import { expect, test } from '@playwright/test';
 import { mockApi } from '../../support/mock-api.js';
+import { withoutWebgl } from '../../support/scene.js';
 
 test.use({ viewport: { width: 700, height: 900 } });
 
 test('loading is visible and announced while the change is fetched', async ({ page }) => {
   await mockApi(page);
+  await withoutWebgl(page);
   let release: () => void = () => undefined;
   const held = new Promise<void>((resolve) => {
     release = resolve;
@@ -22,7 +24,7 @@ test('loading is visible and announced while the change is fetched', async ({ pa
   await expect(loading).toHaveRole('status');
   release();
   await expect(page.getByTestId('change-head')).toBeVisible();
-  await expect(page.getByTestId('city')).toHaveAttribute('data-ready', 'true', { timeout: 30_000 });
+  await expect(page.getByTestId('no-webgl-note')).toBeVisible();
 });
 
 test('a missing change explains itself', async ({ page }) => {

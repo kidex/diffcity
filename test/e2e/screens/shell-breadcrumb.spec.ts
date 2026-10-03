@@ -3,6 +3,7 @@
 
 import { expect, test, type Page } from '@playwright/test';
 import { mockApi } from '../support/mock-api.js';
+import { withoutWebgl } from '../support/scene.js';
 
 const crumbs = (page: Page) => page.getByRole('navigation', { name: 'Breadcrumb' }).getByRole('listitem');
 const current = (page: Page) => page.getByRole('navigation', { name: 'Breadcrumb' }).locator('[aria-current="page"]');
@@ -27,9 +28,9 @@ test('Repo shows Fleet / repo name', async ({ page }) => {
 });
 
 test('Change shows Fleet / repo / branch against base, and each crumb goes back up', async ({ page }) => {
+  await withoutWebgl(page);
   await page.goto('/#/change/11');
-  // The city's first frame compiles shaders; on SwiftShader that holds the page for a few seconds.
-  await expect(page.locator('[data-screen="change"] [data-testid="city"]')).toHaveAttribute('data-ready', 'true', { timeout: 30_000 });
+  await expect(page.getByTestId('no-webgl-note')).toBeVisible();
   await expect(crumbs(page)).toHaveText(['Fleet', 'sample-shop', /^feature\/order-discounts\s*against\s*main\s*2 commits, /]);
 
   await page.getByRole('link', { name: 'sample-shop' }).click();

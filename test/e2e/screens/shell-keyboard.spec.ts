@@ -5,6 +5,7 @@
 
 import { expect, test, type Page } from '@playwright/test';
 import { mockApi } from '../support/mock-api.js';
+import { withoutWebgl } from '../support/scene.js';
 
 const dialog = (page: Page) => page.getByRole('dialog', { name: 'Quick search' });
 const input = (page: Page) => page.getByRole('combobox', { name: 'Search repos, branches and files' });
@@ -20,11 +21,12 @@ const focused = (page: Page): Promise<string> => page.evaluate<string>(FOCUSED);
 
 async function openChange(page: Page): Promise<void> {
   await mockApi(page);
+  await withoutWebgl(page);
   await page.goto('/#/change/11');
   await expect(page.getByTestId('daemon')).toHaveAttribute('data-state', 'connected');
   await expect(page.getByRole('navigation', { name: 'Breadcrumb' }).getByRole('link', { name: 'sample-shop' })).toBeVisible();
-  // The city compiles its shaders on open; keyboard checks start once it is on screen.
-  await expect(page.getByTestId('city')).toHaveAttribute('data-ready', 'true', { timeout: 30_000 });
+  // The top bar is what these specs walk: no city, no WebGL context to compile.
+  await expect(page.getByTestId('no-webgl-note')).toBeVisible();
 }
 
 test('Tab walks the top bar in reading order, Shift+Tab walks back', async ({ page }) => {
