@@ -142,5 +142,15 @@ describe('review stored in a database', () => {
     reconcileOnSnapshot(temp.db, changeId, refreshed, fps('two-edited'), '2026-09-01T11:00:00.000Z');
     expect(temp.db.review.list(changeId).map((m) => [m.targetId, m.state])).toEqual([['s1', 'current'], ['s2', 'outdated']]);
   });
+
+  it('review/null-incoming-fingerprints-keep-marks: a put without fingerprints leaves current marks current', () => {
+    const snapshot = snapshotInput(changeId, 'a'.repeat(40), { contentHash: 'h1', fingerprints: fingerprintsOf('A') });
+    temp.db.snapshots.put(snapshot);
+    mark(marked('A'));
+    const again = temp.db.snapshots.put({ ...snapshot, fingerprints: null });
+    expect(again).toBe('unchanged');
+    expect(reconcileOnSnapshot(temp.db, changeId, again, null, '2026-09-01T11:00:00.000Z')).toBe(0);
+    expect(first()?.state).toBe('current');
+  });
 });
 

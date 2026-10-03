@@ -3,7 +3,8 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { Db } from '../../../src/core/db/index.js';
 import type { ChangeRecord } from '../../../src/core/model/types.js';
-import { T0, addRepo, branchFields, daysAfter, sampleSummary, sha, snapshotInput, tempDb, type TempDb, rawConnection } from './db-helpers.js';
+import { openDb } from '../../../src/core/db/index.js';
+import { T0, tempDbPath, addRepo, branchFields, daysAfter, sampleSummary, sha, snapshotInput, tempDb, type TempDb, rawConnection } from './db-helpers.js';
 
 let temp: TempDb;
 let db: Db;
@@ -167,7 +168,7 @@ describe('snapshots: refreshed', () => {
     expect(db.snapshots.latestFingerprints(change.id)).toBe(fp('A'));
   });
 
-  it('a merge-base-only difference is stored quietly and stays unchanged', () => {
+  it('snapshots/put-mergebase-only-stored-unchanged: a merge-base-only difference is stored quietly and stays unchanged', () => {
     const input = snapshotInput(change.id, change.head, { contentHash: 'h1', fingerprints: fp('A'), mergeBase: null });
     db.snapshots.put(input);
     expect(db.snapshots.put({ ...input, mergeBase: 'd'.repeat(40) })).toBe('unchanged');
@@ -180,6 +181,43 @@ describe('snapshots: refreshed', () => {
     db.snapshots.put(snapshotInput(change.id, sha(), { contentHash: 'h2', computedAt: daysAfter(T0, 1) }));
     expect(db.snapshots.put({ ...a, fingerprints: fp('Z'), mergeBase: 'e'.repeat(40), computedAt: daysAfter(T0, 2) })).toBe('replaced');
     expect(db.snapshots.latest(change.id)).toMatchObject({ fingerprints: fp('Z'), mergeBase: 'e'.repeat(40) });
+  });
+
+  it('snapshots/put-null-fingerprints-keeps-stored: a put without fingerprints keeps the stored ones and follows the hash rule', () => {
+    const input = snapshotInput(change.id, change.head, { contentHash: 'h1', fingerprints: fp('A'), mergeBase: 'a'.repeat(40) });
+    db.snapshots.put(input);
+    expect(db.snapshots.put({ ...input, fingerprints: null, mergeBase: null })).toBe('unchanged');
+    expect(db.snapshots.latest(change.id)).toMatchObject({ fingerprints: fp('A'), mergeBase: 'a'.repeat(40) });
+    // Back from another head with the same Report: also keeps them.
+    db.snapshots.put(snapshotInput(change.id, sha(), { contentHash: 'h2', computedAt: daysAfter(T0, 1) }));
+    expect(db.snapshots.put({ ...input, fingerprints: null, mergeBase: null, computedAt: daysAfter(T0, 2) })).toBe('replaced');
+    expect(db.snapshots.latest(change.id)).toMatchObject({ fingerprints: fp('A'), mergeBase: 'a'.repeat(40) });
+  });
+
+  it('snapshots/corrupt-stored-fingerprints-refreshed: an unparsable stored value is replaced, with a warning that does not hold it', () => {
+    const { path, remove } = tempDbPath();
+    const warnings: string[] = [];
+    const own = openDb(path, { warn: (message) => warnings.push(message) });
+    try {
+      const repo = addRepo(own, 'corrupt-shop');
+      const made = own.changes.applyPlan(repo.id, { create: [branchFields('c')], update: [], archive: [] }, T0).created[0];
+      if (made === undefined) throw new Error('not created');
+      const input = snapshotInput(made.id, made.head, { contentHash: 'h1', fingerprints: fp('A') });
+      own.snapshots.put(input);
+      const raw = rawConnection(path);
+      try {
+        raw.prepare<[string]>('UPDATE snapshots SET fingerprints = ?').run('{not json SECRET-TEXT');
+      } finally {
+        raw.close();
+      }
+      expect(own.snapshots.put(input)).toBe('refreshed');
+      expect(own.snapshots.latestFingerprints(made.id)).toBe(fp('A'));
+      expect(warnings).toHaveLength(1);
+      expect(warnings[0]).not.toContain('SECRET-TEXT');
+    } finally {
+      own.close();
+      remove();
+    }
   });
 });
 
