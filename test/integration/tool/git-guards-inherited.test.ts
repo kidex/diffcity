@@ -56,7 +56,8 @@ beforeAll(async () => {
   for (const name of ['post-index-change', 'pre-auto-gc', 'post-checkout']) await run(join(hooksDir, name));
   await run(join(scratch, 'bin', 'gh'));
   await rm(join(markers, 'hook'), { force: true });
-});
+  // Each first exec of a fresh script pays macOS's provenance check, which a loaded machine stretches.
+}, 180_000);
 
 afterAll(async () => {
   await rm(scratch, { recursive: true, force: true });
