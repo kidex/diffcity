@@ -6,7 +6,8 @@
  */
 
 /* ---------- city ---------- */
-.stage.change:has(> .change-body.has-city) { overflow: hidden; }
+.stage.change:has(> .change-body.has-city, > .change-body.has-list) { overflow: hidden; }
+.change-body.has-list { display: flex; flex-direction: column; flex: 1 1 0; min-height: 420px; background: var(--bg); }
 .change-body.has-city { display: flex; flex-direction: column; flex: 1 1 0; min-height: 420px; background: var(--c-void); }
 .city { position: relative; flex: 1 1 0; min-height: 0; overflow: hidden; }
 .city canvas.scene { position: absolute; inset: 0; width: 100%; height: 100%; display: block; cursor: grab; touch-action: none; }
@@ -209,6 +210,16 @@
 .touched-files tr > :last-child { padding-right: 22px; }
 .touched-files tbody tr > * { padding: 10px 14px; border-bottom: 1px solid var(--line-soft); text-align: left; font-weight: 400; vertical-align: middle; }
 .touched-files tbody tr:hover { background: color-mix(in srgb, var(--panel-2) 70%, transparent); }
+/* without WebGL: the list and the reading panel side by side, as the city and the panel are */
+.change-work.no-city { position: relative; }
+.change-work.no-city > .change-report { min-width: 0; min-height: 0; display: flex; flex-direction: column; padding-bottom: 0; }
+.change-report .touched-scroll { flex: 1 1 auto; min-height: 0; overflow: auto; padding-bottom: 24px; }
+.touched-files tbody tr.pkg-row > th { padding: 14px 22px 6px; border-bottom: 1px solid var(--line-soft); font-size: 12px; font-weight: 500; color: var(--muted); }
+.touched-files .pkg-row .pkg-path { font-family: var(--mono); margin-right: 8px; }
+.touched-files tr.on { background: color-mix(in srgb, var(--panel-2) 70%, transparent); box-shadow: inset 3px 0 0 var(--sig); }
+.touched-files .file-open { display: inline; padding: 0; text-align: left; cursor: pointer; border-radius: 3px; }
+.touched-files .file-open:hover .file-path { text-decoration: underline; text-decoration-color: var(--sig); text-underline-offset: 3px; }
+.touched-files .file-open:focus-visible { outline-offset: 3px; }
 .touched-files .file-path { font-family: var(--mono); font-size: 12.5px; color: var(--ink); overflow-wrap: anywhere; margin-right: 8px; }
 .touched-files td { white-space: nowrap; width: 1%; }
 /* the mockup's .tag.tier (its .tier class is the top bar's pill) */

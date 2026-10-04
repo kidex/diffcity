@@ -50,6 +50,8 @@ export interface Hud {
   cardReviewSlot: HTMLElement;
   /** The review progress for the bar, or null while there is no review state (nothing is drawn, "Hide checked" goes). */
   progress(view: ProgressView | null): void;
+  /** The toast's element, for a screen that has no overlay to put it in. */
+  toastRoot: HTMLElement;
   toast(text: string): void;
   dispose(): void;
 }
@@ -107,6 +109,7 @@ export function createHud(options: HudOptions): Hud {
       legend.update(ruleChips(report).length > 0);
     },
     cardReviewSlot: selection.reviewSlot,
+    toastRoot: toast,
     progress(view) {
       if (view !== null) renderProgress(progress, view);
       if (reviewReady === (view !== null)) return;
