@@ -2,7 +2,9 @@
 // - screens: the UI against a mocked API (page.route + JSON fixtures), served
 //   by a test-only static server; trace and screenshot kept on failure, video
 //   too outside CI; CI splits its spec files over parallel jobs
-//   (scripts/e2e-shard.mjs, .github/workflows/ci.yml);
+//   (scripts/e2e-shard.mjs, .github/workflows/ci.yml). The visual specs
+//   (change/visual-*) compare screenshots with committed baselines and run on
+//   Linux only (e2e/support/visual.ts);
 // - acceptance: each spec starts its own daemon in a fresh temporary home,
 //   one worker so timed specs never share the machine with each other; CI
 //   runs it in a job of its own, beside the screens shards.

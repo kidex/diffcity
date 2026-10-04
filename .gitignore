@@ -13,3 +13,7 @@ playwright-report/
 .claude/settings.local.json
 grammars/
 test/fixtures/ui/generated/
+
+# Visual baselines are made on Linux CI; images other platforms write are not kept.
+test/e2e/**/*-snapshots/*-darwin.png
+test/e2e/**/*-snapshots/*-win32.png

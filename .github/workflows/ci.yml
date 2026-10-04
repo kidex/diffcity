@@ -79,15 +79,61 @@ jobs:
           path: test-results/
           retention-days: 14
 
+  # The visual baselines (test/e2e/screens/**/visual-*.spec.ts) are images
+  # rendered on this runner's Linux, so they are made here. The screens shards
+  # run those specs like any other; this job only matters while a baseline is
+  # not committed (scripts/visual-baselines.mjs lists them): it generates the
+  # missing images with --update-snapshots=missing and uploads them as the
+  # `visual-baselines` artifact, to be unzipped into test/e2e/screens/ and
+  # committed. It then fails, so a missing baseline never goes unnoticed.
+  e2e-visual-baselines:
+    name: e2e visual baselines
+    needs: check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Find the baselines that are not committed
+        id: missing
+        run: |
+          missing="$(node scripts/visual-baselines.mjs)"
+          if [ -z "$missing" ]; then
+            echo "missing=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "missing=true" >> "$GITHUB_OUTPUT"
+            echo "Not committed:"
+            echo "$missing"
+          fi
+      - uses: ./.github/actions/e2e-setup
+        if: steps.missing.outputs.missing == 'true'
+      - name: Generate the missing baselines
+        if: steps.missing.outputs.missing == 'true'
+        # A run that writes a baseline reports its test as failed; what counts is the files.
+        continue-on-error: true
+        run: npm run test:e2e -- --project=screens --update-snapshots=missing --retries=0 --workers=2 $(find test/e2e/screens -name 'visual-*.spec.ts' | sort)
+      - name: Upload the generated baselines
+        if: steps.missing.outputs.missing == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: visual-baselines
+          path: test/e2e/screens/**/*-snapshots/*-screens-linux.png
+          if-no-files-found: error
+          retention-days: 14
+      - name: Fail until the baselines are committed
+        if: steps.missing.outputs.missing == 'true'
+        run: |
+          echo "::error::Visual baselines are missing. Download the visual-baselines artifact, unzip it into test/e2e/screens/ and commit the images."
+          exit 1
+
   # One check for the whole stage, under the name the e2e job always had.
   e2e:
     name: e2e (Playwright)
-    needs: [e2e-screens, e2e-acceptance]
+    needs: [e2e-screens, e2e-acceptance, e2e-visual-baselines]
     if: ${{ always() }}
     runs-on: ubuntu-latest
     steps:
       - name: Every e2e job passed
         run: |
-          echo "screens: ${{ needs.e2e-screens.result }}, acceptance: ${{ needs.e2e-acceptance.result }}"
+          echo "screens: ${{ needs.e2e-screens.result }}, acceptance: ${{ needs.e2e-acceptance.result }}, visual baselines: ${{ needs.e2e-visual-baselines.result }}"
           test "${{ needs.e2e-screens.result }}" = success
           test "${{ needs.e2e-acceptance.result }}" = success
+          test "${{ needs.e2e-visual-baselines.result }}" = success
