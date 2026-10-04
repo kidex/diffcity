@@ -13,6 +13,7 @@ import { spawn } from 'node:child_process';
 import type { RepoDetail, RepoSummary } from '../../../src/core/model/types.js';
 import { CLI_DIST, waitFor } from '../../helpers/daemon.js';
 import { createRepo } from '../../helpers/repo.js';
+import { focused } from '../support/a11y.js';
 import { ghStubEnv } from '../support/acceptance.js';
 import { criterion, expect, hideCaption, HOLD_MS, test, titleCard } from '../support/proof.js';
 import { selected, waitReady } from '../support/scene.js';
@@ -204,9 +205,12 @@ test('DC-89: the change screen without WebGL and with the keyboard alone', async
       await page.keyboard.press('Enter');
       await expect(page.locator('.hud .chips button[aria-pressed="true"]')).toHaveCount(0);
       await page.getByTestId('filter-clear').focus();
-      await page.keyboard.press('Tab');
-      await page.keyboard.press('Tab');
-      await page.waitForTimeout(PAUSE);
+      // On through the rest of the chips to the first tab, then one more to Findings.
+      for (let i = 0; i < 12 && (await focused(page))?.testid !== 'tab-findings'; i += 1) {
+        await page.keyboard.press('Tab');
+        await page.waitForTimeout(PAUSE / 2);
+      }
+      await expect(page.getByTestId('tab-findings')).toBeFocused();
       await page.keyboard.press('Enter');
       await expect(page.getByTestId('tab-findings')).toHaveAttribute('aria-pressed', 'true');
     },
