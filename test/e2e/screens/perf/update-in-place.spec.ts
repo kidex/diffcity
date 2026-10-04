@@ -7,13 +7,13 @@
 
 import { test } from '@playwright/test';
 import type { Report } from '../../../../src/core/report/types.js';
-import { openLargeCity, type LargeCity } from '../../support/large-city.js';
+import { LARGE_CITY_TEST_TIMEOUT, openLargeCity, type LargeCity } from '../../support/large-city.js';
 import { stats, sceneExpect as expect } from '../../support/scene.js';
 
 let city: LargeCity;
 
 test.beforeAll(async ({ browser }, testInfo) => {
-  test.setTimeout(240_000);
+  test.setTimeout(LARGE_CITY_TEST_TIMEOUT);
   city = await openLargeCity(browser, testInfo, 'reduce');
 });
 test.afterAll(async () => {
@@ -42,7 +42,7 @@ const shownOf = (id: string): Promise<{ x: number; z: number; height: number } |
   city.page.evaluate<{ x: number; z: number; height: number } | undefined>(`window.diffcityScene.shown()[${JSON.stringify(id)}]`);
 
 test('perf/update-in-place-same-count', async () => {
-  test.setTimeout(240_000);
+  test.setTimeout(LARGE_CITY_TEST_TIMEOUT);
   const { page } = city;
   await expect.poll(() => page.evaluate<boolean>('window.diffcityScene.tweening()'), { timeout: 60_000 }).toBe(false);
   // The quality probe replaces render targets once; measure after it.
@@ -76,15 +76,28 @@ test('perf/update-in-place-same-count', async () => {
   expect(after.geometries).toBe(before.geometries);
   expect(after.drawCalls).toBeLessThanOrEqual(40);
 
-  // Another update changes nothing on the GPU either: no texture or geometry piles up. (The first update draws one texture
-  // that the first frame had not needed yet, so textures are compared between the two updates.)
-  pkg.files.reverse();
-  await city.push(next);
-  await expect.poll(async () => (await stats(page)).frames, { timeout: 60_000 }).toBeGreaterThan(after.frames);
-  const again = await steadyStats();
-  expect(again.builds).toBe(before.builds);
-  expect(again.geometries).toBe(before.geometries);
-  expect(again.textures).toBe(after.textures);
+  // Further updates change nothing on the GPU: no texture, geometry or build piles up. A texture can still be uploaded
+  // one update late (the frame that first draws it depends on the runner's speed), so two warm-up updates of the same
+  // count come first; after them the holdings stay exactly flat over several more.
+  let seen = after;
+  for (let update = 0; update < 2; update++) {
+    pkg.files.reverse();
+    await city.push(next);
+    await expect.poll(async () => (await stats(page)).frames, { timeout: 60_000 }).toBeGreaterThan(seen.frames);
+    seen = await steadyStats();
+  }
+  const warm = seen;
+  expect(warm.builds).toBe(before.builds);
+  expect(warm.geometries).toBe(before.geometries);
+  for (let update = 0; update < 5; update++) {
+    pkg.files.reverse();
+    await city.push(next);
+    await expect.poll(async () => (await stats(page)).frames, { timeout: 60_000 }).toBeGreaterThan(seen.frames);
+    seen = await steadyStats();
+    expect(seen.textures).toBe(warm.textures);
+    expect(seen.geometries).toBe(warm.geometries);
+    expect(seen.builds).toBe(warm.builds);
+  }
 
   // Control: one building fewer needs other buffers.
   const fewer: Report = structuredClone(city.report);

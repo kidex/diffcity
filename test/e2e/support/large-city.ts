@@ -6,8 +6,14 @@
 import type { Browser, Page, TestInfo } from '@playwright/test';
 import type { Report } from '../../../src/core/report/types.js';
 import { fixtures, mockApi } from './mock-api.js';
-import { openCity } from './scene.js';
+import { CITY_TIMEOUT, openCity } from './scene.js';
 import { emitSse, tagClient } from './sse.js';
+
+/**
+ * Test timeout of a spec that reads the large city: its first frame, the quality probe and every wait on the scene
+ * each take up to CITY_TIMEOUT on a loaded SwiftShader runner, and a test makes several of them in a row.
+ */
+export const LARGE_CITY_TEST_TIMEOUT = CITY_TIMEOUT * 8;
 
 export interface LargeCity {
   page: Page;
