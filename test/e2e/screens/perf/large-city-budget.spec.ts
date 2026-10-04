@@ -9,7 +9,7 @@
 // a real GPU, the headed bench (scripts/bench-city.mjs) measures that.
 
 import { test } from '@playwright/test';
-import { openLargeCity, type LargeCity } from '../../support/large-city.js';
+import { LARGE_CITY_TEST_TIMEOUT, openLargeCity, type LargeCity } from '../../support/large-city.js';
 import { bench, hovered, selected, stats, sceneExpect as expect } from '../../support/scene.js';
 import { framesIn } from '../../support/effects.js';
 
@@ -21,7 +21,7 @@ test.describe.serial('perf/large city budgets', () => {
   let city: LargeCity;
 
   test.beforeAll(async ({ browser }, testInfo) => {
-    test.setTimeout(240_000);
+    test.setTimeout(LARGE_CITY_TEST_TIMEOUT);
     city = await openLargeCity(browser, testInfo, 'reduce');
   });
   test.afterAll(async () => {
@@ -29,7 +29,7 @@ test.describe.serial('perf/large city budgets', () => {
   });
 
   test('perf/large-city-draw-calls', async () => {
-    test.setTimeout(180_000);
+    test.setTimeout(LARGE_CITY_TEST_TIMEOUT);
     const testInfo = test.info();
     const { page } = city;
     const scene = await stats(page);
@@ -49,6 +49,7 @@ test.describe.serial('perf/large city budgets', () => {
   });
 
   test('perf/large-city-triangles', async () => {
+    test.setTimeout(LARGE_CITY_TEST_TIMEOUT);
     const { page } = city;
     const scene = await stats(page);
     expect(scene.triangles).toBeGreaterThan(0);
@@ -58,6 +59,7 @@ test.describe.serial('perf/large city budgets', () => {
   });
 
   test('perf/label-cap-120', async () => {
+    test.setTimeout(LARGE_CITY_TEST_TIMEOUT);
     const { page } = city;
     const scene = await stats(page);
     expect(scene.labels).toBeGreaterThan(0);
@@ -76,6 +78,7 @@ test.describe.serial('perf/large city budgets', () => {
   });
 
   test('perf/label-priority-eyes-first', async () => {
+    test.setTimeout(LARGE_CITY_TEST_TIMEOUT);
     const { page, report } = city;
     const files = report.packages.flatMap((pkg) => pkg.files).filter((file) => file.status !== 'same');
     const urgent = files.filter((file) => file.verdict === 'eyes' || file.verdict === 'risky');
@@ -110,17 +113,32 @@ test.describe.serial('perf/large city budgets', () => {
   });
 });
 
-/** Moves the pointer onto the first file (in Report order) that `want` accepts and the camera shows unobstructed; returns its id and the point. */
+/** Candidates tried by `pointOn`, nearest to the canvas centre first: bounded, so a crowded city cannot loop for minutes. */
+const POINT_ATTEMPTS = 12;
+
+/** Moves the pointer onto a file that `want` accepts and the camera shows unobstructed, trying those nearest to the screen centre first; returns its id and the point. */
 async function pointOn(city: LargeCity, want: (file: LargeCity['report']['packages'][number]['files'][number]) => boolean): Promise<{ id: string; x: number; y: number }> {
   const { page, report } = city;
-  const candidates = report.packages.flatMap((pkg) => pkg.files).filter(want);
+  const ids = report.packages.flatMap((pkg) => pkg.files).filter(want).map((file) => file.id);
   const canvas = await page.getByTestId('city-canvas').boundingBox();
   if (canvas === null) throw new Error('no canvas');
-  for (const file of candidates.slice(0, 120)) {
-    const point = await page.evaluate<{ x: number; y: number } | null>(`window.diffcityScene.project(${JSON.stringify(file.id)})`);
-    if (point === null || point.x < canvas.x + 20 || point.x > canvas.x + canvas.width - 20 || point.y < canvas.y + 80 || point.y > canvas.y + canvas.height - 20) continue;
+  // One round trip projects every candidate; the loop below only moves the pointer.
+  const projected = await page.evaluate<Array<{ id: string; x: number; y: number } | null>>(
+    `${JSON.stringify(ids)}.map((id) => { const p = window.diffcityScene.project(id); return p === null ? null : { id, x: p.x, y: p.y }; })`,
+  );
+  const centre = { x: canvas.x + canvas.width / 2, y: canvas.y + canvas.height / 2 };
+  const visible = projected
+    .filter((point): point is { id: string; x: number; y: number } => point !== null)
+    .filter((point) => point.x >= canvas.x + 20 && point.x <= canvas.x + canvas.width - 20 && point.y >= canvas.y + 80 && point.y <= canvas.y + canvas.height - 20)
+    .sort((a, b) => Math.hypot(a.x - centre.x, a.y - centre.y) - Math.hypot(b.x - centre.x, b.y - centre.y));
+  for (const point of visible.slice(0, POINT_ATTEMPTS)) {
     await page.mouse.move(point.x, point.y);
-    if ((await hovered(page)) === file.id) return { id: file.id, x: point.x, y: point.y };
+    // The hover is read by a frame; give each candidate a short, bounded wait.
+    const hit = await expect.poll(() => hovered(page), { timeout: 2000 }).toBe(point.id).then(
+      () => true,
+      () => false,
+    );
+    if (hit) return point;
   }
   throw new Error('no file of the large city can be pointed at');
 }
