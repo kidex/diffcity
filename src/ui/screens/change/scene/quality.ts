@@ -44,8 +44,13 @@ export const WARMUP_MS = 2000;
 export const TARGET_FPS = 58;
 export const STEP_FPS = 8;
 
-/** Frame intervals the probe needs to say anything: fewer means the frames are far too slow. */
-export const MIN_INTERVALS = 3;
+/**
+ * Frame intervals the measured window must hold: 20 in 500 ms is 40 fps, below
+ * the lowest threshold. Fewer means the frames are too slow whatever their
+ * median: a renderer that lags (SwiftShader) shows a burst of fast frames
+ * before its queue fills, and the median of that burst would read 60 fps.
+ */
+export const MIN_INTERVALS = 20;
 
 export function median(values: readonly number[]): number {
   if (values.length === 0) return Number.NaN;

@@ -65,7 +65,7 @@ describe('quality ladder (scene/quality.ts)', () => {
   });
 
   it('reads the median frame rate from frame intervals, and too few intervals as 0 fps', () => {
-    expect(medianFps([16, 17, 16, 100, 16])).toBeCloseTo(62.5, 0);
+    expect(medianFps(Array.from({ length: 25 }, (_, i) => (i === 7 ? 100 : 16)))).toBeCloseTo(62.5, 0);
     expect(medianFps([1000, 1000])).toBe(0);
     expect(median([3, 1, 2])).toBe(2);
     expect(median([4, 1, 2, 3])).toBe(2.5);
@@ -98,6 +98,15 @@ describe('quality probe state machine (scene/quality.ts)', () => {
     run(probe, 0, 6, 1000);
     probe.tick(100_000);
     probe.tick(200_000);
+    expect(probe.fps).toBe(0);
+    expect(levelFor(probe.fps ?? 0).level).toBe(3);
+  });
+
+  it('a burst of fast frames from a lagging renderer, then silence, is not read as a fast one', () => {
+    const probe = new QualityProbe(true, 0);
+    // 30 warm-up frames, then a burst of four 16 ms frames and nothing for the rest of the window.
+    const now = run(probe, 0, WARMUP_FRAMES + 4, 16);
+    probe.tick(now + PROBE_MS);
     expect(probe.fps).toBe(0);
     expect(levelFor(probe.fps ?? 0).level).toBe(3);
   });
