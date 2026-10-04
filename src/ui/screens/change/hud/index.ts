@@ -4,9 +4,11 @@
 // index.ts, the paint rules in model/view.ts.
 
 import type { Report } from '../../../../core/report/types.js';
+import './review.css';
 import { h } from '../../../shared/dom.js';
 import type { CardData, TipData } from '../model/hud.js';
 import { ruleChips } from '../model/hud.js';
+import type { ProgressView } from '../model/review.js';
 import type { Filters } from '../model/view.js';
 import type { FleetPort } from '../ports.js';
 import { createSelectionCard } from './card.js';
@@ -14,6 +16,7 @@ import { createFilterRows } from './filters.js';
 import { createFleetCard } from './fleet.js';
 import { createLegend } from './legend.js';
 import { createTooltip } from './tooltip.js';
+import { renderProgress } from './progress.js';
 import { renderTopBar } from './topbar.js';
 
 export const TITLE = 'What the agent built';
@@ -28,6 +31,8 @@ export interface HudOptions {
   /** Also show the breadcrumb (repo, branch against base, commits and time): for a screen without the SPA shell. */
   crumb: boolean;
   fleet?: FleetPort | undefined;
+  /** The screen has a ReviewPort: the summary button is drawn and `onSummary` opens the dialog. */
+  review?: { onSummary(trigger: HTMLElement): void } | undefined;
   onFilters(filters: Filters): void;
 }
 
@@ -41,6 +46,10 @@ export interface Hud {
   tip(data: TipData | null, x: number, y: number): void;
   /** The selection card; `focus` is the symbol id of the focused floor. */
   card(data: CardData | null, focus?: string | null): void;
+  /** Where the selection card keeps its mark buttons. */
+  cardReviewSlot: HTMLElement;
+  /** The review progress for the bar, or null while there is no review state (nothing is drawn, "Hide checked" goes). */
+  progress(view: ProgressView | null): void;
   toast(text: string): void;
   dispose(): void;
 }
@@ -56,6 +65,22 @@ export function createHud(options: HudOptions): Hud {
   const tooltip = createTooltip(overlay);
   const selection = createSelectionCard();
   const fleetCard = fleet === undefined ? null : createFleetCard(fleet);
+  const progress = h('div', { class: 'rv-progress', 'data-testid': 'progress' });
+  const summaryButton = h(
+    'button',
+    {
+      type: 'button',
+      class: 'btn',
+      'aria-haspopup': 'dialog',
+      'data-testid': 'review-summary',
+      onclick: (event: Event) => {
+        if (event.currentTarget instanceof HTMLElement) options.review?.onSummary(event.currentTarget);
+      },
+    },
+    'Review summary',
+  );
+  let reviewReady = false;
+  let shown: { report: Report; filters: Filters } | null = null;
   const toast = h('div', { class: 'toast', role: 'status', 'data-testid': 'toast' });
   toast.hidden = true;
   let toastTimer: ReturnType<typeof setTimeout> | undefined;
@@ -69,13 +94,26 @@ export function createHud(options: HudOptions): Hud {
     tooltip.root,
   );
 
+  /** Only with a review state: before it, and without a port, the bar has none of these nodes. */
+  const extras = (): { progress?: HTMLElement; summary?: HTMLElement } => (options.review !== undefined && reviewReady ? { progress, summary: summaryButton } : {});
+
   return {
     bar,
     overlay,
     update(report, current) {
-      renderTopBar(bar, report, crumb);
-      filters.update(report, current);
+      shown = { report, filters: current };
+      renderTopBar(bar, report, crumb, extras());
+      filters.update(report, current, reviewReady);
       legend.update(ruleChips(report).length > 0);
+    },
+    cardReviewSlot: selection.reviewSlot,
+    progress(view) {
+      if (view !== null) renderProgress(progress, view);
+      if (reviewReady === (view !== null)) return;
+      reviewReady = view !== null;
+      if (shown === null) return;
+      renderTopBar(bar, shown.report, crumb, extras());
+      filters.update(shown.report, shown.filters, reviewReady);
     },
     tip(data, x, y) {
       if (data === null) tooltip.hide();

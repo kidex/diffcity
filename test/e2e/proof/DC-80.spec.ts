@@ -3,8 +3,7 @@
 // branch feature/order-notes touches files in three packages, one of them the
 // tier 1 src/auth. The daemon's Report does not carry steps or findings yet, so
 // the page adds a reading path and a few findings to the Report it fetches
-// (page.route), and hands the scene a fake review overlay through the
-// ?scene-debug hook. On screen: the critical floors pulse (tier 1 changes and
+// (page.route), and the marks go through the real review API. On screen: the critical floors pulse (tier 1 changes and
 // high findings) and the tier 1 ring breathes; pins by severity and rule X
 // markers on a floor and on a roof; the reading path with packets and numbered
 // rings; checked rendering through a live update that does not rebuild the
@@ -19,6 +18,7 @@ import { createRepo } from '../../helpers/repo.js';
 import { ghStubEnv } from '../support/acceptance.js';
 import { effects, framesIn } from '../support/effects.js';
 import { criterion, expect, hideCaption, HOLD_MS, test, titleCard } from '../support/proof.js';
+import { markInPage } from '../support/review.js';
 import { stats, waitReady } from '../support/scene.js';
 
 const TITLE = 'add notes to orders';
@@ -114,7 +114,7 @@ test('DC-80: night effects on a change from the real daemon', async ({ page, pro
   await titleCard(page, 'DC-80: the night effects', [
     'The real daemon from dist/, in a temporary home.',
     'sample-bakery: an invented repo; feature/order-notes touches src/auth (tier 1), src/orders and src/menu.',
-    'The page adds a reading path and findings to the Report, and a fake review overlay.',
+    'The page adds a reading path and findings to the Report; the marks go through the real review API.',
   ]);
   const repo = await buildSampleBakery();
   proof.onTeardown(() => repo.cleanup());
@@ -182,7 +182,9 @@ test('DC-80: night effects on a change from the real daemon', async ({ page, pro
     page,
     '4. Marks: a checked file goes quiet, a floor marked for rewrite is notched, a live update keeps the towers',
     async () => {
-      await page.evaluate(`window.diffcityMarks = { files: { ${JSON.stringify(SESSION)}: 'good' }, symbols: { ${JSON.stringify(`${ORDER}#newOrder`)}: 'rewrite' } }`);
+      // Real marks through the daemon's review API, as the screen writes them; SSE `review` brings them to the city.
+      await markInPage(page, change.id, { kind: 'file', id: SESSION }, 'good');
+      await markInPage(page, change.id, { kind: 'symbol', id: `${ORDER}#newOrder` }, 'rewrite', 'Rename this to match the menu.');
       const before = (await stats(page)).builds;
       await repo.checkout('feature/order-notes');
       await repo.commit('tidy the order note', { 'src/orders/notes.ts': 'export function addNote(text: string): string {\n  return text.trim();\n}\n\nexport function clearNote(): string {\n  return "";\n}\n\nexport const MAX_NOTE = 240;\n' });

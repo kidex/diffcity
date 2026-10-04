@@ -31,6 +31,8 @@ export interface PanelOptions {
   onRange?(fileId: string, range: LineRange | null): void;
   /** Without it the file view shows only the Report's step diffs. */
   diffs?: DiffPort | undefined;
+  /** With review marks: fills the file view header's slot with the mark buttons of the file (and of the focused floor, a symbol id). */
+  review?: { fill(slot: HTMLElement, fileId: string, symbolId: string | null): void } | undefined;
   reducedMotion: boolean;
 }
 
@@ -44,6 +46,8 @@ export interface Panel {
   hoverFloor(fileId: string | null, symbolId: string | null): void;
   /** The line range selected in the open file's diff, for the review marks (T10); null when none. */
   lineRange(): { fileId: string; range: LineRange } | null;
+  /** The review marks changed: the file view's mark buttons are drawn again. */
+  refreshReview(): void;
   /** A building was clicked in the city: its file view opens at the floor. */
   open(fileId: string, symbolId: string | null): void;
   dispose(): void;
@@ -133,7 +137,15 @@ export function createPanel(options: PanelOptions, first: Report): Panel {
   function renderChrome(): void {
     summary.textContent = summaryLine(report);
     const hasStops = counts().order > 0;
-    keys.replaceChildren(h('span', { class: 'k' }, 'J'), h('span', { class: 'k' }, 'K'), ` next / previous ${hasStops ? 'stop' : 'symbol'}`);
+    keys.replaceChildren(
+      h('span', { class: 'k' }, 'J'),
+      h('span', { class: 'k' }, 'K'),
+      ` next / previous ${hasStops ? 'stop' : 'symbol'}`,
+      // With review marks the keys that make them are named here, as J and K are.
+      ...(options.review === undefined
+        ? []
+        : [' ', ...['C', 'G', 'W', 'U'].map((key) => h('span', { class: 'k', 'data-testid': 'review-key' }, key)), ' mark']),
+    );
     const found = findingSources(report);
     sources.textContent = found.length === 0 ? '' : sourcesText(found);
     renderTabs();
@@ -161,6 +173,7 @@ export function createPanel(options: PanelOptions, first: Report): Panel {
       view.area.dataset['focusSymbol'] = focus ?? '';
       diffView?.focus(focus);
       for (const excerpt of view.excerpts) excerpt.root.classList.toggle('focus', focus !== null && excerpt.symbolId === focus);
+      if (view.reviewSlot !== null && fileId !== null) options.review?.fill(view.reviewSlot, fileId, focus);
     }
     if (scrollTo) scheduleScroll();
   }
@@ -195,7 +208,7 @@ export function createPanel(options: PanelOptions, first: Report): Panel {
       closeFile();
       return;
     }
-    view = renderFileView(fileRoot, data, { actions, back: closeFile, hasDiffPort: diffView !== null });
+    view = renderFileView(fileRoot, data, { actions, back: closeFile, hasDiffPort: diffView !== null, hasReview: options.review !== undefined });
     const mount = view.area.querySelector<HTMLElement>(`.${DIFF_MOUNT}`);
     if (diffView !== null && mount !== null) {
       diffView.show(mount, data.placed.file.id, selection?.fileId === fileId ? selection.symbolId : null, report.meta.generatedAt);
@@ -286,6 +299,12 @@ export function createPanel(options: PanelOptions, first: Report): Panel {
     lineRange() {
       const range = diffView?.range() ?? null;
       return fileId === null || range === null ? null : { fileId, range };
+    },
+    refreshReview() {
+      if (view?.reviewSlot !== null && view !== null && fileId !== null) {
+        const focus = selection?.fileId === fileId ? selection.symbolId : null;
+        options.review?.fill(view.reviewSlot, fileId, focus);
+      }
     },
     open: openFile,
     dispose() {

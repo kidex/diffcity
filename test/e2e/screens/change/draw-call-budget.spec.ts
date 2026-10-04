@@ -4,8 +4,9 @@
 // here, so it says little about a real GPU).
 
 import { test } from '@playwright/test';
-import { effects, marksFor, openWithMarks, withEveryEffect } from '../../support/effects.js';
+import { effects, marksFor, withEveryEffect } from '../../support/effects.js';
 import { fixtures, mockApi } from '../../support/mock-api.js';
+import { marksFromOverlay } from '../../support/review-api.js';
 import { bench, openCity, stats, sceneExpect as expect } from '../../support/scene.js';
 
 // A first frame on SwiftShader, plus what each spec does after it, can pass the default 30 s.
@@ -48,8 +49,7 @@ for (const [name, report] of [
       test.setTimeout(150_000);
       await page.emulateMedia({ reducedMotion: motion });
       const data = withEveryEffect(report());
-      await mockApi(page, { reports: { 11: data } });
-      await openWithMarks(page, marksFor(data));
+      await mockApi(page, { reports: { 11: data }, review: { marks: marksFromOverlay(data, marksFor(data)) } });
       await openCity(page);
 
       const shown = await effects(page);

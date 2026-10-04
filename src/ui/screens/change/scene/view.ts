@@ -312,7 +312,7 @@ export function createCityView(host: HTMLElement, report: Report, options: CityV
       const dim = new Set<string>();
       for (const building of c.shown.buildings) if (baseline.buildings[building.index]?.dimmed === true) dim.add(building.id);
       labels.setDimmed(dim, tween !== null);
-      element.dataset['filters'] = `verdict=${filters.verdict ?? ''};type=${filters.type ?? ''};rule=${filters.rule ?? ''}`;
+      element.dataset['filters'] = `verdict=${filters.verdict ?? ''};type=${filters.type ?? ''};rule=${filters.rule ?? ''}${filters.hideChecked === true ? ';hide-checked' : ''}`;
     }
     const paint = focusPaint(baseline, c.shown, hovered, selected, focusedFloor, hoveredFloor);
     c.towers.setPaint(paint);

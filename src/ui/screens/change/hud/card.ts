@@ -12,6 +12,8 @@ import { countLine } from '../model/hud.js';
 
 export interface SelectionCard {
   root: HTMLElement;
+  /** Where the mark buttons go, between the counts and the symbols; it stays hidden until the screen fills it. */
+  reviewSlot: HTMLElement;
   /** `focus` is the symbol id of the focused floor, marked in the list. */
   show(data: CardData | null, focus?: string | null): void;
 }
@@ -21,8 +23,11 @@ const statusToken = (status: Status): string => (status === 'same' ? '--same-top
 export function createSelectionCard(): SelectionCard {
   const root = h('aside', { class: 'card sel-card', 'aria-label': 'Selected file', 'aria-live': 'polite', 'data-testid': 'selection-card' });
   root.hidden = true;
+  const reviewSlot = h('div', { class: 'rv-slot', 'data-testid': 'card-review' });
+  reviewSlot.hidden = true;
   return {
     root,
+    reviewSlot,
     show(data, focus = null) {
       if (data === null) {
         root.hidden = true;
@@ -41,6 +46,7 @@ export function createSelectionCard(): SelectionCard {
             h('span', { class: status }, h('b', null, status === 'add' ? `+${String(count)}` : String(count)), ` ${text}`),
           ),
         ),
+        reviewSlot,
         h(
           'ol',
           { class: 'floors', 'aria-label': 'Symbols', 'data-testid': 'card-symbols' },

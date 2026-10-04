@@ -5,8 +5,9 @@
 // left when the context closes is the same on every trip.
 
 import { test } from '@playwright/test';
-import { effects, marksFor, openWithMarks, withEveryEffect } from '../../support/effects.js';
+import { effects, marksFor, withEveryEffect } from '../../support/effects.js';
 import { fixtures, mockApi } from '../../support/mock-api.js';
+import { marksFromOverlay } from '../../support/review-api.js';
 import { disposal, openCity, waitReady, sceneExpect as expect } from '../../support/scene.js';
 
 test.describe.configure({ timeout: 120_000 });
@@ -17,8 +18,7 @@ for (const motion of ['reduce', 'no-preference'] as const) {
   test(`change/dispose-on-unmount-every-effect: motion ${motion}`, async ({ page }) => {
     await page.emulateMedia({ reducedMotion: motion });
     const data = withEveryEffect(fixtures.reportGolden());
-    await mockApi(page, { reports: { 11: data } });
-    await openWithMarks(page, marksFor(data));
+    await mockApi(page, { reports: { 11: data }, review: { marks: marksFromOverlay(data, marksFor(data)) } });
 
     const toRepo = async (): Promise<void> => {
       await page.evaluate(`location.hash = '#/repo/1'`);

@@ -6,7 +6,9 @@
 // - a type filter dims the floors of other types and the buildings with no
 //   matching floor;
 // - a rule filter dims the buildings with no finding of that rule;
-// - clicking an active filter turns it off; "Show everything" clears every row.
+// - clicking an active filter turns it off; "Show everything" clears every row;
+// - "Hide checked" dims the files and floors with a current review mark, and
+//   combines with the rows above with AND too.
 
 import type { Report, Status, Verdict } from '../../../../core/report/types.js';
 import type { City, CityBuilding } from './city.js';
@@ -21,18 +23,30 @@ export interface Filters {
   type: ChangedStatus | null;
   /** A rule id, the part of a finding's `source` after `rule:`. */
   rule: string | null;
+  /**
+   * "Hide checked" (ADR-028, SPEC.md section 6): files and floors with a current review mark are
+   * dimmed like the other filters do. Absent when off, so the three rows keep their shape.
+   */
+  hideChecked?: true;
 }
 
 export const NO_FILTERS: Filters = { verdict: null, type: null, rule: null };
 
-export const anyFilter = (filters: Filters): boolean => filters.verdict !== null || filters.type !== null || filters.rule !== null;
+export const anyFilter = (filters: Filters): boolean =>
+  filters.verdict !== null || filters.type !== null || filters.rule !== null || filters.hideChecked === true;
 
 /** Clicking the active chip turns the row off; any other chip selects it. */
 export const toggleVerdict = (filters: Filters, verdict: Verdict): Filters => ({ ...filters, verdict: filters.verdict === verdict ? null : verdict });
 export const toggleType = (filters: Filters, type: ChangedStatus): Filters => ({ ...filters, type: filters.type === type ? null : type });
 export const toggleRule = (filters: Filters, rule: string): Filters => ({ ...filters, rule: filters.rule === rule ? null : rule });
 
-/** "Show everything": every row off. */
+/** The "Hide checked" chip: on, or off again. */
+export function toggleHideChecked(filters: Filters): Filters {
+  const { hideChecked, ...rest } = filters;
+  return hideChecked === true ? rest : { ...rest, hideChecked: true };
+}
+
+/** "Show everything": every row off, "Hide checked" too. */
 export const clearFilters = (): Filters => ({ ...NO_FILTERS });
 
 /** The rule id of a finding source (`rule:file-size` gives `file-size`), or null for any other source. */
@@ -124,6 +138,19 @@ function buildingMark(building: CityBuilding, floors: readonly Checked[], marks:
   return 'none';
 }
 
+const current = (mark: Checked): boolean => mark === 'checked' || mark === 'good' || mark === 'rewrite';
+
+/**
+ * Whether "Hide checked" hides the building: its file has a current mark, or
+ * every changed floor has one (its own or the file's). An outdated mark counts
+ * as none (ADR-028), and a building with no changed floor is never hidden.
+ */
+function checkedAway(building: CityBuilding, floors: readonly Checked[], marks: Marks | undefined): boolean {
+  if (current(marks?.files?.get(building.id) ?? 'none')) return true;
+  const changed = building.floors.flatMap((floor, i) => (floor.status === 'same' ? [] : [floors[i] ?? 'none']));
+  return changed.length > 0 && changed.every(current);
+}
+
 /** Whether `building` passes the verdict and rule rows of `filters`. */
 function passesRows(building: CityBuilding, filters: Filters, rules: RuleIndex): boolean {
   if (filters.verdict !== null && building.verdict !== filters.verdict) return false;
@@ -139,16 +166,18 @@ export function paintCity(input: PaintInput): CityPaint {
   for (const building of city.buildings) {
     const type = filters.type;
     const typeMatch = type === null || building.floors.some((floor) => floor.status === type);
-    const dimmed = !passesRows(building, filters, rules) || !typeMatch;
+    const marked = building.floors.map((floor): Checked => floorMark(marks, building.file, floor) ?? 'none');
+    const hidden = filters.hideChecked === true && checkedAway(building, marked, marks);
+    const dimmed = !passesRows(building, filters, rules) || !typeMatch || hidden;
     const hovered = building.id === hover;
     const selected = building.id === selection;
     const hot = critical?.get(building.id);
     const pulseColor = hot?.color ?? 'high';
-    const marked = building.floors.map((floor): Checked => floorMark(marks, building.file, floor) ?? 'none');
     buildings[building.index] = { ...base(), dimmed, typeMatch, hovered, selected, pulse: hot?.roof === true, pulseColor, checked: buildingMark(building, marked, marks) };
     floors[building.index] = building.floors.map((floor, i) => {
       const match = type === null || floor.status === type;
-      return { ...base(), dimmed: dimmed || !match, typeMatch: match, hovered, selected, pulse: hot?.floors.has(i) === true, pulseColor, checked: marked[i] ?? 'none' };
+      const floorHidden = filters.hideChecked === true && current(marked[i] ?? 'none');
+      return { ...base(), dimmed: dimmed || !match || floorHidden, typeMatch: match, hovered, selected, pulse: hot?.floors.has(i) === true, pulseColor, checked: marked[i] ?? 'none' };
     });
   }
   return { buildings, floors };

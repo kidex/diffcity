@@ -42,6 +42,15 @@ export function createTooltip(container: HTMLElement): Tooltip {
           data.floor === null ? null : h('span', { 'data-testid': 'tip-floor' }, `floor: ${data.floor}`),
           data.findings === 0 ? null : h('span', { class: 'n', 'data-testid': 'tip-findings' }, plural(data.findings, 'finding')),
         ),
+        data.mark === undefined || data.mark === null
+          ? null
+          : h(
+              'div',
+              { class: `mark-tip ${data.mark.mark}`, 'data-testid': 'tip-mark' },
+              h('b', { 'data-testid': 'tip-mark-label' }, data.mark.label),
+              data.mark.hint === null ? null : h('span', { class: 'outdated', 'data-testid': 'tip-mark-outdated' }, data.mark.hint),
+              data.mark.note === null ? null : h('p', { 'data-testid': 'tip-mark-note' }, data.mark.note),
+            ),
         data.violations === 0 ? null : h('div', { class: 'pins violations', 'data-testid': 'tip-violations' }, plural(data.violations, 'rule violation')),
       );
       const width = root.offsetWidth || 250;

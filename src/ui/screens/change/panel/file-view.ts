@@ -20,6 +20,8 @@ export interface FileViewOptions {
   back(): void;
   /** A DiffPort was given: the full diff will render into the mount point. */
   hasDiffPort: boolean;
+  /** The screen has review marks: the header gets a slot for the mark buttons. */
+  hasReview?: boolean;
 }
 
 export interface FileViewRender {
@@ -28,6 +30,8 @@ export interface FileViewRender {
   stops: StopCard[];
   /** The excerpt of each stop, by the stop's symbol id. */
   excerpts: { root: HTMLElement; symbolId: string }[];
+  /** Where the mark buttons go, in the header; null without review marks. */
+  reviewSlot: HTMLElement | null;
   /** The diff area; `data-focus-symbol` names the symbol the diff should open at. */
   area: HTMLElement;
 }
@@ -52,6 +56,7 @@ export function renderFileView(root: HTMLElement, data: FileViewData, options: F
     { class: 'row', 'data-testid': 'file-view-counts' },
     countLine(data.counts).map(({ status, count, text }) => h('span', { class: status }, h('b', null, status === 'add' ? `+${String(count)}` : String(count)), ` ${text}`)),
   );
+  const reviewSlot = options.hasReview === true ? h('div', { class: 'fv-review', 'data-testid': 'file-view-review' }) : null;
   const head = h(
     'div',
     { class: 'fv-head', 'data-testid': 'file-view-head' },
@@ -65,6 +70,7 @@ export function renderFileView(root: HTMLElement, data: FileViewData, options: F
       data.placed.tier1 ? h('span', { class: 'tag tier', 'data-testid': 'file-view-tier' }, 'tier 1') : null,
       counts,
     ),
+    reviewSlot,
   );
 
   const cards = data.stops.map((stop) => {
@@ -115,5 +121,5 @@ export function renderFileView(root: HTMLElement, data: FileViewData, options: F
   const scroll = h('div', { class: 'scroll fv-scroll', 'data-testid': 'file-view-scroll' }, stopsSection, loose, area);
   root.replaceChildren(head, scroll);
   bindHover(scroll, actions);
-  return { scroll, stops: cards, excerpts, area };
+  return { scroll, stops: cards, excerpts, area, reviewSlot };
 }
