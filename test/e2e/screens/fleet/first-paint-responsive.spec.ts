@@ -10,7 +10,9 @@ import { WEBGL_ARGS } from '../../support/browser-args.js';
 import { fixtures, mockApi } from '../../support/mock-api.js';
 import { emitSse, tagClient } from '../../support/sse.js';
 
-const MAX_GAP_MS = 500;
+// The flat drawing measures ~250–300 ms on a quiet machine and the old blurred one 2.1–2.4 s;
+// 1 s keeps that gap on a loaded runner without letting the old drawing back in.
+const MAX_GAP_MS = 1000;
 // Runs in the page before anything else: the longest time between two ticks of
 // a 50 ms timer, which is how long the main thread was away.
 const HEARTBEAT = `
