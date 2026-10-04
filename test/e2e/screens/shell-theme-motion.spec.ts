@@ -28,8 +28,18 @@ function ruleBody(selector: string): string {
   return mockup.slice(open + 1, mockup.indexOf('}', open));
 }
 
-const DARK = declarations(ruleBody(':root'));
-const LIGHT = new Map([...DARK, ...declarations(ruleBody(':root:not([data-theme="dark"])'))]);
+/**
+ * The tokens that deliberately differ from the mockup so that text in them
+ * meets WCAG AA (DC-89, test/unit/ui/label-contrast.test.ts): the mockup's
+ * --muted is 4.0:1 on --panel-2 at night and 3.2:1 on --bg-deep in light.
+ */
+const AA_ADJUSTED = {
+  dark: new Map([['--muted', '#8b9ec0']]),
+  light: new Map([['--muted', '#536280']]),
+};
+
+const DARK = new Map([...declarations(ruleBody(':root')), ...AA_ADJUSTED.dark]);
+const LIGHT = new Map([...declarations(ruleBody(':root')), ...declarations(ruleBody(':root:not([data-theme="dark"])')), ...AA_ADJUSTED.light]);
 
 const readTokens = (page: Page, names: string[]): Promise<Record<string, string>> =>
   page.evaluate<Record<string, string>>(
