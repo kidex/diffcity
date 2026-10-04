@@ -11,7 +11,18 @@ import './panel.css';
 import type { Report } from '../../../../core/report/types.js';
 import { h } from '../../../shared/dom.js';
 import type { Counters, FileViewData, TabId, Target } from '../model/panel.js';
-import { counters, fileViewData, findingSources, navTargets, stepTarget, stopIsCurrent, summaryLine, TABS } from '../model/panel.js';
+import {
+  counters,
+  fileViewData,
+  findingSources,
+  navTargets,
+  selectionAnnouncement,
+  stepTarget,
+  stopIsCurrent,
+  summaryLine,
+  TABS,
+  touchedTargets,
+} from '../model/panel.js';
 import type { DiffPort } from '../ports.js';
 import type { FileViewRender } from './file-view.js';
 import { DIFF_MOUNT, renderFileView } from './file-view.js';
@@ -94,7 +105,16 @@ export function createPanel(options: PanelOptions, first: Report): Panel {
   const keys = h('span', { class: 'keys' });
   const sources = h('span', { 'data-testid': 'panel-sources' });
   const foot = h('div', { class: 'foot' }, keys, h('span', { class: 'spacer' }), sources);
-  const root = h('aside', { class: 'read', 'aria-label': 'Reading path', 'data-testid': 'reading-panel' }, header, scroll, fileRoot, foot);
+  // Tells a screen reader what was selected, in the city or in the list (the card is not a live region).
+  const live = h('div', { class: 'sr-only', role: 'status', 'aria-live': 'polite', 'data-testid': 'selection-live' });
+  let announced: string | null = null;
+  const root = h('aside', { class: 'read', 'aria-label': 'Reading path', 'data-testid': 'reading-panel' }, header, scroll, fileRoot, foot, live);
+
+  function announce(id: string | null): void {
+    if (id === announced) return;
+    announced = id;
+    live.textContent = id === null ? '' : (selectionAnnouncement(report, id) ?? '');
+  }
 
   const actions: TabActions = {
     select: (target) => {
@@ -140,7 +160,10 @@ export function createPanel(options: PanelOptions, first: Report): Panel {
     keys.replaceChildren(
       h('span', { class: 'k' }, 'J'),
       h('span', { class: 'k' }, 'K'),
-      ` next / previous ${hasStops ? 'stop' : 'symbol'}`,
+      ` next / previous ${hasStops ? 'stop' : 'symbol'} `,
+      h('span', { class: 'k', 'data-testid': 'building-key' }, '['),
+      h('span', { class: 'k', 'data-testid': 'building-key' }, ']'),
+      ' building',
       // With review marks the keys that make them are named here, as J and K are.
       ...(options.review === undefined
         ? []
@@ -256,9 +279,11 @@ export function createPanel(options: PanelOptions, first: Report): Panel {
       closeFile();
       return;
     }
-    const direction = event.key === 'j' || event.key === 'J' ? 'next' : event.key === 'k' || event.key === 'K' ? 'prev' : null;
+    // J and K walk the stops; ] and [ the touched buildings, in the Report's order.
+    const brackets = event.key === ']' ? 'next' : event.key === '[' ? 'prev' : null;
+    const direction = brackets ?? (event.key === 'j' || event.key === 'J' ? 'next' : event.key === 'k' || event.key === 'K' ? 'prev' : null);
     if (direction === null) return;
-    const target = stepTarget(navTargets(report), selection, direction);
+    const target = stepTarget(brackets === null ? navTargets(report) : touchedTargets(report), selection, direction);
     if (target === null) return;
     event.preventDefault();
     options.onSelect(target.fileId, target.symbolId);
@@ -285,6 +310,7 @@ export function createPanel(options: PanelOptions, first: Report): Panel {
     },
     select(id, symbolId) {
       selection = id === null ? null : { fileId: id, symbolId };
+      announce(id);
       if (id === null) {
         closeFile();
       } else if (fileId !== null && fileId !== id) {

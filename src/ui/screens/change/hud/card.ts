@@ -21,7 +21,7 @@ export interface SelectionCard {
 const statusToken = (status: Status): string => (status === 'same' ? '--same-top' : `--${status}`);
 
 export function createSelectionCard(): SelectionCard {
-  const root = h('aside', { class: 'card sel-card', 'aria-label': 'Selected file', 'aria-live': 'polite', 'data-testid': 'selection-card' });
+  const root = h('aside', { class: 'card sel-card', 'aria-label': 'Selected file', 'data-testid': 'selection-card' });
   root.hidden = true;
   const reviewSlot = h('div', { class: 'rv-slot', 'data-testid': 'card-review' });
   reviewSlot.hidden = true;

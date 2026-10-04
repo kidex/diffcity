@@ -32,6 +32,24 @@ export function topBar(report: Report): TopBar {
   };
 }
 
+/**
+ * The canvas's accessible name: what the change is, from `summary` alone, as
+ * "17 files, 2 need your eyes, 1 signature change, 4 symbols added, …", and how
+ * to reach the buildings without a pointer.
+ */
+export function canvasLabel(report: Report): string {
+  const { summary } = report;
+  const eyes = summary.byVerdict.eyes;
+  const parts = [plural(summary.files, 'file'), `${String(eyes)} ${eyes === 1 ? 'needs' : 'need'} your eyes`];
+  const { add, mod, sig, del } = summary.byStatus;
+  if (sig > 0) parts.push(plural(sig, 'signature change'));
+  if (add > 0) parts.push(`${plural(add, 'symbol')} added`);
+  if (mod > 0) parts.push(`${String(mod)} modified`);
+  if (del > 0) parts.push(`${String(del)} removed`);
+  if (summary.tier1Files.length > 0) parts.push(`${plural(summary.tier1Files.length, 'file')} in tier 1`);
+  return `${parts.join(', ')}. The city of this change: press ] and [ to select the next and previous touched file.`;
+}
+
 /** Row 1: every verdict with its file count, in the table order. */
 export const verdictChips = (report: Report): Counted<Verdict>[] => VERDICTS.map((verdict) => ({ key: verdict, count: report.summary.byVerdict[verdict] }));
 
