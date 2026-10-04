@@ -33,6 +33,7 @@ import type { Towers, TowersState } from './night/towers.js';
 import type { OrbitState } from './orbit.js';
 import { bindOrbit, homeFor, Orbit, orbitPosition } from './orbit.js';
 import type { Pick } from './picking.js';
+import type { QualityState } from './quality.js';
 import { Picker, projectToClient } from './picking.js';
 import { Stage } from './stage.js';
 import { colorToken, numberToken } from './tokens.js';
@@ -48,6 +49,8 @@ export interface SceneStats {
   /** GPU resources the renderer holds right now. */
   geometries: number;
   textures: number;
+  /** Triangles of the scene in the last frame (post passes excluded). */
+  triangles: number;
   /** Times the towers' instanced buffers were built: once per Report, again only when a tween frame needs another instance count. */
   builds: number;
 }
@@ -94,6 +97,8 @@ export interface CityView {
   /** Client point of a building's centre, or null when it is not in the city or behind the camera. */
   project(fileId: string, symbolId?: string): { x: number; y: number } | null;
   stats(): SceneStats;
+  /** The quality level chosen by the probe at mount, and whether the probe has finished (read-only). */
+  quality(): QualityState;
   camera(): OrbitState;
   /** The camera of the first frame drawn (far out when the intro runs). */
   firstCamera(): OrbitState | null;
@@ -153,7 +158,8 @@ interface Content {
   /** Lot outlines; the towers' own are `towers.lines`. */
   lotLines: FatLines[];
   picker: Picker;
-  dispose(): void;
+  /** Frees the content; `keepTowers` leaves the towers (and their GPU buffers) for the next content to lay out again. */
+  dispose(keepTowers?: boolean): void;
 }
 
 /** A live-update tween in progress; it starts with the first frame drawn after it was set. */
@@ -253,7 +259,12 @@ export function createCityView(host: HTMLElement, report: Report, options: CityV
           ready = true;
           element.dataset['ready'] = 'true';
           options.onReady?.();
+          // The quality is chosen once, now that the shaders are compiled and the first frame is out.
+          void stage.probe();
         }
+      },
+      onQuality: (level) => {
+        if (!level.environment) scene.environment = null;
       },
       onResize: (width, height) => {
         labels.setSize(width, height);
@@ -362,9 +373,15 @@ export function createCityView(host: HTMLElement, report: Report, options: CityV
     return true;
   }
 
-  function build(city: City, from: City | null = null): Content {
+  /**
+   * `reuse`: a new Report of the same view keeps the towers' instanced buffers
+   * and lays the frame out in them when it needs as many instances (a theme
+   * change builds anew: the materials read the colour tokens once).
+   */
+  function build(city: City, from: City | null = null, reuse = false): Content {
     const previous = content?.city ?? null;
-    content?.dispose();
+    const reusable = reuse && content !== null ? content.towers : null;
+    content?.dispose(reusable !== null);
     const voidColor = colorToken('--c-void');
     const { bounds } = city;
     scene.background = voidColor;
@@ -385,8 +402,12 @@ export function createCityView(host: HTMLElement, report: Report, options: CityV
       if (followed !== undefined) trace = { id: followed.id, heights: [] };
     }
     const shown = tween === null ? city : tweenCity(tween.from, city, 0);
-    const towers = createTowers(shown, motion);
-    towerBuilds += 1;
+    let towers = reusable;
+    if (towers === null || !towers.update(shown)) {
+      towers?.dispose();
+      towers = createTowers(shown, motion);
+      towerBuilds += 1;
+    }
     const markers = createMarkers(findingMarkers(city, lastReport.findings), shown);
     const path = createPath(pathStops(city, lastReport.steps), motion, renderer);
     // Built for the Report's own city, so it waits for the tween to end.
@@ -405,12 +426,12 @@ export function createCityView(host: HTMLElement, report: Report, options: CityV
       lotLines: lots.lines,
       parts: [ground.mesh, lots.group, towers.group, markers.group, ...(path === null ? [] : [path.group])],
       picker: new Picker(city),
-      dispose() {
+      dispose(keepTowers = false) {
         scene.remove(ground.mesh, lots.group, made.towers.group, markers.group);
         if (path !== null) scene.remove(path.group);
         ground.dispose();
         lots.dispose();
-        made.towers.dispose();
+        if (!keepTowers) made.towers.dispose();
         markers.dispose();
         path?.dispose();
       },
@@ -559,7 +580,7 @@ export function createCityView(host: HTMLElement, report: Report, options: CityV
       critical = criticalFloors(next, marks);
       // A tween in progress continues from what is on screen.
       const from = options.reducedMotion ? null : (content?.shown ?? null);
-      build(cityOf(next), from);
+      build(cityOf(next), from, true);
     },
     select,
     hover: setHover,
@@ -598,6 +619,7 @@ export function createCityView(host: HTMLElement, report: Report, options: CityV
     stats() {
       return {
         drawCalls: stage.sceneCalls,
+        triangles: stage.sceneTriangles,
         buildings: content?.city.buildings.length ?? 0,
         floors: content?.towers.floors ?? 0,
         lots: content?.city.lots.length ?? 0,
@@ -608,6 +630,7 @@ export function createCityView(host: HTMLElement, report: Report, options: CityV
         builds: towerBuilds,
       };
     },
+    quality: () => stage.quality,
     camera: () => ({ ...orbit.state }),
     firstCamera: () => (firstCamera === null ? null : { ...firstCamera }),
     selected: () => selected,

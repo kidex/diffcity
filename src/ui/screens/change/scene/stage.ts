@@ -2,8 +2,9 @@
 // exposure 1.1, an HDR multisampled composer RenderPass → UnrealBloomPass
 // (half resolution, strength from --c-bloom, radius 0.4, threshold 0.9) →
 // OutputPass, a pixel ratio capped at 2, resizing with the container, and a
-// frame drawn only when something asked for one. dispose() frees every GPU
-// resource and the context itself.
+// frame drawn only when something asked for one. One quality level (quality.ts)
+// is chosen once from a 500 ms probe after the first frame and never changed
+// again. dispose() frees every GPU resource and the context itself.
 
 import {
   AgXToneMapping,
@@ -20,6 +21,9 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 
+import type { QualityLevel, QualityState } from './quality.js';
+import { levelFor, medianFps, PROBE_MS, QUALITY_LEVELS } from './quality.js';
+
 export const EXPOSURE = 1.1;
 export const BLOOM_RADIUS = 0.4;
 export const BLOOM_THRESHOLD = 0.9;
@@ -27,12 +31,25 @@ export const BLOOM_THRESHOLD = 0.9;
 /** The scene pass, counting its own draw calls (the post passes are not part of the scene budget). */
 class CountingRenderPass extends RenderPass {
   calls = 0;
+  triangles = 0;
 
   override render(...args: Parameters<RenderPass['render']>): void {
     const [renderer] = args;
     const before = renderer.info.render.calls;
+    const trianglesBefore = renderer.info.render.triangles;
     super.render(...args);
     this.calls = renderer.info.render.calls - before;
+    this.triangles = renderer.info.render.triangles - trianglesBefore;
+  }
+}
+
+/** Bloom whose blur chain starts at `scale` of the drawing buffer instead of the half the pass uses by default. */
+class ScaledBloomPass extends UnrealBloomPass {
+  /** Fraction of the drawing buffer (0.5 is the pass's own half). */
+  scale = 0.5;
+
+  override setSize(width: number, height: number): void {
+    super.setSize(width * (this.scale / 0.5), height * (this.scale / 0.5));
   }
 }
 
@@ -52,6 +69,8 @@ export interface StageOptions {
   afterFrame: (frame: StageFrame) => void;
   /** Called on every resize, with the CSS size of the container. */
   onResize: (width: number, height: number) => void;
+  /** Called once, when the probe has chosen the quality level (the glass drops its environment map in the last level). */
+  onQuality?: (level: QualityLevel) => void;
 }
 
 export class Stage {
@@ -62,7 +81,7 @@ export class Stage {
   readonly pixelRatio: number;
   private readonly composer: EffectComposer;
   private readonly scenePass: CountingRenderPass;
-  private readonly bloom: UnrealBloomPass;
+  private readonly bloom: ScaledBloomPass;
   private readonly output: OutputPass;
   private readonly observer: ResizeObserver;
   private readonly options: StageOptions;
@@ -73,6 +92,12 @@ export class Stage {
   private held = true;
   /** Frames drawn since the stage started. */
   frames = 0;
+  /** The quality level in force: full until the probe says otherwise, then fixed. */
+  private levelNow: QualityLevel = QUALITY_LEVELS[0] as QualityLevel;
+  private probeState: { last: number | null; intervals: number[] } | null = null;
+  private probes = 0;
+  private probedFps: number | null = null;
+  private probeDone = false;
 
   /** Throws when WebGL2 is not available. */
   constructor(options: StageOptions) {
@@ -88,7 +113,7 @@ export class Stage {
     const target = new WebGLRenderTarget(1, 1, { type: HalfFloatType, samples: 4 });
     this.composer = new EffectComposer(this.renderer, target);
     this.scenePass = new CountingRenderPass(this.scene, this.camera);
-    this.bloom = new UnrealBloomPass(new Vector2(1, 1), options.bloomStrength, BLOOM_RADIUS, BLOOM_THRESHOLD);
+    this.bloom = new ScaledBloomPass(new Vector2(1, 1), options.bloomStrength, BLOOM_RADIUS, BLOOM_THRESHOLD);
     this.output = new OutputPass();
     this.composer.addPass(this.scenePass);
     this.composer.addPass(this.bloom);
@@ -104,6 +129,55 @@ export class Stage {
   /** Draw calls of the scene in the last frame (the post passes excluded). */
   get sceneCalls(): number {
     return this.scenePass.calls;
+  }
+
+  /** Triangles of the scene in the last frame (the post passes excluded). */
+  get sceneTriangles(): number {
+    return this.scenePass.triangles;
+  }
+
+  /** The quality level in force and how it was chosen, for the debug hook. */
+  get quality(): QualityState {
+    return { ...this.levelNow, settled: this.probeDone, probes: this.probes, fps: this.probedFps };
+  }
+
+  /**
+   * Draws every frame for the probe window, takes the median frame rate and
+   * picks the quality level, once (a second call does nothing). A hidden tab
+   * draws no frames, so it keeps the full level and is not probed.
+   */
+  probe(): Promise<void> {
+    if (this.probes > 0 || this.disposed || document.visibilityState !== 'visible') return Promise.resolve();
+    this.probes = 1;
+    this.probeState = { last: null, intervals: [] };
+    this.runContinuously(PROBE_MS);
+    return new Promise((resolve) => {
+      setTimeout(() => {
+        const intervals = this.probeState?.intervals ?? [];
+        this.probeState = null;
+        this.probedFps = Math.round(medianFps(intervals) * 10) / 10;
+        this.probeDone = true;
+        if (!this.disposed) this.applyLevel(levelFor(this.probedFps));
+        resolve();
+      }, PROBE_MS);
+    });
+  }
+
+  private applyLevel(next: QualityLevel): void {
+    const previous = this.levelNow;
+    this.levelNow = next;
+    if (next.msaa !== previous.msaa) {
+      for (const target of [this.composer.renderTarget1, this.composer.renderTarget2]) {
+        target.samples = next.msaa;
+        target.dispose();
+      }
+    }
+    if (next.bloomScale !== previous.bloomScale) {
+      this.bloom.scale = next.bloomScale;
+      this.composer.setSize(this.size.x, this.size.y);
+    }
+    this.options.onQuality?.(next);
+    this.request();
   }
 
   setBloomStrength(strength: number): void {
@@ -150,6 +224,10 @@ export class Stage {
 
   private draw(now: number): void {
     if (this.disposed) return;
+    if (this.probeState !== null) {
+      if (this.probeState.last !== null) this.probeState.intervals.push(now - this.probeState.last);
+      this.probeState.last = now;
+    }
     const again = this.options.beforeFrame({ now });
     this.renderer.info.reset();
     this.composer.render();
