@@ -10,7 +10,7 @@ import { join } from 'node:path';
 import { beforeAll, describe, expect, it } from 'vitest';
 import type { Report } from '../../../src/core/report/types.js';
 import { buildCity } from '../../../src/ui/screens/change/model/city.js';
-import { levelFor, median, medianFps, QUALITY_LEVELS } from '../../../src/ui/screens/change/scene/quality.js';
+import { levelFor, median, medianFps, PROBE_MS, QUALITY_LEVELS, QualityProbe, WARMUP_FRAMES } from '../../../src/ui/screens/change/scene/quality.js';
 
 let large: Report;
 
@@ -69,5 +69,74 @@ describe('quality ladder (scene/quality.ts)', () => {
     expect(medianFps([1000, 1000])).toBe(0);
     expect(median([3, 1, 2])).toBe(2);
     expect(median([4, 1, 2, 3])).toBe(2.5);
+  });
+});
+
+/** Drives a probe on a fake clock: `frames` frames `ms` apart, ticking each time. Returns the time after the last one. */
+function run(probe: QualityProbe, from: number, frames: number, ms: number): number {
+  let now = from;
+  for (let i = 0; i < frames; i += 1) {
+    now += ms;
+    probe.frame(now);
+    probe.tick(now);
+  }
+  return now;
+}
+
+describe('quality probe state machine (scene/quality.ts)', () => {
+  const frames = WARMUP_FRAMES + Math.ceil(PROBE_MS / 16) + 4;
+
+  it('a probe that ran visible ends with the level its frame rate gives', () => {
+    const probe = new QualityProbe(true, 0);
+    run(probe, 0, frames, 16);
+    expect(probe.fps).toBeGreaterThan(58);
+    expect(levelFor(probe.fps ?? 0).level).toBe(0);
+  });
+
+  it('too few frames in a probe that ran visible means the lowest level', () => {
+    const probe = new QualityProbe(true, 0);
+    run(probe, 0, 6, 1000);
+    probe.tick(100_000);
+    probe.tick(200_000);
+    expect(probe.fps).toBe(0);
+    expect(levelFor(probe.fps ?? 0).level).toBe(3);
+  });
+
+  it('hiding the tab mid-probe voids it; shown again it runs afresh and ends at the visible level', () => {
+    const probe = new QualityProbe(true, 0);
+    let now = run(probe, 0, WARMUP_FRAMES + 5, 16);
+    probe.visibility(false, now);
+    // Hidden: no frames, but time passes and ticks arrive. Nothing ends, nothing is pinned.
+    now += 5000;
+    expect(probe.tick(now)).toBe(false);
+    expect(probe.fps).toBeNull();
+    expect(probe.running).toBe(false);
+    probe.visibility(true, now);
+    expect(probe.running).toBe(true);
+    run(probe, now, frames, 16);
+    expect(levelFor(probe.fps ?? 0).level).toBe(0);
+  });
+
+  it('a tab hidden at mount starts the probe on the first show', () => {
+    const probe = new QualityProbe(false, 0);
+    expect(probe.running).toBe(false);
+    probe.frame(10);
+    expect(probe.tick(10_000)).toBe(false);
+    expect(probe.fps).toBeNull();
+    probe.visibility(true, 10_000);
+    expect(probe.running).toBe(true);
+    run(probe, 10_000, frames, 16);
+    expect(levelFor(probe.fps ?? 0).level).toBe(0);
+  });
+
+  it('ends once: later frames, ticks and visibility changes leave the result alone', () => {
+    const probe = new QualityProbe(true, 0);
+    run(probe, 0, frames, 16);
+    const fps = probe.fps;
+    probe.visibility(false, 99_999);
+    probe.visibility(true, 100_000);
+    run(probe, 100_000, 50, 100);
+    expect(probe.fps).toBe(fps);
+    expect(probe.running).toBe(false);
   });
 });

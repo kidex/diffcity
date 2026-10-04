@@ -2,7 +2,7 @@
 // once at mount, from a 500 ms probe of the real frame rate, and never changes
 // while the screen is in use: not with the camera moving, a live update, a
 // resize or a bench. Under SwiftShader the frames are slow, so the probe picks
-// a fallback level; the spec asserts the level is the one the measured frame
+// a fallback level, a GPU the full one; the spec asserts the level is the one the measured frame
 // rate maps to, that its settings are those of the ladder (MSAA, bloom scale,
 // environment map), and that the budgets of the scene still hold. One large
 // city for the file.
@@ -33,8 +33,9 @@ test('perf/quality-probe-picks-once', async () => {
   // The level is what the measured median maps to, with the ladder's settings.
   expect(chosen).toMatchObject({ ...levelFor(chosen.fps ?? 0) });
   expect(QUALITY_LEVELS[chosen.level]).toMatchObject({ msaa: chosen.msaa, bloomScale: chosen.bloomScale, environment: chosen.environment });
-  // The frames of SwiftShader on 20,000 floors are far below 58 fps: it falls back.
-  expect(chosen.level).toBeGreaterThan(0);
+  // Whatever the renderer's speed: one completed probe and a level of the ladder.
+  expect(chosen.level).toBeGreaterThanOrEqual(0);
+  expect(chosen.level).toBeLessThanOrEqual(3);
 
   // Using the screen never probes again, and never changes the level.
   const canvas = await page.getByTestId('city-canvas').boundingBox();
