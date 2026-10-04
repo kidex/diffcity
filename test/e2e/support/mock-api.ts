@@ -29,7 +29,7 @@ export const fixtures = {
   reportOrderDiscounts: () => load('report-order-discounts.json') as Report,
   /** The golden Report of the order-discounts scenario (17 files, the mockup's change). */
   reportGolden: () => JSON.parse(readFileSync(scenarioGolden, 'utf8')) as Report,
-  /** 2,000 files, written by gen-large-city.mjs in the global setup. */
+  /** The `large` preset: 2,000 files, about 20,000 floors, 300 touched, 40 packages; written by gen-large-city.mjs in the global setup. */
   reportLargeCity: () => load('generated/report-large-city.json') as Report,
   searchResults: () => load('search-results.json') as SearchResult[],
 };
