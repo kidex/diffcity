@@ -91,5 +91,7 @@ export function openDialog(options: DialogOptions): Dialog {
   document.body.append(backdrop);
   document.addEventListener('focusin', keepFocus);
   (options.initialFocus ?? focusables()[0] ?? box).focus({ preventScroll: true });
+  // A first target that cannot take focus (a disabled button) leaves it outside: the dialog's own keys and the screen's shortcuts must not mix.
+  if (!box.contains(document.activeElement)) box.focus({ preventScroll: true });
   return { root: box, close };
 }

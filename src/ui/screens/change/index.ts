@@ -5,15 +5,18 @@
 // download three.js.
 //
 // States: no Report yet (computing), a Report without files, no WebGL (a
-// message and the touched-file table), or the city, with the HUD around it
-// (hud/): top bar, filters, legend, tooltip, selection card, Fleet card, and
-// the reading panel at its right (panel/): tabs, stop cards and the file view.
+// message and the touched files grouped by package, with the reading panel at
+// their right: a click opens the file view, so review works without the city),
+// or the city, with the HUD around it (hud/): top bar, filters, legend,
+// tooltip, selection card, Fleet card, and the reading panel at its right
+// (panel/): tabs, stop cards and the file view.
 
 import './change.css';
 
 import type { Report } from '../../../core/report/types.js';
 import { h, replaceChildren } from '../../shared/dom.js';
 import { readToken } from '../../shared/tokens.js';
+import type { FallbackView } from './fallback.js';
 import { fallbackView } from './fallback.js';
 import type { Hud } from './hud/index.js';
 import { createHud } from './hud/index.js';
@@ -134,6 +137,7 @@ export function mountChange(element: HTMLElement, options: ChangeScreenOptions):
   let latest = options.report;
   let hud: Hud | null = null;
   let panel: Panel | null = null;
+  let list: FallbackView | null = null;
   let filters: Filters = clearFilters();
   let findings = findingsIndex({ findings: [] });
   let disposed = false;
@@ -182,6 +186,7 @@ export function mountChange(element: HTMLElement, options: ChangeScreenOptions):
   function dropView(): void {
     view?.dispose();
     view = null;
+    list = null;
     hud?.dispose();
     hud = null;
     panel?.dispose();
@@ -218,7 +223,10 @@ export function mountChange(element: HTMLElement, options: ChangeScreenOptions):
   function panelFor(report: Report): Panel {
     panel ??= createPanel(
       {
-        onSelect: (fileId, symbolId) => view?.select(fileId, symbolId),
+        onSelect: (fileId, symbolId) => {
+          if (view !== null) view.select(fileId, symbolId);
+          else selectInList(fileId, symbolId);
+        },
         onHover: (fileId) => view?.hover(fileId),
         onHoverFloor: (fileId, symbolId) => view?.hoverFloor(fileId, symbolId),
         diffs: debug !== null && window.diffcityNoDiffs === true ? undefined : options.diffs,
@@ -237,9 +245,36 @@ export function mountChange(element: HTMLElement, options: ChangeScreenOptions):
     return panel;
   }
 
+  /** Without the city the list holds the selection: the keys, the panel's cards and the review marks act on it as they would on a building. */
+  function selectInList(fileId: string | null, symbolId: string | null): void {
+    selection = fileId === null ? null : { fileId, symbolId };
+    list?.select(fileId);
+    panel?.select(fileId, symbolId);
+  }
+
+  const hasFile = (report: Report, fileId: string): boolean => report.packages.some((pkg) => pkg.files.some((file) => file.id === fileId));
+
+  /** The touched-file list beside the reading panel, under the top bar; a toast has no overlay to sit in, so it gets its own. */
+  function showList(report: Report): void {
+    const screen = hudFor(report);
+    const reading = panelFor(report);
+    list = fallbackView(report, {
+      onOpen: (fileId) => {
+        selectInList(fileId, null);
+        reading.open(fileId, null);
+      },
+    });
+    list.select(selection?.fileId ?? null);
+    const toast = h('div', { class: 'hud list-toast' }, screen.toastRoot);
+    const work = h('div', { class: 'change-work no-city', 'data-testid': 'change-work' }, list.root, reading.root, toast);
+    element.classList.add('has-list');
+    replaceChildren(element, screen.bar, work);
+  }
+
   function startCity(): void {
     mode = 'pending';
     replaceChildren(element);
+    element.classList.remove('has-list');
     element.classList.add('has-city');
     void monoReady().then(() => {
       if (disposed || mode !== 'pending' || latest === null) return;
@@ -288,7 +323,7 @@ export function mountChange(element: HTMLElement, options: ChangeScreenOptions):
       } catch {
         mode = 'fallback';
         element.classList.remove('has-city');
-        replaceChildren(element, screen.bar, fallbackView(latest));
+        showList(latest);
         syncReview();
       }
     });
@@ -299,14 +334,14 @@ export function mountChange(element: HTMLElement, options: ChangeScreenOptions):
     if (report === null) {
       dropView();
       mode = 'computing';
-      element.classList.remove('has-city');
+      element.classList.remove('has-city', 'has-list');
       replaceChildren(element, message('report-computing', COMPUTING));
       return;
     }
     if (fileCount(report) === 0) {
       dropView();
       mode = 'empty';
-      element.classList.remove('has-city');
+      element.classList.remove('has-city', 'has-list');
       replaceChildren(element, message('no-files', NO_FILES));
       return;
     }
@@ -321,7 +356,11 @@ export function mountChange(element: HTMLElement, options: ChangeScreenOptions):
     }
     if (mode === 'pending') return;
     if (mode === 'fallback') {
-      replaceChildren(element, hudFor(report).bar, fallbackView(report));
+      hudFor(report);
+      panelFor(report).update(report);
+      list?.update(report);
+      if (selection !== null && !hasFile(report, selection.fileId)) selectInList(null, null);
+      reviewUi?.refresh();
       return;
     }
     startCity();
@@ -338,7 +377,7 @@ export function mountChange(element: HTMLElement, options: ChangeScreenOptions):
       reviewUi?.dispose();
       controller?.dispose();
       dropView();
-      element.classList.remove('has-city');
+      element.classList.remove('has-city', 'has-list');
       element.replaceChildren();
     },
   };

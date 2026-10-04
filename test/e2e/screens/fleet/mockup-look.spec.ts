@@ -35,7 +35,8 @@ for (const scheme of ['dark', 'light'] as const) {
     expect(await computed(lot(14, '.pip-collecting circle').last(), 'fill')).toBe(await token('--sig'));
     expect(await computed(page.locator('td[data-col="high"].high'), 'color')).toBe(await token('--sev-high'));
     expect(await computed(page.locator('td[data-col="draft"].zero').first(), 'color')).toBe(await token('--muted'));
-    expect(await computed(page.locator('[data-testid="collect-error"]'), 'color')).toBe(await token('--del'));
+    // The error tag's text is the AA text colour of --del (DC-89): the accent itself at night is 4.0:1 on a tinted tag.
+    expect(await computed(page.locator('[data-testid="collect-error"]'), 'color')).toBe(await token('--del-text'));
   });
 }
 

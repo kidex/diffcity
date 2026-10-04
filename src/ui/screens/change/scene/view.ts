@@ -13,6 +13,7 @@ import type { City, CityBuilding, CityFloor } from '../model/city.js';
 import { buildCity } from '../model/city.js';
 import type { Critical, Marks } from '../model/critical.js';
 import { criticalFloors } from '../model/critical.js';
+import { canvasLabel } from '../model/hud.js';
 import { findingMarkers } from '../model/markers.js';
 import { pathStops } from '../model/path.js';
 import type { CityPaint, Filters, RuleIndex } from '../model/view.js';
@@ -164,7 +165,7 @@ interface Tween {
 
 /** Throws when WebGL2 is not available; the caller shows the fallback. */
 export function createCityView(host: HTMLElement, report: Report, options: CityViewOptions): CityView {
-  const canvas = h('canvas', { class: 'scene', 'data-testid': 'city-canvas' });
+  const canvas = h('canvas', { class: 'scene', role: 'img', 'aria-label': canvasLabel(report), 'data-testid': 'city-canvas' });
   const element = h(
     'div',
     { class: 'city', 'data-testid': 'city' },
@@ -553,6 +554,7 @@ export function createCityView(host: HTMLElement, report: Report, options: CityV
     setReport(next) {
       if (disposed) return;
       lastReport = next;
+      canvas.setAttribute('aria-label', canvasLabel(next));
       rules = ruleIndex(next);
       critical = criticalFloors(next, marks);
       // A tween in progress continues from what is on screen.

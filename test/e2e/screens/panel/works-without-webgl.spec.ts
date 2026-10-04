@@ -1,11 +1,14 @@
 // e2e/panel/works-without-webgl: without WebGL the change screen renders the
-// fallback list of touched files instead of the city. The reading panel is
-// part of the city view and is not mounted; the page stays inert and quiet:
-// no console error or page error, and J/K/Esc do nothing and do not throw.
+// list of touched files instead of the city, and the reading panel beside it
+// (DC-89: the list is the review path without the city). The page stays quiet:
+// no console error or page error; J/K select the stops in the list and Esc
+// returns from the file view to the tabs; the city's parts (hover sync,
+// floors) are simply absent.
 
 import { expect, test } from '@playwright/test';
 import { mockApi } from '../../support/mock-api.js';
 import { withoutWebgl } from '../../support/scene.js';
+import { GUARD, SERVICE } from '../../support/hud.js';
 import { panelReport } from '../../support/panel.js';
 
 test('panel/works-without-webgl', async ({ page }) => {
@@ -22,10 +25,23 @@ test('panel/works-without-webgl', async ({ page }) => {
 
   await expect(page.getByTestId('no-webgl-note')).toHaveText('3D view needs WebGL');
   await expect(page.getByTestId('touched-file').first()).toBeVisible();
-  await expect(page.getByTestId('reading-panel')).toHaveCount(0);
+  await expect(page.getByTestId('city')).toHaveCount(0);
+  await expect(page.getByTestId('reading-panel')).toBeVisible();
+  await expect(page.getByTestId('stop-card')).toHaveCount(5);
 
-  for (const key of ['j', 'k', 'J', 'K', 'Escape']) await page.keyboard.press(key);
+  // J walks the stops: the list marks the file of the stop and its card is current.
+  await page.keyboard.press('j');
+  await expect(page.locator('[data-testid="touched-file"].on')).toHaveAttribute('data-path', GUARD);
+  await expect(page.getByTestId('stop-card').nth(0)).toHaveClass(/\bon\b/);
+  await page.keyboard.press('J');
+  await expect(page.locator('[data-testid="touched-file"].on')).toHaveAttribute('data-path', SERVICE);
+  await page.keyboard.press('k');
+  await expect(page.locator('[data-testid="touched-file"].on')).toHaveAttribute('data-path', GUARD);
+
+  // Esc with no file open is harmless; the list and the panel stay.
+  for (const key of ['K', 'Escape', 'j']) await page.keyboard.press(key);
   await expect(page.getByTestId('no-webgl-note')).toBeVisible();
   await expect(page.getByTestId('touched-file').first()).toBeVisible();
+  await expect(page.getByTestId('reading-panel')).toBeVisible();
   expect(errors).toEqual([]);
 });

@@ -6,7 +6,8 @@
  */
 
 /* ---------- city ---------- */
-.stage.change:has(> .change-body.has-city) { overflow: hidden; }
+.stage.change:has(> .change-body.has-city, > .change-body.has-list) { overflow: hidden; }
+.change-body.has-list { display: flex; flex-direction: column; flex: 1 1 0; min-height: 420px; background: var(--bg); }
 .change-body.has-city { display: flex; flex-direction: column; flex: 1 1 0; min-height: 420px; background: var(--c-void); }
 .city { position: relative; flex: 1 1 0; min-height: 0; overflow: hidden; }
 .city canvas.scene { position: absolute; inset: 0; width: 100%; height: 100%; display: block; cursor: grab; touch-action: none; }
@@ -119,7 +120,7 @@
 .hud .sel-card[hidden], .hud .fleet-card[hidden], .hud .toast[hidden] { display: none; }
 .hud .sel-card .head { display: flex; align-items: baseline; gap: 8px; }
 .hud .sel-card .head .v { margin-bottom: 4px; }
-.hud .sel-card .tag.tier { font-size: 11px; padding: 1px 6px; border-radius: 5px; color: var(--tier); background: color-mix(in srgb, var(--tier) 14%, transparent); }
+.hud .sel-card .tag.tier { font-size: 11px; padding: 1px 6px; border-radius: 5px; color: var(--tier-text); background: color-mix(in srgb, var(--tier) 14%, transparent); }
 .hud .sel-card .row { margin: 6px 0 8px; }
 .hud .sel-card ol { list-style: none; margin: 0; padding: 0; }
 .hud .sel-card .floors li { display: flex; gap: 8px; align-items: center; padding: 3px 0; border-top: 1px solid color-mix(in srgb, var(--line) 60%, transparent); font-size: 12px; }
@@ -177,6 +178,7 @@
   padding: 2px 7px 2px 6px; font-size: 9.5px; box-shadow: none; text-shadow: none;
   background: color-mix(in srgb, var(--c) 10%, transparent); border-color: color-mix(in srgb, var(--c) 40%, transparent);
 }
+.labels .roof.v-same .badge { color: var(--ink-2); }
 .labels .roof.is-selected .badge { border-color: var(--sig); }
 .labels .roof.is-selected .file, .labels .roof.is-hover .file { color: var(--ink); text-decoration: underline; text-decoration-color: var(--sig); text-underline-offset: 3px; }
 .labels .roof.is-dim { opacity: .12; }
@@ -185,10 +187,10 @@
 /* while the buildings move in a live update, the labels wait for them */
 .labels .roof.is-tweening { opacity: 0 !important; }
 @media (prefers-color-scheme: light) {
-  :root:not([data-theme="dark"]) .labels .roof .badge { color: color-mix(in srgb, var(--c) 70%, black); }
+  :root:not([data-theme="dark"]) .labels .roof .badge { color: color-mix(in srgb, var(--c) 40%, var(--ink)); }
   :root:not([data-theme="dark"]) .labels .roof .file { text-shadow: 0 0 6px var(--bg), 0 0 2px var(--bg); }
 }
-:root[data-theme="light"] .labels .roof .badge { color: color-mix(in srgb, var(--c) 70%, black); }
+:root[data-theme="light"] .labels .roof .badge { color: color-mix(in srgb, var(--c) 40%, var(--ink)); }
 :root[data-theme="light"] .labels .roof .file { text-shadow: 0 0 6px var(--bg), 0 0 2px var(--bg); }
 
 /* ---------- messages and the no-WebGL table ---------- */
@@ -208,10 +210,20 @@
 .touched-files tr > :last-child { padding-right: 22px; }
 .touched-files tbody tr > * { padding: 10px 14px; border-bottom: 1px solid var(--line-soft); text-align: left; font-weight: 400; vertical-align: middle; }
 .touched-files tbody tr:hover { background: color-mix(in srgb, var(--panel-2) 70%, transparent); }
+/* without WebGL: the list and the reading panel side by side, as the city and the panel are */
+.change-work.no-city { position: relative; }
+.change-work.no-city > .change-report { min-width: 0; min-height: 0; display: flex; flex-direction: column; padding-bottom: 0; }
+.change-report .touched-scroll { flex: 1 1 auto; min-height: 0; overflow: auto; padding-bottom: 24px; }
+.touched-files tbody tr.pkg-row > th { padding: 14px 22px 6px; border-bottom: 1px solid var(--line-soft); font-size: 12px; font-weight: 500; color: var(--muted); }
+.touched-files .pkg-row .pkg-path { font-family: var(--mono); margin-right: 8px; }
+.touched-files tr.on { background: color-mix(in srgb, var(--panel-2) 70%, transparent); box-shadow: inset 3px 0 0 var(--sig); }
+.touched-files .file-open { display: inline; padding: 0; text-align: left; cursor: pointer; border-radius: 3px; }
+.touched-files .file-open:hover .file-path { text-decoration: underline; text-decoration-color: var(--sig); text-underline-offset: 3px; }
+.touched-files .file-open:focus-visible { outline-offset: 3px; }
 .touched-files .file-path { font-family: var(--mono); font-size: 12.5px; color: var(--ink); overflow-wrap: anywhere; margin-right: 8px; }
 .touched-files td { white-space: nowrap; width: 1%; }
 /* the mockup's .tag.tier (its .tier class is the top bar's pill) */
-.touched-files .tag.tier1 { color: var(--tier); background: color-mix(in srgb, var(--tier) 14%, transparent); }
+.touched-files .tag.tier1 { color: var(--tier-text); background: color-mix(in srgb, var(--tier) 14%, transparent); }
 
 /* ---------- AA text on the pale ground: the accents are mixed toward the ink ---------- */
 @media (prefers-color-scheme: light) {

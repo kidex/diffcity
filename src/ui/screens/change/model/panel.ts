@@ -5,6 +5,7 @@
 // status, a verdict, a path or where a finding sits; it all comes from the
 // Report. Pure: no DOM, no three.js.
 
+import { VERDICT_LABEL } from '../../../shared/format.js';
 import type { File, Finding, Report, Status, Step, Symbol as ReportSymbol } from '../../../../core/report/types.js';
 
 export type TabId = 'order' | 'findings' | 'outside' | 'symbols';
@@ -189,6 +190,19 @@ export function stepTarget(targets: readonly Target[], current: Target | null, d
   if (index < 0) return targets[0] ?? null;
   const next = Math.max(0, Math.min(targets.length - 1, index + (direction === 'next' ? 1 : -1)));
   return targets[next] ?? null;
+}
+
+/** What `[` and `]` walk: the touched buildings (status other than `same`, SPEC.md section 5.1), in the Report's order; no floor. */
+export const touchedTargets = (report: Report): Target[] =>
+  placedFiles(report)
+    .filter((placed) => placed.file.status !== 'same')
+    .map((placed) => ({ fileId: placed.file.id, symbolId: null }));
+
+/** The polite live region's text for a selection: "Selected src/auth/guard.ts, Needs your eyes, tier 1"; null when the Report does not have the file. */
+export function selectionAnnouncement(report: Report, fileId: string): string | null {
+  const placed = fileIndex(report).get(fileId);
+  if (placed === undefined) return null;
+  return `Selected ${placed.file.path}, ${VERDICT_LABEL[placed.file.verdict]}${placed.tier1 ? ', tier 1' : ''}`;
 }
 
 /** Whether a stop is the current one: the focused symbol's, or, without a focus or a stop for it, any stop of the selected file. */
