@@ -14,6 +14,7 @@
 // server, so `npm run test:e2e` and CI never run it.
 
 import { defineConfig, devices, type Project } from '@playwright/test';
+import { WEBGL_ARGS } from './e2e/support/browser-args.js';
 
 const CI = Boolean(process.env['CI']);
 // DIFFCITY_E2E_PORT lets two worktrees run the screens project side by side;
@@ -31,7 +32,7 @@ const video = process.env['DIFFCITY_E2E_VIDEO'] === 'off' ? 'off' : 'retain-on-f
 const viewport = { width: 1440, height: 900 };
 // WebGL in headless Chromium runs on SwiftShader (the change screen's city
 // needs it); every project shares these arguments.
-const webglArgs = ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'];
+const webglArgs = WEBGL_ARGS;
 const browser = { ...devices['Desktop Chrome'], viewport, launchOptions: { args: webglArgs }, ...(channel ? { channel } : {}) };
 
 const argv = process.argv;
