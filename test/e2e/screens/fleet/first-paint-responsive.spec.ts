@@ -5,14 +5,33 @@
 // The cost is paid once per browser (GPU pipelines compile on first use), so the
 // test launches its own cold Chromium, whatever ran before it in the worker.
 
-import { chromium, expect, test } from '@playwright/test';
+import { chromium, expect, test, type TestInfo } from '@playwright/test';
 import { WEBGL_ARGS } from '../../support/browser-args.js';
 import { fixtures, mockApi } from '../../support/mock-api.js';
 import { emitSse, tagClient } from '../../support/sse.js';
 
-// The flat drawing measures ~250–300 ms on a quiet machine and the old blurred one 2.1–2.4 s;
-// 1 s keeps that gap on a loaded runner without letting the old drawing back in.
-const MAX_GAP_MS = 1000;
+// The runner's speed varies several-fold (a cold 2-vCPU SwiftShader runner stalled the flat drawing for 1.8-3.4 s, a
+// quiet laptop 250 ms), so no absolute bound holds. The Fleet's gap is compared with the same Fleet, in another cold
+// browser of the same run, with the primitives DC-86 removed put back by a stylesheet (blurred lot shadows and the
+// masked, gradient ground grid). Both are slowed equally by the runner; the old drawing took 2.1-2.4 s against 250 ms
+// for the flat one, the page's own boot is the same in both, so the flat one must stay clearly below the expensive one.
+const MAX_RATIO = 0.6;
+// The expensive reference must itself stall, or the comparison proves nothing.
+const MIN_REFERENCE_MS = 400;
+/** The drawing DC-86 replaced: a blur filter on each lot's shadow, a gradient grid under a radial mask. */
+const EXPENSIVE_CSS = `
+  .lot .shadow { filter: blur(7px); }
+  .lot .face-band { filter: blur(1.5px); }
+  .lot .side, .lot .edge { filter: blur(3px); }
+  .fleet-svg { filter: drop-shadow(0 0 10px var(--bg-deep)); }
+  .fleet-map::before {
+    content: ""; position: absolute; inset: 0; pointer-events: none;
+    background-image: linear-gradient(var(--grid) 1px, transparent 1px), linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+    background-size: 28px 28px; opacity: .7;
+    -webkit-mask-image: radial-gradient(ellipse 70% 75% at 50% 52%, #000 35%, transparent 100%);
+    mask-image: radial-gradient(ellipse 70% 75% at 50% 52%, #000 35%, transparent 100%);
+  }
+`;
 // Runs in the page before anything else: the longest time between two ticks of
 // a 50 ms timer, which is how long the main thread was away.
 const HEARTBEAT = `
@@ -24,33 +43,48 @@ const HEARTBEAT = `
   }, 50);
 `;
 
-test('the main thread stays responsive while the Fleet paints its lots', async ({ baseURL }, testInfo) => {
+/** Launches a cold Chromium, loads the Fleet (optionally with extra CSS), adds a repo over SSE and returns the largest heartbeat gap. */
+async function fleetGap(baseURL: string | undefined, testInfo: TestInfo, extraCss?: string): Promise<number> {
   const channel = process.env['DIFFCITY_E2E_CHANNEL'];
   const browser = await chromium.launch({ args: WEBGL_ARGS, ...(channel ? { channel } : {}) });
   try {
     const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, ...(baseURL ? { baseURL } : {}) });
     const page = await context.newPage();
-      const repos = fixtures.fleetThreeRepos();
-      await mockApi(page, { repos });
-      await tagClient(page, testInfo.testId);
-      await page.addInitScript(HEARTBEAT);
-      await page.goto('/#/');
-      await expect(page.getByTestId('lot')).toHaveCount(3);
-      await expect(page.getByTestId('daemon')).toHaveAttribute('data-state', 'connected');
+    const repos = fixtures.fleetThreeRepos();
+    await mockApi(page, { repos });
+    await tagClient(page, testInfo.testId);
+    await page.addInitScript(HEARTBEAT);
+    if (extraCss !== undefined) {
+      await page.addInitScript(`document.addEventListener('DOMContentLoaded', () => {
+        const style = document.createElement('style');
+        style.textContent = ${JSON.stringify(extraCss)};
+        document.head.append(style);
+      });`);
+    }
+    await page.goto('/#/');
+    await expect(page.getByTestId('lot')).toHaveCount(3);
+    await expect(page.getByTestId('daemon')).toHaveAttribute('data-state', 'connected');
 
-      const added = fixtures.fleetNewRepo();
-      repos.unshift(added);
-      expect(await emitSse(page, testInfo.testId, 'repo', { repoId: added.id })).toBe(1);
-      await expect(page.getByTestId('lot')).toHaveCount(4);
-      // Let the frames that paint the new lot run.
-      await page.evaluate('new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)))');
-      await page.waitForTimeout(300);
-
-      const max = await page.evaluate<number>('window.beat.max');
-      testInfo.annotations.push({ type: 'max-heartbeat-gap-ms', description: String(Math.round(max)) });
-      console.log(`fleet max heartbeat gap: ${String(Math.round(max))} ms`);
-      expect(max).toBeLessThan(MAX_GAP_MS);
+    const added = fixtures.fleetNewRepo();
+    repos.unshift(added);
+    expect(await emitSse(page, testInfo.testId, 'repo', { repoId: added.id })).toBe(1);
+    await expect(page.getByTestId('lot')).toHaveCount(4);
+    // Let the frames that paint the new lot run.
+    await page.evaluate('new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)))');
+    await page.waitForTimeout(300);
+    return await page.evaluate<number>('window.beat.max');
   } finally {
     await browser.close();
   }
+}
+
+test('the main thread stays responsive while the Fleet paints its lots', async ({ baseURL }, testInfo) => {
+  // The best of two cold launches: a scheduling hiccup of a busy runner can only make a gap longer.
+  const max = Math.min(await fleetGap(baseURL, testInfo), await fleetGap(baseURL, testInfo));
+  const reference = await fleetGap(baseURL, testInfo, EXPENSIVE_CSS);
+  testInfo.annotations.push({ type: 'max-heartbeat-gap-ms', description: String(Math.round(max)) });
+  testInfo.annotations.push({ type: 'reference-heartbeat-gap-ms', description: String(Math.round(reference)) });
+  console.log(`fleet max heartbeat gap: ${String(Math.round(max))} ms; expensive reference: ${String(Math.round(reference))} ms`);
+  expect(reference).toBeGreaterThan(MIN_REFERENCE_MS);
+  expect(max).toBeLessThan(reference * MAX_RATIO);
 });
