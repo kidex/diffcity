@@ -22,7 +22,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 
 import type { QualityLevel, QualityState } from './quality.js';
-import { levelFor, medianFps, PROBE_MS, QUALITY_LEVELS, WARMUP_FRAMES, WARMUP_MS } from './quality.js';
+import { levelFor, QUALITY_LEVELS, QualityProbe } from './quality.js';
 
 export const EXPOSURE = 1.1;
 export const BLOOM_RADIUS = 0.4;
@@ -96,10 +96,14 @@ export class Stage {
   frames = 0;
   /** The quality level in force: full until the probe says otherwise, then fixed. */
   private levelNow: QualityLevel = QUALITY_LEVELS[0] as QualityLevel;
-  /** `warm`: frames still to draw before measuring; `last` and `intervals` are the measurement. */
-  private probeState: { warm: number; last: number | null; intervals: number[] } | null = null;
+  private probeState: QualityProbe | null = null;
+  /** Completed probes: never more than one. */
   private probes = 0;
-  private onWarm: (() => void) | null = null;
+  private probeTimer: ReturnType<typeof setTimeout> | undefined;
+  private readonly onVisibility = (): void => {
+    this.probeState?.visibility(document.visibilityState === 'visible', performance.now());
+    if (this.probeState?.running === true) this.request();
+  };
   private probedFps: number | null = null;
   private probeDone = false;
 
@@ -146,9 +150,11 @@ export class Stage {
   }
 
   /**
-   * Draws every frame for the probe window, takes the median frame rate and
-   * picks the quality level, once (a second call does nothing). A hidden tab
-   * draws no frames, so it keeps the full level and is not probed.
+   * Draws every frame for the probe (warm-up, then the measured window), takes
+   * the median frame rate and picks the quality level, once (a second call
+   * does nothing). A tab hidden at any moment voids the probe: it starts over
+   * when the tab is visible again, and a tab hidden at mount starts it on
+   * the first show. The level is chosen only by a probe that ran visible.
    */
   probe(): Promise<void> {
     const forced = QUALITY_LEVELS[this.options.forceLevel ?? -1];
@@ -158,30 +164,30 @@ export class Stage {
       this.applyLevel(forced);
       return Promise.resolve();
     }
-    if (this.probes > 0 || this.disposed || document.visibilityState !== 'visible') return Promise.resolve();
-    this.probes = 1;
-    this.probeState = { warm: WARMUP_FRAMES, last: null, intervals: [] };
-    this.runContinuously(WARMUP_MS + PROBE_MS);
+    if (this.probeState !== null || this.probes > 0 || this.disposed) return Promise.resolve();
+    const probe = new QualityProbe(document.visibilityState === 'visible', performance.now());
+    this.probeState = probe;
+    document.addEventListener('visibilitychange', this.onVisibility);
     return new Promise((resolve) => {
-      const finish = (): void => {
-        const intervals = this.probeState?.intervals ?? [];
-        this.probeState = null;
-        this.probedFps = Math.round(medianFps(intervals) * 10) / 10;
-        this.probeDone = true;
-        if (!this.disposed) this.applyLevel(levelFor(this.probedFps));
-        resolve();
+      const poll = (): void => {
+        if (this.disposed) {
+          resolve();
+          return;
+        }
+        if (probe.tick(performance.now())) {
+          document.removeEventListener('visibilitychange', this.onVisibility);
+          this.probeState = null;
+          this.probes = 1;
+          this.probedFps = probe.fps;
+          this.probeDone = true;
+          this.applyLevel(levelFor(probe.fps ?? 0));
+          resolve();
+          return;
+        }
+        this.probeTimer = setTimeout(poll, 50);
       };
-      // Warm-up over (enough frames, or the time is up): measure PROBE_MS.
-      const warmedUp = (): void => {
-        if (this.probeState === null) return;
-        this.probeState.warm = 0;
-        this.probeState.last = null;
-        setTimeout(finish, PROBE_MS);
-      };
-      this.onWarm = warmedUp;
-      setTimeout(() => {
-        if (this.probeState !== null && this.probeState.warm > 0) warmedUp();
-      }, WARMUP_MS);
+      poll();
+      if (probe.running) this.request();
     });
   }
 
@@ -246,22 +252,13 @@ export class Stage {
 
   private draw(now: number): void {
     if (this.disposed) return;
-    const probe = this.probeState;
-    if (probe !== null) {
-      if (probe.warm > 0) {
-        probe.warm -= 1;
-        if (probe.warm === 0) this.onWarm?.();
-      } else {
-        if (probe.last !== null) probe.intervals.push(now - probe.last);
-        probe.last = now;
-      }
-    }
+    this.probeState?.frame(now);
     const again = this.options.beforeFrame({ now });
     this.renderer.info.reset();
     this.composer.render();
     this.frames += 1;
     this.options.afterFrame({ now });
-    if (again || now < this.continuousUntil) this.request();
+    if (again || now < this.continuousUntil || this.probeState?.running === true) this.request();
   }
 
   /**
@@ -274,6 +271,8 @@ export class Stage {
     this.disposed = true;
     if (this.frameId !== null) cancelAnimationFrame(this.frameId);
     this.frameId = null;
+    clearTimeout(this.probeTimer);
+    document.removeEventListener('visibilitychange', this.onVisibility);
     this.observer.disconnect();
     this.bloom.dispose();
     this.output.dispose();

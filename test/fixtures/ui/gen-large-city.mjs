@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 // Writes a large, seeded Report for the change screen's scale tests and the
 // headed bench (scripts/bench-city.mjs), in invented packages. The generated
 // Report is made by the Playwright global setup (preset `large`) and never
