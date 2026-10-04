@@ -9,7 +9,7 @@
 
 import './repo.css';
 
-import type { ChangeKind, ChangeSummary, RepoDetail, ReviewState } from '../../../core/model/types.js';
+import type { ChangeKind, ChangeSummary, RepoDetail, RepoNote, ReviewState } from '../../../core/model/types.js';
 import { ApiRequestError } from '../../data/api.js';
 import type { DataContext } from '../../data/context.js';
 import { copyButton } from '../../shared/copy.js';
@@ -245,7 +245,7 @@ export function mountRepo(element: HTMLElement, context: DataContext, repoId: nu
   }
 
   /** Rebuilt only when the notes change, so a focused Copy button survives live updates. */
-  function renderNotes(notes: readonly string[], repoPath: string): void {
+  function renderNotes(notes: readonly RepoNote[], repoPath: string): void {
     const signature = JSON.stringify([notes, repoPath]);
     if (notesSlot.dataset['sig'] === signature) return;
     notesSlot.dataset['sig'] = signature;

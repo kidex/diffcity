@@ -250,7 +250,13 @@ export interface RepoSummary {
    * Non-fatal notes from the daemon, such as a config file not loaded because
    * the repo is not trusted (ADR-030); empty when there is nothing to say.
    */
-  notes: string[];
+  notes: RepoNote[];
+}
+
+/** A repo note: `code` is stable for the UI to word it, `text` is the daemon's own wording (the fallback for unknown codes). */
+export interface RepoNote {
+  code: string;
+  text: string;
 }
 
 /** Counters of a change, read from the latest snapshot's summary. */

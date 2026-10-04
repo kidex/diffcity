@@ -10,11 +10,18 @@
 import { randomBytes } from 'node:crypto';
 import { chmod, mkdir, open, readFile, rename, rm } from 'node:fs/promises';
 import { dirname, isAbsolute } from 'node:path';
+import type { RepoNote } from '../model/types.js';
 
 export const SETTINGS_VERSION = 1;
 
+/** The `RepoNote.code` of an untrusted repo that has a diffcity.config.js; the UI words it by this code. */
+export const CONFIG_NOT_TRUSTED_CODE = 'config-not-trusted';
+
 /** The RepoSummary note of an untrusted repo that has a diffcity.config.js. */
-export const CONFIG_NOT_TRUSTED_NOTE = 'config not loaded: repo not trusted (run diffcity trust)';
+export const CONFIG_NOT_TRUSTED_NOTE: RepoNote = {
+  code: CONFIG_NOT_TRUSTED_CODE,
+  text: 'config not loaded: repo not trusted (run diffcity trust)',
+};
 
 export interface UserSettings {
   v: typeof SETTINGS_VERSION;

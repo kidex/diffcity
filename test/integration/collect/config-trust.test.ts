@@ -77,6 +77,8 @@ describe('collect/config-trust (ADR-030)', () => {
     expect(db.repos.get(repoId)?.collectError).toBeNull();
     const untrusted = await repoSummary(test, repoId);
     expect(untrusted).toMatchObject({ error: null, notes: [CONFIG_NOT_TRUSTED_NOTE] });
+    // The wire contract the UI words the note by (DC-67): a stable code beside the text.
+    expect(untrusted?.notes).toEqual([{ code: 'config-not-trusted', text: expect.any(String) as string }]);
     const branch = (): ChangeSummary | undefined =>
       db.changes.listLiveSummaries(repoId).find((change) => change.ref === 'branch:feature/cart');
     // The default tier 1 zones: `session`, not the config's `cart`.

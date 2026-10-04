@@ -2,7 +2,7 @@
 // built from SQL counters and never parse a report.
 
 import type { Connection } from './driver.js';
-import type { LastAudit, RepoRecord, RepoSummary, WatchMode } from '../model/types.js';
+import type { LastAudit, RepoNote, RepoRecord, RepoSummary, WatchMode } from '../model/types.js';
 import { isoTime, jsonOrNull, parseJsonOrNull } from './time.js';
 
 interface RepoRow {
@@ -46,7 +46,7 @@ export interface RepoRuntime {
   collecting: boolean;
   watch: WatchMode;
   /** RepoSummary.notes. */
-  notes: string[];
+  notes: RepoNote[];
 }
 
 /** Runtime state for a repo; without one, a summary says not collecting and `full`/`off` by `active`. */

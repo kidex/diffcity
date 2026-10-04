@@ -5,7 +5,7 @@
 // resolves at call time, so plugin order does not matter.
 
 import type { RepoRuntimeLookup } from '../core/db/index.js';
-import type { RepoRecord, WatchMode } from '../core/model/types.js';
+import type { RepoNote, RepoRecord, WatchMode } from '../core/model/types.js';
 import type { DaemonContext } from './plugin.js';
 
 export interface RuntimeProviders {
@@ -14,7 +14,7 @@ export interface RuntimeProviders {
   /** How the repo is watched; without a provider, `full` when active and `off` otherwise. */
   watch?: (repo: RepoRecord) => WatchMode;
   /** Non-fatal notes on the repo (ADR-030); none without a provider. */
-  notes?: (repoId: number) => string[];
+  notes?: (repoId: number) => RepoNote[];
 }
 
 const providers = new WeakMap<DaemonContext, RuntimeProviders>();

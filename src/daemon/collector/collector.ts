@@ -63,6 +63,7 @@ import type {
   CollectorPort,
   CollectPriority,
   CollectScope,
+  RepoNote,
   RepoRecord,
   SseEvent,
 } from '../../core/model/types.js';
@@ -104,7 +105,7 @@ export interface Collector extends CollectorPort {
   readonly collecting: number;
   isCollecting(repoId: number): boolean;
   /** Non-fatal notes on the repo from its last collection, for RepoSummary.notes. */
-  notes(repoId: number): string[];
+  notes(repoId: number): RepoNote[];
   /** False while gh is known to be unavailable for this repo (gh.ts); PR polling skips it then. */
   ghUsable(repoId: number): boolean;
   /**
@@ -167,7 +168,7 @@ export function createCollector(options: CollectorOptions): Collector {
 
   const identities = new Map<number, RepoIdentity>();
   const bases = new Map<number, { name: string; config: string }>();
-  const notes = new Map<number, string[]>();
+  const notes = new Map<number, RepoNote[]>();
   const prCache = new Map<number, { prs: GhPullRequest[] | null; at: number }>();
   const worktreesSeen = new Map<number, WorktreeInfo[]>();
   const wanted = new Map<number, Wanted>();
@@ -207,7 +208,7 @@ export function createCollector(options: CollectorOptions): Collector {
     const previous = notes.get(repo.id) ?? [];
     if (next.length === 0) notes.delete(repo.id);
     else notes.set(repo.id, next);
-    if (next.join('\n') !== previous.join('\n')) broadcast({ event: 'repo', data: { repoId: repo.id } });
+    if (JSON.stringify(next) !== JSON.stringify(previous)) broadcast({ event: 'repo', data: { repoId: repo.id } });
     return { trusted, stamp };
   }
 
