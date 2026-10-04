@@ -240,6 +240,8 @@ export interface RepoSummary {
   highFindings: number;
   /** Null until phase 5; the UI shows "never audited". */
   lastAudit: { at: string } | null;
+  /** Archived changes still stored (merged, deleted, closed, cleaned; kept 90 days, ADR-019); what the Repo screen's closed list shows. */
+  archivedCount: number;
   collecting: boolean;
   /** `repos.collectError`. */
   error: string | null;

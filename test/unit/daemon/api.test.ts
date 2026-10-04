@@ -166,6 +166,14 @@ describe('api/repos-ordered-by-last-event', () => {
       { name: 'docs-site', counts: { draft: 0, branch: 0, pr: 0 }, unreviewed: 0, highFindings: 0, lastAudit: null, active: false },
     ]);
   });
+
+  it('fleet/archived-count: archivedCount is on every summary of /api/repos and /api/repos/:id', async () => {
+    const repos = (await get('/api/repos')).json() as RepoSummary[];
+    expect(repos.map((repo) => [repo.name, repo.archivedCount])).toEqual([['sample-shop', 2], ['order-service', 0], ['docs-site', 0]]);
+    const shop = repos.find((repo) => repo.name === 'sample-shop');
+    const detail = (await get(`/api/repos/${String(shop?.id)}`)).json() as { repo: RepoSummary };
+    expect(detail.repo.archivedCount).toBe(2);
+  });
 });
 
 describe('api/repo-changes-excludes-archived', () => {

@@ -252,6 +252,28 @@ describe('maintenance (L7, ADR-018)', () => {
   });
 });
 
+describe('maintenance and the archived count (DC-64)', () => {
+  it('sched/purge-archived-count: a purge moves archivedCount and signals each repo it touched, once', () => {
+    const shop = addRepo(temp.db, 'sample-shop');
+    const bakery = addRepo(temp.db, 'sample-bakery');
+    const archive = (repoId: number, name: string, archivedAt: string): void => {
+      const [change] = temp.db.changes.applyPlan(repoId, { create: [branchFields(name)], update: [], archive: [] }, daysAfter(T0, -200)).created;
+      if (change === undefined) throw new Error('not created');
+      temp.db.changes.applyPlan(repoId, { create: [], update: [], archive: [{ id: change.id, reason: 'merged' }] }, archivedAt);
+    };
+    archive(shop.id, 'feature/old', daysAfter(T0, -91));
+    archive(shop.id, 'feature/recent', daysAfter(T0, -10));
+    archive(bakery.id, 'feature/fresh', daysAfter(T0, -1));
+    expect(temp.db.repos.getSummary(shop.id)?.archivedCount).toBe(2);
+
+    const { events } = start(stubCollector(fakeRunner(() => '[]').runner).collector);
+
+    expect(temp.db.repos.getSummary(shop.id)?.archivedCount).toBe(1);
+    expect(temp.db.repos.getSummary(bakery.id)?.archivedCount).toBe(1);
+    expect(events.filter((event) => event.event === 'repo')).toEqual([{ event: 'repo', data: { repoId: shop.id } }]);
+  });
+});
+
 describe('close', () => {
   it('clears every timer', async () => {
     addRepo(temp.db, 'sample-shop');

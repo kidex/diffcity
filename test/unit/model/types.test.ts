@@ -109,6 +109,7 @@ const repoSummary: RepoSummary = {
   counts: { draft: 1, branch: 2, pr: 1 },
   unreviewed: 3,
   highFindings: 0,
+  archivedCount: 2,
   lastAudit: null,
   collecting: false,
   error: null,
