@@ -20,6 +20,24 @@ test.afterAll(async () => {
   await city.close();
 });
 
+/** Stats once the GPU's holdings stop changing: textures and geometries are uploaded by the frames that draw them. */
+async function steadyStats(): Promise<Awaited<ReturnType<typeof stats>>> {
+  let last = await stats(city.page);
+  await expect
+    .poll(
+      async () => {
+        await city.page.waitForTimeout(1200);
+        const next = await stats(city.page);
+        const same = next.geometries === last.geometries && next.textures === last.textures && next.frames === last.frames;
+        last = next;
+        return same;
+      },
+      { timeout: 90_000 },
+    )
+    .toBe(true);
+  return last;
+}
+
 const shownOf = (id: string): Promise<{ x: number; z: number; height: number } | undefined> =>
   city.page.evaluate<{ x: number; z: number; height: number } | undefined>(`window.diffcityScene.shown()[${JSON.stringify(id)}]`);
 
@@ -29,8 +47,8 @@ test('perf/update-in-place-same-count', async () => {
   await expect.poll(() => page.evaluate<boolean>('window.diffcityScene.tweening()'), { timeout: 60_000 }).toBe(false);
   // The quality probe replaces render targets once; measure after it.
   await expect.poll(() => page.evaluate<boolean>('window.diffcityScene.quality().settled'), { timeout: 60_000 }).toBe(true);
-  await expect.poll(async () => (await stats(page)).frames, { timeout: 60_000 }).toBeGreaterThan(0);
-  const before = await stats(page);
+  const before = await steadyStats();
+  expect(before.frames).toBeGreaterThan(0);
   expect(before.buildings).toBe(2000);
 
   // Same files and floors; two files of the first package with several files swap places, and one changed floor goes from mod to add.
@@ -49,16 +67,24 @@ test('perf/update-in-place-same-count', async () => {
   await city.push(next);
   await expect.poll(async () => (await shownOf(first.id))?.x !== moved?.x || (await shownOf(first.id))?.z !== moved?.z).toBe(true);
   await expect.poll(() => page.evaluate<boolean>('window.diffcityScene.tweening()')).toBe(false);
-  // The GPU only holds what a frame drew: wait for one after the update.
+  // The GPU only holds what a frame drew: wait for the frames after the update to be done.
   await expect.poll(async () => (await stats(page)).frames, { timeout: 60_000 }).toBeGreaterThan(before.frames);
-
-  const after = await stats(page);
+  const after = await steadyStats();
   expect(after.buildings).toBe(before.buildings);
   expect(after.floors).toBe(before.floors);
   expect(after.builds).toBe(before.builds);
   expect(after.geometries).toBe(before.geometries);
-  expect(after.textures).toBe(before.textures);
   expect(after.drawCalls).toBeLessThanOrEqual(40);
+
+  // Another update changes nothing on the GPU either: no texture or geometry piles up. (The first update draws one texture
+  // that the first frame had not needed yet, so textures are compared between the two updates.)
+  pkg.files.reverse();
+  await city.push(next);
+  await expect.poll(async () => (await stats(page)).frames, { timeout: 60_000 }).toBeGreaterThan(after.frames);
+  const again = await steadyStats();
+  expect(again.builds).toBe(before.builds);
+  expect(again.geometries).toBe(before.geometries);
+  expect(again.textures).toBe(after.textures);
 
   // Control: one building fewer needs other buffers.
   const fewer: Report = structuredClone(city.report);
