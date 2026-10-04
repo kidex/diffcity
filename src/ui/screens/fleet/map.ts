@@ -448,7 +448,7 @@ function groundGlow(stageWidth: number, stageHeight: number): SVGElement[] {
     // From the outside in: ring i spans radius (1 - i / steps) .. (1 - (i + 1) / steps) of the reach.
     const outer = 1 - i / GLOW_STEPS;
     const middle = 1 - (i + 0.5) / GLOW_STEPS;
-    const wanted = peak * (1 - middle * reach / reach);
+    const wanted = peak * (1 - middle);
     const own = 1 - (1 - wanted) / (1 - below);
     below = wanted;
     ellipses.push(svg('ellipse', { class: 'glow', cx: String(cx), cy: String(cy), rx: (1200 * reach * outer).toFixed(1), ry: (600 * reach * outer).toFixed(1), 'fill-opacity': own.toFixed(4) }));
