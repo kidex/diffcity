@@ -47,8 +47,15 @@ export function fallbackView(report: Report, options: FallbackOptions): Fallback
     }
   }
 
+  /** What the list shows, as text: a Report that changes nothing in it leaves the buttons (and the focus on one) alone. */
+  let drawn = '';
+
   function draw(next: Report): void {
     const groups = touchedPackages(next);
+    const signature = JSON.stringify(groups.map(({ pkg, files }) => [pkg.path, pkg.tier1, files.map((file) => [file.id, file.path, file.status, file.verdict])]));
+    if (signature === drawn) return;
+    drawn = signature;
+    const focusedFile = body.contains(document.activeElement) ? document.activeElement?.closest<HTMLElement>('tr')?.dataset['file'] : undefined;
     if (groups.length === 0) {
       body.replaceChildren(h('p', { class: 'change-empty', 'data-testid': 'no-touched-files' }, 'This change touches no file.'));
       return;
@@ -107,6 +114,8 @@ export function fallbackView(report: Report, options: FallbackOptions): Fallback
       ),
     );
     paint();
+    // A redraw keeps the keyboard where it was.
+    if (focusedFile !== undefined) body.querySelector<HTMLElement>(`tr[data-file="${CSS.escape(focusedFile)}"] button`)?.focus({ preventScroll: true });
   }
 
   draw(report);
