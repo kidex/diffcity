@@ -138,7 +138,7 @@ test('the closed-changes toggle works from the keyboard', async ({ page }) => {
     reached = await page.evaluate<boolean>(`document.activeElement?.dataset.testid === 'archive-toggle'`);
   }
   expect(reached).toBe(true);
-  await expect(toggle).toHaveText('Show closed changes');
+  await expect(toggle).toHaveText('Show closed changes (4)');
   await expect(tip).toBeVisible();
   await expect(tip).toHaveCSS('opacity', '1');
 
@@ -152,7 +152,7 @@ test('the closed-changes toggle works from the keyboard', async ({ page }) => {
 
   await page.keyboard.press('Enter');
   await expect(page.getByTestId('change-row')).toHaveCount(6);
-  await expect(toggle).toHaveText('Show closed changes');
+  await expect(toggle).toHaveText('Show closed changes (4)');
   await expect(toggle).toBeFocused();
   await expect(page.getByTestId('open-filters')).toBeVisible();
 });

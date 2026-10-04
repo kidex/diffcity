@@ -3,7 +3,7 @@
 // left and the date; toggling back shows the live list.
 
 import { expect, test } from '@playwright/test';
-import { mockApi } from '../../support/mock-api.js';
+import { fixtures, mockApi } from '../../support/mock-api.js';
 import { emitSse, tagClient } from '../../support/sse.js';
 
 test.use({ timezoneId: 'UTC' });
@@ -15,7 +15,7 @@ test('archived changes show their reason and date, read-only', async ({ page }) 
   expect(api.requests.some((url) => url.pathname === '/api/repos/1/changes')).toBe(false);
 
   const toggle = page.getByTestId('archive-toggle');
-  await expect(toggle).toHaveText('Show closed changes');
+  await expect(toggle).toHaveText('Show closed changes (4)');
   await expect(toggle).toHaveAccessibleDescription('Merged, deleted, closed or cleaned changes, kept for 90 days');
   await toggle.click();
   await expect(toggle).toHaveText('Back to open changes');
@@ -35,7 +35,7 @@ test('archived changes show their reason and date, read-only', async ({ page }) 
   await expect(page.getByRole('group', { name: 'Filter by kind' }).getByRole('button')).toHaveText(['Draft 1', 'Branch 2', 'PR 1']);
 
   await toggle.click();
-  await expect(toggle).toHaveText('Show closed changes');
+  await expect(toggle).toHaveText('Show closed changes (4)');
   await expect(page.getByTestId('change-row')).toHaveCount(6);
   await expect(page.locator('.repo .changes h2')).toHaveText('Open changes');
 });
@@ -45,6 +45,33 @@ test('an empty archive says so', async ({ page }) => {
   await page.goto('/#/repo/1');
   await page.getByTestId('archive-toggle').click();
   await expect(page.getByTestId('list-empty')).toHaveText('No change closed in the last 90 days.');
+});
+
+// DC-64: the toggle carries the number of closed changes, or says there are none and still opens the (explaining) list.
+test('the toggle label says there are no closed changes, and still opens the list', async ({ page }) => {
+  const detail = fixtures.repoMixedChanges();
+  await mockApi(page, { archived: {}, details: [{ ...detail, repo: { ...detail.repo, archivedCount: 0 } }] });
+  await page.goto('/#/repo/1');
+  const toggle = page.getByTestId('archive-toggle');
+  await expect(toggle).toHaveText('No closed changes');
+  await expect(toggle).toBeEnabled();
+  await toggle.click();
+  await expect(toggle).toHaveText('Back to open changes');
+  await expect(page.getByTestId('list-empty')).toHaveText('No change closed in the last 90 days.');
+});
+
+test('a repo update moves the count in the toggle label', async ({ page }, testInfo) => {
+  const detail = fixtures.repoMixedChanges();
+  let archivedCount = 0;
+  await mockApi(page);
+  await page.route('**/api/repos/1', (route) => route.fulfill({ json: { ...detail, repo: { ...detail.repo, archivedCount } } }));
+  await tagClient(page, testInfo.testId);
+  await page.goto('/#/repo/1');
+  const toggle = page.getByTestId('archive-toggle');
+  await expect(toggle).toHaveText('No closed changes');
+  archivedCount = 1;
+  await emitSse(page, testInfo.testId, 'repo', { repoId: 1 });
+  await expect(toggle).toHaveText('Show closed changes (1)');
 });
 
 test('a failed archive fetch says so until the next successful refetch', async ({ page }, testInfo) => {

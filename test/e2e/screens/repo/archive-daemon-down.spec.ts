@@ -28,7 +28,7 @@ test('archive toggle while the daemon is down, then back', async ({ page }, test
   await expect(page.getByTestId('change-row')).toHaveCount(0);
 
   await toggle.click();
-  await expect(toggle).toHaveText('Show closed changes');
+  await expect(toggle).toHaveText('Show closed changes (4)');
   await expect(page.getByTestId('change-row')).toHaveCount(6);
   await expect(page.getByTestId('list-empty')).toBeHidden();
 

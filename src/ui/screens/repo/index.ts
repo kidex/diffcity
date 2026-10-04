@@ -25,8 +25,13 @@ const CLOCK_MS = 30_000;
 export const AUDIT_TOOLTIP = 'Audit arrives in a later version';
 
 /** The archive toggle names what a click does: open it, or go back. */
-export const SHOW_CLOSED = 'Show closed changes';
 export const BACK_TO_OPEN = 'Back to open changes';
+export const NO_CLOSED = 'No closed changes';
+
+/** The toggle's text while the live list shows: the count of closed changes, or that there are none (still clickable; the list explains it). */
+export function showClosedLabel(archivedCount: number): string {
+  return archivedCount > 0 ? `Show closed changes (${String(archivedCount)})` : NO_CLOSED;
+}
 
 type RepoState = 'loading' | 'ready' | 'missing' | 'unreachable';
 
@@ -95,7 +100,7 @@ export function mountRepo(element: HTMLElement, context: DataContext, repoId: nu
         render();
       },
     },
-    SHOW_CLOSED,
+    showClosedLabel(0),
   );
   // aria-disabled, not disabled: the button stays focusable, so the keyboard
   // reaches it and its tooltip, and a click does nothing.
@@ -280,7 +285,7 @@ export function mountRepo(element: HTMLElement, context: DataContext, repoId: nu
     }
     renderNotes(repo.repo.notes, repo.repo.path);
 
-    const toggleText = showArchive ? BACK_TO_OPEN : SHOW_CLOSED;
+    const toggleText = showArchive ? BACK_TO_OPEN : showClosedLabel(repo.repo.archivedCount);
     if (archiveToggle.textContent !== toggleText) archiveToggle.textContent = toggleText;
     archiveToggle.dataset['showing'] = showArchive ? 'closed' : 'open';
     archiveToggle.classList.toggle('on', showArchive);

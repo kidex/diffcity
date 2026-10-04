@@ -13,6 +13,7 @@
     },
     "unreviewed": 3,
     "highFindings": 0,
+    "archivedCount": 4,
     "lastAudit": null,
     "collecting": false,
     "error": null,
