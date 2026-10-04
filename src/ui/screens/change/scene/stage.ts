@@ -22,7 +22,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 
 import type { QualityLevel, QualityState } from './quality.js';
-import { levelFor, medianFps, PROBE_MS, QUALITY_LEVELS } from './quality.js';
+import { levelFor, medianFps, PROBE_MS, QUALITY_LEVELS, WARMUP_FRAMES, WARMUP_MS } from './quality.js';
 
 export const EXPOSURE = 1.1;
 export const BLOOM_RADIUS = 0.4;
@@ -69,6 +69,8 @@ export interface StageOptions {
   afterFrame: (frame: StageFrame) => void;
   /** Called on every resize, with the CSS size of the container. */
   onResize: (width: number, height: number) => void;
+  /** Debug (`?scene-debug&scene-quality=<0-3>`): use this level and skip the probe, to measure each level on its own. */
+  forceLevel?: number;
   /** Called once, when the probe has chosen the quality level (the glass drops its environment map in the last level). */
   onQuality?: (level: QualityLevel) => void;
 }
@@ -94,8 +96,10 @@ export class Stage {
   frames = 0;
   /** The quality level in force: full until the probe says otherwise, then fixed. */
   private levelNow: QualityLevel = QUALITY_LEVELS[0] as QualityLevel;
-  private probeState: { last: number | null; intervals: number[] } | null = null;
+  /** `warm`: frames still to draw before measuring; `last` and `intervals` are the measurement. */
+  private probeState: { warm: number; last: number | null; intervals: number[] } | null = null;
   private probes = 0;
+  private onWarm: (() => void) | null = null;
   private probedFps: number | null = null;
   private probeDone = false;
 
@@ -147,19 +151,37 @@ export class Stage {
    * draws no frames, so it keeps the full level and is not probed.
    */
   probe(): Promise<void> {
+    const forced = QUALITY_LEVELS[this.options.forceLevel ?? -1];
+    if (forced !== undefined && this.probes === 0) {
+      this.probes = 1;
+      this.probeDone = true;
+      this.applyLevel(forced);
+      return Promise.resolve();
+    }
     if (this.probes > 0 || this.disposed || document.visibilityState !== 'visible') return Promise.resolve();
     this.probes = 1;
-    this.probeState = { last: null, intervals: [] };
-    this.runContinuously(PROBE_MS);
+    this.probeState = { warm: WARMUP_FRAMES, last: null, intervals: [] };
+    this.runContinuously(WARMUP_MS + PROBE_MS);
     return new Promise((resolve) => {
-      setTimeout(() => {
+      const finish = (): void => {
         const intervals = this.probeState?.intervals ?? [];
         this.probeState = null;
         this.probedFps = Math.round(medianFps(intervals) * 10) / 10;
         this.probeDone = true;
         if (!this.disposed) this.applyLevel(levelFor(this.probedFps));
         resolve();
-      }, PROBE_MS);
+      };
+      // Warm-up over (enough frames, or the time is up): measure PROBE_MS.
+      const warmedUp = (): void => {
+        if (this.probeState === null) return;
+        this.probeState.warm = 0;
+        this.probeState.last = null;
+        setTimeout(finish, PROBE_MS);
+      };
+      this.onWarm = warmedUp;
+      setTimeout(() => {
+        if (this.probeState !== null && this.probeState.warm > 0) warmedUp();
+      }, WARMUP_MS);
     });
   }
 
@@ -224,9 +246,15 @@ export class Stage {
 
   private draw(now: number): void {
     if (this.disposed) return;
-    if (this.probeState !== null) {
-      if (this.probeState.last !== null) this.probeState.intervals.push(now - this.probeState.last);
-      this.probeState.last = now;
+    const probe = this.probeState;
+    if (probe !== null) {
+      if (probe.warm > 0) {
+        probe.warm -= 1;
+        if (probe.warm === 0) this.onWarm?.();
+      } else {
+        if (probe.last !== null) probe.intervals.push(now - probe.last);
+        probe.last = now;
+      }
     }
     const again = this.options.beforeFrame({ now });
     this.renderer.info.reset();

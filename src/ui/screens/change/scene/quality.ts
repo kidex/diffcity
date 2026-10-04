@@ -24,8 +24,17 @@ export const QUALITY_LEVELS: readonly QualityLevel[] = [
   { level: 3, msaa: 2, bloomScale: 0.25, environment: false },
 ];
 
-/** The probe runs this long, drawing every frame. */
+/** The probe measures this long, drawing every frame. */
 export const PROBE_MS = 500;
+
+/**
+ * The first frames after mount pay for one-time work (the post passes' shaders
+ * and render targets reach the GPU, buffers upload): they say nothing about the
+ * steady frame rate. The probe draws WARMUP_FRAMES frames first, for at most
+ * WARMUP_MS (a CPU renderer never gets that far), then measures PROBE_MS.
+ */
+export const WARMUP_FRAMES = 30;
+export const WARMUP_MS = 2000;
 
 /**
  * Median frame rate (fps) at or above which the full level is kept. Below it,

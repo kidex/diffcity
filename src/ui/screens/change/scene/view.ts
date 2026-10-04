@@ -169,6 +169,18 @@ interface Tween {
   startedAt: number | null;
 }
 
+/** `?scene-quality=<0-3>` under `?scene-debug`: the bench measures one level at a time. */
+function forcedLevel(): number | undefined {
+  if (!/[?&]scene-debug(?:[=&]|$)/.test(location.search)) return undefined;
+  const value = /[?&]scene-quality=([0-3])(?:&|$)/.exec(location.search)?.[1];
+  return value === undefined ? undefined : Number(value);
+}
+
+function optionalLevel(): { forceLevel?: number } {
+  const level = forcedLevel();
+  return level === undefined ? {} : { forceLevel: level };
+}
+
 /** Throws when WebGL2 is not available; the caller shows the fallback. */
 export function createCityView(host: HTMLElement, report: Report, options: CityViewOptions): CityView {
   const canvas = h('canvas', { class: 'scene', role: 'img', 'aria-label': canvasLabel(report), 'data-testid': 'city-canvas' });
@@ -263,6 +275,7 @@ export function createCityView(host: HTMLElement, report: Report, options: CityV
           void stage.probe();
         }
       },
+      ...optionalLevel(),
       onQuality: (level) => {
         if (!level.environment) scene.environment = null;
       },
