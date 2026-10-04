@@ -63,19 +63,6 @@ export function createFleetMap(): FleetMap {
   const canvas = svg(
     'svg',
     { class: 'fleet-svg', 'aria-label': 'Repo map', role: 'group', 'data-testid': 'fleet-map' },
-    svg(
-      'defs',
-      {},
-      svg('pattern', { id: 'fleet-plot', width: '12', height: '12', patternUnits: 'userSpaceOnUse' }, svg('path', { d: 'M 12 0 L 0 0 0 12', class: 'plot-line' })),
-      ...LEGEND.map(([age]) =>
-        svg(
-          'linearGradient',
-          { id: `fleet-face-${age}`, x1: '0', y1: '0', x2: '0.35', y2: '1' },
-          svg('stop', { offset: '0', class: `face-hi audit-${age}` }),
-          svg('stop', { offset: '1', class: `face-lo audit-${age}` }),
-        ),
-      ),
-    ),
     lots,
   );
 
@@ -87,7 +74,8 @@ export function createFleetMap(): FleetMap {
     h('span', null, h('i', { class: 'size' }), 'size: unreviewed changes'),
     h('span', null, h('i', { class: 'dim' }), 'dimmed: inactive'),
   );
-  const element = h('figure', { class: 'fleet-map' }, canvas, tip, legend);
+  const ground = svg('svg', { class: 'fleet-ground', 'aria-hidden': 'true', focusable: 'false' });
+  const element = h('figure', { class: 'fleet-map' }, ground, canvas, tip, legend);
 
   let repos: readonly RepoSummary[] = [];
   let now = Date.now();
@@ -194,14 +182,36 @@ export function createFleetMap(): FleetMap {
     const radius = String(Math.min(12, Math.round(side / 7)));
     const countSize = Math.round(Math.min(34, Math.max(15, side * 0.27)));
     const centre = String(side / 2);
+    const clipId = `fleet-clip-${String(repo.id)}`;
     const children: SVGElement[] = [
-      svg('rect', { class: 'shadow', x: '2', y: String(DEPTH + 2), width: String(side - 4), height: String(side - 2), rx: radius }),
+      svg('clipPath', { id: clipId }, svg('rect', { width: String(side), height: String(side), rx: radius })),
+      // A soft shadow from three stacked, growing rects: a `filter: blur` here
+      // costs seconds of CPU raster on software-rendered browsers (DC-86).
+      svg(
+        'g',
+        { class: 'shadow' },
+        ...[5, 2.5, 0].map((grow) =>
+          svg('rect', {
+            x: String(2 - grow),
+            y: String(DEPTH + 2 - grow),
+            width: String(side - 4 + grow * 2),
+            height: String(side - 2 + grow * 2),
+            rx: String(Number(radius) + grow),
+          }),
+        ),
+      ),
       svg('rect', { class: `side audit-${age}`, y: String(DEPTH), width: String(side), height: String(side), rx: radius }),
       svg(
         'g',
         { class: 'face' },
-        svg('rect', { class: 'top', width: String(side), height: String(side), rx: radius, fill: `url(#fleet-face-${age})` }),
-        svg('rect', { class: 'texture', x: '1', y: '1', width: String(side - 2), height: String(side - 2), rx: radius }),
+        svg(
+          'g',
+          { class: `slab audit-${age}`, 'clip-path': `url(#${clipId})` },
+          ...faceBands(side),
+          svg('path', { class: 'texture', d: textureLines(side) }),
+        ),
+        // The face's outline: it draws nothing, and gives the lot's top face a box to measure.
+        svg('rect', { class: 'top', width: String(side), height: String(side), rx: radius, fill: 'none' }),
         svg('rect', { class: `edge audit-${age}`, x: '0.75', y: '0.75', width: String(side - 1.5), height: String(side - 1.5), rx: radius }),
         svg('rect', { class: 'ring', x: '-4', y: '-4', width: String(side + 8), height: String(side + 8 + DEPTH), rx: String(Number(radius) + 4) }),
         svg(
@@ -231,12 +241,26 @@ export function createFleetMap(): FleetMap {
     if (tipFor !== null) showTip(repos.find((repo) => repo.id === tipFor));
   }
 
+  let groundSize = '';
+  /** Draws the ground grid for the map's current box; a no-op while the box is unchanged. */
+  function paintGround(): void {
+    const w = Math.round(element.clientWidth);
+    const hgt = Math.round(element.clientHeight);
+    const stage = element.closest('.stage') ?? element;
+    const key = `${String(w)}x${String(hgt)} ${String(stage.clientWidth)}x${String(stage.clientHeight)}`;
+    if (w <= 0 || hgt <= 0 || groundSize === key) return;
+    groundSize = key;
+    ground.setAttribute('viewBox', `0 0 ${String(w)} ${String(hgt)}`);
+    ground.replaceChildren(...groundGlow(stage.clientWidth, stage.clientHeight), ...groundGrid(w, hgt));
+  }
+
   const observer = new ResizeObserver(() => {
     const next = Math.round(element.clientWidth);
     if (next !== width && next > 0) {
       width = next;
       relayout();
     }
+    paintGround();
   });
   observer.observe(element);
 
@@ -249,6 +273,7 @@ export function createFleetMap(): FleetMap {
       if (focused !== null && !repos.some((repo) => repo.id === focused)) focused = null;
       width = Math.round(element.clientWidth) || width || 960;
       relayout();
+      paintGround();
     },
     setHot(repoId) {
       hot = repoId;
@@ -330,4 +355,103 @@ function statusPip(repo: RepoSummary, side: number): SVGElement[] {
     return [svg('g', { class: 'pip pip-note', 'data-testid': 'lot-note' }, svg('circle', { cx, cy: '12', r: '7' }), svg('text', { x: cx, y: '15.5' }, 'i'))];
   }
   return [];
+}
+
+
+/** Horizontal strips a lot's face is built from: a vertical ramp from the high to the low face colour. */
+const FACE_BANDS = 8;
+
+/** The lot's face: stacked solid strips (see `.face-band` in fleet.css), clipped to the lot's rounded square. */
+function faceBands(side: number): SVGElement[] {
+  const step = side / FACE_BANDS;
+  return Array.from({ length: FACE_BANDS }, (_, i) =>
+    // One px of overlap hides the seam between neighbours.
+    svg('rect', { class: `face-band b${String(i)}`, y: String(Math.floor(i * step)), width: String(side), height: String(Math.ceil(step) + 1) }),
+  );
+}
+
+/** The faint 12px plot grid on a lot's face, as one path of lines. */
+function textureLines(side: number): string {
+  const lines: string[] = [];
+  for (let at = 12; at < side; at += 12) lines.push(`M${String(at)} 0V${String(side)}M0 ${String(at)}H${String(side)}`);
+  return lines.join('');
+}
+
+/** Grid cell of the ground, in px. */
+const GROUND_CELL = 28;
+/** Opacity of the grid lines at the centre of the map. */
+const GROUND_ALPHA = 0.7;
+/** Steps the grid's fade toward the edges is drawn in. */
+const GROUND_STEPS = 7;
+/** Where the fade begins and ends, as a fraction of the ellipse radius (the mockup's 35% and 100%). */
+const FADE_FROM = 0.35;
+
+/**
+ * The ground grid with its edge fade: a vertical and a horizontal line every
+ * 28px, each cut into pieces by the rings of a centred ellipse (70% x 75% of
+ * the box, at 50% 52%) with one opacity per ring. Drawn as thin solid strokes
+ * instead of two full-box gradients under a radial mask: that costs seconds of
+ * first-paint raster on software-rendered browsers (DC-86).
+ */
+function groundGrid(width: number, height: number): SVGElement[] {
+  const cx = width / 2;
+  const cy = height * 0.52;
+  const rx = width * 0.7;
+  const ry = height * 0.75;
+  const rings = Array.from({ length: GROUND_STEPS + 1 }, (_, i) => FADE_FROM + ((1 - FADE_FROM) * i) / GROUND_STEPS);
+  // Ring 0 is the opaque core (r < FADE_FROM); ring k covers rings[k-1] <= r < rings[k].
+  const paths: string[] = rings.map(() => '');
+  const alpha = (k: number): number => {
+    if (k === 0) return 1;
+    const mid = ((rings[k - 1] ?? FADE_FROM) + (rings[k] ?? 1)) / 2;
+    return Math.max(0, 1 - (mid - FADE_FROM) / (1 - FADE_FROM));
+  };
+  /** Adds the pieces of one line, at offset `u` radii from the centre across it, to the ring each falls in. */
+  const cut = (line: number, centre: number, along: number, u: number, vertical: boolean): void => {
+    if (Math.abs(u) >= 1) return;
+    const half = (t: number): number => (t > Math.abs(u) ? along * Math.sqrt(t * t - u * u) : 0);
+    const at = (a: number, b: number): string => (vertical ? `M${String(line)} ${a.toFixed(1)}V${b.toFixed(1)}` : `M${a.toFixed(1)} ${String(line)}H${b.toFixed(1)}`);
+    const cuts = rings.map(half);
+    for (let k = 0; k < cuts.length; k++) {
+      const inner = k === 0 ? 0 : (cuts[k - 1] ?? 0);
+      const outer = cuts[k] ?? 0;
+      if (outer - inner < 0.5) continue;
+      paths[k] = (paths[k] ?? '') + at(centre - outer, centre - inner) + at(centre + inner, centre + outer);
+    }
+  };
+  // Vertical lines: tiles are centred on the box, one line at the left of each; horizontal: from the top.
+  const first = ((width - GROUND_CELL) / 2) % GROUND_CELL;
+  for (let x = first; x < width; x += GROUND_CELL) cut(x + 0.5, cy, ry, (x + 0.5 - cx) / rx, true);
+  for (let y = 0; y < height; y += GROUND_CELL) cut(y + 0.5, cx, rx, (y + 0.5 - cy) / ry, false);
+  return paths.flatMap((d, k) => (d === '' ? [] : [svg('path', { d, 'stroke-opacity': (GROUND_ALPHA * alpha(k)).toFixed(3) })]));
+}
+
+/** Steps the stage glow is drawn in. */
+const GLOW_STEPS = 16;
+
+/**
+ * The stage's soft glow (components.css `.stage`: a 1200x600 radial gradient
+ * of --panel-2 at 60%, gone at 70% of its radius, centred at 40% 30%), as
+ * nested ellipses with just enough opacity each to add up to the gradient's
+ * ramp. The steps are about one 8-bit colour level apart, so the eye sees a
+ * gradient; the paint is solid fills, which software raster draws cheaply.
+ */
+function groundGlow(stageWidth: number, stageHeight: number): SVGElement[] {
+  if (stageWidth <= 0 || stageHeight <= 0) return [];
+  const cx = stageWidth * 0.4;
+  const cy = stageHeight * 0.3;
+  const reach = 0.7;
+  const peak = 0.6;
+  const ellipses: SVGElement[] = [];
+  let below = 0;
+  for (let i = 0; i < GLOW_STEPS; i++) {
+    // From the outside in: ring i spans radius (1 - i / steps) .. (1 - (i + 1) / steps) of the reach.
+    const outer = 1 - i / GLOW_STEPS;
+    const middle = 1 - (i + 0.5) / GLOW_STEPS;
+    const wanted = peak * (1 - middle);
+    const own = 1 - (1 - wanted) / (1 - below);
+    below = wanted;
+    ellipses.push(svg('ellipse', { class: 'glow', cx: String(cx), cy: String(cy), rx: (1200 * reach * outer).toFixed(1), ry: (600 * reach * outer).toFixed(1), 'fill-opacity': own.toFixed(4) }));
+  }
+  return ellipses;
 }
