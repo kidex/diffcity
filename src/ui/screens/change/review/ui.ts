@@ -145,7 +145,7 @@ export function createReviewUi(options: ReviewUiOptions): ReviewUi {
   document.addEventListener(
     'keydown',
     (event) => {
-      if (event.defaultPrevented || event.metaKey || event.ctrlKey || event.altKey || isEditable(event.target)) return;
+      if (event.defaultPrevented || event.repeat || event.metaKey || event.ctrlKey || event.altKey || isEditable(event.target)) return;
       const key = event.key.toLowerCase();
       if (key !== 'c' && key !== 'g' && key !== 'w' && key !== 'u') return;
       const selected = options.selection();
