@@ -100,7 +100,10 @@ export function createScheduler(options: SchedulerOptions): Scheduler {
 
   function maintain(): void {
     const now = nowIso();
-    const purged = db.purgeArchived(now);
+    const perRepo = db.purgeArchivedByRepo(now);
+    const purged = [...perRepo.values()].reduce((a, b) => a + b, 0);
+    // The purge moves each affected repo's archivedCount (DC-64).
+    for (const repoId of perRepo.keys()) options.broadcast({ event: 'repo', data: { repoId } });
     const pruned = db.events.pruneCollect(now);
     if (purged > 0 || pruned > 0) log.info(`maintenance: purged ${String(purged)} archived changes, ${String(pruned)} collect events`);
   }

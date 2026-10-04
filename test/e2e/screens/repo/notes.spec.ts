@@ -8,7 +8,8 @@ import { expect, test, type Page } from '@playwright/test';
 import { fixtures, mockApi } from '../../support/mock-api.js';
 import { emitSse, tagClient } from '../../support/sse.js';
 
-const UNTRUSTED = 'config not loaded: repo not trusted (run diffcity trust)';
+/** What the daemon sends: the UI words the note by its code, whatever the text says. */
+const UNTRUSTED = { code: 'config-not-trusted', text: 'config not loaded: repo not trusted (run diffcity trust)' };
 const AA = 4.5;
 
 test('an untrusted-config note is explained, with the trust command to copy', async ({ page, context }) => {
@@ -34,7 +35,7 @@ test('an untrusted-config note is explained, with the trust command to copy', as
 
 test('an unknown note shows its text as is, as text and not as markup', async ({ page }) => {
   const detail = fixtures.repoMixedChanges();
-  detail.repo.notes = ['something the daemon says <b>now</b>'];
+  detail.repo.notes = [{ code: 'something-new', text: 'something the daemon says <b>now</b>' }];
   await mockApi(page, { details: [detail] });
   await page.goto('/#/repo/1');
   await expect(page.getByTestId('repo-note')).toHaveText(/something the daemon says <b>now<\/b>/);

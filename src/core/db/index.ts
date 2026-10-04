@@ -46,15 +46,29 @@ export interface Db {
    * changes were deleted.
    */
   purgeArchived(now: string): number;
+  /** Like purgeArchived, and says which repos lost changes (their `archivedCount` moved). */
+  purgeArchivedByRepo(now: string): Map<number, number>;
   /** The connection settings as SQLite reports them. */
   pragmas(): DbPragmas;
   close(): void;
 }
 
-function purge(db: Connection, now: string): number {
-  return db
-    .prepare<[string]>('DELETE FROM changes WHERE archivedAt IS NOT NULL AND archivedAt < ?')
-    .run(retentionCutoff(now)).changes;
+function purge(db: Connection, now: string): Map<number, number> {
+  const cutoff = retentionCutoff(now);
+  return db.transaction(
+    () => {
+      const perRepo = new Map<number, number>();
+      const rows = db
+        .prepare<[string], { repoId: number; n: number }>(
+          'SELECT repoId, count(*) AS n FROM changes WHERE archivedAt IS NOT NULL AND archivedAt < ? GROUP BY repoId',
+        )
+        .all(cutoff);
+      for (const row of rows) perRepo.set(row.repoId, row.n);
+      db.prepare<[string]>('DELETE FROM changes WHERE archivedAt IS NOT NULL AND archivedAt < ?').run(cutoff);
+      return perRepo;
+    },
+    { immediate: true },
+  );
 }
 
 /**
@@ -72,7 +86,8 @@ export function openDb(path: string, options: { warn?: (message: string) => void
     events: createEventStore(db),
     review: createReviewStore(db),
     transaction: (fn) => db.transaction(fn, { immediate: true }),
-    purgeArchived: (now) => purge(db, now),
+    purgeArchived: (now) => [...purge(db, now).values()].reduce((a, b) => a + b, 0),
+    purgeArchivedByRepo: (now) => purge(db, now),
     pragmas: () => readPragmas(db),
     close: () => {
       db.close();

@@ -2,7 +2,7 @@
 // built from SQL counters and never parse a report.
 
 import type { Connection } from './driver.js';
-import type { LastAudit, RepoRecord, RepoSummary, WatchMode } from '../model/types.js';
+import type { LastAudit, RepoNote, RepoRecord, RepoSummary, WatchMode } from '../model/types.js';
 import { isoTime, jsonOrNull, parseJsonOrNull } from './time.js';
 
 interface RepoRow {
@@ -25,6 +25,7 @@ interface RepoSummaryRow extends RepoRow {
   prs: number;
   unreviewed: number;
   highFindings: number;
+  archivedCount: number;
   lastRepoEventAt: string | null;
   lastChangeEventAt: string | null;
 }
@@ -45,7 +46,7 @@ export interface RepoRuntime {
   collecting: boolean;
   watch: WatchMode;
   /** RepoSummary.notes. */
-  notes: string[];
+  notes: RepoNote[];
 }
 
 /** Runtime state for a repo; without one, a summary says not collecting and `full`/`off` by `active`. */
@@ -109,6 +110,7 @@ function toSummary(row: RepoSummaryRow, runtime: RepoRuntimeLookup): RepoSummary
     counts: { draft: row.drafts, branch: row.branches, pr: row.prs },
     unreviewed: row.unreviewed,
     highFindings: row.highFindings,
+    archivedCount: row.archivedCount,
     lastAudit: repo.lastAudit === null ? null : { at: repo.lastAudit.at },
     collecting,
     error: repo.collectError,
@@ -143,6 +145,7 @@ SELECT r.*,
        AND json_extract(f.finding, '$.severity') = 'high'
        AND f.head = (SELECT s.head FROM snapshots s WHERE s.changeId = c.id
                      ORDER BY s.computedAt DESC, s.id DESC LIMIT 1)) AS highFindings,
+  (SELECT count(*) FROM changes c WHERE c.repoId = r.id AND c.archivedAt IS NOT NULL) AS archivedCount,
   (SELECT max(e.at) FROM events e LEFT JOIN changes c ON c.id = e.changeId
      WHERE e.repoId = r.id AND (e.changeId IS NULL OR c.archivedAt IS NULL)) AS lastRepoEventAt,
   (SELECT max(c.lastEventAt) FROM changes c

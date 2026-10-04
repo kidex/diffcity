@@ -118,6 +118,7 @@ describe('repo summaries', () => {
       counts: { draft: 1, branch: 2, pr: 1 },
       unreviewed: 2,
       highFindings: 0,
+      archivedCount: 1,
       lastAudit: null,
       collecting: false,
       error: null,
@@ -132,6 +133,7 @@ describe('repo summaries', () => {
       counts: { draft: 0, branch: 0, pr: 0 },
       unreviewed: 0,
       highFindings: 0,
+      archivedCount: 0,
       lastAudit: null,
       lastEventAt: null,
       watch: 'off',
@@ -218,8 +220,8 @@ describe('repo summaries', () => {
     const [summary] = db.repos.listSummaries((record) => ({
       collecting: record.id === repo.id,
       watch: 'git-only',
-      notes: ['a note'],
+      notes: [{ code: 'a-note', text: 'a note' }],
     }));
-    expect(summary).toMatchObject({ collecting: true, watch: 'git-only', notes: ['a note'] });
+    expect(summary).toMatchObject({ collecting: true, watch: 'git-only', notes: [{ code: 'a-note', text: 'a note' }] });
   });
 });
