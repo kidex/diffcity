@@ -31,6 +31,7 @@ import type { ReviewController } from './review/controller.js';
 import { createReviewController } from './review/controller.js';
 import type { ReviewUi } from './review/ui.js';
 import { createReviewUi } from './review/ui.js';
+import type { QualityState } from './scene/quality.js';
 import type { CityView, EffectsState, SceneStats } from './scene/view.js';
 import { createCityView, disposal } from './scene/view.js';
 
@@ -66,6 +67,8 @@ export interface SceneDebug {
   /** The symbol id of the floor the file view's diff is pointing at. */
   hoveredFloor(): string | null;
   stats(): SceneStats | null;
+  /** The quality level the 500 ms probe chose at mount (MSAA, bloom scale, environment map), whether it has finished and how many probes ran (never more than one). */
+  quality(): QualityState | null;
   bench(ms: number): Promise<{ fps: number; drawCalls: number } | null>;
   camera(): { theta: number; phi: number; r: number } | null;
   /** The camera of the first frame: far out when the intro runs, home when it is skipped. */
@@ -106,6 +109,7 @@ function installDebug(view: () => CityView | null): SceneDebug {
     selectedFloor: () => view()?.selectedFloor() ?? null,
     hoveredFloor: () => view()?.hoveredFloor() ?? null,
     stats: () => view()?.stats() ?? null,
+    quality: () => view()?.quality() ?? null,
     bench: async (ms) => (await view()?.bench(ms)) ?? null,
     camera: () => view()?.camera() ?? null,
     firstCamera: () => view()?.firstCamera() ?? null,

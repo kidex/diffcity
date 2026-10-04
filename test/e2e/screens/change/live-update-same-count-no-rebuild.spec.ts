@@ -1,9 +1,9 @@
 // e2e/change/live-update-same-count-no-rebuild (ADR-026, DC-79): a live
 // update that moves buildings without changing how many instances the towers
 // need (two files swap places) tweens in the buffers that are there. The
-// towers' instanced buffers are built once for the new Report and never again
-// on the tween's frames, and the renderer holds as many geometries after the
-// tween as before it.
+// towers' instanced buffers are not built again, neither for the new Report
+// nor on the tween's frames (DC-90), and the renderer holds as many
+// geometries after the tween as before it.
 
 import { test } from '@playwright/test';
 import type { Report } from '../../../../src/core/report/types.js';
@@ -45,7 +45,7 @@ test('change/live-update-same-count-no-rebuild', async ({ page }, testInfo) => {
   const after = await stats(page);
   expect(after.buildings).toBe(before.buildings);
   expect(after.floors).toBe(before.floors);
-  // One build for the new Report; none for the tween frames in between.
-  expect(after.builds - before.builds).toBe(1);
+  // The new Report is laid out in the buffers that are there (DC-90), and so are the tween's frames: no build.
+  expect(after.builds - before.builds).toBe(0);
   expect(after.geometries).toBe(before.geometries);
 });

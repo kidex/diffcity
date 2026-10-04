@@ -2,9 +2,11 @@
 // (window.diffcityScene, src/ui/screens/change/index.ts).
 
 import { expect, type Page } from '@playwright/test';
+import type { QualityState } from '../../../src/ui/screens/change/scene/quality.js';
 
 export interface SceneStats {
   drawCalls: number;
+  triangles: number;
   buildings: number;
   floors: number;
   lots: number;
@@ -79,6 +81,7 @@ export async function withoutWebgl(page: Page): Promise<void> {
 }
 
 export const stats = (page: Page): Promise<SceneStats> => page.evaluate<SceneStats>('window.diffcityScene.stats()');
+export const quality = (page: Page): Promise<QualityState> => page.evaluate<QualityState>('window.diffcityScene.quality()');
 export const camera = (page: Page): Promise<CameraState> => page.evaluate<CameraState>('window.diffcityScene.camera()');
 export const firstCamera = (page: Page): Promise<CameraState> => page.evaluate<CameraState>('window.diffcityScene.firstCamera()');
 export const selected = (page: Page): Promise<string | null> => page.evaluate<string | null>('window.diffcityScene.selected()');
