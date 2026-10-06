@@ -8,18 +8,21 @@ A JSON array of findings. `symbolId` is never written by hand: diffcity resolves
 
 ```ts
 interface FindingInput {
-  id?: string;                 // optional; generated when missing
+  id?: string;                 // optional; kept as an alias of the finding key
   source: string;              // who found it: "claude", "semgrep", "eslint", "gitleaks", "human"
   severity: 'high' | 'med' | 'low';
-  category: 'security' | 'correctness' | 'scope' | 'style' | 'tests';
+  category: 'security' | 'correctness' | 'scope' | 'style' | 'tests' | 'architecture';
   file: string;                // repo-relative path, forward slashes
   line: number;                // 1-based line in the head (after) version
-  title: string;               // one line
-  message: string;             // what is wrong and when it breaks
-  fix?: string;                // suggested change
+  title: string;               // one line, at most 4 KiB
+  message: string;             // what is wrong and when it breaks, at most 16 KiB
+  fix?: string;                // suggested change, at most 4 KiB
+  why?: string;                // one-line reading hint for the execution path
   state?: 'open' | 'intended' | 'fixed';   // default "open"
 }
 ```
+
+`why` is a one-line reading hint for the execution path (for example "new route, called without an order"); it is optional and not part of the finding itself. `category: 'architecture'` is for findings about layering and structure.
 
 Example, as written by the `/code-review` slash command to `.diffcity/findings.json`:
 
@@ -47,6 +50,20 @@ Example, as written by the `/code-review` slash command to `.diffcity/findings.j
 ]
 ```
 
+A file with a missing or malformed field is rejected as a whole, with one message per problem. A file with more than 5,000 findings, or a message over 16 KiB, a title or a fix over 4 KiB, is rejected. An entry whose `file` cannot be made repo-relative is skipped with a warning (see Paths).
+
+## Paths
+
+`file` is repo-relative with `/` separators. Backslashes are converted, a leading `./` is dropped. An absolute path (or a `file://` URI) inside the repository root is made relative to it. These are skipped with a warning, the rest of the file is imported:
+
+- `skipped: absolute path "<path>" is outside the repository`
+- `skipped: absolute path "<path>" and no repository root`
+- `skipped: path "<path>" contains ".."`
+
+## Finding key
+
+Every finding gets the key `f:` followed by the first 16 hex digits of `sha256(source NUL file NUL normalized title NUL line)`. The same finding imported twice has the same key. An own-format `id` is kept as an alias. Findings computed by rules keep `rule:<id>:<hash>` as their id.
+
 ## SARIF 2.1
 
 Each entry of `runs[].results[]` becomes one finding.
@@ -62,17 +79,57 @@ Each entry of `runs[].results[]` becomes one finding.
 | `results[].properties.category` | `category` (default `correctness`) |
 | `results[].fixes[0].description.text` | `fix` |
 
-Results without a physical location are skipped with a warning.
+Each run's `tool.driver.name` is the `source` of its results (`sarif` when missing). Warnings, with `runs[i].results[j]` as the place:
+
+- `skipped: no physical location`: no `locations`, an empty `locations: []`, or no `artifactLocation.uri`. A result with no location is never turned into a change-level finding; those come only from rules.
+- `skipped: no ruleId and no message text`
+- `skipped: absolute path "<path>" is outside the repository`, `skipped: path "<path>" contains ".."`
+- `no region.startLine, line 1 used`
+- `unknown category "<value>", "correctness" used`
+
+Example, a result from a run of `semgrep`:
+
+```json
+{
+  "version": "2.1.0",
+  "runs": [
+    {
+      "tool": { "driver": { "name": "semgrep" } },
+      "results": [
+        {
+          "ruleId": "shopfront.no-unchecked-order",
+          "level": "error",
+          "message": { "text": "The order is used before it is checked." },
+          "properties": { "category": "security" },
+          "fixes": [{ "description": { "text": "Check the order first." } }],
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": { "uri": "src/auth/order.guard.ts" },
+                "region": { "startLine": 14 }
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
+```
 
 ## Anchoring
 
 - The finding's line is matched against the symbols of the `after` version of its file; the symbol whose `range` contains the line becomes `symbolId`.
 - A line outside every symbol keeps the finding at file level, with no `symbolId`.
-- A file that is not part of the change is reported and skipped.
+- A file that is not part of the change is skipped and counted as `skipped-not-in-change`.
+- When several symbols contain the line, the innermost one is used (a method inside its class). A symbol that was deleted never matches: a finding line is a line of the `after` version.
+- The finding keeps the symbol's name, kind and first line, and the fingerprint of the symbol (of the file, at file level) at import time.
+- On a later head the finding is found again by file, symbol name and kind, and its line moves with the symbol. When the symbol no longer exists, it is anchored by its line, clamped to the last symbol of the file. When the file is no longer in the change, the finding is left out of the Report but kept in the store, and comes back with the file.
+- Findings with no file belong to the change and come only from rules. They change no file verdict.
 
 ## Deduplication
 
-Findings with the same `symbolId`, the same `category` and the same normalized title (lower case, collapsed whitespace, trailing punctuation removed) merge into one entry that lists every source.
+Findings with the same `symbolId`, the same `category` and the same normalized title (lower case, collapsed whitespace, trailing punctuation removed) merge into one entry. The first source in import order is `source`; every source is listed in `sources`, `source` included. The highest severity wins, the first non-empty `fix` wins, and the state is the most closed of the merged ones (`intended` over `open`).
 
 ## States
 
@@ -80,4 +137,8 @@ Findings with the same `symbolId`, the same `category` and the same normalized t
 |---|---|---|
 | `open` | default | a high open finding makes the file `risky` |
 | `intended` | set by "Mark as intended" | ignored by the verdict |
-| `fixed` | set automatically when the symbol changed and a later import no longer reports the finding | ignored by the verdict |
+| `fixed` | set automatically by an import, see below | ignored by the verdict |
+
+### When a finding becomes `fixed`
+
+Only an import fixes findings; a new snapshot never does. On an import, each stored `open` finding of a source the import covers that the import did not report again becomes `fixed` when its file left the change, or when its anchor changed: the symbol's fingerprint (the file's, at file level) differs from the one stored when the finding was imported, or the symbol no longer exists. A finding whose anchor is unchanged stays `open`, as does one whose stored fingerprint is unknown. A finding counts as reported again when the import has the same key, or the same symbol (file at file level), category and normalized title.
