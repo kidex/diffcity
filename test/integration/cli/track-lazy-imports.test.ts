@@ -59,6 +59,12 @@ describe('lazy command modules', () => {
     expect(help.filter(loadsTsMorph)).toEqual([]);
   });
 
+  it('graph/ts-morph-not-loaded-by-import: import does not load ts-morph', async () => {
+    const urls = await loadedModules(['import', 'findings.json']);
+    expect(urls.length).toBeGreaterThan(0);
+    expect(urls.filter(loadsTsMorph)).toEqual([]);
+  });
+
   it('--help loads no command module', async () => {
     const urls = await loadedModules(['--help']);
     expect(urls.some((url) => url.endsWith('/dist/cli/program.js'))).toBe(true);
