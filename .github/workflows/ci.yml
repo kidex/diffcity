@@ -47,13 +47,18 @@ jobs:
           PR_HEAD: ${{ github.event.pull_request.head.sha }}
           SHA: ${{ github.sha }}
           FULL: ${{ inputs.full }}
+        shell: bash
         run: |
+          set -euo pipefail
           case "$EVENT" in
             pull_request) range=(--base "$PR_BASE" --sha "$PR_HEAD") ;;
             workflow_dispatch) range=(--base HEAD~1 --sha HEAD --full "$FULL") ;;
             *) range=(--before "$BEFORE" --sha "$SHA") ;;
           esac
-          node scripts/ci-scope.mjs --event "$EVENT" --ref "$REF" "${range[@]}" | tee -a "$GITHUB_OUTPUT"
+          # Appended only after node succeeded: a crash leaves the outputs empty,
+          # and the aggregate job fails on an empty scope.
+          node scripts/ci-scope.mjs --event "$EVENT" --ref "$REF" "${range[@]}" > "$RUNNER_TEMP/scope.out"
+          cat "$RUNNER_TEMP/scope.out" | tee -a "$GITHUB_OUTPUT"
 
   # Node 22 always; Node 24 as well on pushes to main and on tags.
   check:
@@ -184,6 +189,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       SCOPE: ${{ needs.scope.result }}
+      SCOPE_OUT: ${{ needs.scope.outputs.scope }}
       SCREENS: ${{ needs.e2e-screens.result }}
       ACCEPTANCE: ${{ needs.e2e-acceptance.result }}
       VISUAL: ${{ needs.e2e-visual-baselines.result }}
@@ -195,6 +201,7 @@ jobs:
         run: |
           echo "scope: $SCOPE, screens: $SCREENS (want $WANT_SCREENS), acceptance: $ACCEPTANCE (want $WANT_ACCEPTANCE), visual baselines: $VISUAL (want $WANT_VISUAL)"
           test "$SCOPE" = success
+          case "$SCOPE_OUT" in none | core | full) ;; *) echo "::error::scope output is '$SCOPE_OUT', expected none, core or full"; exit 1 ;; esac
           expect() { # name, result, wanted
             if [ "$3" = true ]; then want=success; else want=skipped; fi
             if [ "$2" != "$want" ]; then echo "::error::$1 is $2, expected $want"; return 1; fi
