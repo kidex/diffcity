@@ -58,7 +58,7 @@ for (let i = 0; i < count; i++) {
   files.push({ path, status, after: source(i, 2), symbols, ms: performance.now() - t0 });
 }
 const compareMs = files.reduce((sum, file) => sum + file.ms, 0);
-const input = { files: files.map(({ ms: _ms, ...file }) => file), tsconfig: null };
+const input = { files: files.map(({ path, status, after, symbols }) => ({ path, status, after, symbols })), tsconfig: null };
 
 const times = [];
 let graph;
