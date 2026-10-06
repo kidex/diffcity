@@ -109,6 +109,35 @@ describe('ci scope: e2e folders and the pull request range', () => {
   });
 });
 
+describe('ci scope: renames and markdown in code folders', () => {
+  it('lists the old path of a rename, so a move out of src/ui is full', () => {
+    const repo = mkdtempSync(join(tmpdir(), 'diffcity-rename-'));
+    const git = (...args: string[]) => execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@example.test', ...args], { cwd: repo, encoding: 'utf8' }).trim();
+    git('init', '-q', '-b', 'main');
+    mkdirSync(join(repo, 'src/ui'), { recursive: true });
+    mkdirSync(join(repo, 'src/core'), { recursive: true });
+    writeFileSync(join(repo, 'src/ui/x.ts'), 'export const x = 1;\n'.repeat(20));
+    git('add', '.');
+    git('commit', '-qm', 'base');
+    git('mv', 'src/ui/x.ts', 'src/core/x.ts');
+    git('commit', '-qam', 'move');
+    const out = execFileSync('node', [join(process.cwd(), 'scripts/ci-scope.mjs'), '--event', 'push', '--before', 'HEAD~1', '--sha', 'HEAD'], { cwd: repo, encoding: 'utf8' });
+    expect(out).toContain('scope=full');
+    expect(out).toContain('2 changed path(s)');
+  });
+
+  it('classifies a .md by its folder, and only plain docs as none', () => {
+    expect(classifyPath('test/fixtures/repos/small/NOTES.md')).toBe('core');
+    expect(classifyPath('src/core/README.md')).toBe('core');
+    expect(classifyPath('src/ui/README.md')).toBe('full');
+    expect(classifyPath('test/e2e/screens/NOTES.md')).toBe('full');
+    expect(classifyPath('design/notes.md')).toBe('full');
+    expect(classifyPath('README.md')).toBe('none');
+    expect(classifyPath('docs/a.md')).toBe('none');
+    expect(plan({ event: 'push', ref: 'refs/heads/main', paths: ['README.md', 'test/fixtures/repos/a/NOTES.md'] }).scope).toBe('core');
+  });
+});
+
 describe('e2e budget', () => {
   it('ci/budget-guard-screens-180', () => {
     expect(LIMITS.screens).toBe(180);

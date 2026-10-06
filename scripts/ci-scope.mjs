@@ -42,15 +42,16 @@ const FULL = [
 /** Paths whose change the check and acceptance jobs cover. */
 const CORE = [/^src\/(?:core|daemon|cli)\//, /^test\/(?:unit|integration|fixtures|e2e\/acceptance)\//];
 
-/** Documentation: `*.md` anywhere, or anything under `docs/`. */
+/** Documentation: `*.md` or anything under `docs/`, outside the folders above. */
 const DOCS = [/\.md$/, /^docs\//];
 
 /** @param {string} path @returns {'none' | 'core' | 'full'} */
 export function classifyPath(path) {
   const p = path.trim().replaceAll('\\', '/').replace(/^\.\//, '');
+  // Code folders first: a `.md` under src/ or test/ follows its folder.
   if (FULL.some((re) => re.test(p))) return 'full';
-  if (DOCS.some((re) => re.test(p))) return 'none';
   if (CORE.some((re) => re.test(p))) return 'core';
+  if (DOCS.some((re) => re.test(p))) return 'none';
   return 'full';
 }
 
@@ -129,7 +130,7 @@ function gitPaths(from, to, mergeBase) {
     if (mergeBase) {
       from = execFileSync('git', ['merge-base', from, to], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
     }
-    const out = execFileSync('git', ['diff', '--name-only', `${from}..${to}`], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
+    const out = execFileSync('git', ['diff', '--name-only', '--no-renames', `${from}..${to}`], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
     return out.split('\n').filter((line) => line !== '');
   } catch {
     return null;
