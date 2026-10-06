@@ -3,7 +3,14 @@ name: CI
 on:
   push:
     branches: [main]
+    tags: ['v*']
   pull_request:
+  workflow_dispatch:
+    inputs:
+      full:
+        description: Run every job, whatever the changed files are
+        type: boolean
+        default: true
 
 permissions:
   contents: read
@@ -13,13 +20,51 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Decides what the other jobs do (scripts/ci-scope.mjs). It needs git history
+  # and Node, nothing else: no npm ci. A commit with `[skip ci]` never reaches
+  # it, GitHub skips the whole run.
+  scope:
+    name: scope
+    runs-on: ubuntu-latest
+    outputs:
+      scope: ${{ steps.scope.outputs.scope }}
+      check: ${{ steps.scope.outputs.check }}
+      node: ${{ steps.scope.outputs.node }}
+      acceptance: ${{ steps.scope.outputs.acceptance }}
+      screens: ${{ steps.scope.outputs.screens }}
+      visual: ${{ steps.scope.outputs.visual }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Work out the scope
+        id: scope
+        env:
+          EVENT: ${{ github.event_name }}
+          REF: ${{ github.ref }}
+          BEFORE: ${{ github.event.before }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          SHA: ${{ github.sha }}
+          FULL: ${{ inputs.full }}
+        run: |
+          case "$EVENT" in
+            pull_request) range=(--base "$PR_BASE" --sha "$PR_HEAD") ;;
+            workflow_dispatch) range=(--base HEAD~1 --sha HEAD --full "$FULL") ;;
+            *) range=(--before "$BEFORE" --sha "$SHA") ;;
+          esac
+          node scripts/ci-scope.mjs --event "$EVENT" --ref "$REF" "${range[@]}" | tee -a "$GITHUB_OUTPUT"
+
+  # Node 22 always; Node 24 as well on pushes to main and on tags.
   check:
     name: Node ${{ matrix.node }}
+    needs: scope
+    if: ${{ needs.scope.outputs.check == 'true' }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        node: [22, 24]
+        node: ${{ fromJSON(needs.scope.outputs.node) }}
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -29,6 +74,8 @@ jobs:
       - run: npm ci
       - run: npm run lint
       - run: npm run typecheck
+      - name: e2e spec budget
+        run: node scripts/e2e-budget.mjs
       - run: npm run build
       - run: npm test
       - name: CLI smoke test
@@ -40,7 +87,8 @@ jobs:
   # and runs one worker: the runner's CPU is the scene's budget.
   e2e-screens:
     name: e2e screens ${{ matrix.shard }}/${{ strategy.job-total }}
-    needs: check
+    needs: [scope, check]
+    if: ${{ needs.scope.outputs.screens == 'true' }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -64,7 +112,8 @@ jobs:
   # (test/playwright.config.ts).
   e2e-acceptance:
     name: e2e acceptance
-    needs: check
+    needs: [scope, check]
+    if: ${{ needs.scope.outputs.acceptance == 'true' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -88,7 +137,8 @@ jobs:
   # committed. It then fails, so a missing baseline never goes unnoticed.
   e2e-visual-baselines:
     name: e2e visual baselines
-    needs: check
+    needs: [scope, check]
+    if: ${{ needs.scope.outputs.visual == 'true' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -124,16 +174,33 @@ jobs:
           echo "::error::Visual baselines are missing. Download the visual-baselines artifact, unzip it into test/e2e/screens/ and commit the images."
           exit 1
 
-  # One check for the whole stage, under the name the e2e job always had.
+  # One check for the whole stage, under the name the e2e job always had. A job
+  # the scope leaves out is skipped and counts as passed; a job the scope asks
+  # for must have succeeded (a failed `check` skips it, which fails here too).
   e2e:
     name: e2e (Playwright)
-    needs: [e2e-screens, e2e-acceptance, e2e-visual-baselines]
+    needs: [scope, e2e-screens, e2e-acceptance, e2e-visual-baselines]
     if: ${{ always() }}
     runs-on: ubuntu-latest
+    env:
+      SCOPE: ${{ needs.scope.result }}
+      SCREENS: ${{ needs.e2e-screens.result }}
+      ACCEPTANCE: ${{ needs.e2e-acceptance.result }}
+      VISUAL: ${{ needs.e2e-visual-baselines.result }}
+      WANT_SCREENS: ${{ needs.scope.outputs.screens }}
+      WANT_ACCEPTANCE: ${{ needs.scope.outputs.acceptance }}
+      WANT_VISUAL: ${{ needs.scope.outputs.visual }}
     steps:
-      - name: Every e2e job passed
+      - name: Every e2e job that was asked for passed
         run: |
-          echo "screens: ${{ needs.e2e-screens.result }}, acceptance: ${{ needs.e2e-acceptance.result }}, visual baselines: ${{ needs.e2e-visual-baselines.result }}"
-          test "${{ needs.e2e-screens.result }}" = success
-          test "${{ needs.e2e-acceptance.result }}" = success
-          test "${{ needs.e2e-visual-baselines.result }}" = success
+          echo "scope: $SCOPE, screens: $SCREENS (want $WANT_SCREENS), acceptance: $ACCEPTANCE (want $WANT_ACCEPTANCE), visual baselines: $VISUAL (want $WANT_VISUAL)"
+          test "$SCOPE" = success
+          expect() { # name, result, wanted
+            if [ "$3" = true ]; then want=success; else want=skipped; fi
+            if [ "$2" != "$want" ]; then echo "::error::$1 is $2, expected $want"; return 1; fi
+          }
+          status=0
+          expect screens "$SCREENS" "$WANT_SCREENS" || status=1
+          expect acceptance "$ACCEPTANCE" "$WANT_ACCEPTANCE" || status=1
+          expect "visual baselines" "$VISUAL" "$WANT_VISUAL" || status=1
+          exit $status
