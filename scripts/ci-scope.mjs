@@ -29,6 +29,8 @@ const ZERO_SHA = /^0+$/;
 const FULL = [
   /^src\/ui\//,
   /^test\/e2e\/screens\//,
+  /^test\/e2e\/support\//,
+  /^test\/playwright\.config\.ts$/,
   /^test\/fixtures\/ui\//,
   /^vite[^/]*\.ts$/,
   /^package\.json$/,
@@ -38,7 +40,7 @@ const FULL = [
 ];
 
 /** Paths whose change the check and acceptance jobs cover. */
-const CORE = [/^src\/(?:core|daemon|cli)\//, /^test\/(?:unit|integration|fixtures)\//];
+const CORE = [/^src\/(?:core|daemon|cli)\//, /^test\/(?:unit|integration|fixtures|e2e\/acceptance)\//];
 
 /** Documentation: `*.md` anywhere, or anything under `docs/`. */
 const DOCS = [/\.md$/, /^docs\//];
@@ -115,10 +117,18 @@ export function format(p) {
   ].join('\n');
 }
 
-/** Changed paths of `from..to`, or null when git cannot tell. @param {string} from @param {string} to */
-function gitPaths(from, to) {
+/**
+ * Changed paths of `from..to`, or null when git cannot tell. With `mergeBase`
+ * the range starts at the merge base of the two, so a base that moved on does
+ * not widen a pull request's scope.
+ * @param {string} from @param {string} to @param {boolean} mergeBase
+ */
+function gitPaths(from, to, mergeBase) {
   if (from === '' || to === '' || ZERO_SHA.test(from) || ZERO_SHA.test(to)) return null;
   try {
+    if (mergeBase) {
+      from = execFileSync('git', ['merge-base', from, to], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+    }
     const out = execFileSync('git', ['diff', '--name-only', `${from}..${to}`], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
     return out.split('\n').filter((line) => line !== '');
   } catch {
@@ -144,7 +154,7 @@ function main() {
   const event = values['event'] ?? 'push';
   const from = values['before'] ?? values['base'] ?? '';
   const to = values['sha'] ?? 'HEAD';
-  const paths = stdin ? readFileSync(0, 'utf8').split('\n').filter((line) => line.trim() !== '') : gitPaths(from, to);
+  const paths = stdin ? readFileSync(0, 'utf8').split('\n').filter((line) => line.trim() !== '') : gitPaths(from, to, event === 'pull_request');
   console.log(format(plan({ event, ref: values['ref'] ?? '', full: values['full'] === 'true', paths })));
 }
 

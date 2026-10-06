@@ -2,6 +2,7 @@
 // pays for, and the spec-file budget of the Playwright projects. Pure
 // functions on invented paths; the budget checks use temporary directories.
 
+import { execFileSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -71,6 +72,40 @@ describe('ci scope', () => {
     const p = push(['README.md', 'CHANGELOG.md', 'docs/guide/a.png', 'docs/b.txt', 'SPEC.md']);
     expect(p).toMatchObject({ scope: 'none', check: false, acceptance: false, screens: false, visual: false, node: [] });
     expect(pr(['README.md', 'src/core/a.ts']).scope).toBe('core');
+  });
+});
+
+describe('ci scope: e2e folders and the pull request range', () => {
+  it('counts the acceptance specs as core, the shared e2e files as full', () => {
+    expect(plan({ event: 'pull_request', paths: ['test/e2e/acceptance/a.spec.ts'] })).toMatchObject({ scope: 'core', acceptance: true, screens: false, visual: false });
+    expect(classifyPath('test/e2e/support/daemon.ts')).toBe('full');
+    expect(classifyPath('test/playwright.config.ts')).toBe('full');
+  });
+
+  it('diffs a pull request from the merge base, so a moved base does not widen it', () => {
+    const repo = mkdtempSync(join(tmpdir(), 'diffcity-scope-'));
+    const git = (...args: string[]) => execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@example.test', ...args], { cwd: repo, encoding: 'utf8' }).trim();
+    git('init', '-q', '-b', 'main');
+    mkdirSync(join(repo, 'src/core'), { recursive: true });
+    mkdirSync(join(repo, 'src/ui'), { recursive: true });
+    writeFileSync(join(repo, 'src/core/a.ts'), '1');
+    git('add', '.');
+    git('commit', '-qm', 'base');
+    git('checkout', '-qb', 'topic');
+    writeFileSync(join(repo, 'src/core/a.ts'), '2');
+    git('commit', '-qam', 'topic');
+    git('checkout', '-q', 'main');
+    writeFileSync(join(repo, 'src/ui/b.ts'), '1');
+    git('add', '.');
+    git('commit', '-qm', 'main moves on, in the UI');
+    const script = join(process.cwd(), 'scripts/ci-scope.mjs');
+    const scope = (event: string) =>
+      /^scope=(\w+)$/m.exec(execFileSync('node', [script, '--event', event, '--base', git('rev-parse', 'main'), '--sha', git('rev-parse', 'topic')], { cwd: repo, encoding: 'utf8' }))?.[1];
+    expect(scope('pull_request')).toBe('core');
+    expect(scope('push')).toBe('full');
+    // A base that is not in the clone: fail safe.
+    const lost = execFileSync('node', [script, '--event', 'pull_request', '--base', 'deadbeef', '--sha', 'topic'], { cwd: repo, encoding: 'utf8' });
+    expect(lost).toContain('scope=full');
   });
 });
 
