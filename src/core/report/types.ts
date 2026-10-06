@@ -56,6 +56,10 @@ export interface Step {
   fileId: string;
   why: string;
   diff: DiffLine[];
+  /** Which part of the execution path the step belongs to; absent in Reports written before phase 4. */
+  section?: 'path' | 'migration' | 'unconnected';
+  /** The entry point (a `Symbol.id`) of the path the step is on; absent outside a path. */
+  entry?: string;
 }
 
 export interface DiffLine {
@@ -67,6 +71,8 @@ export interface Finding {
   id: string;
   /** 'claude' | 'semgrep' | 'eslint' | ... */
   source: string;
+  /** Every source that reported the finding, `source` included; absent on a finding with one source. */
+  sources?: string[];
   severity: 'high' | 'med' | 'low';
   category: 'security' | 'correctness' | 'scope' | 'style' | 'tests' | 'architecture';
   file: string;

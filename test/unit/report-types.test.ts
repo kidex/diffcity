@@ -119,11 +119,20 @@ describe('Report types (SPEC.md 4.1)', () => {
       signatureAfter?: string;
       callsites?: number;
     }>();
-    expectTypeOf<Step>().toEqualTypeOf<{ order: number; symbolId: string; fileId: string; why: string; diff: DiffLine[] }>();
+    expectTypeOf<Step>().toEqualTypeOf<{
+      order: number;
+      symbolId: string;
+      fileId: string;
+      why: string;
+      diff: DiffLine[];
+      section?: 'path' | 'migration' | 'unconnected';
+      entry?: string;
+    }>();
     expectTypeOf<DiffLine>().toEqualTypeOf<{ kind: 'ctx' | 'add' | 'del'; text: string }>();
     expectTypeOf<Finding>().toEqualTypeOf<{
       id: string;
       source: string;
+      sources?: string[];
       severity: 'high' | 'med' | 'low';
       category: 'security' | 'correctness' | 'scope' | 'style' | 'tests' | 'architecture';
       file: string;
