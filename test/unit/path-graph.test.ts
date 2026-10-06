@@ -2,6 +2,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'nod
 import fs from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
+import type { Node as MorphNode } from 'ts-morph';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   buildCallGraph,
@@ -106,6 +107,47 @@ describe('graph', () => {
     );
     const graph = await buildCallGraph({ ...input, files });
     expect([...graph.callsites]).toEqual([[id('src/tax.mjs', 'vat'), 1]]);
+  });
+});
+
+describe('graph/ts-fails-midway', () => {
+  /** Makes the type checker throw on the callees of `path` (all files when `null`); files sorted before it go through first. */
+  async function failOn(path: string | null): Promise<void> {
+    const { Node } = await loadTsMorph();
+    const original = Object.getOwnPropertyDescriptor(Node.prototype, 'getSymbol')?.value as (this: MorphNode) => ReturnType<MorphNode['getSymbol']>;
+    vi.spyOn(Node.prototype, 'getSymbol').mockImplementation(function (this: MorphNode) {
+      if (path === null || this.getSourceFile().getFilePath().endsWith(`/${path}`)) throw new Error('checker failed');
+      return original.call(this);
+    });
+  }
+
+  it('graph/ts-fails-midway: a ts-morph failure after some files leaves exactly the names-only graph', async () => {
+    const input = await fixtureChange('graph/ts-fails-midway');
+    const quote = id('src/a.ts', 'quote');
+    const price = id('src/price.ts', 'price');
+    const record = id('src/ledger.ts', 'Ledger.record');
+
+    // Control: the checker alone sees the method call through the re-exported type.
+    const full = await buildCallGraph(input);
+    expect(full.mode).toBe('ts-morph');
+    expect(edgeList(full)).toEqual([`${quote} -> ${record}`, `${quote} -> ${price}`, `${id('src/z.ts', 'tail')} -> ${price}`]);
+    expect([...full.callsites]).toEqual([[price, 3]]);
+
+    await failOn(null);
+    const names = await buildCallGraph(input);
+    vi.restoreAllMocks();
+    expect(names.mode).toBe('names');
+    expect(edgeList(names)).not.toContain(`${quote} -> ${record}`);
+
+    const log = vi.fn<(message: string) => void>();
+    await failOn('src/z.ts');
+    const midway = await buildCallGraph({ ...input, log });
+    expect(midway.mode).toBe('names');
+    expect([...midway.edges]).toEqual([...names.edges]);
+    expect([...midway.callsites]).toEqual([...names.callsites]);
+    expect([...midway.callsites]).toEqual([[price, 3]]);
+    expect(log).toHaveBeenCalledTimes(1);
+    expect(log.mock.calls[0]?.[0]).toContain('checker failed');
   });
 });
 

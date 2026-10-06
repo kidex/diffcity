@@ -204,11 +204,24 @@ function resolveSymbol(morph: TsMorph, callee: Node): MorphSymbol | undefined {
   return symbol;
 }
 
-async function tsMorphEdges(
+/** One call the type checker resolved, held back until the whole pass has run. */
+interface ResolvedCall {
+  path: string;
+  line: number;
+  pos: number;
+  targetId: string;
+}
+
+/**
+ * Resolves the calls of the TS files through the type checker. Only reads
+ * from `collector`: the calls are returned, so a throw partway through
+ * leaves nothing behind for the names fallback to count twice.
+ */
+async function tsMorphCalls(
   files: readonly (GraphFile & { after: string })[],
   tsconfig: string | null,
   collector: Collector,
-): Promise<void> {
+): Promise<ResolvedCall[]> {
   const morph = await loadTsMorph();
   const { Project, ts } = morph;
   const paths = tsconfig === null ? null : readTsconfigPaths(tsconfig, ts);
@@ -231,6 +244,7 @@ async function tsMorphEdges(
   });
   for (const file of files) project.createSourceFile(posix.join(ROOT, file.path), file.after, { overwrite: true });
 
+  const calls: ResolvedCall[] = [];
   for (const file of files) {
     const source = project.getSourceFileOrThrow(posix.join(ROOT, file.path));
     for (const { at, callee } of calleeNodes(morph, source)) {
@@ -243,9 +257,12 @@ async function tsMorphEdges(
         const target = collector.at(path.slice(ROOT.length + 1), declaration.getStartLineNumber());
         if (target !== undefined) targets.add(target.id);
       }
-      for (const id of [...targets].sort(compare)) collector.call(file.path, at.getStartLineNumber(), at.getStart(), id);
+      for (const id of [...targets].sort(compare)) {
+        calls.push({ path: file.path, line: at.getStartLineNumber(), pos: at.getStart(), targetId: id });
+      }
     }
   }
+  return calls;
 }
 
 /**
@@ -276,7 +293,8 @@ export async function buildCallGraph(input: CallGraphInput): Promise<CallGraph> 
     );
   } else if (tsFiles.length > 0) {
     try {
-      await tsMorphEdges(tsFiles, input.tsconfig ?? null, collector);
+      const calls = await tsMorphCalls(tsFiles, input.tsconfig ?? null, collector);
+      for (const call of calls) collector.call(call.path, call.line, call.pos, call.targetId);
       mode = 'ts-morph';
       byNames = files.filter((file) => !isTs(file.path));
     } catch (error) {
