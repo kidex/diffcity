@@ -43,7 +43,7 @@ describe('ci scope', () => {
     }
     // Not classified: fail safe.
     expect(classify(['src/core/a.ts', 'tools/new-thing.sh'])).toBe('full');
-    expect(classify(['test/e2e/acceptance/a.spec.ts'])).toBe('full');
+    expect(classify(['test/e2e/support/a.ts'])).toBe('full');
     expect(classify([])).toBe('full');
     expect(plan({ event: 'push', ref: 'refs/heads/feature', paths: null }).scope).toBe('full');
   });
