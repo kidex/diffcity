@@ -258,7 +258,7 @@ describe('graph/in-memory-no-fs-access', () => {
       },
     ];
 
-    await loadTsMorph();
+    const { ts } = await loadTsMorph();
     const spied: string[] = [];
     const sync = ['readFileSync', 'readdirSync', 'statSync', 'lstatSync', 'existsSync', 'realpathSync', 'openSync', 'accessSync', 'opendirSync'] as const;
     for (const method of sync) {
@@ -275,6 +275,12 @@ describe('graph/in-memory-no-fs-access', () => {
         return original(...args);
       }) as never);
     }
+
+    // Positive control: the spies see a read the TypeScript host makes, so an empty list below means something.
+    const probe = join(work, 'outside', 'secret.ts');
+    expect(ts.sys.readFile(probe)).toContain('secret');
+    expect(spied.some((hit) => hit.includes(probe))).toBe(true);
+    spied.length = 0;
 
     const graph = await buildCallGraph({ ...input, files });
     expect(graph.mode).toBe('ts-morph');
