@@ -3,6 +3,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { STEP_GAP, STEP_MAX_LINES, stepDiff } from '../../src/core/path/diff.js';
+import { MAX_ROW_TEXT } from '../../src/core/diff/row-text.js';
 import { mayRegisterEntries } from '../../src/core/path/entries.js';
 import { buildExecutionPath, type ExecutionPath } from '../../src/core/path/order.js';
 import { applyWhyOverrides } from '../../src/core/path/why.js';
@@ -294,6 +295,17 @@ describe('diff', () => {
     const diff = stepDiff('mod', before, after);
     expect(diff.filter((line) => line.text === STEP_GAP)).toEqual([{ kind: 'ctx', text: STEP_GAP }]);
     expect(diff.filter((line) => line.kind !== 'ctx').map((line) => line.text)).toEqual(['line 2', 'line 2!', 'line 17', 'line 17!']);
+  });
+
+  it('step-line-length: a line longer than MAX_ROW_TEXT is cut like a file view row, never inside a surrogate pair', () => {
+    const literal = `const blob = '${'x'.repeat(300_000)}';`;
+    const [line] = stepDiff('add', null, [literal]);
+    expect(line).toEqual({ kind: 'add', text: literal.slice(0, MAX_ROW_TEXT) });
+    // An emoji (two UTF-16 units) straddling the limit is dropped whole.
+    const emoji = `${'y'.repeat(MAX_ROW_TEXT - 1)}\u{1F600}tail`;
+    const [cut] = stepDiff('mod', ['short'], [emoji]).filter((l) => l.kind === 'add');
+    expect(cut?.text).toBe('y'.repeat(MAX_ROW_TEXT - 1));
+    expect(JSON.stringify(stepDiff('mod', [literal], [`${literal};`])).length).toBeLessThan(3 * MAX_ROW_TEXT);
   });
 
   it('step-cap-120: a longer diff stops at 120 lines, the last one "... N more lines"', () => {

@@ -1,8 +1,10 @@
 import { diffLines, type LineOp } from '../diff/lines.js';
+import { rowText } from '../diff/row-text.js';
 import type { DiffLine, Status } from '../report/types.js';
 
 // Step.diff (ADR-034): the lines between a symbol's before and after slices,
-// three lines of context around each change, at most STEP_MAX_LINES lines.
+// three lines of context around each change, at most STEP_MAX_LINES lines,
+// each at most MAX_ROW_TEXT characters (the file view's rule, row-text.ts).
 
 /** Unchanged lines kept on each side of a change. */
 export const STEP_CONTEXT = 3;
@@ -41,10 +43,14 @@ function withContext(ops: readonly LineOp[]): DiffLine[] {
   return out;
 }
 
-/** At most STEP_MAX_LINES lines; a longer list ends with a `ctx` line `... N more lines`. */
+/**
+ * At most STEP_MAX_LINES lines, each cut to MAX_ROW_TEXT characters; a longer
+ * list ends with a `ctx` line `... N more lines`.
+ */
 export function capStepDiff(lines: DiffLine[]): DiffLine[] {
-  if (lines.length <= STEP_MAX_LINES) return lines;
-  const shown = lines.slice(0, STEP_MAX_LINES - 1);
+  const cut = (line: DiffLine): DiffLine => ({ kind: line.kind, text: rowText(line.text).text });
+  if (lines.length <= STEP_MAX_LINES) return lines.map(cut);
+  const shown = lines.slice(0, STEP_MAX_LINES - 1).map(cut);
   const more = lines.length - shown.length;
   shown.push({ kind: 'ctx', text: `... ${String(more)} more ${more === 1 ? 'line' : 'lines'}` });
   return shown;
