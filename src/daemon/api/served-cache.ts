@@ -8,16 +8,23 @@ export interface ServedCache {
   get(changeId: number, key: string): string | undefined;
   set(changeId: number, key: string, body: string): void;
   readonly size: number;
+  /** Lookups answered from the cache, and lookups that missed (the Report was overlaid again). */
+  readonly stats: { hits: number; misses: number };
 }
 
 export const SERVED_CACHE_MAX = 8;
 
 export function createServedCache(max = SERVED_CACHE_MAX): ServedCache {
   const entries = new Map<number, { key: string; body: string }>();
+  const stats = { hits: 0, misses: 0 };
   return {
     get(changeId, key) {
       const entry = entries.get(changeId);
-      if (entry?.key !== key) return undefined;
+      if (entry?.key !== key) {
+        stats.misses += 1;
+        return undefined;
+      }
+      stats.hits += 1;
       // Most recently used last.
       entries.delete(changeId);
       entries.set(changeId, entry);
@@ -34,6 +41,9 @@ export function createServedCache(max = SERVED_CACHE_MAX): ServedCache {
     },
     get size() {
       return entries.size;
+    },
+    get stats() {
+      return { ...stats };
     },
   };
 }

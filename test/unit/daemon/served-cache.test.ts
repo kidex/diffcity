@@ -14,6 +14,7 @@ describe('served cache', () => {
     expect(cache.get(1, '10:t:h:1')).toBeUndefined();
     expect(cache.get(1, '10:t:h:2')).toBe('b');
     expect(cache.size).toBe(1);
+    expect(cache.stats).toEqual({ hits: 2, misses: 2 });
   });
 
   it('drops the least recently used change past the limit', () => {

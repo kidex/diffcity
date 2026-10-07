@@ -8,12 +8,15 @@ import type { DaemonPlugin } from '../plugin.js';
 import { createDiffPool, type DiffPool, type DiffPoolOptions } from '../diff/pool.js';
 import { getRuntime } from '../runtime.js';
 import { registerApiRoutes } from './routes.js';
+import type { ServedCache } from './served-cache.js';
 
 export interface ApiPluginOptions {
   /** The clock of review writes (tests drive the 10-minute event gap with it). */
   now?: () => Date;
   /** The diff pool's runner, worker script, size and job timeout; defaults to threads (ADR-027). */
   diffPool?: DiffPoolOptions;
+  /** The served Reports' cache (ADR-036); a fresh one when absent. Tests pass one to read its hit counters. */
+  servedCache?: ServedCache;
 }
 
 export function createApiPlugin(options: ApiPluginOptions = {}): DaemonPlugin {
@@ -42,6 +45,7 @@ export function createApiPlugin(options: ApiPluginOptions = {}): DaemonPlugin {
           context.broadcast(event);
         },
         ...(options.now === undefined ? {} : { now: options.now }),
+        ...(options.servedCache === undefined ? {} : { servedCache: options.servedCache }),
         diff: { pool: diffPool, log: context.log },
       });
     },

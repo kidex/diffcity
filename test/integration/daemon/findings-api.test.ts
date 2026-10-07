@@ -10,6 +10,7 @@ import type { Db } from '../../../src/core/db/index.js';
 import { anchor, type FindingInput, type StoredFinding } from '../../../src/core/findings/index.js';
 import type { ApiError, ChangeRecord } from '../../../src/core/model/types.js';
 import type { Finding, Report } from '../../../src/core/report/types.js';
+import { createServedCache, type ServedCache } from '../../../src/daemon/api/served-cache.js';
 import { storeFindingsImport } from '../../../src/daemon/findings.js';
 import { waitFor } from '../../helpers/daemon.js';
 import { call } from '../../helpers/review-api.js';
@@ -71,8 +72,10 @@ interface Seeded {
   stored: string;
 }
 
-async function seeded(options: { rule?: boolean; archived?: boolean; worktree?: boolean; kind?: 'branch' | 'pr' } = {}): Promise<Seeded> {
-  const test = await startTestDaemon({}, { api: true });
+async function seeded(
+  options: { rule?: boolean; archived?: boolean; worktree?: boolean; kind?: 'branch' | 'pr'; servedCache?: ServedCache } = {},
+): Promise<Seeded> {
+  const test = await startTestDaemon({}, { api: true, ...(options.servedCache === undefined ? {} : { servedCache: options.servedCache }) });
   const db = test.collection.db();
   const repo = addRepo(db);
   let worktreePath: string | null = null;
@@ -169,16 +172,24 @@ describe('report-route', () => {
   });
 
   it('report-route/cache-invalidated-by-findings-write: a cached Report is served again until a findings write, then recomputed', async () => {
-    const s = await seeded();
+    const cache = createServedCache();
+    const s = await seeded({ servedCache: cache });
     const finding = imported();
     importInto(s, [finding]);
     const first = await served(s);
+    expect(cache.stats).toEqual({ hits: 0, misses: 1 });
+    // Served from the cache: a hit, no new overlay.
     expect((await served(s)).text).toBe(first.text);
+    expect((await served(s)).text).toBe(first.text);
+    expect(cache.stats).toEqual({ hits: 2, misses: 1 });
 
     expect((await call(s.port, 'PUT', path(s, `/findings/${finding.key}/state`), { body: { state: 'intended' } })).status).toBe(200);
     const after = await served(s);
+    expect(cache.stats).toEqual({ hits: 2, misses: 2 });
     expect(after.report.findings[0]?.state).toBe('intended');
     expect(verdictOf(after.report, TAX)).toBe('ok');
+    await served(s);
+    expect(cache.stats).toEqual({ hits: 3, misses: 2 });
 
     // A new snapshot misses too, even with the findings unchanged.
     const head = sha();
@@ -186,6 +197,7 @@ describe('report-route', () => {
       snapshotInput(s.change.id, head, { report: JSON.stringify(report({ head })), fingerprints: JSON.stringify(sampleFingerprints()), contentHash: 'h2', computedAt: '2026-09-03T00:00:00.000Z' }),
     );
     expect((await served(s)).report.meta.head).toBe(head);
+    expect(cache.stats).toEqual({ hits: 3, misses: 3 });
   });
 });
 
