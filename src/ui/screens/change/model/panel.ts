@@ -282,5 +282,5 @@ export function summaryLine(report: Report): string {
     const count = `${String(stops.length)} ${stops.length === 1 ? 'stop' : 'stops'}`;
     return stops.every((stop) => sectionOf(stop.step) === 'path') ? `${count}, in the order the code runs` : `${count}, in reading order`;
   }
-  return 'No execution path for this change yet';
+  return 'No execution path';
 }

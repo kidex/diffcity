@@ -16,5 +16,5 @@ test('panel/empty-steps-state', async ({ page }) => {
   // The other tabs still work without steps.
   await tab(page, 'symbols').click();
   await expect(page.getByTestId('symbol-group').first()).toBeVisible();
-  await expect(page.getByTestId('panel-summary')).toHaveText('No execution path for this change yet');
+  await expect(page.getByTestId('panel-summary')).toHaveText('No execution path');
 });
