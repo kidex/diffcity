@@ -5,7 +5,7 @@
 
 import type { FastifyInstance } from 'fastify';
 import type { Db } from '../../core/db/index.js';
-import type { Fingerprints, ReviewMark, ReviewProgress, SseEvent } from '../../core/model/types.js';
+import type { ChangeRecord, Fingerprints, ReviewMark, ReviewProgress, SseEvent } from '../../core/model/types.js';
 import type { Report } from '../../core/report/types.js';
 import {
   computeProgress,
@@ -20,10 +20,10 @@ import {
   type TargetRef,
 } from '../../core/review/index.js';
 import { HttpError } from '../http/errors.js';
+import { recordReviewActivity } from './activity.js';
 import { parseId, type Query } from './params.js';
 
-/** A `review` event is added to `events` only when the previous one is older than this. */
-export const REVIEW_EVENT_GAP_MS = 10 * 60 * 1000;
+export { REVIEW_EVENT_GAP_MS } from './activity.js';
 
 export interface ReviewDeps {
   db: Db;
@@ -68,31 +68,9 @@ export function registerReviewRoutes(http: FastifyInstance, deps: ReviewDeps): v
     return { marks, progress: computeProgress(report, marks) };
   };
 
-  /** A write happened: lastEventType/lastEventAt, a throttled `review` event, and the SSE signals. */
-  const recordWrite = (at: Date, change: { id: number; repoId: number; reviewState: string; lastEventAt: string; archivedAt: string | null }, firstMark: boolean): void => {
-    const iso = at.toISOString();
-    if (change.archivedAt === null) {
-      const previous = db.events.latestAt(change.id, 'review');
-      db.changes.applyPlan(
-        change.repoId,
-        {
-          create: [],
-          archive: [],
-          update: [
-            {
-              id: change.id,
-              lastEventType: 'review',
-              lastEventAt: iso > change.lastEventAt ? iso : change.lastEventAt,
-              ...(firstMark && change.reviewState === 'unreviewed' ? { reviewState: 'in-review' as const } : {}),
-            },
-          ],
-        },
-        iso,
-      );
-      if (previous === null || at.getTime() - Date.parse(previous) > REVIEW_EVENT_GAP_MS) {
-        db.events.add({ repoId: change.repoId, changeId: change.id, type: 'review', at: iso, payload: null });
-      }
-    }
+  /** A write happened: lastEventType/lastEventAt, a throttled `review` event; the first mark starts the review. */
+  const recordWrite = (at: Date, change: ChangeRecord, firstMark: boolean): void => {
+    recordReviewActivity(db, change, at, firstMark && change.reviewState === 'unreviewed' ? 'in-review' : undefined);
   };
 
   const signal = (repoId: number, changeId: number): void => {

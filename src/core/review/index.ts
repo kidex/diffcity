@@ -1,5 +1,6 @@
 export { reconcileMarks, currentFingerprint } from './reconcile.js';
-export { computeProgress } from './progress.js';
+export { computeProgress, fileCheckedBy } from './progress.js';
+export { uncheckedTier1Files } from './approve.js';
 export { renderSummary, SUMMARY_MAX_BYTES } from './summary.js';
 export type { SummaryInput } from './summary.js';
 export { fileFingerprint, markableTargets, targetKey } from './targets.js';

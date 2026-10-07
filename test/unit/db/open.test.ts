@@ -59,8 +59,8 @@ describe('migrations', () => {
     db.close();
     const schema = readSchema(path);
 
-    expect(SCHEMA_VERSION).toBe(2);
-    expect(schema.version).toBe(2);
+    expect(SCHEMA_VERSION).toBe(3);
+    expect(schema.version).toBe(3);
     expect(schema.master.filter((row) => row.type === 'table').map((row) => row.name)).toEqual([
       'changes',
       'events',
@@ -104,6 +104,8 @@ describe('migrations', () => {
         'updatedAt TEXT NOT NULL',
         'archivedAt TEXT',
         'archiveReason TEXT',
+        'approvedHead TEXT',
+        'approvedAt TEXT',
       ],
       snapshots: [
         'id INTEGER PK',
@@ -143,6 +145,16 @@ describe('migrations', () => {
         'head TEXT NOT NULL',
         'finding TEXT NOT NULL',
         'state TEXT NOT NULL',
+        'key TEXT',
+        "origin TEXT NOT NULL = 'import'",
+        'anchorFingerprint TEXT',
+        'importedAt TEXT',
+        'alias TEXT',
+        'why TEXT',
+        'symbolName TEXT',
+        'symbolKind TEXT',
+        'symbolStart INTEGER',
+        'updatedAt TEXT',
       ],
       events: [
         'id INTEGER PK',
@@ -161,6 +173,7 @@ describe('migrations', () => {
       changes_live_ref: 'CREATE UNIQUE INDEX changes_live_ref ON changes(repoId, ref) WHERE archivedAt IS NULL',
       changes_repo_event: 'CREATE INDEX changes_repo_event ON changes(repoId, archivedAt, lastEventAt)',
       events_repo_at: 'CREATE INDEX events_repo_at ON events(repoId, at)',
+      findings_change_key: 'CREATE UNIQUE INDEX findings_change_key ON findings(changeId, key)',
       review_marks_change: 'CREATE INDEX review_marks_change ON review_marks(changeId, state)',
     });
   });

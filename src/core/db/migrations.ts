@@ -117,8 +117,33 @@ CREATE TABLE review_notes (
 );
 `;
 
+/**
+ * Schema v3 (ADR-036): the findings store and the approval of a change.
+ * `key` is the finding key (`f:<16 hex>`) of an imported finding, or the id of
+ * a rule finding for an `origin = 'rule-state'` row, which only holds the
+ * state the user set on that rule finding. The anchor columns are what
+ * re-anchoring and `fixed` need (StoredFinding.anchor); `finding` keeps the
+ * serialized Finding (its `sources` included) and `state` is authoritative.
+ * Rows written before v3 have no key and are never served.
+ */
+const V3 = `
+ALTER TABLE findings ADD COLUMN key TEXT;
+ALTER TABLE findings ADD COLUMN origin TEXT NOT NULL DEFAULT 'import' CHECK (origin IN ('import','rule-state'));
+ALTER TABLE findings ADD COLUMN anchorFingerprint TEXT;
+ALTER TABLE findings ADD COLUMN importedAt TEXT;
+ALTER TABLE findings ADD COLUMN alias TEXT;
+ALTER TABLE findings ADD COLUMN why TEXT;
+ALTER TABLE findings ADD COLUMN symbolName TEXT;
+ALTER TABLE findings ADD COLUMN symbolKind TEXT CHECK (symbolKind IN ('class','function','method','export','sql'));
+ALTER TABLE findings ADD COLUMN symbolStart INTEGER;
+ALTER TABLE findings ADD COLUMN updatedAt TEXT;
+CREATE UNIQUE INDEX findings_change_key ON findings(changeId, key);
+ALTER TABLE changes ADD COLUMN approvedHead TEXT;
+ALTER TABLE changes ADD COLUMN approvedAt TEXT;
+`;
+
 /** The migrations in order; index i holds the SQL that produces version i + 1. */
-export const MIGRATIONS: readonly string[] = [V1, V2];
+export const MIGRATIONS: readonly string[] = [V1, V2, V3];
 
 /** The schema version this code writes. */
 export const SCHEMA_VERSION = MIGRATIONS.length;
