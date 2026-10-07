@@ -1,6 +1,18 @@
 import { createHash } from 'node:crypto';
 import { posix } from 'node:path';
 
+/** The `source` prefix of findings computed by rules (ADR-030); never accepted from an import. */
+export const RULE_SOURCE_PREFIX = 'rule:';
+
+export function isRuleSource(source: string): boolean {
+  return source.startsWith(RULE_SOURCE_PREFIX);
+}
+
+/** The warning for an imported entry (own format) or run (SARIF) that claims a rule source. */
+export function ruleSourceWarning(source: string): string {
+  return `skipped: source "${source}" is reserved for rule findings`;
+}
+
 /** Lower case, collapsed whitespace, trailing punctuation removed (SPEC.md 5.6). */
 export function normalizeTitle(title: string): string {
   return title

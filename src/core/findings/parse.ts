@@ -1,6 +1,6 @@
 // Own-format and SARIF 2.1 parsing (ADR-036, docs/findings.md). Pure.
 
-import { normalizePath, normalizeSarifUri } from './normalize.js';
+import { isRuleSource, normalizePath, normalizeSarifUri, ruleSourceWarning } from './normalize.js';
 import {
   CATEGORIES,
   LIMITS,
@@ -92,6 +92,10 @@ export function parseOwn(json: unknown, repoRoot?: string): ParseResult {
       errors.push(...problems);
       return;
     }
+    if (isRuleSource(source.trim())) {
+      warnings.push({ at, message: ruleSourceWarning(source.trim()) });
+      return;
+    }
     const sizes = sizeErrors(at, { title, message, ...(fix === undefined ? {} : { fix }) });
     if (sizes.length > 0) {
       errors.push(...sizes);
@@ -154,6 +158,10 @@ export function parseSarif(json: unknown, repoRoot: string): ParseResult {
     const tool = isObj(run['tool']) ? run['tool'] : {};
     const driver = isObj(tool['driver']) ? tool['driver'] : {};
     const source = str(driver['name'])?.trim() ?? 'sarif';
+    if (isRuleSource(source)) {
+      warnings.push({ at: `runs[${String(runIndex)}]`, message: ruleSourceWarning(source) });
+      return;
+    }
     sources.add(source);
     (run['results'] as unknown[]).forEach((result, resultIndex) => {
       const at = `runs[${String(runIndex)}].results[${String(resultIndex)}]`;

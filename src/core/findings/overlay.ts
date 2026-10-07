@@ -2,11 +2,12 @@ import type { File, Finding, Report, Verdict } from '../report/types.js';
 import { fileVerdict } from '../verdict/index.js';
 import { findFile, reanchor, symbolAtLine, unanchored } from './anchor.js';
 import { dedup } from './dedup.js';
+import { isRuleSource } from './normalize.js';
 import type { FindingState, StoredFinding } from './types.js';
 
 /** `Finding.source` of a finding computed by a rule (ADR-030). */
 export function isRuleFinding(finding: Pick<Finding, 'source'>): boolean {
-  return finding.source.startsWith('rule:');
+  return isRuleSource(finding.source);
 }
 
 /**

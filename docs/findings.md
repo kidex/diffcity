@@ -50,6 +50,8 @@ Example, as written by the `/code-review` slash command to `.diffcity/findings.j
 ]
 ```
 
+`source` must not start with `rule:`: that prefix belongs to findings computed by diffcity's rules. Such an entry is skipped with the warning `skipped: source "<source>" is reserved for rule findings`.
+
 A file with a missing or malformed field is rejected as a whole, with one message per problem. A file with more than 5,000 findings, or a message over 16 KiB, a title or a fix over 4 KiB, is rejected. An entry whose `file` cannot be made repo-relative is skipped with a warning (see Paths).
 
 ## Paths
@@ -79,8 +81,9 @@ Each entry of `runs[].results[]` becomes one finding.
 | `results[].properties.category` | `category` (default `correctness`) |
 | `results[].fixes[0].description.text` | `fix` |
 
-Each run's `tool.driver.name` is the `source` of its results (`sarif` when missing). Warnings, with `runs[i].results[j]` as the place:
+Each run's `tool.driver.name` is the `source` of its results (`sarif` when missing). Warnings, with `runs[i].results[j]` as the place unless said otherwise:
 
+- `skipped: source "<source>" is reserved for rule findings`, with `runs[i]` as the place: a run whose tool name starts with `rule:` is skipped as a whole.
 - `skipped: no physical location`: no `locations`, an empty `locations: []`, or no `artifactLocation.uri`. A result with no location is never turned into a change-level finding; those come only from rules.
 - `skipped: no ruleId and no message text`
 - `skipped: absolute path "<path>" is outside the repository`, `skipped: path "<path>" contains ".."`

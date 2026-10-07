@@ -213,6 +213,32 @@ describe('findings', () => {
     expect(dedup(anchored)[0]?.finding.sources).toEqual(['semgrep', 'eslint']);
   });
 
+  it('import-rule-source-skipped', () => {
+    // Rule findings come only from the snapshot worker (ADR-030): an import cannot claim a rule source.
+    const ownResult = parseOwn([own({ source: 'rule:size' }), own(), own({ source: '  rule:layers' })], ROOT);
+    expect(ownResult).toEqual({
+      ok: true,
+      findings: [expect.objectContaining({ source: 'claude' })],
+      warnings: [
+        { at: 'findings[0]', message: 'skipped: source "rule:size" is reserved for rule findings' },
+        { at: 'findings[2]', message: 'skipped: source "rule:layers" is reserved for rule findings' },
+      ],
+      sources: ['claude'],
+    });
+    const log = {
+      runs: [
+        { tool: { driver: { name: 'rule:size' } }, results: [sarifResult(), sarifResult()] },
+        { tool: { driver: { name: 'semgrep' } }, results: [sarifResult()] },
+      ],
+    };
+    expect(parseSarif(log, ROOT)).toEqual({
+      ok: true,
+      findings: [expect.objectContaining({ source: 'semgrep' })],
+      warnings: [{ at: 'runs[0]', message: 'skipped: source "rule:size" is reserved for rule findings' }],
+      sources: ['semgrep'],
+    });
+  });
+
   it('sarif-category-property', () => {
     const result = parseSarif(
       sarif([
