@@ -98,6 +98,16 @@ const line = (node: Node): number => node.startPosition.row + 1;
 const isHandlerArgument = (node: Node): boolean =>
   FUNCTIONS.has(node.type) || node.type === 'identifier' || node.type === 'member_expression';
 
+/**
+ * Route arguments after the path with arrays of handlers flattened, to any
+ * depth: Express accepts `app.get(path, [mw, handler])` like `...handlers`.
+ */
+function flattenHandlers(nodes: readonly Node[]): Node[] {
+  return nodes.flatMap((node) =>
+    node.type === 'array' ? flattenHandlers(node.namedChildren.filter((child) => child.type !== 'comment')) : [node],
+  );
+}
+
 function handlerRef(node: Node): HandlerRef | null {
   if (node.type === 'identifier') return { name: node.text, line: line(node) };
   if (node.type === 'member_expression') {
@@ -212,7 +222,7 @@ class Scanner {
       const path = stringOf(args[0]);
       // A registration passes at least one handler after the path; `api.get('/users')` (an HTTP
       // client) and `app.get('env')` (a setting) pass none.
-      const rest = args.slice(1);
+      const rest = flattenHandlers(args.slice(1));
       if (path === null || !rest.some(isHandlerArgument)) return;
       const handlers = rest.flatMap((arg) => handlerRef(arg) ?? []);
       this.facts.routes.push({ method: property.toUpperCase(), path, line: line(node), handlers });

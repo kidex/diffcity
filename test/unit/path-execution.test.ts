@@ -149,6 +149,16 @@ describe('entry', () => {
     expect(mayRegisterEntries('router.post(`/items`, (req, res) => res.end());')).toBe(true);
   });
 
+  it('route-handler-nested-array: arrays of handlers are flattened to any depth; an array without a handler is no route', async () => {
+    const { steps } = await pathOf('entry/route-handler-nested-array');
+    const list = id('src/parcels.ts', 'listParcels');
+    expect(rows(steps)).toEqual([
+      `1 path ${list} <- ${list} : Endpoint changed: GET /parcels`,
+      `2 unconnected ${id('src/parcels.ts', 'parcelLabels')} : Body changed`,
+    ]);
+    expect(mayRegisterEntries("app.get('/parcels', [[requireCourier], [[listParcels]]]);")).toBe(true);
+  });
+
   it('priority-route-before-main: routes, then main, then new tests, whatever the file order', async () => {
     const { steps } = await pathOf('entry/priority-route-before-main');
     expect(steps.map((s) => [s.symbolId, s.entry])).toEqual([
