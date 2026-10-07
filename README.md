@@ -45,7 +45,7 @@ diffcity stop
 
 `export`, `status` and `audit` are not implemented yet and exit with status 2.
 
-`diffcity import` attaches findings to the change checked out in the current directory; the file format, the counts it prints and its exit codes are in [docs/findings.md](docs/findings.md). diffcity's own files `.diffcity/findings.json`, `.diffcity/fix-queue.json` and `.diffcity/fix-queue.taking.json` are never part of a change.
+`diffcity import` attaches findings to the change checked out in the current directory; the file format, the counts it prints and its exit codes are in [docs/findings.md](docs/findings.md). diffcity's own files `.diffcity/findings.json` and the fix queue directories `.diffcity/fix-queue/` and `.diffcity/fix-queue.taking/` are never part of a change.
 
 ### Claude Code
 

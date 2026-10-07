@@ -44,13 +44,13 @@ The command is called `/diffcity-review`, not `/code-review`, so it never shadow
 
 The file starts with its frontmatter (`description`, `argument-hint`, `disable-model-invocation`, `allowed-tools`); the line right after the closing `---` is the marker `<!-- diffcity: diffcity-review v1 -->`. setup overwrites or removes the file only when that line is exactly the marker; any other `diffcity-review.md` is refused on install and kept on `--remove`.
 
-`allowed-tools` is a YAML list, one rule per item, and allows exactly what the command runs: `Bash(<cli> diff:*)` and `Bash(<cli> import:*)` with the hook command's invocation, the two fix-queue commands `mv .diffcity/fix-queue.json .diffcity/fix-queue.taking.json` and `rm .diffcity/fix-queue.taking.json`, `Read`, and `Write(.diffcity/findings.json)`. Fixing code from the fix queue goes through Claude Code's usual permission prompts.
+`allowed-tools` is a YAML list, one rule per item, and allows exactly what the command runs: `Bash(<cli> diff:*)` and `Bash(<cli> import:*)` with the hook command's invocation, the two fix-queue commands `mv .diffcity/fix-queue .diffcity/fix-queue.taking` and `rm -r .diffcity/fix-queue.taking` as exact rules, `Glob` to list the taken item files, `Read` to read them, and `Write(.diffcity/findings.json)`. Fixing code from the fix queue goes through Claude Code's usual permission prompts.
 
 The command's paths (`.diffcity/...`) are relative to the repository root, and the body says so: its commands run from the root, so start the Claude Code session there.
 
 The command:
 
-1. takes the fix queue by renaming `.diffcity/fix-queue.json` to `.diffcity/fix-queue.taking.json`, applies its items and deletes the taken file, so an item diffcity queues meanwhile lands in a new queue and is neither lost nor applied twice;
+1. takes the fix queue by renaming the directory `.diffcity/fix-queue` to `.diffcity/fix-queue.taking`, reads every item file in it (one version 1 item per `.json` file), applies the items and removes the taken directory, so an item diffcity queues meanwhile lands in a new queue and is neither lost nor applied twice; a taking directory left by an interrupted run is applied and removed first;
 2. reads `diffcity diff --json --compact`, the Report without untouched files;
 3. writes the findings to `.diffcity/findings.json` in the format of [findings.md](findings.md), only for files of the change and lines of their current version;
 4. runs `diffcity import .diffcity/findings.json --open`, which opens the change in the browser.
