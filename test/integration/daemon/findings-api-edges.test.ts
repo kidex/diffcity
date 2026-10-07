@@ -13,6 +13,7 @@ import { anchor, type StoredFinding } from '../../../src/core/findings/index.js'
 import type { ApiError, ChangeRecord } from '../../../src/core/model/types.js';
 import type { Finding, Report } from '../../../src/core/report/types.js';
 import { FINDING_KEY_MAX } from '../../../src/daemon/api/findings.js';
+import { MAX_PARAM_LENGTH } from '../../../src/daemon/http/server.js';
 import { createServedCache, SERVED_CACHE_MAX, type ServedCache } from '../../../src/daemon/api/served-cache.js';
 import { storeFindingsImport } from '../../../src/daemon/findings.js';
 import { call } from '../../helpers/review-api.js';
@@ -210,6 +211,27 @@ describe('odd keys in the URL', () => {
     const huge = await put('k'.repeat(5000));
     expect(huge.status >= 400 && huge.status < 500).toBe(true);
     expect(typeof (huge.json() as ApiError).error.code).toBe('string');
+    expect(w.db.findings.hasAny(change.id)).toBe(false);
+  });
+
+  it('a param just over the router limit is 414 `uri-too-long` in the ADR-017 shape, without echoing the URL', async () => {
+    const w = await world();
+    const change = addChange(w, 'over-limit');
+    expect(MAX_PARAM_LENGTH).toBeGreaterThan(FINDING_KEY_MAX);
+    for (const key of ['q'.repeat(MAX_PARAM_LENGTH + 1), 'q'.repeat(5000)]) {
+      const answer = await call(w.port, 'PUT', url(change, `/findings/${key}/state`), { body: { state: 'intended' } });
+      expect([key.length, answer.status, codeOf(answer)]).toEqual([key.length, 414, 'uri-too-long']);
+      expect(Object.keys(answer.json() as object)).toEqual(['error']);
+      expect(answer.text).not.toContain('qqqq');
+      expect(answer.text).not.toContain('/api/changes');
+    }
+    // A key exactly at the limit still reaches the route, which refuses it past FINDING_KEY_MAX.
+    const at = await call(w.port, 'PUT', url(change, `/findings/${'q'.repeat(MAX_PARAM_LENGTH)}/state`), { body: { state: 'intended' } });
+    expect([at.status, codeOf(at)]).toEqual([400, 'bad-request']);
+    // A URL that cannot be decoded is refused in the same shape, without the URL.
+    const bad = await call(w.port, 'PUT', url(change, '/findings/%E0%A4%Azz/state'), { body: { state: 'intended' } });
+    expect([bad.status, codeOf(bad)]).toEqual([400, 'bad-request']);
+    expect(bad.text).not.toContain('%E0');
     expect(w.db.findings.hasAny(change.id)).toBe(false);
   });
 

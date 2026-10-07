@@ -23,6 +23,7 @@ const CODES: Readonly<Record<number, string>> = {
   404: 'not-found',
   405: 'method-not-allowed',
   413: 'payload-too-large',
+  414: 'uri-too-long',
   415: 'unsupported-media-type',
   421: 'misdirected-request',
 };
