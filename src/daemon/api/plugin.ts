@@ -8,7 +8,7 @@ import type { DaemonPlugin } from '../plugin.js';
 import { createDiffPool, type DiffPool, type DiffPoolOptions } from '../diff/pool.js';
 import { getRuntime } from '../runtime.js';
 import { registerApiRoutes } from './routes.js';
-import type { Verdict } from '../../core/report/types.js';
+import type { ServedCounts } from '../../core/served/index.js';
 import type { ServedCache } from './served-cache.js';
 
 export interface ApiPluginOptions {
@@ -18,8 +18,8 @@ export interface ApiPluginOptions {
   diffPool?: DiffPoolOptions;
   /** The served Reports' cache (ADR-036); a fresh one when absent. Tests pass one to read its hit counters. */
   servedCache?: ServedCache;
-  /** The served Reports' verdict counts for the change summaries (DC-106); a fresh one when absent. */
-  servedSummaries?: ServedCache<Record<Verdict, number>>;
+  /** The served Reports' counts for the change and repo summaries (DC-106); a fresh one when absent. */
+  servedSummaries?: ServedCache<ServedCounts>;
 }
 
 export function createApiPlugin(options: ApiPluginOptions = {}): DaemonPlugin {

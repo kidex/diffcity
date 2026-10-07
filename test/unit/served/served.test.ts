@@ -3,7 +3,7 @@
 import { describe, expect, it } from 'vitest';
 import { anchor, type FindingInput, type StoredFinding } from '../../../src/core/findings/index.js';
 import type { Finding, Report } from '../../../src/core/report/types.js';
-import { hasOverlay, resolveFinding, servedByVerdict, servedStats, serveOverlay, serveReport, stateTargets } from '../../../src/core/served/index.js';
+import { hasOverlay, reportCounts, resolveFinding, servedCounts, servedRepoSummary, servedStats, serveOverlay, serveReport, stateTargets } from '../../../src/core/served/index.js';
 import { shopfrontFingerprints, shopfrontReport } from '../findings/support.js';
 
 const ORDERS = 'src/orders/orders.service.ts';
@@ -74,22 +74,34 @@ describe('serveReport', () => {
 });
 
 describe('served counts (DC-106)', () => {
-  it('serveOverlay gives the served text and the byVerdict it carries; servedByVerdict the same counts', () => {
+  it('serveOverlay gives the served text and the counts it carries; servedCounts the same counts', () => {
     const json = JSON.stringify(withRule());
     const findings = { stored: [stored()], ruleStates: { [RULE.id]: 'intended' as const } };
     const served = serveOverlay(json, findings);
     expect(served.body).toBe(serveReport(json, findings));
-    expect(served.byVerdict).toEqual((JSON.parse(served.body) as Report).summary.byVerdict);
-    expect(servedByVerdict(json, findings)).toEqual(served.byVerdict);
-    expect(served.byVerdict).toEqual({ eyes: 1, risky: 1, spec: 0, ok: 1, same: 1 });
+    expect(served.counts?.byVerdict).toEqual((JSON.parse(served.body) as Report).summary.byVerdict);
+    expect(servedCounts(json, findings)).toEqual(served.counts);
+    // The imported high finding is open; the high rule finding is intended.
+    expect(served.counts).toEqual({ byVerdict: { eyes: 1, risky: 1, spec: 0, ok: 1, same: 1 }, openHigh: 1 });
+  });
+
+  it('openHigh counts open high findings of the served Report: rule and imported, merged once, on files in the change', () => {
+    const json = JSON.stringify(withRule());
+    const twice = [stored(), stored({ source: 'semgrep' })];
+    const gone = stored({ file: ORDERS, line: 12, title: 'Order lost' });
+    const withoutOrders = { ...withRule(), findings: [], packages: withRule().packages.map((pkg) => ({ ...pkg, files: pkg.files.filter((entry) => entry.path !== ORDERS) })) };
+    expect(servedCounts(json, { stored: twice, ruleStates: {} })?.openHigh).toBe(2);
+    expect(servedCounts(json, { stored: [stored({ severity: 'med' })], ruleStates: {} })?.openHigh).toBe(1);
+    expect(servedCounts(JSON.stringify(withoutOrders), { stored: [gone], ruleStates: {} })?.openHigh).toBe(0);
+    expect(reportCounts({ findings: [RULE, { ...RULE, id: 'rule:size:0002', state: 'fixed' }], summary: withRule().summary }).openHigh).toBe(1);
   });
 
   it('with nothing to overlay: the stored string, no counts, and the Report is not parsed', () => {
     const notJson = 'not a report';
     const none = { stored: [], ruleStates: {} };
     expect(hasOverlay(none)).toBe(false);
-    expect(serveOverlay(notJson, none)).toEqual({ body: notJson, byVerdict: null });
-    expect(servedByVerdict(notJson, none)).toBeNull();
+    expect(serveOverlay(notJson, none)).toEqual({ body: notJson, counts: null });
+    expect(servedCounts(notJson, none)).toBeNull();
     expect(hasOverlay({ stored: [], ruleStates: { [RULE.id]: 'open' } })).toBe(true);
   });
 
@@ -105,6 +117,17 @@ describe('served counts (DC-106)', () => {
     expect(listed).toEqual({ ...stats, filesByVerdict: byVerdict });
     expect(listed.filesByVerdict).not.toBe(byVerdict);
     expect(stats.filesByVerdict.risky).toBe(0);
+  });
+
+  it('servedRepoSummary adds the openHigh of each overlaid change to the stored part', () => {
+    const repo = {
+      id: 1, name: 'shopfront', path: '/work/shopfront', active: true, lastSeenAt: '2026-09-01T10:00:00.000Z', lastEventAt: null,
+      counts: { draft: 0, branch: 3, pr: 0 }, unreviewed: 3, highFindings: 0, lastAudit: null, archivedCount: 0,
+      collecting: false, error: null, watch: 'full' as const, notes: [],
+    };
+    const counts = (openHigh: number) => ({ byVerdict: { eyes: 0, risky: 0, spec: 0, ok: 0, same: 0 }, openHigh });
+    expect(servedRepoSummary(repo, [counts(2), counts(0), counts(1)]).highFindings).toBe(3);
+    expect(servedRepoSummary(repo, [])).toEqual(repo);
   });
 });
 

@@ -12,7 +12,7 @@ import {
   type FindingState,
   type StoredFinding,
 } from '../findings/index.js';
-import type { ChangeStats } from '../model/types.js';
+import type { ChangeStats, RepoSummary } from '../model/types.js';
 import type { Finding, Report, Verdict } from '../report/types.js';
 
 export interface ServedFindings {
@@ -35,11 +35,25 @@ function overlaid(reportJson: string, findings: ServedFindings): Report | null {
   return overlay(JSON.parse(reportJson) as Report, findings.stored, findings.ruleStates);
 }
 
-/** The served Report as text, and the verdict counts it carries. */
+/** The counts of a served Report that the change and repo summaries list (DC-106). */
+export interface ServedCounts {
+  /** `summary.byVerdict`. */
+  byVerdict: Record<Verdict, number>;
+  /** Findings with state `open` and severity `high`: rule and imported, merged, on files in the change. */
+  openHigh: number;
+}
+
+/** The counts of a served Report. */
+export function reportCounts(report: Pick<Report, 'findings' | 'summary'>): ServedCounts {
+  const openHigh = report.findings.filter((finding) => finding.state === 'open' && finding.severity === 'high').length;
+  return { byVerdict: { ...report.summary.byVerdict }, openHigh };
+}
+
+/** The served Report as text, and the counts it carries. */
 export interface ServedOverlay {
   body: string;
-  /** Its `summary.byVerdict`; null when `body` is the stored string (the stored counts stand). */
-  byVerdict: Record<Verdict, number> | null;
+  /** Its counts; null when `body` is the stored string (the stored counts stand). */
+  counts: ServedCounts | null;
 }
 
 /**
@@ -49,7 +63,7 @@ export interface ServedOverlay {
  */
 export function serveOverlay(reportJson: string, findings: ServedFindings): ServedOverlay {
   const served = overlaid(reportJson, findings);
-  return served === null ? { body: reportJson, byVerdict: null } : { body: JSON.stringify(served), byVerdict: served.summary.byVerdict };
+  return served === null ? { body: reportJson, counts: null } : { body: JSON.stringify(served), counts: reportCounts(served) };
 }
 
 /** The served Report as JSON text (`serveOverlay(...).body`). */
@@ -58,17 +72,27 @@ export function serveReport(reportJson: string, findings: ServedFindings): strin
 }
 
 /**
- * The served Report's `summary.byVerdict` without serialising it (the change
- * list, DC-106); null when there is nothing to overlay, so the stored counts
- * stand and `reportJson` is not parsed.
+ * The served Report's counts without serialising it (the change and repo
+ * summaries, DC-106); null when there is nothing to overlay, so the stored
+ * counts stand and `reportJson` is not parsed.
  */
-export function servedByVerdict(reportJson: string, findings: ServedFindings): Record<Verdict, number> | null {
-  return overlaid(reportJson, findings)?.summary.byVerdict ?? null;
+export function servedCounts(reportJson: string, findings: ServedFindings): ServedCounts | null {
+  const served = overlaid(reportJson, findings);
+  return served === null ? null : reportCounts(served);
 }
 
 /** `stats` as listed for a served Report with counts `byVerdict` (DC-106): only `filesByVerdict` moves. */
 export function servedStats(stats: ChangeStats, byVerdict: Readonly<Record<Verdict, number>>): ChangeStats {
   return { ...stats, filesByVerdict: { ...byVerdict } };
+}
+
+/**
+ * `summary` with `highFindings` as the served Reports of its live changes
+ * count them (DC-106): the stored part (the store's count for changes with no
+ * imported finding and no rule state) plus `openHigh` of each overlaid change.
+ */
+export function servedRepoSummary(summary: RepoSummary, overlaidCounts: readonly ServedCounts[]): RepoSummary {
+  return { ...summary, highFindings: overlaidCounts.reduce((total, counts) => total + counts.openHigh, summary.highFindings) };
 }
 
 /** A part of a served finding: one stored imported finding and its state. */

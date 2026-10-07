@@ -2,8 +2,10 @@
 // latest snapshot (id, computedAt, contentHash) and its findings version, so a
 // new snapshot or any findings write misses. Least recently used changes go
 // first once there are more than `max`. Two of them: the served Report text
-// (several MB each, so few) and its `summary.byVerdict` for the change list
+// (several MB each, so few) and its counts for the change and repo summaries
 // (a few bytes each, so one per change of any repo in practice; DC-106).
+
+import type { ServedCounts } from '../../core/served/index.js';
 
 export interface ServedCache<T = string> {
   /** The cached value for the change when its key is still `key`. */
@@ -15,7 +17,7 @@ export interface ServedCache<T = string> {
 }
 
 export const SERVED_CACHE_MAX = 8;
-/** The overlay summaries kept: far more changes than a daemon tracks, at about 100 bytes each. */
+/** The served counts kept: far more changes than a daemon tracks, at about 100 bytes each. */
 export const SERVED_SUMMARIES_MAX = 4096;
 
 export function createServedCache<T = string>(max = SERVED_CACHE_MAX): ServedCache<T> {
@@ -50,4 +52,9 @@ export function createServedCache<T = string>(max = SERVED_CACHE_MAX): ServedCac
       return { ...stats };
     },
   };
+}
+
+/** The cache of served counts (byVerdict, openHigh) for the change and repo summaries. */
+export function servedCountsCache(max = SERVED_SUMMARIES_MAX): ServedCache<ServedCounts> {
+  return createServedCache<ServedCounts>(max);
 }

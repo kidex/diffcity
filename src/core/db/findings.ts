@@ -61,6 +61,8 @@ export interface FindingsStore {
   ruleStates(changeId: number): Record<string, FindingState>;
   /** Whether the change has any imported finding or rule state (the served Report then differs from the stored one). */
   hasAny(changeId: number): boolean;
+  /** The live changes of `repoId` with any imported finding or rule state, by id: the ones whose served Report is overlaid. */
+  liveChangesWithAny(repoId: number): number[];
   /** The change's findings version: 0 before any write in this process, then a new value after each write. */
   version(changeId: number): number;
   /**
@@ -116,6 +118,10 @@ export function createFindingsStore(db: Connection): FindingsStore {
     "SELECT key, state FROM findings WHERE changeId = ? AND origin = 'rule-state' AND key IS NOT NULL ORDER BY id",
   );
   const any = db.prepare<[number], { one: number }>('SELECT 1 AS one FROM findings WHERE changeId = ? AND key IS NOT NULL LIMIT 1');
+  const liveWithAny = db.prepare<[number], { changeId: number }>(
+    `SELECT DISTINCT f.changeId FROM findings f JOIN changes c ON c.id = f.changeId
+     WHERE c.repoId = ? AND c.archivedAt IS NULL AND f.key IS NOT NULL ORDER BY f.changeId`,
+  );
   const exists = db.prepare<[number, string], { origin: string }>('SELECT origin FROM findings WHERE changeId = ? AND key = ?');
   const upsert = db.prepare<
     [number, string, string, string, string, string | null, string | null, string | null, string | null, string | null, number | null, string, string]
@@ -186,6 +192,7 @@ export function createFindingsStore(db: Connection): FindingsStore {
     },
     ruleStates: (changeId) => Object.fromEntries(ruleStates.all(changeId).map((row) => [row.key, row.state])),
     hasAny: (changeId) => any.get(changeId) !== undefined,
+    liveChangesWithAny: (repoId) => liveWithAny.all(repoId).map((row) => row.changeId),
     version: (changeId) => versions.get(changeId) ?? 0,
     importBatch: (batch) => {
       const result = db.transaction(() => importBatch(batch), { immediate: true });

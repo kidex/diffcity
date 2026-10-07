@@ -5,7 +5,7 @@
 import { PassThrough } from 'node:stream';
 import { afterEach } from 'vitest';
 import type { CommandRunner } from '../../../src/core/git/index.js';
-import type { Verdict } from '../../../src/core/report/types.js';
+import type { ServedCounts } from '../../../src/core/served/index.js';
 import { sendRequest } from '../../../src/daemon/client.js';
 import { createApiPlugin } from '../../../src/daemon/api/plugin.js';
 import type { ServedCache } from '../../../src/daemon/api/served-cache.js';
@@ -95,7 +95,7 @@ export interface TestDaemonOptions {
   /** The served Reports' cache of the API, to read its hit counters. */
   servedCache?: ServedCache;
   /** The API's cache of served verdict counts (DC-106), to read its hit counters. */
-  servedSummaries?: ServedCache<Record<Verdict, number>>;
+  servedSummaries?: ServedCache<ServedCounts>;
   /** Where the diff route computes: this thread (default, vitest cannot load a TypeScript worker) or the built worker. */
   diffRunner?: 'inline' | 'thread';
   /**

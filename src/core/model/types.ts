@@ -237,7 +237,7 @@ export interface RepoSummary {
   counts: Record<ChangeKind, number>;
   /** Live changes with `reviewState: 'unreviewed'`; drives the lot size in Fleet. */
   unreviewed: number;
-  /** Open `high` findings on the latest snapshots of live changes; 0 until phase 4. */
+  /** Open `high` findings in the served Reports (ADR-036) of the live changes: rule and imported, merged, on files in the change (DC-106). */
   highFindings: number;
   /** Null until phase 5; the UI shows "never audited". */
   lastAudit: { at: string } | null;

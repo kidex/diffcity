@@ -2,13 +2,13 @@
 // search. Every answer is read from src/core (the db stores and core search);
 // these handlers only validate, look up and send. The report is served with
 // the findings overlay (ADR-036), cached per snapshot and findings version, and
-// every ChangeSummary counts its files by verdict as that report does (DC-106).
+// every ChangeSummary and RepoSummary counts as that report does (DC-106).
 
 import type { FastifyInstance } from 'fastify';
 import type { Db, RepoRuntimeLookup } from '../../core/db/index.js';
 import type { ChangeSummary, RepoDetail, RepoSummary, SearchResult, SseEvent } from '../../core/model/types.js';
 import { search } from '../../core/search/index.js';
-import type { Verdict } from '../../core/report/types.js';
+import type { ServedCounts } from '../../core/served/index.js';
 import type { DiffPool } from '../diff/pool.js';
 import { HttpError } from '../http/errors.js';
 import type { Logger } from '../log.js';
@@ -40,8 +40,8 @@ export interface ApiDeps {
   diff?: { pool: DiffPool; log: Logger };
   /** The served Reports' cache; a fresh one when absent. */
   servedCache?: ServedCache;
-  /** The served Reports' verdict counts, for the change summaries; a fresh one when absent. */
-  servedSummaries?: ServedCache<Record<Verdict, number>>;
+  /** The served Reports' counts, for the change and repo summaries; a fresh one when absent. */
+  servedSummaries?: ServedCache<ServedCounts>;
 }
 
 interface IdParams {
@@ -63,14 +63,14 @@ export function registerApiRoutes(http: FastifyInstance, deps: ApiDeps): void {
   const repoSummary = (id: number): RepoSummary => {
     const summary = db.repos.getSummary(id, deps.runtime);
     if (summary === null) throw notFound('repo', id);
-    return summary;
+    return served.repo(summary);
   };
 
   // The stored counts, or the served Report's once the change has findings (DC-106).
   const changesOf = (repoId: number, archived: boolean): ChangeSummary[] =>
     (archived ? db.changes.listArchivedSummaries(repoId) : db.changes.listLiveSummaries(repoId)).map((change) => served.summary(change));
 
-  http.get('/api/repos', (): RepoSummary[] => db.repos.listSummaries(deps.runtime));
+  http.get('/api/repos', (): RepoSummary[] => db.repos.listSummaries(deps.runtime).map((repo) => served.repo(repo)));
 
   // Opening a repo in the UI counts as seeing it (ADR-020, Q6), like `track`:
   // it moves lastSeenAt forward on the daemon's clock, active or not, and

@@ -141,7 +141,7 @@ describe('repo summaries', () => {
     expect(db.repos.getSummary(999)).toBeNull();
   });
 
-  it('highFindings counts open high findings on the latest snapshot head of live changes only', () => {
+  it('highFindings is the stored part only: findings rows are not counted here (the served overlay counts them, DC-106)', () => {
     const repo = addRepo(db);
     const { created } = db.changes.applyPlan(
       repo.id,
@@ -160,14 +160,12 @@ describe('repo summaries', () => {
     const add = raw.prepare<[number, string, string, string]>(
       'INSERT INTO findings (changeId, head, finding, state) VALUES (?, ?, ?, ?)',
     );
-    add.run(live.id, live.head, '{"severity":"high"}', 'open'); // counted
-    add.run(live.id, live.head, '{"severity":"high"}', 'intended'); // not open
-    add.run(live.id, live.head, '{"severity":"med"}', 'open'); // not high
-    add.run(live.id, oldHead, '{"severity":"high"}', 'open'); // older head
-    add.run(archived.id, archived.head, '{"severity":"high"}', 'open'); // archived change
+    add.run(live.id, live.head, '{"severity":"high"}', 'open');
+    add.run(live.id, oldHead, '{"severity":"high"}', 'open');
+    add.run(archived.id, archived.head, '{"severity":"high"}', 'open');
     raw.close();
 
-    expect(db.repos.getSummary(repo.id)?.highFindings).toBe(1);
+    expect(db.repos.getSummary(repo.id)?.highFindings).toBe(0);
   });
 
   it('lastEventAt covers repo-level events and live changes, not archived ones', () => {

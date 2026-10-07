@@ -9,7 +9,8 @@ import type { Db } from '../../../src/core/db/index.js';
 import { anchor, type FindingInput, type StoredFinding } from '../../../src/core/findings/index.js';
 import type { ChangeRecord, ChangeSummary, RepoDetail } from '../../../src/core/model/types.js';
 import type { Report, Verdict } from '../../../src/core/report/types.js';
-import { createServedCache, type ServedCache } from '../../../src/daemon/api/served-cache.js';
+import type { ServedCounts } from '../../../src/core/served/index.js';
+import { servedCountsCache, type ServedCache } from '../../../src/daemon/api/served-cache.js';
 import { storeFindingsImport } from '../../../src/daemon/findings.js';
 import { call } from '../../helpers/review-api.js';
 import { addRepo, branchFields, sampleSummary, snapshotInput, T0 } from '../../unit/db/db-helpers.js';
@@ -67,7 +68,7 @@ interface Seeded {
   report: Report;
 }
 
-async function seeded(servedSummaries?: ServedCache<Record<Verdict, number>>): Promise<Seeded> {
+async function seeded(servedSummaries?: ServedCache<ServedCounts>): Promise<Seeded> {
   const test = await startTestDaemon({}, { api: true, ...(servedSummaries === undefined ? {} : { servedSummaries }) });
   const db = test.collection.db();
   const repo = addRepo(db, 'corner-till');
@@ -134,16 +135,17 @@ describe('list stats overlay (DC-106)', () => {
   });
 
   it('list-stats/no-findings: a change with no findings keeps the stored counts and its Report is never read', async () => {
-    const summaries = createServedCache<Record<Verdict, number>>();
+    const summaries = servedCountsCache();
     const s = await seeded(summaries);
     for (const counts of await listedCounts(s, s.quiet.id)) expect(counts).toEqual(sampleSummary().byVerdict);
-    // Only the change with findings went through the overlay summaries: the list
-    // missed, the repo detail hit, and /api/changes/:id of the quiet change never looked.
-    expect(summaries.stats).toEqual({ hits: 1, misses: 1 });
+    // Only the change with findings went through the served counts: the list
+    // missed, the repo detail hit twice (its repo and its changes), and
+    // /api/changes/:id of the quiet change never looked.
+    expect(summaries.stats).toEqual({ hits: 2, misses: 1 });
   });
 
   it('list-stats/cached: list calls overlay a change once per (snapshot, findings version)', async () => {
-    const summaries = createServedCache<Record<Verdict, number>>();
+    const summaries = servedCountsCache();
     const s = await seeded(summaries);
     await get<ChangeSummary[]>(s.port, `/api/repos/${String(s.repoId)}/changes`);
     await get<ChangeSummary[]>(s.port, `/api/repos/${String(s.repoId)}/changes`);
