@@ -233,8 +233,13 @@ function appendOnce(dir: string, dirStats: Stats, path: string, item: FixQueueIt
       try {
         linkSync(temp, path);
       } catch (error) {
-        if ((error as NodeJS.ErrnoException).code === 'EEXIST') return 'retry';
-        throw error;
+        const code = (error as NodeJS.ErrnoException).code;
+        if (code === 'EEXIST') return 'retry';
+        // No hard links on this filesystem (exFAT, some FUSE mounts): check the
+        // queue is still absent, then rename, as before link was used.
+        if (code !== 'EPERM' && code !== 'ENOTSUP') throw error;
+        if (lstatOrNull(path) !== null) return 'retry';
+        renameSync(temp, path);
       }
     } else {
       // The queue read must still be there, unchanged: /diffcity-review may have taken it meanwhile.

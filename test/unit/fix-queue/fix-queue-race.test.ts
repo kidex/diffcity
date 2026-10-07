@@ -11,7 +11,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { FIX_QUEUE_ATTEMPTS, appendToFixQueue, type FindingQueueItem, type FixQueue } from '../../../src/core/fix-queue/index.js';
 
 /** Runs once per temporary file the writer creates, right after it is written. */
-const hooks: { afterTempWrite: ((count: number) => void) | null; writes: number } = { afterTempWrite: null, writes: 0 };
+const hooks: { afterTempWrite: ((count: number) => void) | null; writes: number; linkError: string | null } = { afterTempWrite: null, writes: 0, linkError: null };
 
 vi.mock('node:fs', async (importOriginal) => {
   const actual = await importOriginal<typeof fs>();
@@ -22,13 +22,19 @@ vi.mock('node:fs', async (importOriginal) => {
       hooks.afterTempWrite(hooks.writes);
     }
   };
-  return { ...actual, writeFileSync };
+  // A filesystem without hard links (exFAT, some FUSE mounts) refuses link.
+  const linkSync: typeof actual.linkSync = (existing, created) => {
+    if (hooks.linkError !== null) throw Object.assign(new Error(`${hooks.linkError}: operation not permitted, link`), { code: hooks.linkError });
+    actual.linkSync(existing, created);
+  };
+  return { ...actual, writeFileSync, linkSync };
 });
 
 const dirs: string[] = [];
 afterEach(() => {
   hooks.afterTempWrite = null;
   hooks.writes = 0;
+  hooks.linkError = null;
   for (const dir of dirs.splice(0)) fs.rmSync(dir, { recursive: true, force: true });
 });
 
@@ -103,6 +109,29 @@ describe('fix queue against /diffcity-review taking it (DC-109)', () => {
     expect(hooks.writes).toBe(FIX_QUEUE_ATTEMPTS);
     // The last queue the other writer left is untouched, without the new item.
     expect(readJson(queuePath(root)).items.map((entry) => entry.key)).toEqual([item(10).key, item(11).key, item(12).key]);
+    expect(leftovers(root)).toEqual([]);
+  });
+
+  it.each(['EPERM', 'ENOTSUP'])('fix-queue/no-hard-links: link failing with %s falls back to a rename; the queue is still written', (code) => {
+    const root = tree();
+    hooks.linkError = code;
+    expect(appendToFixQueue(root, item(1))).toEqual({ ok: true, queued: true, count: 1 });
+    expect(readJson(queuePath(root)).items.map((entry) => entry.key)).toEqual([item(1).key]);
+    expect(leftovers(root)).toEqual([]);
+    // A queue that appears before the fallback rename is still never overwritten.
+    fs.rmSync(queuePath(root));
+    hooks.afterTempWrite = (count) => {
+      if (count === 1) fs.writeFileSync(queuePath(root), `${JSON.stringify({ version: 1, items: [item(5)] }, null, 2)}\n`);
+    };
+    expect(appendToFixQueue(root, item(2))).toEqual({ ok: true, queued: true, count: 2 });
+    expect(readJson(queuePath(root)).items.map((entry) => entry.key)).toEqual([item(5).key, item(2).key]);
+    expect(leftovers(root)).toEqual([]);
+  });
+
+  it('another link error is not swallowed', () => {
+    const root = tree();
+    hooks.linkError = 'EIO';
+    expect(() => appendToFixQueue(root, item(1))).toThrow('EIO');
     expect(leftovers(root)).toEqual([]);
   });
 
