@@ -160,7 +160,8 @@ export function classifyEntries(set: Changeset, packageJson: string | null | und
         if (home === undefined) continue;
         claim('route', home.file, entry);
         const list = routesOf.get(entry.id) ?? [];
-        list.push({ route, isNew: entry.status === 'add' || !before.has(routeKey(route)) });
+        // New or changed is a property of the route, not of its handler: the before file declared it or not.
+        list.push({ route, isNew: !before.has(routeKey(route)) });
         routesOf.set(entry.id, list);
         for (const handler of handlers) {
           const at = located(handler);

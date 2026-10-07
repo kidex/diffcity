@@ -45,6 +45,15 @@ describe('entry', () => {
     expect(rows(steps)).toEqual([`1 path ${list} <- ${list} : Endpoint changed: GET /items`]);
   });
 
+  it('route-handler-renamed: a route that existed before is "Endpoint changed" even when its handler is new', async () => {
+    const { steps } = await pathOf('entry/route-handler-renamed');
+    const all = id('src/items.ts', 'listAllItems');
+    expect(rows(steps)).toEqual([
+      `1 path ${all} <- ${all} : Endpoint changed: GET /items`,
+      `2 unconnected ${id('src/items.ts', 'listItems')} : Removed function`,
+    ]);
+  });
+
   it('nest-controller-method: decorated methods of a @Controller class are routes with the controller prefix', async () => {
     const { steps } = await pathOf('entry/nest-controller-method');
     const find = id('src/invoices.controller.ts', 'InvoicesController.find');
