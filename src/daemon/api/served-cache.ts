@@ -3,7 +3,7 @@
 // new snapshot or any findings write misses. Least recently used changes go
 // first once there are more than `max`. Two of them: the served Report text
 // (several MB each, so few) and its counts for the change and repo summaries
-// (a few bytes each, so one per change of any repo in practice; DC-106).
+// (a few hundred bytes each, so one per change of any repo in practice; DC-106).
 
 import type { ServedCounts } from '../../core/served/index.js';
 
@@ -17,7 +17,11 @@ export interface ServedCache<T = string> {
 }
 
 export const SERVED_CACHE_MAX = 8;
-/** The served counts kept: far more changes than a daemon tracks, at about 100 bytes each. */
+/**
+ * The served counts kept: far more changes than a daemon tracks. An entry (its
+ * key string, the counts object and the Map slot) takes a few hundred bytes,
+ * so a full cache holds about 1 to 1.4 MB.
+ */
 export const SERVED_SUMMARIES_MAX = 4096;
 
 export function createServedCache<T = string>(max = SERVED_CACHE_MAX): ServedCache<T> {
