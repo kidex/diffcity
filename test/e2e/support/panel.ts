@@ -103,3 +103,17 @@ export const tabOverflow = (page: Page): Promise<number> =>
   page.evaluate<number>(`(() => { const node = document.querySelector(${byTestId('panel-scroll')}); return node.scrollHeight - node.clientHeight; })()`);
 export const scrollTabTo = (page: Page, top: number): Promise<unknown> =>
   page.evaluate(`document.querySelector(${byTestId('panel-scroll')}).scrollTop = ${String(top)}`);
+
+/** The sections of the Execution order tab, in order. */
+export const stopSections = (page: Page): Locator => page.getByTestId('stop-section');
+export const stopSection = (page: Page, id: NonNullable<Step['section']>): Locator => page.locator(`[data-testid="stop-section"][data-section="${id}"]`);
+
+/** The golden Report's steps of a section (a missing section is path), by order. */
+export const stepsOf = (report: Report, section: NonNullable<Step['section']>): Step[] =>
+  report.steps.filter((one) => (one.section ?? 'path') === section).sort((a, b) => a.order - b.order);
+
+/** The name of a step's symbol, as its card shows it: the symbol id after `#`. */
+export const stepName = (one: Step): string => one.symbolId.slice(one.symbolId.indexOf('#') + 1);
+
+/** The card of a step, by its symbol. */
+export const cardOf = (page: Page, one: Step): Locator => page.locator(`[data-testid="stop-card"][data-symbol="${one.symbolId}"]`);

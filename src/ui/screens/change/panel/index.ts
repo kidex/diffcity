@@ -83,6 +83,8 @@ export function createPanel(options: PanelOptions, first: Report): Panel {
   let view: FileViewRender | null = null;
   let tabScroll = 0;
   let fileScroll = 0;
+  /** The card or row the file view was opened from while it had the focus: Esc and Back give the focus back to it. */
+  let opener: Target | null = null;
   let scrollFrame: number | undefined;
   const diffView: DiffView | null =
     options.diffs === undefined
@@ -240,7 +242,12 @@ export function createPanel(options: PanelOptions, first: Report): Panel {
   }
 
   function openFile(id: string, symbolId: string | null): void {
-    if (fileId === null) tabScroll = scroll.scrollTop;
+    // Hiding the list would drop the focus on the page: it moves to the file view's Back button instead.
+    const fromList = fileId === null && document.activeElement !== null && scroll.contains(document.activeElement);
+    if (fileId === null) {
+      tabScroll = scroll.scrollTop;
+      opener = fromList ? { fileId: id, symbolId } : null;
+    }
     const same = fileId === id && view !== null;
     fileId = id;
     selection = { fileId: id, symbolId };
@@ -256,10 +263,20 @@ export function createPanel(options: PanelOptions, first: Report): Panel {
       if (view !== null) view.scroll.scrollTop = 0;
     }
     root.dataset['mode'] = 'file';
+    if (fromList) fileRoot.querySelector<HTMLElement>('.fv-back')?.focus({ preventScroll: true });
+  }
+
+  /** After the file view closed with the focus in it: back on the card or row it was opened from, or on the list. */
+  function restoreFocus(target: Target): void {
+    const card = body?.stops.find((other) => other.stop.step.fileId === target.fileId && other.stop.step.symbolId === target.symbolId)?.root;
+    const row = body?.symbols.find((other) => other.target.fileId === target.fileId && other.target.symbolId === target.symbolId)?.root;
+    (card ?? row ?? scroll).focus({ preventScroll: true });
   }
 
   function closeFile(): void {
     if (fileId === null) return;
+    const returnTo = opener !== null && document.activeElement !== null && fileRoot.contains(document.activeElement) ? opener : null;
+    opener = null;
     fileId = null;
     view = null;
     diffView?.hide();
@@ -271,6 +288,7 @@ export function createPanel(options: PanelOptions, first: Report): Panel {
     scroll.scrollTop = tabScroll;
     delete root.dataset['mode'];
     markCurrent();
+    if (returnTo !== null) restoreFocus(returnTo);
   }
 
   const onKey = (event: KeyboardEvent): void => {
