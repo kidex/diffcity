@@ -20,7 +20,7 @@
   },
   "scripts": {
     "clean": "node scripts/clean-dist.mjs",
-    "build:node": "node scripts/clean-dist.mjs --node && tsc -p tsconfig.build.json",
+    "build:node": "node scripts/clean-dist.mjs --node && tsc -p tsconfig.build.json && node scripts/mark-bin-executable.mjs",
     "build:ui": "vite build",
     "build:standalone": "vite build --config vite.standalone.config.ts",
     "build": "npm run build:node && npm run build:ui",
