@@ -4,6 +4,7 @@
 
 import { Command } from 'commander';
 import type { DiffCommandOptions } from './diff.js';
+import type { ImportCommandOptions } from './import.js';
 import type { StartCommandOptions } from './start.js';
 import type { TrackCommandOptions } from './track.js';
 import type { TrustCommandOptions } from './trust.js';
@@ -135,7 +136,10 @@ export function buildProgram(io: CliIo = defaultIo): Command {
     .description('anchor findings (own JSON or SARIF) to symbols of the current change')
     .argument('<file>', 'findings.json or *.sarif.json')
     .option('--open', 'open the change in the UI after importing')
-    .action(notImplemented(io, 'import'));
+    .action(async (file: string, options: ImportCommandOptions) => {
+      const { runImport } = await import('./import.js');
+      process.exitCode = await runImport(file, options, { io, env: io.env?.() ?? process.env, cwd: io.cwd?.() ?? process.cwd() });
+    });
 
   program
     .command('export')
