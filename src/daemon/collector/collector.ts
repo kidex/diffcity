@@ -292,6 +292,7 @@ export function createCollector(options: CollectorOptions): Collector {
   ): Promise<boolean> {
     const input = await snapshotInput(repo, change, repoBase, trustConfig);
     const computed = await snapshots.submit(`${String(repo.id)}:${String(change.id)}`, priority, input);
+    for (const note of computed.notes ?? []) log.info(`snapshot of ${change.ref}: ${note}`);
     if (closing) return false;
     const at = now();
     const iso = at.toISOString();

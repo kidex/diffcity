@@ -57,6 +57,16 @@ function harness(build: (options: BuildReportOptions) => Promise<Report>): { dep
 }
 
 describe('diffcity diff', () => {
+  it('cli-diff/log-to-stderr: a build note goes to stderr, never into the --json output', async () => {
+    const { deps, out } = harness((options) => {
+      options.log?.('call graph: ts-morph failed (boom); matching names for the whole change');
+      return Promise.resolve(sampleReport);
+    });
+    expect(await runDiff({ json: true }, deps)).toBe(0);
+    expect(out.stderr).toBe('diffcity diff: call graph: ts-morph failed (boom); matching names for the whole change\n');
+    expect(JSON.parse(out.stdout)).toEqual(JSON.parse(JSON.stringify(sampleReport)));
+  });
+
   it('--json writes the report as JSON to stdout and returns 0', async () => {
     const { deps, out } = harness(() => Promise.resolve(sampleReport));
     const code = await runDiff({ json: true, base: 'trunk', head: 'feature/rolls' }, deps);
@@ -64,14 +74,14 @@ describe('diffcity diff', () => {
     expect(out.stderr).toBe('');
     expect(out.stdout.endsWith('\n')).toBe(true);
     expect(JSON.parse(out.stdout)).toEqual(sampleReport);
-    expect(out.calls).toEqual([{ repoDir: '/work/sample-bakery', trustConfig: true, base: 'trunk', head: 'feature/rolls' }]);
+    expect(out.calls).toEqual([{ repoDir: '/work/sample-bakery', trustConfig: true, base: 'trunk', head: 'feature/rolls', log: expect.any(Function) as unknown }]);
   });
 
   it('without --json prints the text summary', async () => {
     const { deps, out } = harness(() => Promise.resolve(sampleReport));
     expect(await runDiff({}, deps)).toBe(0);
     expect(out.stdout).toBe(formatSummary(sampleReport));
-    expect(out.calls).toEqual([{ repoDir: '/work/sample-bakery', trustConfig: true, base: undefined, head: undefined }]);
+    expect(out.calls).toEqual([{ repoDir: '/work/sample-bakery', trustConfig: true, base: undefined, head: undefined, log: expect.any(Function) as unknown }]);
   });
 
   it.each([

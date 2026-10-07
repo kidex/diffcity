@@ -106,7 +106,9 @@ describe('sse/review-after-snapshot', () => {
 /** A draft with a marked file, then a same-length edit that leaves the Report as it was (DC-74). */
 async function refreshedEdit() {
   const repo = await sampleRepo();
-  const body = (n: number): string => `export function total(items: number[]): number {\n  return items.reduce((a, b) => a + b, ${String(n)});\n}\n`;
+  // Step.diff carries the lines of every changed symbol (ADR-034): the edit that leaves the
+  // Report as it was is a note line outside the symbol.
+  const body = (n: number): string => `// pass ${String(n)}\nexport function total(items: number[]): number {\n  return items.reduce((a, b) => a + b, 0);\n}\n`;
   await repo.write({ 'src/cart/total.ts': body(0) });
   const test = await startTestDaemon({ gh: ghNotInstalled() }, { api: true });
   const tracked = await test.track(repo.dir);

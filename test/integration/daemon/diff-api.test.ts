@@ -338,8 +338,12 @@ describe('api/diff-pre-v2-snapshot-unavailable', () => {
 
 describe('api/diff-not-stale-after-refresh', () => {
   it('drops the cached diff of a dirty change on a refreshed put: bytes changed under an identical Report', async () => {
+    // Step.diff carries the lines of every changed symbol (ADR-034), so an edit the Report
+    // cannot see sits outside every symbol: a note line above total, one below tax.
+    const noted = (n: number): string => `// pass ${String(n)}\n${body(0)}`;
+    const taxNoted = (rate: string): string => `${TAX}// rate ${rate}\n`;
     const repo = await sampleRepo();
-    await repo.write({ 'src/cart/total.ts': body(0), 'src/cart/tax.ts': TAX });
+    await repo.write({ 'src/cart/total.ts': noted(0), 'src/cart/tax.ts': taxNoted('0.2') });
     const { test, port, changeId } = await collect(repo, 'draft');
     const db = test.collection.db();
     const first = db.snapshots.latest(changeId);
@@ -350,10 +354,10 @@ describe('api/diff-not-stale-after-refresh', () => {
     const added = (diff: FileDiff): string[] => (diff.rows ?? []).filter((row) => row.kind === 'add').map((row) => row.text);
 
     expect(await total()).toMatchObject({ stale: false });
-    expect(added(await total()).join('\n')).toContain('a + b, 0');
+    expect(added(await total()).join('\n')).toContain('// pass 0');
 
     // Same-length edits that leave the Report as it was.
-    await repo.write({ 'src/cart/total.ts': body(1), 'src/cart/tax.ts': TAX.replace('0.2', '0.3') });
+    await repo.write({ 'src/cart/total.ts': noted(1), 'src/cart/tax.ts': taxNoted('0.3') });
     // Before the next snapshot, a file not yet looked at shows the change as stale.
     const early = await tax();
     expect(early.stale).toBe(true);
@@ -367,8 +371,8 @@ describe('api/diff-not-stale-after-refresh', () => {
 
     const refreshed = await total();
     expect(refreshed.stale).toBe(false);
-    expect(added(refreshed).join('\n')).toContain('a + b, 1');
-    expect(added(refreshed).join('\n')).not.toContain('a + b, 0');
+    expect(added(refreshed).join('\n')).toContain('// pass 1');
+    expect(added(refreshed).join('\n')).not.toContain('// pass 0');
     expect((await tax()).stale).toBe(false);
   });
 });

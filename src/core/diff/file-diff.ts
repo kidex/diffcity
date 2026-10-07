@@ -11,6 +11,7 @@ import type { DiffRow, FileDiff, FileFingerprint, HighlightClass } from '../mode
 import type { Status } from '../report/types.js';
 import type { DiffGit } from './diff-git.js';
 import { highlightLanguage, highlightLines, type LineSpans } from './highlight.js';
+import { rowText } from './row-text.js';
 
 /** Either side above this many bytes: `too-large`. */
 export const MAX_SIDE_BYTES = 2 * 1024 * 1024;
@@ -22,8 +23,7 @@ export const MAX_ROWS = 60_000;
 export const MAX_JSON_BYTES = 8 * 1024 * 1024;
 /** Highlighting runs only when each side is at most this many bytes. */
 export const MAX_HIGHLIGHT_BYTES = 512 * 1024;
-/** Longest row text, in characters. */
-export const MAX_ROW_TEXT = 4000;
+export { MAX_ROW_TEXT } from './row-text.js';
 /** A run of unchanged rows longer than this is folded... */
 export const FOLD_AFTER_ROWS = 8;
 /** ...leaving this many rows visible on each side. */
@@ -169,15 +169,9 @@ const NEWLINE = Buffer.from('\n');
 
 const sha256 = (bytes: Buffer): string => createHash('sha256').update(bytes).digest('hex');
 
-/** Row text for the screen: no trailing CR, at most MAX_ROW_TEXT characters, never a split surrogate pair. */
+/** Row text for the screen (row-text.ts). */
 function displayText(bytes: Buffer): { text: string; cut: boolean } {
-  let text = bytes.toString('utf8');
-  if (text.endsWith('\r')) text = text.slice(0, -1);
-  if (text.length <= MAX_ROW_TEXT) return { text, cut: false };
-  let end = MAX_ROW_TEXT;
-  const code = text.charCodeAt(end - 1);
-  if (code >= 0xd800 && code <= 0xdbff) end -= 1;
-  return { text: text.slice(0, end), cut: true };
+  return rowText(bytes.toString('utf8'));
 }
 
 /** First and last row of each run of rows for which `inRun` holds. */

@@ -3,20 +3,32 @@
 // touches this file: a regenerated expected.json that disagrees with it fails.
 //
 // `files` lists every file of the Report with its status and verdict, in
-// report order. `symbols` lists, for every file (touched or not), each symbol
+// report order. `path` lists every step in order (SPEC.md 5.4, ADR-034):
+// section, symbol, the entry it hangs from and why; `callsites` the call
+// sites of every `sig` symbol. `symbols` lists, for every file (touched or not), each symbol
 // id (the part after `#`) with its status, in report order. The summary
 // counts are not written here: the test derives files, byStatus, byVerdict
 // and checks them against the Report, so a golden that breaks a rule cannot
 // pass through a regenerated expected.json.
 
-import type { Status, Verdict } from '../../src/core/report/types.js';
+import type { Status, Step, Verdict } from '../../src/core/report/types.js';
+
+export type ReviewedStep = [section: NonNullable<Step['section']>, symbolId: string, entry: string | null, why: string];
 
 export interface ReviewedScenario {
   files: [path: string, status: Status, verdict: Verdict][];
   symbols: Record<string, [name: string, status: Status][]>;
   packages: [path: string, tier1: boolean][];
   tier1Files: string[];
+  /** The execution path, step by step, in order. */
+  path: ReviewedStep[];
+  /** Symbol.callsites of every `sig` symbol. */
+  callsites: Record<string, number>;
 }
+
+const ROUTES = 'src/api/orders/orders.routes.ts';
+const CONTROLLER = 'src/api/orders/orders.controller.ts';
+const SERVICE = 'src/services/orders/orders.service.ts';
 
 export const reviewed: Record<string, ReviewedScenario> = {
   // Mirrors design/mockup.html. Phase 1 has no findings and no spec (ADR-010),
@@ -144,6 +156,45 @@ export const reviewed: Record<string, ReviewedScenario> = {
       ['src/shared', false],
     ],
     tier1Files: ['db/migrations/20260921_order_discounts.sql', 'src/auth/order.guard.ts'],
+    path: [
+      // Class 1, HTTP route: registerRoutes is mod and gained POST /orders/:id/cancel (not in before).
+      ['path', `${ROUTES}#registerRoutes`, `${ROUTES}#registerRoutes`, 'New endpoint POST /orders/:id/cancel'],
+      // Class 2, controller handlers by file then range: create, cancel, then the handler guard.canPlace.
+      // Handlers passed by name are not calls: registerRoutes reaches nothing by BFS.
+      ['path', `${CONTROLLER}#OrdersController.create`, `${CONTROLLER}#OrdersController.create`, 'Body changed'],
+      // BFS from create: CreateOrderDto.from is same (skipped); svc.place is next.
+      ['path', `${SERVICE}#OrdersService.place`, `${CONTROLLER}#OrdersController.create`, 'Body changed'],
+      // place's callees in source order: validate, calcTotal, applyDiscount, repo.insert, notify.
+      ['path', `${SERVICE}#OrdersService.validate`, `${CONTROLLER}#OrdersController.create`, 'Body changed'],
+      ['path', `${SERVICE}#OrdersService.calcTotal`, `${CONTROLLER}#OrdersController.create`, 'New method'],
+      ['path', `${SERVICE}#OrdersService.applyDiscount`, `${CONTROLLER}#OrdersController.create`, 'New method'],
+      ['path', 'src/repo/orders.repo.ts#OrdersRepo.insert', `${CONTROLLER}#OrdersController.create`, 'Body changed'],
+      ['path', `${SERVICE}#OrdersService.notify`, `${CONTROLLER}#OrdersController.create`, 'New method'],
+      // Next BFS level: notify calls send, send calls template.
+      ['path', 'src/services/orders/mailer.ts#send', `${CONTROLLER}#OrdersController.create`, 'Body changed'],
+      ['path', 'src/services/orders/mailer.ts#template', `${CONTROLLER}#OrdersController.create`, 'New function'],
+      // cancel: CancelOrderDto.from, which constructs CancelOrderDto; svc.cancel is no touched symbol.
+      ['path', `${CONTROLLER}#OrdersController.cancel`, `${CONTROLLER}#OrdersController.cancel`, 'New method'],
+      ['path', 'src/api/orders/orders.dto.ts#CancelOrderDto.from', `${CONTROLLER}#OrdersController.cancel`, 'New method'],
+      ['path', 'src/api/orders/orders.dto.ts#CancelOrderDto', `${CONTROLLER}#OrdersController.cancel`, 'New class'],
+      // canPlace is only passed by reference, never called: sig with no call site.
+      ['path', 'src/auth/order.guard.ts#OrderGuard.canPlace', 'src/auth/order.guard.ts#OrderGuard.canPlace', 'Signature changed'],
+      // Class 5: the new `cancel` test block (its callee cancel is already on the path).
+      ['path', 'src/api/orders/orders.controller.spec.ts#cancel', 'src/api/orders/orders.controller.spec.ts#cancel', 'New test'],
+      // Touched SQL after the path, file then range order.
+      ['migration', 'db/migrations/20260921_order_discounts.sql#ALTER TABLE orders', null, 'Schema modified: ALTER TABLE orders'],
+      ['migration', 'db/migrations/20260921_order_discounts.sql#CREATE INDEX orders_discount_idx', null, 'Schema modified: CREATE INDEX orders_discount_idx'],
+      // Reached from no entry: the modified (not new) test, the dto reached only through the same from(),
+      // markCancelled (svc.cancel does not exist), the rules called through an interface, the removed roundMoney.
+      ['unconnected', 'src/api/orders/orders.controller.spec.ts#create', null, 'Body changed'],
+      ['unconnected', 'src/api/orders/orders.dto.ts#CreateOrderDto', null, 'Body changed'],
+      ['unconnected', 'src/repo/orders.repo.ts#OrdersRepo.markCancelled', null, 'New method'],
+      ['unconnected', 'src/services/orders/discount.rules.ts#DiscountRule', null, 'New export'],
+      ['unconnected', 'src/services/orders/discount.rules.ts#percentage', null, 'New function'],
+      ['unconnected', 'src/services/orders/discount.rules.ts#threshold', null, 'New function'],
+      ['unconnected', 'src/services/orders/pricing.ts#roundMoney', null, 'Removed function'],
+    ],
+    callsites: { 'src/auth/order.guard.ts#OrderGuard.canPlace': 0 },
   },
 
   // Base `master` (no `main`); diffcity.config.js drops `schema` and adds
@@ -211,6 +262,25 @@ export const reviewed: Record<string, ReviewedScenario> = {
       ['src/ui', false],
     ],
     tier1Files: ['src/release/version.ts'],
+    // No entry point: no route, no controller, main (src/cli.ts) is same, the bin file dist/cli.js is not
+    // in the change, `program.command(name, run)` is not a commander `.action()`, no job, no test.
+    // Everything touched is Unconnected, in file then range order.
+    path: [
+      ['unconnected', 'src/commands/index.ts#registerReport', null, 'New export'],
+      ['unconnected', 'src/commands/index.ts#report', null, 'New export'],
+      ['unconnected', 'src/commands/report.ts#Period', null, 'New export'],
+      ['unconnected', 'src/commands/report.ts#parsePeriod', null, 'New function'],
+      ['unconnected', 'src/commands/report.ts#runReport', null, 'New function'],
+      ['unconnected', 'src/commands/report.ts#registerReport', null, 'New function'],
+      ['unconnected', 'src/config/schema.ts#configSchema', null, 'Body changed'],
+      // Called by runReport (report.ts) and by list.ts, whose only change is its imports.
+      ['unconnected', 'src/format/duration.ts#formatDuration', null, 'Signature changed, 2 call sites rewritten'],
+      ['unconnected', 'src/release/version.ts#nextVersion', null, 'Body changed'],
+      ['unconnected', 'src/ui/ReportTable.tsx#ReportRow', null, 'New export'],
+      ['unconnected', 'src/ui/ReportTable.tsx#ReportTable', null, 'New function'],
+      ['unconnected', 'src/ui/ReportTable.tsx#ReportLine', null, 'New function'],
+    ],
+    callsites: { 'src/format/duration.ts#formatDuration': 2 },
   },
 
   // Working-tree mode: three commits plus a staged edit, an unstaged edit and
@@ -287,5 +357,20 @@ export const reviewed: Record<string, ReviewedScenario> = {
       ['src/session', true],
     ],
     tier1Files: ['Dockerfile', 'src/session/cookie.ts', 'src/session/refresh.test.ts', 'src/session/refresh.ts'],
+    path: [
+      // Class 5: the new test block; BFS: refreshSession, then its callees isExpired and rotate in call order.
+      ['path', 'src/session/refresh.test.ts#refreshSession', 'src/session/refresh.test.ts#refreshSession', 'New test'],
+      ['path', 'src/session/refresh.ts#refreshSession', 'src/session/refresh.test.ts#refreshSession', 'Signature changed, 2 call sites rewritten'],
+      ['path', 'src/session/refresh.ts#isExpired', 'src/session/refresh.test.ts#refreshSession', 'Body changed'],
+      ['path', 'src/session/refresh.ts#rotate', 'src/session/refresh.test.ts#refreshSession', 'New function'],
+      // No SQL. Unconnected in file then range order; the deleted file's symbols are removed steps.
+      ['unconnected', 'scripts/seed-ledger.js#seedJournal', null, 'New function'],
+      ['unconnected', 'src/ledger/journal.ts#balance', null, 'Body changed'],
+      ['unconnected', 'src/session/cookie.ts#readCookie', null, 'Removed function'],
+      ['unconnected', 'src/session/cookie.ts#writeCookie', null, 'Removed function'],
+      // An interface: nothing calls a type.
+      ['unconnected', 'src/session/refresh.ts#Session', null, 'Body changed'],
+    ],
+    callsites: { 'src/session/refresh.ts#refreshSession': 2 },
   },
 };

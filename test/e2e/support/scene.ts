@@ -1,7 +1,7 @@
 // Reads the change screen's city through its `?scene-debug` hook
 // (window.diffcityScene, src/ui/screens/change/index.ts).
 
-import { expect, type Page } from '@playwright/test';
+import { expect, type CDPSession, type Page } from '@playwright/test';
 import type { QualityState } from '../../../src/ui/screens/change/scene/quality.js';
 
 export interface SceneStats {
@@ -112,4 +112,23 @@ export function hasWebgl2(page: Page): Promise<boolean> {
     const gl = canvas && canvas.getContext('webgl2');
     return Boolean(gl) && !gl.isContextLost();
   })()`);
+}
+
+/**
+ * WebGL2 contexts still reachable after a full collection: one per view that
+ * something keeps alive. A closed view whose context stays in the heap keeps
+ * its canvas and the screen around it too (DC-101).
+ */
+export async function liveContexts(cdp: CDPSession): Promise<number> {
+  await cdp.send('HeapProfiler.collectGarbage');
+  const proto = await cdp.send('Runtime.evaluate', { expression: 'WebGL2RenderingContext.prototype' });
+  const found = await cdp.send('Runtime.queryObjects', { prototypeObjectId: proto.result.objectId ?? '' });
+  const count = await cdp.send('Runtime.callFunctionOn', {
+    objectId: found.objects.objectId ?? '',
+    functionDeclaration: 'function () { return this.length; }',
+    returnByValue: true,
+  });
+  await cdp.send('Runtime.releaseObject', { objectId: found.objects.objectId ?? '' });
+  await cdp.send('Runtime.releaseObject', { objectId: proto.result.objectId ?? '' });
+  return count.result.value as number;
 }

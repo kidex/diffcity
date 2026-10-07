@@ -294,7 +294,8 @@
                 "end": 20
               },
               "signatureBefore": "canPlace(user: User): boolean",
-              "signatureAfter": "canPlace(user: User, order?: Order): boolean"
+              "signatureAfter": "canPlace(user: User, order?: Order): boolean",
+              "callsites": 0
             }
           ]
         },
@@ -782,7 +783,747 @@
       ]
     }
   ],
-  "steps": [],
+  "steps": [
+    {
+      "order": 1,
+      "symbolId": "src/api/orders/orders.routes.ts#registerRoutes",
+      "fileId": "src/api/orders/orders.routes.ts",
+      "why": "New endpoint POST /orders/:id/cancel",
+      "diff": [
+        {
+          "kind": "ctx",
+          "text": "  router.get('/orders', ctrl.list);"
+        },
+        {
+          "kind": "ctx",
+          "text": "  router.get('/orders/:id', ctrl.get);"
+        },
+        {
+          "kind": "ctx",
+          "text": "  router.post('/orders', guard.canPlace, ctrl.create);"
+        },
+        {
+          "kind": "add",
+          "text": "  router.post('/orders/:id/cancel', guard.canPlace, ctrl.cancel);"
+        },
+        {
+          "kind": "ctx",
+          "text": "}"
+        }
+      ],
+      "section": "path",
+      "entry": "src/api/orders/orders.routes.ts#registerRoutes"
+    },
+    {
+      "order": 2,
+      "symbolId": "src/api/orders/orders.controller.ts#OrdersController.create",
+      "fileId": "src/api/orders/orders.controller.ts",
+      "why": "Body changed",
+      "diff": [
+        {
+          "kind": "ctx",
+          "text": "  async create(req: Req, res: Res) {"
+        },
+        {
+          "kind": "ctx",
+          "text": "    const dto = CreateOrderDto.from(req.body);"
+        },
+        {
+          "kind": "ctx",
+          "text": "    const order = await this.svc.place(req.user, dto);"
+        },
+        {
+          "kind": "del",
+          "text": "    res.status(201).json(order);"
+        },
+        {
+          "kind": "add",
+          "text": "    res.status(201).json({ order, discounted: dto.discountPct > 0 });"
+        },
+        {
+          "kind": "ctx",
+          "text": "  }"
+        }
+      ],
+      "section": "path",
+      "entry": "src/api/orders/orders.controller.ts#OrdersController.create"
+    },
+    {
+      "order": 3,
+      "symbolId": "src/services/orders/orders.service.ts#OrdersService.place",
+      "fileId": "src/services/orders/orders.service.ts",
+      "why": "Body changed",
+      "diff": [
+        {
+          "kind": "ctx",
+          "text": "  async place(user: { id: string }, dto: CreateOrderDto) {"
+        },
+        {
+          "kind": "ctx",
+          "text": "    this.validate(dto);"
+        },
+        {
+          "kind": "del",
+          "text": "    const total = dto.items.reduce((sum, item) => sum.plus(Money.of(item.length)), Money.zero());"
+        },
+        {
+          "kind": "del",
+          "text": "    return this.repo.insert({ ownerId: user.id, total });"
+        },
+        {
+          "kind": "add",
+          "text": "    const total = this.calcTotal(dto);"
+        },
+        {
+          "kind": "add",
+          "text": "    const discounted = this.applyDiscount(total, dto.rules);"
+        },
+        {
+          "kind": "add",
+          "text": "    const order = await this.repo.insert({ ownerId: user.id, total, discounted, discountPct: dto.discountPct });"
+        },
+        {
+          "kind": "add",
+          "text": "    await this.notify(user.id);"
+        },
+        {
+          "kind": "add",
+          "text": "    return order;"
+        },
+        {
+          "kind": "ctx",
+          "text": "  }"
+        }
+      ],
+      "section": "path",
+      "entry": "src/api/orders/orders.controller.ts#OrdersController.create"
+    },
+    {
+      "order": 4,
+      "symbolId": "src/services/orders/orders.service.ts#OrdersService.validate",
+      "fileId": "src/services/orders/orders.service.ts",
+      "why": "Body changed",
+      "diff": [
+        {
+          "kind": "ctx",
+          "text": "  validate(dto: CreateOrderDto): void {"
+        },
+        {
+          "kind": "ctx",
+          "text": "    if (dto.items.length === 0) throw new NotFound('items');"
+        },
+        {
+          "kind": "add",
+          "text": "    if (dto.discountPct < 0) throw new NotFound('discount');"
+        },
+        {
+          "kind": "ctx",
+          "text": "  }"
+        }
+      ],
+      "section": "path",
+      "entry": "src/api/orders/orders.controller.ts#OrdersController.create"
+    },
+    {
+      "order": 5,
+      "symbolId": "src/services/orders/orders.service.ts#OrdersService.calcTotal",
+      "fileId": "src/services/orders/orders.service.ts",
+      "why": "New method",
+      "diff": [
+        {
+          "kind": "add",
+          "text": "  calcTotal(dto: CreateOrderDto): Money {"
+        },
+        {
+          "kind": "add",
+          "text": "    return dto.items.reduce((sum, item) => sum.plus(Money.of(item.length)), Money.zero());"
+        },
+        {
+          "kind": "add",
+          "text": "  }"
+        }
+      ],
+      "section": "path",
+      "entry": "src/api/orders/orders.controller.ts#OrdersController.create"
+    },
+    {
+      "order": 6,
+      "symbolId": "src/services/orders/orders.service.ts#OrdersService.applyDiscount",
+      "fileId": "src/services/orders/orders.service.ts",
+      "why": "New method",
+      "diff": [
+        {
+          "kind": "add",
+          "text": "  private applyDiscount(total: Money, rules: DiscountRule[]) {"
+        },
+        {
+          "kind": "add",
+          "text": "    const pct = rules.reduce((p, r) => p + r.percentage(total), 0);"
+        },
+        {
+          "kind": "add",
+          "text": "    return total.times(1 - pct / 100);"
+        },
+        {
+          "kind": "add",
+          "text": "  }"
+        }
+      ],
+      "section": "path",
+      "entry": "src/api/orders/orders.controller.ts#OrdersController.create"
+    },
+    {
+      "order": 7,
+      "symbolId": "src/repo/orders.repo.ts#OrdersRepo.insert",
+      "fileId": "src/repo/orders.repo.ts",
+      "why": "Body changed",
+      "diff": [
+        {
+          "kind": "ctx",
+          "text": "  async insert(order: NewOrder) {"
+        },
+        {
+          "kind": "ctx",
+          "text": "    const { rows } = await this.db.query("
+        },
+        {
+          "kind": "del",
+          "text": "      'INSERT INTO orders (id, owner_id, total) VALUES (gen_random_uuid(), $1, $2) RETURNING *',"
+        },
+        {
+          "kind": "del",
+          "text": "      [order.ownerId, order.total.cents],"
+        },
+        {
+          "kind": "add",
+          "text": "      'INSERT INTO orders (id, owner_id, total, discount_pct, discounted_total) VALUES (gen_random_uuid(), $1, $2, $3, $4) RETURNING *',"
+        },
+        {
+          "kind": "add",
+          "text": "      [order.ownerId, order.total.cents, order.discountPct, order.discounted.cents],"
+        },
+        {
+          "kind": "ctx",
+          "text": "    );"
+        },
+        {
+          "kind": "ctx",
+          "text": "    return rows[0];"
+        },
+        {
+          "kind": "ctx",
+          "text": "  }"
+        }
+      ],
+      "section": "path",
+      "entry": "src/api/orders/orders.controller.ts#OrdersController.create"
+    },
+    {
+      "order": 8,
+      "symbolId": "src/services/orders/orders.service.ts#OrdersService.notify",
+      "fileId": "src/services/orders/orders.service.ts",
+      "why": "New method",
+      "diff": [
+        {
+          "kind": "add",
+          "text": "  async notify(userId: string): Promise<void> {"
+        },
+        {
+          "kind": "add",
+          "text": "    await send(userId, 'Your order was placed');"
+        },
+        {
+          "kind": "add",
+          "text": "  }"
+        }
+      ],
+      "section": "path",
+      "entry": "src/api/orders/orders.controller.ts#OrdersController.create"
+    },
+    {
+      "order": 9,
+      "symbolId": "src/services/orders/mailer.ts#send",
+      "fileId": "src/services/orders/mailer.ts",
+      "why": "Body changed",
+      "diff": [
+        {
+          "kind": "ctx",
+          "text": "export async function send(to: string, subject: string): Promise<void> {"
+        },
+        {
+          "kind": "del",
+          "text": "  await Promise.resolve({ to, subject });"
+        },
+        {
+          "kind": "add",
+          "text": "  await Promise.resolve({ to, subject, body: template(subject) });"
+        },
+        {
+          "kind": "ctx",
+          "text": "}"
+        }
+      ],
+      "section": "path",
+      "entry": "src/api/orders/orders.controller.ts#OrdersController.create"
+    },
+    {
+      "order": 10,
+      "symbolId": "src/services/orders/mailer.ts#template",
+      "fileId": "src/services/orders/mailer.ts",
+      "why": "New function",
+      "diff": [
+        {
+          "kind": "add",
+          "text": "export function template(subject: string): string {"
+        },
+        {
+          "kind": "add",
+          "text": "  return `<h1>${subject}</h1>`;"
+        },
+        {
+          "kind": "add",
+          "text": "}"
+        }
+      ],
+      "section": "path",
+      "entry": "src/api/orders/orders.controller.ts#OrdersController.create"
+    },
+    {
+      "order": 11,
+      "symbolId": "src/api/orders/orders.controller.ts#OrdersController.cancel",
+      "fileId": "src/api/orders/orders.controller.ts",
+      "why": "New method",
+      "diff": [
+        {
+          "kind": "add",
+          "text": "  async cancel(req: Req, res: Res) {"
+        },
+        {
+          "kind": "add",
+          "text": "    const dto = CancelOrderDto.from(req.params, req.body);"
+        },
+        {
+          "kind": "add",
+          "text": "    const order = await this.svc.cancel(req.user, dto);"
+        },
+        {
+          "kind": "add",
+          "text": "    res.status(200).json(order);"
+        },
+        {
+          "kind": "add",
+          "text": "  }"
+        }
+      ],
+      "section": "path",
+      "entry": "src/api/orders/orders.controller.ts#OrdersController.cancel"
+    },
+    {
+      "order": 12,
+      "symbolId": "src/api/orders/orders.dto.ts#CancelOrderDto.from",
+      "fileId": "src/api/orders/orders.dto.ts",
+      "why": "New method",
+      "diff": [
+        {
+          "kind": "add",
+          "text": "  static from(params: Record<string, string>, body: unknown): CancelOrderDto {"
+        },
+        {
+          "kind": "add",
+          "text": "    const dto = new CancelOrderDto();"
+        },
+        {
+          "kind": "add",
+          "text": "    dto.id = params.id ?? '';"
+        },
+        {
+          "kind": "add",
+          "text": "    dto.reason = (body as { reason?: string }).reason ?? '';"
+        },
+        {
+          "kind": "add",
+          "text": "    return dto;"
+        },
+        {
+          "kind": "add",
+          "text": "  }"
+        }
+      ],
+      "section": "path",
+      "entry": "src/api/orders/orders.controller.ts#OrdersController.cancel"
+    },
+    {
+      "order": 13,
+      "symbolId": "src/api/orders/orders.dto.ts#CancelOrderDto",
+      "fileId": "src/api/orders/orders.dto.ts",
+      "why": "New class",
+      "diff": [
+        {
+          "kind": "add",
+          "text": "export class CancelOrderDto {"
+        },
+        {
+          "kind": "add",
+          "text": "  id = '';"
+        },
+        {
+          "kind": "add",
+          "text": "  reason = '';"
+        },
+        {
+          "kind": "add",
+          "text": ""
+        },
+        {
+          "kind": "add",
+          "text": "  static from(params: Record<string, string>, body: unknown): CancelOrderDto {"
+        },
+        {
+          "kind": "add",
+          "text": "    const dto = new CancelOrderDto();"
+        },
+        {
+          "kind": "add",
+          "text": "    dto.id = params.id ?? '';"
+        },
+        {
+          "kind": "add",
+          "text": "    dto.reason = (body as { reason?: string }).reason ?? '';"
+        },
+        {
+          "kind": "add",
+          "text": "    return dto;"
+        },
+        {
+          "kind": "add",
+          "text": "  }"
+        },
+        {
+          "kind": "add",
+          "text": "}"
+        }
+      ],
+      "section": "path",
+      "entry": "src/api/orders/orders.controller.ts#OrdersController.cancel"
+    },
+    {
+      "order": 14,
+      "symbolId": "src/auth/order.guard.ts#OrderGuard.canPlace",
+      "fileId": "src/auth/order.guard.ts",
+      "why": "Signature changed",
+      "diff": [
+        {
+          "kind": "del",
+          "text": "  canPlace(user: User): boolean {"
+        },
+        {
+          "kind": "add",
+          "text": "  canPlace(user: User, order?: Order): boolean {"
+        },
+        {
+          "kind": "ctx",
+          "text": "    if (user.role === Role.Admin) return true;"
+        },
+        {
+          "kind": "del",
+          "text": "    return user.role === Role.Member;"
+        },
+        {
+          "kind": "add",
+          "text": "    return order ? order.ownerId === user.id : true;"
+        },
+        {
+          "kind": "ctx",
+          "text": "  }"
+        }
+      ],
+      "section": "path",
+      "entry": "src/auth/order.guard.ts#OrderGuard.canPlace"
+    },
+    {
+      "order": 15,
+      "symbolId": "src/api/orders/orders.controller.spec.ts#cancel",
+      "fileId": "src/api/orders/orders.controller.spec.ts",
+      "why": "New test",
+      "diff": [
+        {
+          "kind": "add",
+          "text": "describe('cancel', () => {"
+        },
+        {
+          "kind": "add",
+          "text": "  it('answers 200 with the cancelled order', async () => {"
+        },
+        {
+          "kind": "add",
+          "text": "    const codes: number[] = [];"
+        },
+        {
+          "kind": "add",
+          "text": "    const svc = { cancel: async () => ({ id: 'o1' }) };"
+        },
+        {
+          "kind": "add",
+          "text": "    const res = { status: (code: number) => (codes.push(code), res), json: () => undefined };"
+        },
+        {
+          "kind": "add",
+          "text": "    await new OrdersController(svc as never).cancel({ user: { id: 'u1' }, params: { id: 'o1' }, body: {} }, res);"
+        },
+        {
+          "kind": "add",
+          "text": "    expect(codes).toEqual([200]);"
+        },
+        {
+          "kind": "add",
+          "text": "  });"
+        },
+        {
+          "kind": "add",
+          "text": "});"
+        }
+      ],
+      "section": "path",
+      "entry": "src/api/orders/orders.controller.spec.ts#cancel"
+    },
+    {
+      "order": 16,
+      "symbolId": "db/migrations/20260921_order_discounts.sql#ALTER TABLE orders",
+      "fileId": "db/migrations/20260921_order_discounts.sql",
+      "why": "Schema modified: ALTER TABLE orders",
+      "diff": [
+        {
+          "kind": "add",
+          "text": "ALTER TABLE orders"
+        },
+        {
+          "kind": "add",
+          "text": "  ADD COLUMN discount_pct NUMERIC(5,2) NOT NULL DEFAULT 0,"
+        },
+        {
+          "kind": "add",
+          "text": "  ADD COLUMN discounted_total NUMERIC(12,2);"
+        }
+      ],
+      "section": "migration"
+    },
+    {
+      "order": 17,
+      "symbolId": "db/migrations/20260921_order_discounts.sql#CREATE INDEX orders_discount_idx",
+      "fileId": "db/migrations/20260921_order_discounts.sql",
+      "why": "Schema modified: CREATE INDEX orders_discount_idx",
+      "diff": [
+        {
+          "kind": "add",
+          "text": "CREATE INDEX orders_discount_idx ON orders (discount_pct);"
+        }
+      ],
+      "section": "migration"
+    },
+    {
+      "order": 18,
+      "symbolId": "src/api/orders/orders.controller.spec.ts#create",
+      "fileId": "src/api/orders/orders.controller.spec.ts",
+      "why": "Body changed",
+      "diff": [
+        {
+          "kind": "ctx",
+          "text": "describe('create', () => {"
+        },
+        {
+          "kind": "del",
+          "text": "  it('answers 201 with the placed order', async () => {"
+        },
+        {
+          "kind": "add",
+          "text": "  it('answers 201 with the placed order and the discount flag', async () => {"
+        },
+        {
+          "kind": "ctx",
+          "text": "    const codes: number[] = [];"
+        },
+        {
+          "kind": "add",
+          "text": "    const seen: unknown[] = [];"
+        },
+        {
+          "kind": "ctx",
+          "text": "    const svc = { place: async () => ({ id: 'o1' }) };"
+        },
+        {
+          "kind": "del",
+          "text": "    const res = { status: (code: number) => (codes.push(code), res), json: () => undefined };"
+        },
+        {
+          "kind": "add",
+          "text": "    const res = { status: (code: number) => (codes.push(code), res), json: (value: unknown) => void seen.push(value) };"
+        },
+        {
+          "kind": "ctx",
+          "text": "    await new OrdersController(svc as never).create({ user: { id: 'u1' }, params: {}, body: { items: ['tea'] } }, res);"
+        },
+        {
+          "kind": "ctx",
+          "text": "    expect(codes).toEqual([201]);"
+        },
+        {
+          "kind": "add",
+          "text": "    expect(seen).toEqual([{ order: { id: 'o1' }, discounted: false }]);"
+        },
+        {
+          "kind": "ctx",
+          "text": "  });"
+        },
+        {
+          "kind": "ctx",
+          "text": "});"
+        }
+      ],
+      "section": "unconnected"
+    },
+    {
+      "order": 19,
+      "symbolId": "src/api/orders/orders.dto.ts#CreateOrderDto",
+      "fileId": "src/api/orders/orders.dto.ts",
+      "why": "Body changed",
+      "diff": [
+        {
+          "kind": "ctx",
+          "text": "export class CreateOrderDto {"
+        },
+        {
+          "kind": "ctx",
+          "text": "  items: string[] = [];"
+        },
+        {
+          "kind": "add",
+          "text": "  discountPct = 0;"
+        },
+        {
+          "kind": "add",
+          "text": "  rules: DiscountRule[] = [];"
+        },
+        {
+          "kind": "ctx",
+          "text": ""
+        },
+        {
+          "kind": "ctx",
+          "text": "  static from(body: unknown): CreateOrderDto {"
+        },
+        {
+          "kind": "ctx",
+          "text": "    const dto = new CreateOrderDto();"
+        }
+      ],
+      "section": "unconnected"
+    },
+    {
+      "order": 20,
+      "symbolId": "src/repo/orders.repo.ts#OrdersRepo.markCancelled",
+      "fileId": "src/repo/orders.repo.ts",
+      "why": "New method",
+      "diff": [
+        {
+          "kind": "add",
+          "text": "  async markCancelled(id: string) {"
+        },
+        {
+          "kind": "add",
+          "text": "    await this.db.query('UPDATE orders SET cancelled_at = now() WHERE id = $1', [id]);"
+        },
+        {
+          "kind": "add",
+          "text": "  }"
+        }
+      ],
+      "section": "unconnected"
+    },
+    {
+      "order": 21,
+      "symbolId": "src/services/orders/discount.rules.ts#DiscountRule",
+      "fileId": "src/services/orders/discount.rules.ts",
+      "why": "New export",
+      "diff": [
+        {
+          "kind": "add",
+          "text": "export interface DiscountRule {"
+        },
+        {
+          "kind": "add",
+          "text": "  percentage(total: Money): number;"
+        },
+        {
+          "kind": "add",
+          "text": "}"
+        }
+      ],
+      "section": "unconnected"
+    },
+    {
+      "order": 22,
+      "symbolId": "src/services/orders/discount.rules.ts#percentage",
+      "fileId": "src/services/orders/discount.rules.ts",
+      "why": "New function",
+      "diff": [
+        {
+          "kind": "add",
+          "text": "export function percentage(pct: number): DiscountRule {"
+        },
+        {
+          "kind": "add",
+          "text": "  return { percentage: () => pct };"
+        },
+        {
+          "kind": "add",
+          "text": "}"
+        }
+      ],
+      "section": "unconnected"
+    },
+    {
+      "order": 23,
+      "symbolId": "src/services/orders/discount.rules.ts#threshold",
+      "fileId": "src/services/orders/discount.rules.ts",
+      "why": "New function",
+      "diff": [
+        {
+          "kind": "add",
+          "text": "export function threshold(minimum: Money, pct: number): DiscountRule {"
+        },
+        {
+          "kind": "add",
+          "text": "  return { percentage: (total) => (total.cents >= minimum.cents ? pct : 0) };"
+        },
+        {
+          "kind": "add",
+          "text": "}"
+        }
+      ],
+      "section": "unconnected"
+    },
+    {
+      "order": 24,
+      "symbolId": "src/services/orders/pricing.ts#roundMoney",
+      "fileId": "src/services/orders/pricing.ts",
+      "why": "Removed function",
+      "diff": [
+        {
+          "kind": "del",
+          "text": "export function roundMoney(amount: Money): Money {"
+        },
+        {
+          "kind": "del",
+          "text": "  return Money.of(Math.round(amount.cents));"
+        },
+        {
+          "kind": "del",
+          "text": "}"
+        }
+      ],
+      "section": "unconnected"
+    }
+  ],
   "findings": [],
   "summary": {
     "files": 17,

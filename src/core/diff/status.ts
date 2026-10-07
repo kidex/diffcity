@@ -30,9 +30,17 @@ export interface FileStatus {
   symbols: Symbol[];
 }
 
+/** Where a symbol sits in each version; a side it does not exist on is absent. */
+export interface SymbolRanges {
+  before?: Symbol['range'];
+  after?: Symbol['range'];
+}
+
 /** FileStatus, plus each symbol's fingerprint: its id to sha256 of before slice + `\0` + after slice (ADR-027). */
 export interface FileStatusWithFingerprints extends FileStatus {
   symbolFingerprints: Record<string, string>;
+  /** Symbol id to its before and after ranges (the step diff slices them, ADR-034). */
+  ranges: Record<string, SymbolRanges>;
 }
 
 /** Lines `range.start`..`range.end` (1-based, inclusive) of `source`, joined with `\n`; empty for no source. */
@@ -71,11 +79,11 @@ export async function compareFile(file: FileChange): Promise<FileStatus> {
 
 /** compareFile, plus the fingerprint of every symbol. */
 export async function compareFileWithFingerprints(file: FileChange): Promise<FileStatusWithFingerprints> {
-  if (file.binary) return { status: gitStatus(file.change), symbols: [], symbolFingerprints: {} };
+  if (file.binary) return { status: gitStatus(file.change), symbols: [], symbolFingerprints: {}, ranges: {} };
 
   const beforeLanguage = languageForPath(file.oldPath ?? file.path);
   const afterLanguage = languageForPath(file.path);
-  if (beforeLanguage === null && afterLanguage === null) return { status: gitStatus(file.change), symbols: [], symbolFingerprints: {} };
+  if (beforeLanguage === null && afterLanguage === null) return { status: gitStatus(file.change), symbols: [], symbolFingerprints: {}, ranges: {} };
 
   const [before, after] = await Promise.all([
     file.before === null || beforeLanguage === null ? null : parseFile(file.before, beforeLanguage),
@@ -84,10 +92,15 @@ export async function compareFileWithFingerprints(file: FileChange): Promise<Fil
   const detailed = compareSymbols(file.path, before?.symbols ?? [], after?.symbols ?? []);
   const symbols = detailed.map((entry) => entry.symbol);
   const symbolFingerprints: Record<string, string> = {};
+  const ranges: Record<string, SymbolRanges> = {};
   for (const entry of detailed) {
     symbolFingerprints[entry.symbol.id] = sliceHash(sliceOf(file.before, entry.beforeRange), sliceOf(file.after, entry.afterRange));
+    const sides: SymbolRanges = {};
+    if (entry.beforeRange !== undefined) sides.before = entry.beforeRange;
+    if (entry.afterRange !== undefined) sides.after = entry.afterRange;
+    ranges[entry.symbol.id] = sides;
   }
-  return { status: fileStatus(file, before, after, symbols), symbols, symbolFingerprints };
+  return { status: fileStatus(file, before, after, symbols), symbols, symbolFingerprints, ranges };
 }
 
 /**

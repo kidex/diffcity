@@ -10,8 +10,8 @@ test.describe.configure({ timeout: 90_000 });
 
 test('change/no-path-without-steps', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'no-preference' });
-  const report = fixtures.reportGolden();
-  expect(report.steps).toEqual([]);
+  // The golden carries an execution path since DC-97: strip it.
+  const report = { ...fixtures.reportGolden(), steps: [] };
   await mockApi(page, { reports: { 11: report } });
   await openCity(page);
   expect((await effects(page)).path).toBeNull();

@@ -10,12 +10,15 @@ import {
   AgXToneMapping,
   HalfFloatType,
   PerspectiveCamera,
+  Mesh,
   Scene,
   SRGBColorSpace,
+  Texture,
   Vector2,
   WebGLRenderer,
   WebGLRenderTarget,
 } from 'three';
+import type { Object3D } from 'three';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
@@ -41,6 +44,37 @@ class CountingRenderPass extends RenderPass {
     this.calls = renderer.info.render.calls - before;
     this.triangles = renderer.info.render.triangles - trianglesBefore;
   }
+}
+
+/**
+ * three's lookup texture for physically based materials (DFG_LUT) is one
+ * module-level texture shared by every renderer. Each renderer that uploads it
+ * adds a dispose listener to it, and WebGLRenderer.dispose() does not take that
+ * listener off: the texture would keep every disposed renderer, its context,
+ * its canvas and the whole change screen around the canvas alive. The renderer
+ * sets it on the uniforms of the materials it draws, which is where the stage
+ * finds it. The first upload happens at mount, when the PMREM environment
+ * renders its room's standard material, before any frame: the view hands that
+ * room over (keepLookupFrom) before disposing it, and each frame looks again
+ * as a fallback. The stage disposes the texture on its way out, which runs
+ * those listeners and so removes them. The next renderer uploads it again.
+ */
+function sharedLookup(renderer: WebGLRenderer, root: Object3D): Texture | null {
+  let found: Texture | null = null;
+  root.traverse((object) => {
+    if (found !== null || !(object instanceof Mesh)) return;
+    const materials: unknown[] = Array.isArray(object.material) ? object.material : [object.material];
+    for (const material of materials) {
+      if (!renderer.properties.has(material)) continue;
+      const uniforms = (renderer.properties.get(material) as { uniforms?: Record<string, { value: unknown } | undefined> }).uniforms;
+      const value = uniforms?.['dfgLUT']?.value;
+      if (value instanceof Texture) {
+        found = value;
+        return;
+      }
+    }
+  });
+  return found;
 }
 
 /** Bloom whose blur chain starts at `scale` of the drawing buffer instead of the half the pass uses by default. */
@@ -106,6 +140,8 @@ export class Stage {
   };
   private probedFps: number | null = null;
   private probeDone = false;
+  /** three's shared lookup texture, once a frame has used it (see sharedLookup). */
+  private lookup: Texture | null = null;
 
   /** Throws when WebGL2 is not available. */
   constructor(options: StageOptions) {
@@ -244,6 +280,15 @@ export class Stage {
     });
   }
 
+  /**
+   * Picks three's shared lookup texture up from a scene this renderer has
+   * drawn outside the stage (the PMREM environment at mount), so a view closed
+   * before its first frame releases it too. Call before that scene is disposed.
+   */
+  keepLookupFrom(root: Object3D): void {
+    this.lookup ??= sharedLookup(this.renderer, root);
+  }
+
   /** Draws every frame for `ms` milliseconds (the bench), then goes back to on-demand. */
   runContinuously(ms: number): void {
     this.continuousUntil = performance.now() + ms;
@@ -256,6 +301,8 @@ export class Stage {
     const again = this.options.beforeFrame({ now });
     this.renderer.info.reset();
     this.composer.render();
+    // A fallback for a lookup texture the mount did not upload.
+    this.lookup ??= sharedLookup(this.renderer, this.scene);
     this.frames += 1;
     this.options.afterFrame({ now });
     if (again || now < this.continuousUntil || this.probeState?.running === true) this.request();
@@ -281,6 +328,8 @@ export class Stage {
     this.composer.renderTarget2.dispose();
     this.composer.dispose();
     const { geometries, textures } = this.renderer.info.memory;
+    this.lookup?.dispose();
+    this.lookup = null;
     this.renderer.dispose();
     this.renderer.forceContextLoss();
     return { geometries, textures };

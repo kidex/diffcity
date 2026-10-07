@@ -37,6 +37,8 @@ export interface ComputedSnapshot {
   mergeBase: string;
   /** The serialized Fingerprints (ADR-027), stored verbatim in `snapshots.fingerprints`. */
   fingerprintsJson: string;
+  /** One-line notes for daemon.log, written by the main thread (a worker has no log of its own). */
+  notes?: string[];
 }
 
 /** sha256 hex of the report serialized with `meta.generatedAt` emptied (ADR-018). */
@@ -66,12 +68,16 @@ export function snapshotFromReport(
 
 /** Builds the Report of a change and its snapshot columns. */
 export async function computeSnapshot(input: SnapshotJobInput): Promise<ComputedSnapshot> {
+  const notes: string[] = [];
   const { report, headCommit, mergeBase, fingerprints } = await buildReportWithHead({
     repoDir: input.repoDir,
     base: input.base,
     head: input.head,
     now: input.now === undefined ? undefined : new Date(input.now),
     trustConfig: input.trustConfig,
+    log: (message) => notes.push(message),
   });
-  return snapshotFromReport(report, headCommit, mergeBase, fingerprints);
+  const snapshot = snapshotFromReport(report, headCommit, mergeBase, fingerprints);
+  if (notes.length > 0) snapshot.notes = notes;
+  return snapshot;
 }
