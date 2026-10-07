@@ -61,6 +61,8 @@ A file with a missing or malformed field is rejected as a whole, with one messag
 - `skipped: absolute path "<path>" is outside the repository`
 - `skipped: absolute path "<path>" and no repository root`
 - `skipped: path "<path>" contains ".."`
+- `skipped: path "<path>" is not a file` (for example `.` or a path ending in `/`)
+- `skipped: empty path` (for example a bare `file://` URI)
 
 ## Finding key
 
@@ -90,7 +92,7 @@ Each run's `tool.driver.name` is the `source` of its results (`sarif` when missi
 - `skipped: source "<source>" is reserved for rule findings`, with `runs[i]` as the place: a run whose tool name starts with `rule:` is skipped as a whole.
 - `skipped: no physical location`: no `locations`, an empty `locations: []`, or no `artifactLocation.uri`. A result with no location is never turned into a change-level finding; those come only from rules.
 - `skipped: no ruleId and no message text`
-- `skipped: absolute path "<path>" is outside the repository`, `skipped: path "<path>" contains ".."`
+- the path warnings listed under Paths, such as `skipped: absolute path "<path>" is outside the repository` or `skipped: path "<path>" contains ".."`
 - `no region.startLine, line 1 used`
 - `unknown category "<value>", "correctness" used`
 
@@ -150,4 +152,4 @@ Findings with the same `symbolId`, the same `category` and the same normalized t
 
 Only an import fixes findings; a new snapshot never does. On an import, each stored `open` finding of a source the import covers that the import did not report again becomes `fixed` when its file left the change, or when its anchor changed: the symbol's fingerprint (the file's, at file level) differs from the one stored when the finding was imported, or the symbol no longer exists. A finding whose anchor is unchanged stays `open`, as does one whose stored fingerprint is unknown. A finding counts as reported again when the import has the same key, or the same source, symbol (file at file level), category and normalized title. Another tool reporting the same problem does not keep a finding open.
 
-The sources an import covers are, in SARIF, the `tool.driver.name` (or `sarif`) of every run that has a `results` array, an empty one included: a tool that now reports nothing fixes its findings whose anchor changed. In the own format they are the sources named by its valid entries.
+The sources an import covers are, in SARIF, the `tool.driver.name` (or `sarif`) of every run that has a `results` array, an empty one included: a tool that now reports nothing fixes its findings whose anchor changed. In the own format they are the sources named by its valid entries, including entries skipped for their path.

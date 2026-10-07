@@ -133,6 +133,21 @@ describe('findings', () => {
     expect(noRule?.title).toBe('Something is wrong.');
   });
 
+  it('path-not-a-file-and-empty-warnings', () => {
+    const own1 = parseOwn([own({ file: '.', source: 'eslint' }), own({ file: 'src/auth/' }), own({ file: 'file://' }), own()], ROOT);
+    expect(own1.ok && own1.warnings.map((w) => w.message)).toEqual([
+      'skipped: path "." is not a file',
+      'skipped: path "src/auth/" is not a file',
+      'skipped: empty path',
+    ]);
+    // Entries skipped for their path still count for the sources the import covers.
+    expect(own1.ok && own1.findings).toHaveLength(1);
+    expect(own1.ok && own1.sources).toEqual(['eslint', 'claude']);
+    const uri = (value: string): Record<string, unknown> => sarifResult({ locations: [{ physicalLocation: { artifactLocation: { uri: value } } }] });
+    const fromSarif = parseSarif(sarif([uri('file://'), uri('./')]), ROOT);
+    expect(fromSarif.ok && fromSarif.warnings.map((w) => w.message)).toEqual(['skipped: empty path', 'skipped: path "./" is not a file']);
+  });
+
   it('sarif-no-ruleid-title-from-first-line', () => {
     const titleOf = (text: string): FindingInput | undefined =>
       okFindings(parseSarif(sarif([sarifResult({ ruleId: undefined, message: { text } })]), ROOT))[0];
