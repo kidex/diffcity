@@ -57,8 +57,12 @@ export interface ChangeScreenOptions {
 }
 
 export interface ChangeScreen {
-  /** Shows a new Report of the same change; the camera and the selection stay. */
-  update(report: Report | null): void;
+  /**
+   * Shows a new Report of the same change; the camera and the selection stay.
+   * `startedAt`: when its fetch began (`performance.now()`), so the finding
+   * actions know the Report is newer than a write they made.
+   */
+  update(report: Report | null, loaded?: { startedAt: number }): void;
   unmount(): void;
 }
 
@@ -379,8 +383,10 @@ export function mountChange(element: HTMLElement, options: ChangeScreenOptions):
 
   show(options.report);
   return {
-    update(report) {
-      if (!disposed) show(report);
+    update(report, loaded) {
+      if (disposed) return;
+      if (report !== null) findingActions?.sync(report, loaded?.startedAt ?? null);
+      show(report);
     },
     unmount() {
       disposed = true;

@@ -64,7 +64,11 @@ describe('ui/findings-port', () => {
     expect(down).toBeInstanceOf(TypeError);
     expect(written).toBe(0);
     // Already queued (`queued: false`) is an accepted answer like any other.
-    expect(await port.ask('ok')).toEqual({ ok: true, value: { key: 'ok', queued: false, count: 2 } });
+    const before = performance.now();
+    const accepted = await port.ask('ok');
+    expect(accepted).toMatchObject({ ok: true, value: { key: 'ok', queued: false, count: 2 } });
+    // `at`: when the answer arrived, so a Report fetched after it is known to be newer.
+    expect(accepted.ok && accepted.at >= before).toBe(true);
     expect(written).toBe(1);
   });
 });

@@ -87,8 +87,8 @@ export interface FindingRefusal {
   message: string;
 }
 
-/** The daemon's answer to a finding action, or its error. */
-export type FindingAnswer<T> = { ok: true; value: T } | { ok: false; refusal: FindingRefusal };
+/** The daemon's answer to a finding action (`at`: when it arrived, `performance.now()`), or its error. */
+export type FindingAnswer<T> = { ok: true; value: T; at: number } | { ok: false; refusal: FindingRefusal };
 
 /**
  * "Ask agent to fix" and "Mark as intended" (ADR-036). Structurally the port of

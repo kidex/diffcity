@@ -14,8 +14,12 @@ export interface FindingRefusal {
   message: string;
 }
 
-/** What an action got back: the daemon's answer, or its error. Only a request that got no answer (no daemon, a dropped connection) rejects. */
-export type FindingAnswer<T> = { ok: true; value: T } | { ok: false; refusal: FindingRefusal };
+/**
+ * What an action got back: the daemon's answer, with `at` the time it arrived
+ * (`performance.now()`, before the refetch it triggers starts), or its error.
+ * Only a request that got no answer (no daemon, a dropped connection) rejects.
+ */
+export type FindingAnswer<T> = { ok: true; value: T; at: number } | { ok: false; refusal: FindingRefusal };
 
 /** The write guard refused the page's origin (403 `cross-site`): the page was opened from another address than the daemon's. */
 export const CROSS_SITE = 'Open diffcity from the address `diffcity start` prints.';
@@ -29,7 +33,8 @@ export interface FindingsPort {
 
 async function answer<T>(request: Promise<T>): Promise<FindingAnswer<T>> {
   try {
-    return { ok: true, value: await request };
+    const value = await request;
+    return { ok: true, value, at: performance.now() };
   } catch (error) {
     // Any answer of the daemon names its reason (fix-queue-unsafe, no-working-tree, finding-not-found, ...): the screen shows its message.
     if (error instanceof ApiRequestError) {

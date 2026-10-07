@@ -92,9 +92,9 @@ export function mountChangeRoute(element: HTMLElement, context: DataContext, cha
     waiting = undefined;
   }
 
-  function showReport(report: Report | null): void {
+  function showReport(report: Report | null, startedAt: number): void {
     if (screen !== null) {
-      screen.update(report);
+      screen.update(report, { startedAt });
       return;
     }
     const mountNow = waiting === undefined;
@@ -115,7 +115,7 @@ export function mountChangeRoute(element: HTMLElement, context: DataContext, cha
     );
   }
 
-  function show(loaded: Loaded): void {
+  function show(loaded: Loaded, startedAt: number): void {
     if ('error' in loaded) {
       unmountScreen();
       head = null;
@@ -147,7 +147,7 @@ export function mountChangeRoute(element: HTMLElement, context: DataContext, cha
       );
       return;
     }
-    showReport(loaded.report);
+    showReport(loaded.report, startedAt);
   }
 
   async function load(): Promise<void> {
@@ -156,6 +156,8 @@ export function mountChangeRoute(element: HTMLElement, context: DataContext, cha
     const current = new AbortController();
     controller = current;
     const { signal } = current;
+    // A Report fetched from here on is newer than any finding write answered before (the finding actions settle on it).
+    const startedAt = performance.now();
     let loaded: Loaded;
     try {
       const [change, report] = await Promise.all([api.change(changeId, signal), api.report(changeId, signal)]);
@@ -167,7 +169,7 @@ export function mountChangeRoute(element: HTMLElement, context: DataContext, cha
       loaded = { error: error instanceof ApiRequestError && error.status === 404 ? 'missing' : 'unreachable' };
     }
     if (signal.aborted) return;
-    show(loaded);
+    show(loaded, startedAt);
   }
 
   const reload = (): void => {

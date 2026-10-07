@@ -359,7 +359,6 @@ export function createPanel(options: PanelOptions, first: Report): Panel {
     root,
     update(next) {
       report = next;
-      options.findings?.sync(next);
       if (fileId !== null) fileScroll = view?.scroll.scrollTop ?? 0;
       else tabScroll = scroll.scrollTop;
       const focus = focusedFinding();
