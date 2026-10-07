@@ -168,8 +168,9 @@ describe('review session: an edit that leaves the Report as it was', () => {
       await test.idle();
     };
 
-    // Same length, same statuses: only the literal changes (A -> B).
-    await collectAfter(TOTAL_EDIT_1.replace('0)', '1)'));
+    // Same statuses, same step diffs: only a line ending inside total changes (A -> B). Step.diff
+    // carries the symbol's lines without a trailing CR (ADR-034), so any visible edit would change the Report.
+    await collectAfter(TOTAL_EDIT_1.replace('0);\n', '0);\r\n'));
     const afterEdit = db.snapshots.latest(change.id);
     expect(afterEdit?.contentHash).toBe(snapshot.contentHash);
     expect(afterEdit?.id).toBe(snapshot.id);
