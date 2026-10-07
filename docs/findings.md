@@ -153,3 +153,39 @@ Findings with the same `symbolId`, the same `category` and the same normalized t
 Only an import fixes findings; a new snapshot never does. On an import, each stored `open` finding of a source the import covers that the import did not report again becomes `fixed` when its file left the change, or when its anchor changed: the symbol's fingerprint (the file's, at file level) differs from the one stored when the finding was imported, or the symbol no longer exists. A finding whose anchor is unchanged stays `open`, as does one whose stored fingerprint is unknown. A finding counts as reported again when the import has the same key, or the same source, symbol (file at file level), category and normalized title. Another tool reporting the same problem does not keep a finding open.
 
 The sources an import covers are, in SARIF, the `tool.driver.name` (or `sarif`) of every run that has a `results` array, an empty one included: a tool that now reports nothing fixes its findings whose anchor changed. In the own format they are the sources named by its valid entries, including entries skipped for their path.
+
+## Import
+
+```sh
+diffcity import .diffcity/findings.json        # own format
+diffcity import scan.sarif.json --open         # SARIF 2.1, then open the change in the browser
+```
+
+The findings go to the change checked out in the current directory: the Branch or PR at its head, or its Draft. The command:
+
+1. reads the file, at most 8 MiB (a larger file is refused before it is parsed);
+2. detects the format: SARIF when the JSON is an object with a `$schema`, or with both `version` and `runs`; the own format otherwise;
+3. parses it (absolute paths may use the repository root as git reports it or as the shell reached it through a symbolic link);
+4. sends the findings, the parse warnings and the sources the import covers to the daemon over its socket, in one `import` request of at most 4 MiB (a larger one is refused before it is sent), starting the daemon first when none runs, as `diffcity start` does.
+
+The daemon registers the repository when it does not know it (as `diffcity track` does; a directory outside a git repository is an error), collects the working tree and waits up to 20 seconds for a snapshot of its current content. The findings are anchored to that snapshot, deduplicated, stored with the change, and the `fixed` rule runs. When no snapshot of the current content is ready in time, the findings are anchored to the previous snapshot and the command says so. A clean working tree on the base has no change to import into.
+
+The command prints one line, then any warning on standard error:
+
+```text
+Imported 7 findings into feature/cart (2 merged, 1 skipped, 3 fixed)
+warning: runs[0].results[4]: skipped: no physical location
+```
+
+| Count | Meaning |
+|---|---|
+| imported | findings anchored to the change, merged ones included |
+| merged | of those, the ones that collapsed into an entry that already existed, stored or earlier in the same file: the same finding key, or the same symbol (file at file level), category and normalized title |
+| skipped | entries the parser skipped (warnings that start with `skipped`), plus findings whose file is not part of the change (`skipped-not-in-change: "<file>" is not part of the change`, with `<file>:<line>` as the place) |
+| fixed | stored findings this import turned `fixed` |
+
+`--open` prints the change's URL and opens it in the browser, as `diffcity start` does.
+
+Exit status: `0` when the findings are stored; `1` for a file that cannot be read, is over 8 MiB, is not valid JSON or is rejected by the parser (with one line per problem), a payload over 4 MiB, a directory outside a git repository, or a refusal by the daemon (with its reason). A daemon older than the CLI, which does not know the `import` request, gets: ``the running daemon is older than this CLI; run `diffcity stop` then try again``.
+
+Findings files written next to the code, `.diffcity/findings.json`, and the fix queue, `.diffcity/fix-queue.json`, are never part of a change: they are not touched files, they do not make a working tree dirty (so they create no Draft), and the watcher ignores them. Every other file under `.diffcity/`, such as `.diffcity/spec.md`, is a normal file.

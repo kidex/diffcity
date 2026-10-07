@@ -1,4 +1,4 @@
-export { applyAgent, worktreeContaining } from './agent.js';
+export { applyAgent, changeOfWorktree, worktreeContaining } from './agent.js';
 export type { AgentEvent, AgentOutcome } from './agent.js';
 export { ARCHIVE_RETENTION_DAYS, archiveCutoff, isArchiveViewable } from './archive.js';
 export { BARE_REPO_MESSAGE, identifyRepo } from './identity.js';

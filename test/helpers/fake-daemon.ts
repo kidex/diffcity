@@ -1,6 +1,6 @@
 // A stand-in daemon for CLI tests (ADR-016): the real socket server and
-// protocol v1 in this process, with `track` and `register` answered by test
-// handlers and every request recorded. It writes daemon.json like a real
+// protocol v1 in this process, with `track`, `register` and `import` answered
+// by test handlers and every request recorded. It writes daemon.json like a real
 // daemon, so the CLI finds it the same way. No collection, no HTTP, no DB.
 
 import { PassThrough } from 'node:stream';
@@ -16,16 +16,21 @@ import { createSocketServer, type SocketRequestOf } from '../../src/daemon/socke
 export interface FakeDaemonHandlers {
   track?: (request: SocketRequestOf<'track'>) => SocketResponseFor<'track'> | Promise<SocketResponseFor<'track'>>;
   register?: (request: SocketRequestOf<'register'>) => SocketResponseFor<'register'>;
+  import?: (request: SocketRequestOf<'import'>) => SocketResponseFor<'import'> | Promise<SocketResponseFor<'import'>>;
 }
 
 export interface FakeDaemon {
-  /** Every track and register request, in arrival order. */
+  /** Every track, register and import request, in arrival order. */
   readonly requests: SocketRequest[];
   readonly info: DaemonInfo;
   close(): Promise<void>;
 }
 
-/** Default handlers: track identifies the repo like the daemon does; register counts dirs it saw before as known. */
+/**
+ * Default handlers: track identifies the repo like the daemon does; register
+ * counts dirs it saw before as known; import takes every finding into change
+ * 12 (`branch:feature/totals` of repo 1) and echoes the warnings.
+ */
 function defaultHandlers(): Required<FakeDaemonHandlers> {
   const known = new Set<string>();
   let nextId = 1;
@@ -40,13 +45,23 @@ function defaultHandlers(): Required<FakeDaemonHandlers> {
       }
       return { ok: true, registered, known: request.dirs.length - registered };
     },
+    import: (request) => ({
+      ok: true,
+      change: { id: 12, repoId: 1, ref: 'branch:feature/totals' },
+      imported: request.findings.length,
+      merged: 0,
+      skipped: request.warnings.filter((warning) => warning.message.startsWith('skipped')).length,
+      fixed: 0,
+      warnings: request.warnings,
+      anchoredAgainst: 'current-snapshot',
+    }),
   };
 }
 
 /** Listens on the home's socket and writes daemon.json. */
 export async function startFakeDaemon(paths: HomePaths, handlers: FakeDaemonHandlers = {}): Promise<FakeDaemon> {
   await ensureHome(paths.home);
-  const { track, register } = { ...defaultHandlers(), ...handlers };
+  const { track, register, import: importFindings } = { ...defaultHandlers(), ...handlers };
   const requests: SocketRequest[] = [];
   const info: DaemonInfo = { pid: process.pid, port: 4999, socket: paths.socket, version: readVersion(), startedAt: new Date().toISOString() };
   const server = createSocketServer({
@@ -62,6 +77,10 @@ export async function startFakeDaemon(paths: HomePaths, handlers: FakeDaemonHand
   server.handlers.handle('register', (request) => {
     requests.push(request);
     return register(request);
+  });
+  server.handlers.handle('import', (request) => {
+    requests.push(request);
+    return importFindings(request);
   });
   await server.listen();
   await writeDaemonInfo(paths, info);

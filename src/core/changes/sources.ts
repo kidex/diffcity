@@ -9,7 +9,8 @@
 
 import { realpath } from 'node:fs/promises';
 import { resolveBase, type ResolvedBase } from '../git/base.js';
-import { defaultRunner, git, gitRaw, type CommandRunner } from '../git/exec.js';
+import { defaultRunner, git, gitRaw, splitNul, type CommandRunner } from '../git/exec.js';
+import { OWN_DIR, isOwnFile } from '../git/own-files.js';
 import { listWorktreeEntries } from './identity.js';
 import type { BranchInfo, Discovered, PrInfo, PrSource, PrState, RepoIdentity, WorktreeInfo } from './types.js';
 
@@ -88,9 +89,40 @@ async function firstSubject(root: string, base: string, head: string): Promise<s
   return subject === '' ? null : subject;
 }
 
+/**
+ * The paths of `git status --porcelain=v1 -z`: `XY <path>`, followed by the
+ * original path as its own entry for a rename or a copy. An untracked
+ * directory is listed once, as `<dir>/`.
+ */
+export function porcelainPaths(output: string): string[] {
+  const tokens = splitNul(output).filter((token) => token !== '');
+  const paths: string[] = [];
+  for (let i = 0; i < tokens.length; i++) {
+    const entry = tokens[i] as string;
+    paths.push(entry.slice(3));
+    const xy = entry.slice(0, 2);
+    if (xy.includes('R') || xy.includes('C')) i++;
+  }
+  return paths;
+}
+
+/**
+ * Uncommitted changes, untracked files included, apart from diffcity's own
+ * files (SPEC.md section 3a): a working tree whose only change is
+ * `.diffcity/fix-queue.json` is clean. git lists an untracked `.diffcity/` as
+ * one entry; it then counts only when it holds a file that is not an own one.
+ */
 async function isDirty(path: string): Promise<boolean> {
   const output = await git(path, ['status', '--porcelain=v1', '-z', '--untracked-files=normal']);
-  return output !== '';
+  if (output === '') return false;
+  let ownDirUntracked = false;
+  for (const entry of porcelainPaths(output)) {
+    if (entry === `${OWN_DIR}/`) ownDirUntracked = true;
+    else if (!isOwnFile(entry)) return true;
+  }
+  if (!ownDirUntracked) return false;
+  const untracked = splitNul(await git(path, ['ls-files', '-z', '--others', '--exclude-standard', '--full-name', '--', OWN_DIR]));
+  return untracked.some((entry) => entry !== '' && !isOwnFile(entry));
 }
 
 /** Working trees (main + linked) with commits, without prunable or missing ones (L1). */
