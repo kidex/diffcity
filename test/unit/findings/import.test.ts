@@ -108,6 +108,10 @@ describe('checkImportPayload', () => {
       [{ ...payload, findings: Array.from({ length: 5001 }, () => guardFinding()) }, /5000/],
       [{ ...payload, warnings: [{ at: 1, message: 'x' }] }, /warnings\[0\]/],
       [{ ...payload, sources: [3] }, /sources/],
+      [{ ...payload, sources: ['claude', 'rule:size'] }, /sources\[1\] must be a non-empty trimmed source that does not start with "rule:"/],
+      [{ ...payload, sources: [''] }, /sources\[0\] must be a non-empty trimmed source/],
+      [{ ...payload, sources: [' claude'] }, /sources\[0\] must be a non-empty trimmed source/],
+      [{ ...payload, sources: Array.from({ length: 5001 }, (_, index) => `tool-${String(index)}`) }, /5001 sources, the limit is 5000/],
     ];
     for (const [value, error] of cases) {
       const result = checkImportPayload(value);

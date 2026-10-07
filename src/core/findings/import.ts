@@ -111,10 +111,20 @@ export function checkImportPayload(fields: Readonly<Obj>): ImportPayloadCheck {
     }
     notes.push({ at: entry['at'], message: entry['message'] });
   }
-  if (sources !== undefined && (!Array.isArray(sources) || !sources.every((source) => typeof source === 'string'))) {
-    return fail('sources must be an array of strings');
+  if (sources !== undefined && !Array.isArray(sources)) return fail('sources must be an array of strings');
+  // At most one source per finding the parsers could have produced, so the list is bounded like the findings.
+  if (sources !== undefined && sources.length > LIMITS.findings) {
+    return fail(`${String(sources.length)} sources, the limit is ${String(LIMITS.findings)}`);
   }
-  const covered = sources === undefined ? [...new Set(checked.map((finding) => finding.source))] : [...(sources)];
+  const given: string[] = [];
+  for (const [index, source] of (sources ?? []).entries()) {
+    // The same rule as a finding's `source`: these are stored and drive `fixed`.
+    if (typeof source !== 'string' || source === '' || source.trim() !== source || isRuleSource(source)) {
+      return fail(`sources[${String(index)}] must be a non-empty trimmed source that does not start with "rule:"`);
+    }
+    given.push(source);
+  }
+  const covered = sources === undefined ? [...new Set(checked.map((finding) => finding.source))] : given;
   return { ok: true, payload: { findings: checked, warnings: notes, sources: covered } };
 }
 
