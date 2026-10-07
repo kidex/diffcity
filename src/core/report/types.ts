@@ -1,4 +1,4 @@
-// Report data model, identical to SPEC.md section 4.1.
+// Report data model, identical to SPEC.md section 4.1 (Step with the ADR-034 addition).
 // Computed in the daemon, served over the API and embedded in the HTML export.
 
 export type Status = 'add' | 'mod' | 'sig' | 'del' | 'same';
@@ -51,11 +51,16 @@ export interface Symbol {
 }
 
 export interface Step {
+  /** 1-based, continuous across sections. */
   order: number;
   symbolId: string;
   fileId: string;
   why: string;
   diff: DiffLine[];
+  /** ADR-034 addition to section 4.1; a missing section reads as `path`. */
+  section?: 'path' | 'migration' | 'unconnected';
+  /** Symbol id of the entry point a `path` step hangs from (its own id for the entry itself). */
+  entry?: string;
 }
 
 export interface DiffLine {
