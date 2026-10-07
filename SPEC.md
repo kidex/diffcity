@@ -82,7 +82,7 @@ Integrate (phase 5) has no CLI command: merge, push and PR run only from the cha
 - The shell hook calls `track` in the background only when you enter a repo (its root or any subfolder) or move to another repo; moving between folders of the same repo does nothing (ADR-016).
 - A repo is active (watched and polled for PRs) if you entered it, an agent worked in it, or you opened it in the UI in the last 7 days. Repos found by `scan` are registered inactive and collected once (ADR-020).
 - The 2 s debounce has a 10 s maximum wait, so the UI updates at least every 10 s while an agent keeps writing (ADR-020).
-- diffcity's own files `.diffcity/findings.json`, `.diffcity/fix-queue.json` and `.diffcity/fix-queue.taking.json` (the queue while `/diffcity-review` applies it, ADR-037) are never part of a change: they are left out of the touched files and ignored by the watcher, so an import or a queued fix creates no Draft and no recollect (ADR-036). Every other file under `.diffcity/` is a normal file.
+- diffcity's own files `.diffcity/findings.json`, the fix queue directory `.diffcity/fix-queue/` and `.diffcity/fix-queue.taking/` (the queue while `/diffcity-review` applies it, ADR-037), with everything inside them, and the queue's temporary files `.diffcity/.fix-queue.*.tmp`, all at the repo root, are never part of a change: they are left out of the touched files and ignored by the watcher, so an import or a queued fix creates no Draft and no recollect (ADR-036). Every other file under `.diffcity/` is a normal file.
 
 ### Change list per repo
 
@@ -254,7 +254,7 @@ A Node daemon (Fastify) serves the UI on `localhost:4321` plus a JSON API and SS
 | Fleet (card) | bottom-right card with the last audit of the other repos, red above 30 days or with new CVEs; click goes to the fleet screen |
 | Theme | dark by default, light under prefers-color-scheme: light; colours as tokens on :root |
 
-"Ask agent to fix" writes the finding to `.diffcity/fix-queue.json` in the repo; the slash command picks it up. "Mark as intended" sets `state: 'intended'` in the DB and removes it from the verdict computation. "Approve" sets `reviewState: 'approved'` on the change, records the approved head, and unlocks only after every touched tier 1 file has a current review mark.
+"Ask agent to fix" writes the finding as one file, `.diffcity/fix-queue/<id>.json`, in the change's working tree; the slash command picks it up. The file holds the version 1 item itself, with no envelope: `{ "key", "file", "line", "symbol"?, "severity", "title", "message", "fix"?, "queuedAt" }`, or `{ "kind": "review-summary", "key", "message", "queuedAt" }` for a review summary (ADR-029). `<id>` is the first 32 hex digits of the SHA-256 of the key, so a finding still in the queue is not queued twice. The daemon writes the item to a temporary file in `.diffcity/` and renames it into the queue directory, never rewriting an item; at most 200 items and 1 MiB are queued. The slash command takes the whole queue by renaming the directory, so every item is applied exactly once; when the queue is taken under three writes in a row the request is refused as `fix-queue-busy` (ADR-036, DC-112). "Mark as intended" sets `state: 'intended'` in the DB and removes it from the verdict computation. "Approve" sets `reviewState: 'approved'` on the change, records the approved head, and unlocks only after every touched tier 1 file has a current review mark.
 
 Integrate (phase 5) is off by default and enabled per repo in the user's diffcity settings, never by the repo. Each action opens a confirmation that shows the exact command, and runs only after it is confirmed. The daemon refuses when the change is not approved, when its head has moved since approval, when it has uncommitted changes, or when it is a Draft. It never force-pushes, rebases or squashes. Commands run without a shell, and their output is shown in the dialog.
 
@@ -276,20 +276,21 @@ disable-model-invocation: true
 allowed-tools:
   - Bash(diffcity diff:*)
   - Bash(diffcity import:*)
-  - Bash(mv .diffcity/fix-queue.json .diffcity/fix-queue.taking.json)
-  - Bash(rm .diffcity/fix-queue.taking.json)
+  - Bash(mv .diffcity/fix-queue .diffcity/fix-queue.taking)
+  - Bash(rm -r .diffcity/fix-queue.taking)
   - Read
+  - Glob
   - Write(.diffcity/findings.json)
 ---
 <!-- diffcity: diffcity-review v1 -->
 All paths below are relative to the repository root: run every command from there.
-First take the fixes queued from diffcity. If `.diffcity/fix-queue.taking.json` exists, an earlier run
-stopped halfway: apply it and delete it as below before anything else.
-Run `mv .diffcity/fix-queue.json .diffcity/fix-queue.taking.json`; when `.diffcity/fix-queue.json` does not exist, nothing is queued.
-Otherwise read `.diffcity/fix-queue.taking.json` (`{ "version": 1, "items": [...] }`) and apply every item:
-an item with `file`, `line`, `title`, `message` and `fix` is a finding to fix; an item with
-`kind: "review-summary"` is the reviewer's summary, in `message`.
-Then run `rm .diffcity/fix-queue.taking.json`.
+First take the fixes queued from diffcity. If `.diffcity/fix-queue.taking` exists, an earlier run
+stopped halfway: apply it and remove it as below before anything else.
+Run `mv .diffcity/fix-queue .diffcity/fix-queue.taking`; when `.diffcity/fix-queue` does not exist, nothing is queued.
+Otherwise find every `.diffcity/fix-queue.taking/**/*.json` with Glob and read each one: a file is one item.
+An item with `file`, `line`, `title`, `message` and `fix` is a finding to fix; an item with
+`kind: "review-summary"` is the reviewer's summary, in `message`. Apply every item.
+Then run `rm -r .diffcity/fix-queue.taking`.
 
 Run `diffcity diff --json --compact` and read the result: it is the semantic diff of the current change
 (touched files and symbols, changed signatures with call sites, the execution path, tier 1 zones).
@@ -306,7 +307,7 @@ Write `[]` when you find nothing.
 Then run `diffcity import .diffcity/findings.json --open`.
 ```
 
-The fix queue is renamed to `.diffcity/fix-queue.taking.json` before it is applied, so an item the daemon queues meanwhile lands in a new `.diffcity/fix-queue.json` and is neither lost nor applied twice; `.diffcity/fix-queue.taking.json` is an own file like the queue (3a). `diff --json --compact` is the Report without untouched files and without the packages left with none; `meta`, `steps`, `findings`, `checks` and `summary` are unchanged, and without `--json` the flag has no effect. `--open` opens the change after the import because the user asked for the review (ADR-001).
+The fix queue directory is renamed to `.diffcity/fix-queue.taking` before it is applied, so an item the daemon queues meanwhile lands in a new `.diffcity/fix-queue` and is neither lost nor applied twice; `.diffcity/fix-queue.taking` is an own directory like the queue (3a). The queue was a single file `.diffcity/fix-queue.json` before DC-112; nothing shipped with it, so neither the daemon nor the command reads a leftover one, and it is a normal file now. `diff --json --compact` is the Report without untouched files and without the packages left with none; `meta`, `steps`, `findings`, `checks` and `summary` are unchanged, and without `--json` the flag has no effect. `--open` opens the change after the import because the user asked for the review (ADR-001).
 
 ### 7.2 Stop hook (`.claude/settings.json`)
 

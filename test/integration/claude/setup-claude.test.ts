@@ -458,13 +458,14 @@ describe('the hook command', () => {
       const cli = hook.slice(0, -' track --agent'.length);
       const lines = (await readFile(commandPath(), 'utf8')).split('\n');
       const start = lines.indexOf('allowed-tools:');
-      expect(lines.slice(start, start + 7)).toEqual([
+      expect(lines.slice(start, start + 8)).toEqual([
         'allowed-tools:',
         `  - Bash(${cli} diff:*)`,
         `  - Bash(${cli} import:*)`,
-        '  - Bash(mv .diffcity/fix-queue.json .diffcity/fix-queue.taking.json)',
-        '  - Bash(rm .diffcity/fix-queue.taking.json)',
+        '  - Bash(mv .diffcity/fix-queue .diffcity/fix-queue.taking)',
+        '  - Bash(rm -r .diffcity/fix-queue.taking)',
         '  - Read',
+        '  - Glob',
         '  - Write(.diffcity/findings.json)',
       ]);
     }

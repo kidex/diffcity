@@ -65,14 +65,14 @@ describe('slash: the /diffcity-review command file', () => {
     for (const cli of INVOCATIONS) {
       const text = commandFileText(cli);
       expect(bodyCommands(text)).toEqual([
-        'mv .diffcity/fix-queue.json .diffcity/fix-queue.taking.json',
-        'rm .diffcity/fix-queue.taking.json',
+        'mv .diffcity/fix-queue .diffcity/fix-queue.taking',
+        'rm -r .diffcity/fix-queue.taking',
         `${cli} diff --json --compact`,
         `${cli} import .diffcity/findings.json --open`,
       ]);
       expect(slashCommands(cli)).toMatchObject({ diff: `${cli} diff --json --compact`, import: `${cli} import .diffcity/findings.json --open` });
       // The fix queue is taken before the review, the import comes last.
-      expect(text.indexOf('fix-queue.taking.json')).toBeLessThan(text.indexOf('diff --json --compact'));
+      expect(text.indexOf('fix-queue.taking')).toBeLessThan(text.indexOf('diff --json --compact'));
       expect(text.trimEnd().endsWith(`Then run \`${cli} import .diffcity/findings.json --open\`.`)).toBe(true);
     }
   });
@@ -84,17 +84,20 @@ describe('slash: the /diffcity-review command file', () => {
       expect(entries).toEqual([
         `Bash(${cli} diff:*)`,
         `Bash(${cli} import:*)`,
-        'Bash(mv .diffcity/fix-queue.json .diffcity/fix-queue.taking.json)',
-        'Bash(rm .diffcity/fix-queue.taking.json)',
+        'Bash(mv .diffcity/fix-queue .diffcity/fix-queue.taking)',
+        'Bash(rm -r .diffcity/fix-queue.taking)',
         'Read',
+        'Glob',
         'Write(.diffcity/findings.json)',
       ]);
       expect(entries).toEqual(allowedTools(cli));
       for (const command of bodyCommands(text)) expect(entries.some((rule) => bashAllows(rule, command))).toBe(true);
       // The rules are no wider than the body: another subcommand or another file is not allowed.
       expect(entries.some((rule) => bashAllows(rule, `${cli} track --agent`))).toBe(false);
-      expect(entries.some((rule) => bashAllows(rule, 'rm .diffcity/fix-queue.json'))).toBe(false);
+      expect(entries.some((rule) => bashAllows(rule, 'rm -r .diffcity/fix-queue'))).toBe(false);
+      expect(entries.some((rule) => bashAllows(rule, 'rm -r .diffcity'))).toBe(false);
       expect(entries.some((rule) => bashAllows(rule, 'rm -rf .diffcity'))).toBe(false);
+      expect(entries.some((rule) => bashAllows(rule, 'rm -r .diffcity/fix-queue.taking /'))).toBe(false);
     }
   });
 
@@ -107,8 +110,8 @@ describe('slash: the /diffcity-review command file', () => {
     for (const cli of INVOCATIONS) {
       const lines = commandFileText(cli).split('\n');
       const start = lines.indexOf('allowed-tools:');
-      expect(lines.slice(start + 1, start + 7)).toEqual(allowedTools(cli).map((entry) => `  - ${entry}`));
-      expect(lines[start + 7]).toBe('---');
+      expect(lines.slice(start + 1, start + 8)).toEqual(allowedTools(cli).map((entry) => `  - ${entry}`));
+      expect(lines[start + 8]).toBe('---');
       // Nothing in an item that YAML would read as a mapping or a comment.
       for (const entry of allowedTools(cli)) expect(entry).not.toMatch(/: | #/);
     }

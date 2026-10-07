@@ -25,9 +25,12 @@ export const COMMAND_FILE_NAME = 'diffcity-review.md';
 export const LEGACY_COMMAND_FILE_NAME = 'code-review.md';
 export const LEGACY_COMMAND_MARKER = '<!-- diffcity: code-review v1 -->';
 
-/** The fix queue, and the name the command renames it to before applying it (ADR-036, ADR-037). */
-export const FIX_QUEUE_PATH = '.diffcity/fix-queue.json';
-export const FIX_QUEUE_TAKING_PATH = '.diffcity/fix-queue.taking.json';
+/**
+ * The fix queue directory (one file per item), and the name the command
+ * renames it to before applying it (ADR-036, ADR-037, DC-112).
+ */
+export const FIX_QUEUE_PATH = '.diffcity/fix-queue';
+export const FIX_QUEUE_TAKING_PATH = '.diffcity/fix-queue.taking';
 export const FINDINGS_PATH = '.diffcity/findings.json';
 
 /** The commands the body runs, for an invocation `cli`. */
@@ -36,18 +39,20 @@ export function slashCommands(cli: string): { diff: string; import: string; take
     diff: `${cli} diff --json --compact`,
     import: `${cli} import ${FINDINGS_PATH} --open`,
     take: `mv ${FIX_QUEUE_PATH} ${FIX_QUEUE_TAKING_PATH}`,
-    drop: `rm ${FIX_QUEUE_TAKING_PATH}`,
+    drop: `rm -r ${FIX_QUEUE_TAKING_PATH}`,
   };
 }
 
 /**
  * The `allowed-tools` entries: exactly what the body needs, nothing more.
  * Written as a YAML list, one entry per item, which Claude Code 2.1.288 reads
- * as it reads a comma-separated string, without splitting one rule from the next.
+ * as it reads a comma-separated string, without splitting one rule from the
+ * next. The two fix-queue commands are exact rules; `Glob` lists the taken
+ * item files and `Read` reads them (and the diff output, when it is long).
  */
 export function allowedTools(cli: string): string[] {
   const { take, drop } = slashCommands(cli);
-  return [`Bash(${cli} diff:*)`, `Bash(${cli} import:*)`, `Bash(${take})`, `Bash(${drop})`, 'Read', `Write(${FINDINGS_PATH})`];
+  return [`Bash(${cli} diff:*)`, `Bash(${cli} import:*)`, `Bash(${take})`, `Bash(${drop})`, 'Read', 'Glob', `Write(${FINDINGS_PATH})`];
 }
 
 /** The full file for an invocation `cli`. */
@@ -63,12 +68,12 @@ export function commandFileText(cli: string): string {
     '---',
     COMMAND_MARKER,
     'All paths below are relative to the repository root: run every command from there.',
-    'First take the fixes queued from diffcity. If `.diffcity/fix-queue.taking.json` exists, an earlier run',
-    'stopped halfway: apply it and delete it as below before anything else.',
+    `First take the fixes queued from diffcity. If \`${FIX_QUEUE_TAKING_PATH}\` exists, an earlier run`,
+    'stopped halfway: apply it and remove it as below before anything else.',
     `Run \`${run.take}\`; when \`${FIX_QUEUE_PATH}\` does not exist, nothing is queued.`,
-    `Otherwise read \`${FIX_QUEUE_TAKING_PATH}\` (\`{ "version": 1, "items": [...] }\`) and apply every item:`,
-    'an item with `file`, `line`, `title`, `message` and `fix` is a finding to fix; an item with',
-    '`kind: "review-summary"` is the reviewer\'s summary, in `message`.',
+    `Otherwise find every \`${FIX_QUEUE_TAKING_PATH}/**/*.json\` with Glob and read each one: a file is one item.`,
+    'An item with `file`, `line`, `title`, `message` and `fix` is a finding to fix; an item with',
+    '`kind: "review-summary"` is the reviewer\'s summary, in `message`. Apply every item.',
     `Then run \`${run.drop}\`.`,
     '',
     `Run \`${run.diff}\` and read the result: it is the semantic diff of the current change`,
