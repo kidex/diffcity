@@ -10,7 +10,7 @@
 // Synchronous on purpose: one append runs to its end before another starts.
 
 import { randomBytes } from 'node:crypto';
-import { chmodSync, closeSync, constants, fstatSync, lstatSync, mkdirSync, openSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync, type Stats } from 'node:fs';
+import { closeSync, constants, fchmodSync, fstatSync, lstatSync, mkdirSync, openSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync, type Stats } from 'node:fs';
 import { join } from 'node:path';
 import type { Finding, Report } from '../report/types.js';
 
@@ -158,9 +158,17 @@ export function appendToFixQueue(root: string | null, item: FixQueueItem): FixQu
     try {
       mkdirSync(dir, { mode: 0o755 });
       // The mode asked of mkdir is reduced by the umask; the ADR fixes it at 0755.
-      chmodSync(dir, 0o755);
+      // Set through a descriptor that refuses a link, so a swapped entry is never followed.
+      const fd = openSync(dir, constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW);
+      try {
+        if (fstatSync(fd).isDirectory()) fchmodSync(fd, 0o755);
+      } finally {
+        closeSync(fd);
+      }
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
+      // Created meanwhile, or swapped for a link or a file: the lstat below decides.
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code !== 'EEXIST' && code !== 'ELOOP' && code !== 'ENOTDIR') throw error;
     }
     dirStats = lstatOrNull(dir);
   }

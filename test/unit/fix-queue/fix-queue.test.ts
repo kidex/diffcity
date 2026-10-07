@@ -67,6 +67,17 @@ describe('fix queue writer', () => {
     expect(readdirSync(join(root, '.diffcity'))).toEqual(['fix-queue.json']);
   });
 
+  it('creates .diffcity with mode 0755 even under a strict umask', () => {
+    const root = tree();
+    const previous = process.umask(0o077);
+    try {
+      expect(appendToFixQueue(root, item(1))).toMatchObject({ ok: true, queued: true });
+    } finally {
+      process.umask(previous);
+    }
+    expect(statSync(join(root, '.diffcity')).mode & 0o777).toBe(0o755);
+  });
+
   it('keeps an existing .diffcity and its other files, and accepts a review-summary item', () => {
     const root = tree();
     mkdirSync(join(root, '.diffcity'), { mode: 0o700 });
