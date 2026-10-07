@@ -18,7 +18,8 @@ export const TABS: readonly { id: TabId; label: string }[] = [
   { id: 'symbols', label: 'Symbols' },
 ];
 
-export const EMPTY_STEPS = 'The reading path arrives with the execution path';
+/** The Execution order tab's text when the Report has no steps at all. */
+export const EMPTY_STEPS = 'No execution path: nothing in this change reaches an entry point';
 export const EMPTY_FINDINGS = 'No findings on this change';
 export const EMPTY_OUTSIDE_NO_SPEC = 'This change has no spec to compare against';
 export const EMPTY_OUTSIDE_ALL_IN = 'Every file is in the spec';
@@ -68,11 +69,26 @@ export interface Stop {
   findings: Finding[];
 }
 
-/** The steps whose file is in the Report, by order. */
+export type SectionId = NonNullable<Step['section']>;
+
+/** The sections of the Execution order tab, in the order they are read (SPEC.md section 5.4): their heading and one line on what they hold. */
+export const SECTIONS: readonly { id: SectionId; label: string; note: string }[] = [
+  { id: 'path', label: 'Execution path', note: 'From each entry point, in the order the code runs' },
+  { id: 'migration', label: 'Migrations', note: 'Touched SQL migrations, read after the execution path' },
+  { id: 'unconnected', label: 'Unconnected', note: 'Touched symbols no entry point reaches' },
+];
+
+const SECTION_RANK: Record<SectionId, number> = { path: 0, migration: 1, unconnected: 2 };
+
+/** The section a step is listed in: the Report's, `path` when it has none (Reports written before phase 4) or one this UI does not know. */
+export const sectionOf = (step: Step): SectionId => (step.section !== undefined && Object.hasOwn(SECTION_RANK, step.section) ? step.section : 'path');
+
+/** The steps whose file is in the Report, in reading order: by section (path, migrations, unconnected), then by `order`. */
 export function stopsOf(report: Report): Stop[] {
   const files = fileIndex(report);
   const stops: Stop[] = [];
-  for (const step of [...report.steps].sort((a, b) => a.order - b.order)) {
+  const sorted = [...report.steps].sort((a, b) => SECTION_RANK[sectionOf(a)] - SECTION_RANK[sectionOf(b)] || a.order - b.order);
+  for (const step of sorted) {
     const placed = files.get(step.fileId);
     if (placed === undefined) continue;
     stops.push({
@@ -85,6 +101,25 @@ export function stopsOf(report: Report): Stop[] {
   }
   return stops;
 }
+
+export interface StopSection {
+  id: SectionId;
+  label: string;
+  note: string;
+  /** By `order`; never empty. */
+  stops: Stop[];
+}
+
+/** The stops under their section headings; a section without stops is left out. */
+export function stopSections(report: Report): StopSection[] {
+  const stops = stopsOf(report);
+  return SECTIONS.map((section) => ({ ...section, stops: stops.filter((stop) => sectionOf(stop.step) === section.id) })).filter(
+    (section) => section.stops.length > 0,
+  );
+}
+
+/** The Execution order tab's empty text: only when the Report has no step to list; null otherwise. */
+export const emptyStepsText = (report: Report): string | null => (stopsOf(report).length === 0 ? EMPTY_STEPS : null);
 
 // ---------- findings ----------
 
@@ -171,7 +206,7 @@ export interface Target {
   symbolId: string | null;
 }
 
-/** What J and K walk: the stops by order, or the touched symbols (as the Symbols tab lists them) when the Report has no steps. */
+/** What J and K walk: the stops in reading order, across the sections, or the touched symbols (as the Symbols tab lists them) when the Report has no steps. */
 export function navTargets(report: Report): Target[] {
   const stops = stopsOf(report);
   if (stops.length > 0) return stops.map((stop) => ({ fileId: stop.step.fileId, symbolId: stop.step.symbolId }));
@@ -218,7 +253,7 @@ export interface FileViewData {
   placed: PlacedFile;
   /** Symbols by status, the floors of the building: a file without symbols counts once, by its own status. */
   counts: Record<Status, number>;
-  /** The file's stops, by order. */
+  /** The file's stops, in reading order. */
   stops: Stop[];
   /** Findings of the file that are not on one of its stops. */
   loose: Finding[];
@@ -236,9 +271,16 @@ export function fileViewData(report: Report, fileId: string): FileViewData | nul
   return { placed, counts, stops, loose };
 }
 
-/** The reading-time-free summary under the title: "6 stops" or "3 touched symbols". */
+/**
+ * The reading-time-free summary under the title: "6 stops, in the order the
+ * code runs" when every stop is on the execution path, "24 stops, in reading
+ * order" when migrations or unconnected symbols follow it.
+ */
 export function summaryLine(report: Report): string {
-  const c = counters(report);
-  if (c.order > 0) return `${String(c.order)} ${c.order === 1 ? 'stop' : 'stops'}, in the order the code runs`;
-  return 'No execution path for this change yet';
+  const stops = stopsOf(report);
+  if (stops.length > 0) {
+    const count = `${String(stops.length)} ${stops.length === 1 ? 'stop' : 'stops'}`;
+    return stops.every((stop) => sectionOf(stop.step) === 'path') ? `${count}, in the order the code runs` : `${count}, in reading order`;
+  }
+  return 'No execution path';
 }

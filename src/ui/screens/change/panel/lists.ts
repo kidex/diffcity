@@ -1,20 +1,20 @@
 // The bodies of the four tabs (SPEC.md section 6, right panel): the stop
-// cards, the findings by file, the files outside the spec and the touched
+// cards under their section headings, the findings by file, the files outside the spec and the touched
 // symbols. Plain DOM and textContent only.
 
 import type { Report, Status } from '../../../../core/report/types.js';
 import { h } from '../../../shared/dom.js';
 import { STATUS_LABEL } from '../../../shared/format.js';
-import type { FindingGroup, PlacedFile, SymbolGroup, Target } from '../model/panel.js';
+import type { FindingGroup, PlacedFile, StopSection, SymbolGroup, Target } from '../model/panel.js';
 import {
   EMPTY_FINDINGS,
   EMPTY_OUTSIDE_ALL_IN,
   EMPTY_OUTSIDE_NO_SPEC,
-  EMPTY_STEPS,
   EMPTY_SYMBOLS,
+  emptyStepsText,
   findingGroups,
   outsideSpec,
-  stopsOf,
+  stopSections,
   touchedSymbols,
 } from '../model/panel.js';
 import type { StopCard } from './stops.js';
@@ -98,13 +98,40 @@ export function activatable(card: HTMLElement, target: Target, actions: TabActio
   });
 }
 
+/** A section of the reading path: its heading with the number of stops, what it holds, and its cards; the rail runs within the section. */
+function stopSection(section: StopSection, actions: TabActions, cards: StopCard[]): HTMLElement {
+  return h(
+    'section',
+    { class: `stop-section ${section.id}`, 'data-testid': 'stop-section', 'data-section': section.id },
+    h(
+      'h3',
+      // Named in words: the label and the count would read as one word ("Execution path15").
+      {
+        class: 'section-head',
+        'data-testid': 'section-heading',
+        'aria-label': `${section.label}, ${String(section.stops.length)} ${section.stops.length === 1 ? 'stop' : 'stops'}`,
+      },
+      h('span', { 'data-testid': 'section-label' }, section.label),
+      h('span', { class: 'cnt', 'data-testid': 'section-count' }, String(section.stops.length)),
+    ),
+    h('p', { class: 'section-note', 'data-testid': 'section-note' }, section.note),
+    section.stops.map((stop) => {
+      const card = stopCard(stop);
+      activatable(card.root, { fileId: stop.step.fileId, symbolId: stop.step.symbolId }, actions);
+      cards.push(card);
+      return card.root;
+    }),
+  );
+}
+
 export function orderBody(report: Report, actions: TabActions): TabBody {
-  const cards = stopsOf(report).map((stop) => {
-    const card = stopCard(stop);
-    activatable(card.root, { fileId: stop.step.fileId, symbolId: stop.step.symbolId }, actions);
-    return card;
-  });
-  const root = h('div', { class: 'tab-body', 'data-testid': 'tab-order-body' }, cards.length === 0 ? empty('empty-steps', EMPTY_STEPS) : cards.map((card) => card.root));
+  const cards: StopCard[] = [];
+  const emptyText = emptyStepsText(report);
+  const root = h(
+    'div',
+    { class: 'tab-body', 'data-testid': 'tab-order-body' },
+    emptyText !== null ? empty('empty-steps', emptyText) : stopSections(report).map((section) => stopSection(section, actions, cards)),
+  );
   return { root, stops: cards, symbols: [] };
 }
 
