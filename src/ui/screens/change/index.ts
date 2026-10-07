@@ -9,7 +9,8 @@
 // their right: a click opens the file view, so review works without the city),
 // or the city, with the HUD around it (hud/): top bar, filters, legend,
 // tooltip, selection card, Fleet card, and the reading panel at its right
-// (panel/): tabs, stop cards and the file view.
+// (panel/): tabs, stop cards and the file view, and, with a FindingsPort, the
+// finding cards' actions.
 
 import './change.css';
 
@@ -26,7 +27,9 @@ import type { Filters } from './model/view.js';
 import { clearFilters, pruneFilters, ruleIndex, toggleHideChecked } from './model/view.js';
 import type { Panel } from './panel/index.js';
 import { createPanel } from './panel/index.js';
-import type { DiffPort, FleetPort, ReviewPort } from './ports.js';
+import type { FindingActions } from './panel/finding-actions.js';
+import { createFindingActions } from './panel/finding-actions.js';
+import type { DiffPort, FindingsPort, FleetPort, ReviewPort } from './ports.js';
 import type { ReviewController } from './review/controller.js';
 import { createReviewController } from './review/controller.js';
 import type { ReviewUi } from './review/ui.js';
@@ -49,11 +52,17 @@ export interface ChangeScreenOptions {
   diffs?: DiffPort;
   /** The review marks (ADR-028): mark buttons, progress, "Hide checked" and the summary; without it the screen has none of them. */
   review?: ReviewPort;
+  /** "Ask agent to fix" and "Mark as intended" on the finding cards (ADR-036); without it the cards have no buttons. */
+  findings?: FindingsPort;
 }
 
 export interface ChangeScreen {
-  /** Shows a new Report of the same change; the camera and the selection stay. */
-  update(report: Report | null): void;
+  /**
+   * Shows a new Report of the same change; the camera and the selection stay.
+   * `startedAt`: when its fetch began (`performance.now()`), so the finding
+   * actions know the Report is newer than a write they made.
+   */
+  update(report: Report | null, loaded?: { startedAt: number }): void;
   unmount(): void;
 }
 
@@ -169,6 +178,7 @@ export function mountChange(element: HTMLElement, options: ChangeScreenOptions):
           range: () => panel?.lineRange() ?? null,
         });
   const stopReview = controller?.onChange(syncReview);
+  const findingActions: FindingActions | null = options.findings === undefined ? null : createFindingActions(options.findings);
 
   /** Brings the city, the progress, the filters and every mark button in line with the review state. */
   function syncReview(): void {
@@ -242,6 +252,7 @@ export function mountChange(element: HTMLElement, options: ChangeScreenOptions):
                   reviewUi.fill(slot, fileId, symbolId);
                 },
               },
+        findings: findingActions ?? undefined,
         reducedMotion,
       },
       report,
@@ -372,14 +383,17 @@ export function mountChange(element: HTMLElement, options: ChangeScreenOptions):
 
   show(options.report);
   return {
-    update(report) {
-      if (!disposed) show(report);
+    update(report, loaded) {
+      if (disposed) return;
+      if (report !== null) findingActions?.sync(report, loaded?.startedAt ?? null);
+      show(report);
     },
     unmount() {
       disposed = true;
       stopReview?.();
       reviewUi?.dispose();
       controller?.dispose();
+      findingActions?.dispose();
       dropView();
       element.classList.remove('has-city', 'has-list');
       element.replaceChildren();

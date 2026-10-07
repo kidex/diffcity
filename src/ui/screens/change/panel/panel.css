@@ -72,11 +72,19 @@
 .read .pin .t { font-size: 12.5px; color: var(--ink); overflow-wrap: anywhere; }
 .read .pin .t .state { margin-left: 8px; font-size: 11px; color: var(--muted); border: 1px solid var(--line); border-radius: 5px; padding: 0 6px; }
 .read .pin .m { font-size: 12px; color: var(--ink-2); margin-top: 2px; overflow-wrap: anywhere; }
-.read .pin .src { margin-left: auto; flex: 0 0 auto; font-size: 11px; color: var(--muted); border: 1px solid var(--line); border-radius: 5px; padding: 1px 6px; max-width: 14ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.read .pin.fixed, .read .pin.intended { opacity: .72; }
-.read .pin .fix { margin-top: 6px; display: flex; gap: 6px; flex-wrap: wrap; }
+.read .pin .srcs { margin: 0 0 0 auto; padding: 0; list-style: none; flex: 0 0 auto; display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+.read .pin .src { font-size: 11px; color: var(--muted); border: 1px solid var(--line); border-radius: 5px; padding: 1px 6px; max-width: 14ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* A closed finding fades, its Undo button does not. */
+.read .pin.fixed > :not(.body), .read .pin.intended > :not(.body), .read .pin.fixed .t, .read .pin.fixed .m, .read .pin.intended .t, .read .pin.intended .m { opacity: .72; }
+.read .pin .fix { margin-top: 6px; display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.read .pin .fix[hidden] { display: none; }
 .read .pin .fix button { font-size: 11.5px; color: var(--ink-2); padding: 3px 8px; border-radius: 6px; border: 1px solid var(--line); }
+.read .pin .fix button:hover { color: var(--ink); }
 .read .pin .fix button[aria-disabled="true"] { opacity: .55; cursor: not-allowed; }
+.read .pin .fix button[aria-disabled="true"]:hover { color: var(--ink-2); }
+/* "Queued" is a state to read, not a dimmed button. */
+.read .pin .fix button.queued[aria-disabled="true"] { opacity: 1; color: var(--add-text); cursor: default; }
+.read .pin .fix .fix-error { flex: 1 0 100%; margin: 2px 0 0; font-size: 11.5px; color: var(--del-text); overflow-wrap: anywhere; }
 
 /* groups: findings by file, files outside the spec, symbols by file */
 .read .group { padding: 4px 0 10px; }

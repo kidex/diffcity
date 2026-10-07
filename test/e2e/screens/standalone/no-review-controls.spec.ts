@@ -21,11 +21,12 @@ test('standalone/no-review-controls', async ({ page, standalone }) => {
   const screen = page.locator('.change-body');
   await expect(screen).toBeVisible();
   // No review controls: no working mark button, note field, progress or "hide checked" anywhere.
-  // The mockup's disabled placeholders ("Approve when tier 1 is read", "Mark as intended") are
-  // drawn with or without ports and do nothing, so only enabled buttons count.
+  // The mockup's disabled Approve placeholder is drawn with or without ports and does nothing,
+  // so only enabled buttons count; the finding cards have no buttons without a FindingsPort.
   const review = /^(?:mark\b|needs rewrite|good|looks good|hide checked|copy summary|clear mark|approve)/i;
   await expect(page.getByRole('button', { name: review, disabled: false })).toHaveCount(0);
-  await expect(page.getByRole('button', { name: /^(?:approve|mark as intended)/i, disabled: true }).first()).toBeDisabled();
+  await expect(page.getByRole('button', { name: /^approve/i, disabled: true }).first()).toBeDisabled();
+  await expect(page.getByRole('button', { name: /^(?:ask agent to fix|mark as intended|undo)/i })).toHaveCount(0);
   await expect(screen.getByRole('textbox')).toHaveCount(0);
   await expect(screen.getByRole('progressbar')).toHaveCount(0);
   await expect(screen.locator('textarea, input, [data-testid^="mark"], [data-testid^="review"], [data-testid="progress"]')).toHaveCount(0);

@@ -45,6 +45,20 @@ export interface MarkRequest {
   lines?: { side: 'old' | 'new'; start: number; end: number };
 }
 
+/** `PUT /api/changes/:id/findings/:key/state` (ADR-036): the finding's key, the state set and the stored keys it was written to. */
+export interface FindingStateAnswer {
+  key: string;
+  state: 'open' | 'intended';
+  keys: string[];
+}
+
+/** `POST /api/changes/:id/findings/:key/fix` (ADR-036): `queued` is false when the finding was already in the fix queue. */
+export interface FixAnswer {
+  key: string;
+  queued: boolean;
+  count: number;
+}
+
 export interface Api {
   health(signal?: AbortSignal): Promise<HealthResponse>;
   repos(signal?: AbortSignal): Promise<RepoSummary[]>;
@@ -69,6 +83,17 @@ export interface Api {
    */
   diff(changeId: number, path: string, symbol?: string, signal?: AbortSignal): Promise<FileDiff>;
   search(query: string, options?: { limit?: number; signal?: AbortSignal }): Promise<SearchResult[]>;
+  /**
+   * "Mark as intended" (`intended`) and its undo (`open`) on finding `key` (a `Finding.id`). Rejects with
+   * ApiRequestError: 409 `no-snapshot` or `archived`, 404 `finding-not-found` or `not-found`, 400, 403.
+   */
+  setFindingState(changeId: number, key: string, state: 'open' | 'intended'): Promise<FindingStateAnswer>;
+  /**
+   * "Ask agent to fix" on finding `key`: the daemon writes it to the repo's fix queue. Rejects with
+   * ApiRequestError: 409 `no-snapshot`, `no-working-tree`, `fix-queue-unsafe`, `fix-queue-full`,
+   * `fix-queue-invalid` or `archived`, 404 `finding-not-found` or `not-found`, 403.
+   */
+  fixFinding(changeId: number, key: string): Promise<FixAnswer>;
 }
 
 function isApiError(body: unknown): body is ApiError {
@@ -94,7 +119,7 @@ export function createApi(base = '', fetchImpl: typeof fetch = (...args) => fetc
   }
 
   /** A write: the browser adds `Origin`; the daemon wants JSON for a body (ADR-028 write guard). */
-  async function write(method: 'PUT' | 'DELETE', path: string, body?: unknown): Promise<Response> {
+  async function write(method: 'PUT' | 'POST' | 'DELETE', path: string, body?: unknown): Promise<Response> {
     const init: RequestInit = { method, headers: { accept: 'application/json' } };
     if (body !== undefined) {
       init.headers = { accept: 'application/json', 'content-type': 'application/json' };
@@ -106,6 +131,8 @@ export function createApi(base = '', fetchImpl: typeof fetch = (...args) => fetc
   }
 
   const reviewPath = (changeId: number): string => `/changes/${String(changeId)}/review`;
+  // Rule finding ids hold `:`, imported keys may hold anything: the key is one path segment.
+  const findingPath = (changeId: number, key: string): string => `/changes/${String(changeId)}/findings/${encodeURIComponent(key)}`;
 
   return {
     health: (signal) => get<HealthResponse>('/health', signal),
@@ -159,6 +186,12 @@ export function createApi(base = '', fetchImpl: typeof fetch = (...args) => fetc
     search(query, { limit = 20, signal } = {}) {
       const params = new URLSearchParams({ q: query, limit: String(limit) });
       return get<SearchResult[]>(`/search?${params.toString()}`, signal);
+    },
+    async setFindingState(changeId, key, state) {
+      return (await (await write('PUT', `${findingPath(changeId, key)}/state`, { state })).json()) as FindingStateAnswer;
+    },
+    async fixFinding(changeId, key) {
+      return (await (await write('POST', `${findingPath(changeId, key)}/fix`)).json()) as FixAnswer;
     },
   };
 }

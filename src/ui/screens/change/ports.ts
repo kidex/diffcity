@@ -80,3 +80,25 @@ export interface FleetPort {
   /** "all N projects": goes to the Fleet screen. */
   open(): void;
 }
+
+/** A finding action the daemon answered with an error (a 409 refusal, 404, 403, ...): its code and the message to show. */
+export interface FindingRefusal {
+  code: string;
+  message: string;
+}
+
+/** The daemon's answer to a finding action (`at`: when it arrived, `performance.now()`), or its error. */
+export type FindingAnswer<T> = { ok: true; value: T; at: number } | { ok: false; refusal: FindingRefusal };
+
+/**
+ * "Ask agent to fix" and "Mark as intended" (ADR-036). Structurally the port of
+ * src/ui/data/findings-port.ts. Only a request that got no answer (no daemon,
+ * a dropped connection) rejects. Without it the finding cards have no action buttons: the HTML
+ * export shows the findings and their state only.
+ */
+export interface FindingsPort {
+  /** Writes finding `key` (a `Finding.id`) to the fix queue; `queued` is false when it was already there. */
+  ask(key: string): Promise<FindingAnswer<{ key: string; queued: boolean; count: number }>>;
+  /** Sets the state of finding `key`: `intended`, or back to `open` (the undo). */
+  setState(key: string, state: 'open' | 'intended'): Promise<FindingAnswer<{ key: string; state: 'open' | 'intended'; keys: string[] }>>;
+}

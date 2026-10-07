@@ -1,6 +1,6 @@
 // A stop of the reading path as a card (mockup .step): rail and node, symbol,
 // file, the file's verdict and the status tag, `why`, the inline diff and the
-// findings with their source. Plain DOM; every text goes in through
+// findings with their sources. Plain DOM; every text goes in through
 // textContent (symbol names, why texts, diffs and finding texts come from the
 // repo under review).
 
@@ -8,7 +8,7 @@ import type { DiffLine, Finding, Status } from '../../../../core/report/types.js
 import { h } from '../../../shared/dom.js';
 import { STATUS_LABEL, VERDICT_LABEL } from '../../../shared/format.js';
 import type { Stop } from '../model/panel.js';
-import { LATER_VERSION } from '../model/panel.js';
+import { sourcesOf } from '../model/findings.js';
 
 const GUTTER: Record<DiffLine['kind'], string> = { add: '+', del: '−', ctx: ' ' };
 const LINE_CLASS: Record<DiffLine['kind'], string> = { add: 'a', del: 'd', ctx: 'c' };
@@ -33,18 +33,13 @@ export function codeBlock(lines: readonly DiffLine[], label: string): HTMLElemen
 
 const STATE_TEXT: Record<Finding['state'], string> = { open: 'open', intended: 'intended', fixed: 'fixed' };
 
-/** A finding with its source, and the "Ask agent to fix" and "Mark as intended" buttons, which arrive in a later version. */
+/**
+ * A finding with its state, every source that reported it, and the slot of its
+ * action buttons ("Ask agent to fix", "Mark as intended", "Undo"): empty and
+ * hidden here; the panel fills it when the screen has a FindingsPort.
+ */
 export function pin(finding: Finding): HTMLElement {
-  const disabled = (label: string): HTMLElement =>
-    h('button', {
-      type: 'button',
-      'aria-disabled': 'true',
-      title: LATER_VERSION,
-      onclick: (event: Event) => {
-        event.preventDefault();
-        event.stopPropagation();
-      },
-    }, label);
+  const sources = sourcesOf(finding);
   return h(
     'div',
     { class: `pin ${finding.state}`, 'data-testid': 'finding', 'data-state': finding.state, 'data-severity': finding.severity, 'data-finding': finding.id },
@@ -54,9 +49,13 @@ export function pin(finding: Finding): HTMLElement {
       { class: 'body' },
       h('div', { class: 't' }, finding.title, finding.state === 'open' ? null : h('span', { class: 'state', 'data-testid': 'finding-state' }, STATE_TEXT[finding.state])),
       h('div', { class: 'm' }, finding.message),
-      finding.state === 'open' ? h('div', { class: 'fix' }, disabled('Ask agent to fix'), disabled('Mark as intended')) : null,
+      h('div', { class: 'fix', 'data-testid': 'finding-actions', hidden: true }),
     ),
-    h('span', { class: 'src', 'data-testid': 'finding-source' }, finding.source),
+    h(
+      'ul',
+      { class: 'srcs', 'aria-label': sources.length === 1 ? 'Source' : 'Sources', 'data-testid': 'finding-sources' },
+      sources.map((source) => h('li', { class: 'src', title: source, 'data-testid': 'finding-source' }, source)),
+    ),
   );
 }
 
