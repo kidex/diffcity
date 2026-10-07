@@ -81,6 +81,8 @@ Each entry of `runs[].results[]` becomes one finding.
 | `results[].properties.category` | `category` (default `correctness`) |
 | `results[].fixes[0].description.text` | `fix` |
 
+The size limits of the own format apply to SARIF too: more than 5,000 results in all runs, or a result whose message is over 16 KiB or whose title or fix is over 4 KiB, rejects the file.
+
 Each run's `tool.driver.name` is the `source` of its results (`sarif` when missing). Warnings, with `runs[i].results[j]` as the place unless said otherwise:
 
 - `skipped: source "<source>" is reserved for rule findings`, with `runs[i]` as the place: a run whose tool name starts with `rule:` is skipped as a whole.

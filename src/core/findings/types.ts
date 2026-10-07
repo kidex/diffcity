@@ -78,7 +78,12 @@ export interface FindingAnchor {
   fingerprint: string | null;
 }
 
-/** A finding as stored in the table: the overlay view plus what re-anchoring and `fixed` need. */
+/**
+ * A finding as stored in the table: the overlay view plus what re-anchoring and `fixed` need.
+ * The store must return stored findings in import order: `dedup` keeps the
+ * first part's key, `source`, message and anchor, so a different order gives
+ * a different merged entry.
+ */
 export interface StoredFinding {
   /** `f:<16 hex>`; also `finding.id`. */
   key: string;

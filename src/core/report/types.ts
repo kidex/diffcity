@@ -71,7 +71,7 @@ export interface Finding {
   id: string;
   /** 'claude' | 'semgrep' | 'eslint' | ... */
   source: string;
-  /** Every source that reported the finding, `source` included; absent on a finding with one source. */
+  /** Every source that reported the finding, in import order; always includes `source` (`[source]` with one source). Set on imported findings; rule findings may omit it. */
   sources?: string[];
   severity: 'high' | 'med' | 'low';
   category: 'security' | 'correctness' | 'scope' | 'style' | 'tests' | 'architecture';
