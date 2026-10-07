@@ -61,7 +61,7 @@ export function anchor(input: FindingInput, report: Report, fingerprints?: Finge
   const file = findFile(report, input.file);
   if (file === undefined) return { ok: false, reason: 'skipped-not-in-change' };
   const symbol = symbolAtLine(file, input.line);
-  const key = findingKey(input.source, input.file, input.title, input.line);
+  const key = findingKey(input.source, input.file, input.category, input.title, input.line);
   const finding: Finding = {
     id: key,
     source: input.source,

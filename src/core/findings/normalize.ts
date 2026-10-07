@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { posix } from 'node:path';
+import type { FindingCategory } from './types.js';
 
 /** The `source` prefix of findings computed by rules (ADR-030); never accepted from an import. */
 export const RULE_SOURCE_PREFIX = 'rule:';
@@ -22,10 +23,14 @@ export function normalizeTitle(title: string): string {
     .replace(/[\s.,;:!?…]+$/u, '');
 }
 
-/** `f:` + the first 16 hex of sha256(source, file, normalized title, line), NUL separated (ADR-036). */
-export function findingKey(source: string, file: string, title: string, line: number): string {
+/**
+ * `f:` + the first 16 hex of sha256(source, file, category, normalized title,
+ * line), NUL separated (ADR-036). Category is part of the dedup identity, so
+ * it is part of the key: two findings that stay separate never share a key.
+ */
+export function findingKey(source: string, file: string, category: FindingCategory, title: string, line: number): string {
   const digest = createHash('sha256')
-    .update(`${source}\0${file}\0${normalizeTitle(title)}\0${String(line)}`)
+    .update(`${source}\0${file}\0${category}\0${normalizeTitle(title)}\0${String(line)}`)
     .digest('hex');
   return `f:${digest.slice(0, 16)}`;
 }

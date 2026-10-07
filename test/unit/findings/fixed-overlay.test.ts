@@ -59,6 +59,19 @@ describe('findings', () => {
     expect(fixedKeys({ ...args, imported: [stored({ source: 'semgrep', line: 18 })] })).toEqual([]);
   });
 
+  it('fixed-other-category-not-reported-again', () => {
+    // Same source, file, line and title, another category: another key and another dedup entry.
+    const correctness = stored({ category: 'correctness' });
+    const security = stored({ category: 'security' });
+    expect(security.key).not.toBe(correctness.key);
+    const fp = shopfrontFingerprints();
+    fp.symbols[`${ORDERS}#OrdersService.cancel`] = 'sym-cancel-edited';
+    const args = { stored: [correctness, security], report: shopfrontReport(), fingerprints: fp };
+    // Only one category is reported again: the other one is fixed.
+    expect(fixedKeys({ ...args, imported: [stored({ category: 'correctness' })] })).toEqual([security.key]);
+    expect(fixedKeys({ ...args, imported: [stored({ category: 'security' })] })).toEqual([correctness.key]);
+  });
+
   it('stays-open-when-symbol-unchanged', () => {
     const open = stored();
     const other = stored({ line: 40, title: 'Another thing' });

@@ -304,7 +304,7 @@ describe('findings adversarial: titles and keys', () => {
     const a = stored({ title: 'Missing NotFound handling' });
     const b = stored({ title: '  missing\tNOTFOUND   handling!!! ' });
     expect(b.key).toBe(a.key);
-    expect(findingKey('claude', ORDERS, 'Missing NotFound handling.', 15)).toBe(a.key);
+    expect(findingKey('claude', ORDERS, 'correctness', 'Missing NotFound handling.', 15)).toBe(a.key);
     expect(dedup([a, b])).toHaveLength(1);
     // Inner punctuation is not removed: a different title, a different entry.
     expect(dedup([a, stored({ title: 'Missing Not-Found handling' })])).toHaveLength(2);
@@ -312,9 +312,10 @@ describe('findings adversarial: titles and keys', () => {
 
   it('key-separators-do-not-collide', () => {
     // NUL separators: shifting text between source and file gives a different key.
-    expect(findingKey('a', 'b/c.ts', 't', 1)).not.toBe(findingKey('a\0b', 'c.ts', 't', 1));
-    expect(findingKey('claude', ORDERS, 'x', 1)).not.toBe(findingKey('claude', ORDERS, 'x', 11));
-    expect(findingKey('claude', ORDERS, 'x', 1)).toMatch(/^f:[0-9a-f]{16}$/);
+    expect(findingKey('a', 'b/c.ts', 'correctness', 't', 1)).not.toBe(findingKey('a\0b', 'c.ts', 'correctness', 't', 1));
+    expect(findingKey('claude', ORDERS, 'correctness', 'x', 1)).not.toBe(findingKey('claude', ORDERS, 'correctness', 'x', 11));
+    expect(findingKey('claude', ORDERS, 'correctness', 'x', 1)).toMatch(/^f:[0-9a-f]{16}$/);
+    expect(findingKey('claude', ORDERS, 'correctness', 'x', 1)).not.toBe(findingKey('claude', ORDERS, 'security', 'x', 1));
   });
 });
 

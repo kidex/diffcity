@@ -64,7 +64,7 @@ A file with a missing or malformed field is rejected as a whole, with one messag
 
 ## Finding key
 
-Every finding gets the key `f:` followed by the first 16 hex digits of `sha256(source NUL file NUL normalized title NUL line)`. The same finding imported twice has the same key. An own-format `id` is kept as an alias. Findings computed by rules keep `rule:<id>:<hash>` as their id.
+Every finding gets the key `f:` followed by the first 16 hex digits of `sha256(source NUL file NUL category NUL normalized title NUL line)`. The same finding imported twice has the same key. Category is part of the key because it is part of the deduplication identity: two findings from one source that differ only by category stay separate and have different keys. An own-format `id` is kept as an alias. Findings computed by rules keep `rule:<id>:<hash>` as their id.
 
 ## SARIF 2.1
 

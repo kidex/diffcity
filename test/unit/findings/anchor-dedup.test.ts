@@ -128,8 +128,8 @@ describe('findings', () => {
     expect(second.key).toBe(first.key);
     expect(first.alias).toBe('cr-1');
     expect(first.finding.id).toBe(first.key);
-    expect(findingKey('claude', ORDERS, '  Missing NotFound Handling.', 15)).toBe(first.key);
-    expect(findingKey('semgrep', ORDERS, 'Missing NotFound handling', 15)).not.toBe(first.key);
-    expect(findingKey('claude', ORDERS, 'Missing NotFound handling', 16)).not.toBe(first.key);
+    expect(findingKey('claude', ORDERS, 'correctness', '  Missing NotFound Handling.', 15)).toBe(first.key);
+    expect(findingKey('semgrep', ORDERS, 'correctness', 'Missing NotFound handling', 15)).not.toBe(first.key);
+    expect(findingKey('claude', ORDERS, 'correctness', 'Missing NotFound handling', 16)).not.toBe(first.key);
   });
 });
