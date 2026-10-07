@@ -32,18 +32,27 @@ export function worktreeContaining<T extends Pick<WorktreeInfo, 'path'>>(worktre
 }
 
 /**
- * Marks the change of `worktree`: the live change recorded on that working tree,
- * else the PR or Branch at its HEAD. `at` is the time of the request.
+ * The change checked out in `worktree` (ADR-019): the live change recorded on
+ * that working tree, else the PR or Branch at its HEAD; null when there is none
+ * (a clean working tree on the base). `track --agent` and `import` use it.
+ */
+export function changeOfWorktree(live: readonly ChangeRecord[], worktree: Pick<WorktreeInfo, 'path' | 'head'>): ChangeRecord | null {
+  return (
+    live.find((candidate) => candidate.worktreePath === worktree.path) ??
+    live.find((candidate) => candidate.kind !== 'draft' && candidate.head === worktree.head) ??
+    null
+  );
+}
+
+/**
+ * Marks the change of `worktree` (changeOfWorktree). `at` is the time of the request.
  */
 export function applyAgent(
   live: readonly ChangeRecord[],
   worktree: Pick<WorktreeInfo, 'path' | 'head'>,
   at: string,
 ): AgentOutcome {
-  const change =
-    live.find((candidate) => candidate.worktreePath === worktree.path) ??
-    live.find((candidate) => candidate.kind !== 'draft' && candidate.head === worktree.head) ??
-    null;
+  const change = changeOfWorktree(live, worktree);
   const payload = { worktree: worktree.path };
   if (change === null) return { update: null, event: { changeId: null, type: 'agent', at, payload } };
   return {

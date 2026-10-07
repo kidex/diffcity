@@ -1,6 +1,10 @@
 export { anchor, fingerprintOf, reanchor } from './anchor.js';
 export { dedup, dedupIdentity } from './dedup.js';
+export { MAX_FINDINGS_FILE_BYTES, detectFindingsFormat, parseFindingsText } from './file.js';
+export type { FindingsFileResult, FindingsFormat } from './file.js';
 export { fixedKeys } from './fixed.js';
+export { checkImportPayload, planImport } from './import.js';
+export type { ImportPayload, ImportPayloadCheck, ImportPlan, ImportPlanInput } from './import.js';
 export { findingKey, normalizePath, normalizeTitle } from './normalize.js';
 export { isRuleFinding, overlay } from './overlay.js';
 export { parseOwn, parseSarif } from './parse.js';
