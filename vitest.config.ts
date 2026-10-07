@@ -1,11 +1,13 @@
 import { defineConfig } from 'vitest/config';
 
-// The two tests that assert the 5 s deadline of SPEC.md section 9. Run beside
-// other files they measure the machine, not the collector, so they get their
-// own project, one file at a time (`npm test` runs it after `main`).
+// The tests that assert a time: the 5 s deadline of SPEC.md section 9 and the
+// 200 ms warm served Report (ADR-036). Run beside other files they measure the
+// machine, not the code, so they get their own project, one file at a time
+// (`npm test` runs it after `main`).
 const TIMING = [
   'test/integration/collect/track-to-api-under-5s.test.ts',
   'test/integration/collect/track-to-api-under-5s-gh-latency.test.ts',
+  'test/integration/report-route/overlay-bench.test.ts',
 ];
 
 export default defineConfig({
