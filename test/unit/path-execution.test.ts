@@ -3,6 +3,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { STEP_GAP, STEP_MAX_LINES, stepDiff } from '../../src/core/path/diff.js';
+import { mayRegisterEntries } from '../../src/core/path/entries.js';
 import { buildExecutionPath, type ExecutionPath } from '../../src/core/path/order.js';
 import { applyWhyOverrides } from '../../src/core/path/why.js';
 import type { Step } from '../../src/core/report/types.js';
@@ -124,6 +125,18 @@ describe('entry', () => {
       `2 path ${block} <- ${block} : New test`,
       `3 path ${id('src/sum.ts', 'sum')} <- ${block} : Body changed`,
     ]);
+  });
+
+  it('client-call-not-a-route: a call with a path and no handler (an HTTP client, an app setting) registers no route', async () => {
+    const { steps } = await pathOf('entry/client-call-not-a-route');
+    expect(rows(steps)).toEqual([
+      `1 unconnected ${id('src/client.ts', 'loadUsers')} : Body changed`,
+      `2 unconnected ${id('src/settings.ts', 'mode')} : Body changed`,
+    ]);
+    expect(mayRegisterEntries("const users = await api.get('/users');")).toBe(false);
+    expect(mayRegisterEntries("const env = app.get('env');")).toBe(false);
+    expect(mayRegisterEntries("app.get('/items', listItems);")).toBe(true);
+    expect(mayRegisterEntries('router.post(`/items`, (req, res) => res.end());')).toBe(true);
   });
 
   it('priority-route-before-main: routes, then main, then new tests, whatever the file order', async () => {

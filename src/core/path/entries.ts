@@ -94,6 +94,10 @@ function stringOf(node: Node | null | undefined): string | null {
 
 const line = (node: Node): number => node.startPosition.row + 1;
 
+/** A route handler argument: a function, or one passed by name (an identifier or a member). */
+const isHandlerArgument = (node: Node): boolean =>
+  FUNCTIONS.has(node.type) || node.type === 'identifier' || node.type === 'member_expression';
+
 function handlerRef(node: Node): HandlerRef | null {
   if (node.type === 'identifier') return { name: node.text, line: line(node) };
   if (node.type === 'member_expression') {
@@ -206,8 +210,11 @@ class Scanner {
 
     if (object?.type === 'identifier' && ROUTER_OBJECTS.has(object.text) && ROUTER_METHODS.has(property)) {
       const path = stringOf(args[0]);
-      if (path === null) return;
-      const handlers = args.slice(1).flatMap((arg) => handlerRef(arg) ?? []);
+      // A registration passes at least one handler after the path; `api.get('/users')` (an HTTP
+      // client) and `app.get('env')` (a setting) pass none.
+      const rest = args.slice(1);
+      if (path === null || !rest.some(isHandlerArgument)) return;
+      const handlers = rest.flatMap((arg) => handlerRef(arg) ?? []);
       this.facts.routes.push({ method: property.toUpperCase(), path, line: line(node), handlers });
       return;
     }
@@ -267,7 +274,8 @@ class Scanner {
  */
 export function mayRegisterEntries(source: string): boolean {
   return (
-    /\b(?:app|router|server|fastify|api)\s*\.\s*(?:get|post|put|patch|delete|all|use)\s*\(/.test(source) ||
+    // A string path followed by a comma: a call with only a path (`api.get('/users')`) cannot register a route.
+    /\b(?:app|router|server|fastify|api)\s*\.\s*(?:get|post|put|patch|delete|all|use)\s*\(\s*(?:'[^'\n]*'|"[^"\n]*"|`[^`$]*`)\s*,/.test(source) ||
     /\.\s*action\s*\(/.test(source) ||
     /\bcron\s*\.\s*schedule\s*\(|\bschedule\s*\.\s*scheduleJob\s*\(/.test(source)
   );
