@@ -29,6 +29,16 @@ function decodeUri(uri: string): string {
 }
 
 /**
+ * A SARIF `artifactLocation.uri` as a path (docs/findings.md): a `file://` URI
+ * or a relative reference, percent-decoded either way. Invalid percent-encoding
+ * is kept as written. The own format's `file` is a path and is not decoded.
+ */
+export function normalizeSarifUri(uri: string, repoRoot: string): PathResult {
+  const trimmed = uri.trim();
+  return normalizePath(trimmed.startsWith('file://') ? trimmed : decodeUri(trimmed), repoRoot);
+}
+
+/**
  * A path as the Report writes it: repo-relative, `/` separators, no `..`.
  * Absolute paths (and `file://` URIs) are made relative to `repoRoot`, or refused.
  */

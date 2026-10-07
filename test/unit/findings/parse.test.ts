@@ -151,16 +151,29 @@ describe('findings', () => {
     const at = (uri: string): Record<string, unknown> =>
       sarifResult({ locations: [{ physicalLocation: { artifactLocation: { uri }, region: { startLine: 2 } } }] });
     const result = parseSarif(
-      sarif([at(`file://${ROOT}/src/orders/my%20file.ts`), at(`${ROOT}/src/util/format.ts`), at('file:///other/place.ts'), at('../up.ts')]),
+      sarif([
+        at(`file://${ROOT}/src/orders/my%20file.ts`),
+        at(`${ROOT}/src/util/format.ts`),
+        at('file:///other/place.ts'),
+        at('../up.ts'),
+        at('src/orders/my%20file.ts'),
+        at('src/%2E%2E/%2e%2e/up.ts'),
+        at('src/orders/100%.ts'),
+      ]),
       ROOT,
     );
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(result.findings.map((f) => f.file)).toEqual(['src/orders/my file.ts', 'src/util/format.ts']);
+    // A relative URI is percent-decoded too; one that is not valid percent-encoding is kept as written.
+    expect(result.findings.map((f) => f.file)).toEqual(['src/orders/my file.ts', 'src/util/format.ts', 'src/orders/my file.ts', 'src/orders/100%.ts']);
     expect(result.warnings.map((w) => w.message)).toEqual([
       'skipped: absolute path "/other/place.ts" is outside the repository',
       'skipped: path "../up.ts" contains ".."',
+      'skipped: path "src/../../up.ts" contains ".."',
     ]);
+    // The own format takes `file` as a path, not a URI: no decoding.
+    const own = parseOwn([{ source: 'claude', severity: 'low', category: 'style', file: 'src/a%20b.ts', line: 1, title: 't', message: 'm' }], ROOT);
+    expect(own.ok && own.findings[0]?.file).toBe('src/a%20b.ts');
   });
 
   it('sarif-multiple-runs-sources', () => {

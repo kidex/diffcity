@@ -1,6 +1,6 @@
 // Own-format and SARIF 2.1 parsing (ADR-036, docs/findings.md). Pure.
 
-import { normalizePath } from './normalize.js';
+import { normalizePath, normalizeSarifUri } from './normalize.js';
 import {
   CATEGORIES,
   LIMITS,
@@ -170,7 +170,7 @@ export function parseSarif(json: unknown, repoRoot: string): ParseResult {
         warnings.push({ at, message: 'skipped: no physical location' });
         return;
       }
-      const path = normalizePath(uri, repoRoot);
+      const path = normalizeSarifUri(uri, repoRoot);
       if (!path.ok) {
         warnings.push({ at, message: `skipped: ${path.reason}` });
         return;
