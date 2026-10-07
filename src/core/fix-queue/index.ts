@@ -82,6 +82,16 @@ export function fixQueueItem(report: Report, finding: Finding, queuedAt: string)
   };
 }
 
+/**
+ * The working tree a change's fix queue goes to (ADR-036): the one it is
+ * checked out in; a branch that is not checked out anywhere uses the repo's
+ * path; a PR that is not checked out has none (`no-working-tree`).
+ */
+export function fixQueueRoot(change: { kind: 'draft' | 'branch' | 'pr'; worktreePath: string | null }, repoPath: string): string | null {
+  if (change.worktreePath !== null) return change.worktreePath;
+  return change.kind === 'pr' ? null : repoPath;
+}
+
 const refuse = (code: FixQueueRefusal, message: string): FixQueueResult => ({ ok: false, code, message });
 
 function lstatOrNull(path: string): Stats | null {

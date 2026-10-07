@@ -81,6 +81,12 @@ export interface SnapshotStore {
    */
   latestMeta(changeId: number): SnapshotMeta | null;
   /**
+   * What identifies the latest snapshot's Report, for the served Report's
+   * cache (ADR-036): the row id, and its computedAt and contentHash, which a
+   * recompute that replaces the row in place changes. Null while there is none.
+   */
+  latestKey(changeId: number): SnapshotKey | null;
+  /**
    * The touched paths of the latest snapshot of every live change that has one,
    * by the change's `lastEventAt` desc; for search (ADR-017). Reads only the
    * `touched` column, never a report.
@@ -95,6 +101,13 @@ export interface SnapshotMeta {
   dirty: boolean;
   mergeBase: string | null;
   fingerprints: string | null;
+}
+
+export interface SnapshotKey {
+  id: number;
+  head: string;
+  computedAt: string;
+  contentHash: string;
 }
 
 /** The touched paths of a live change's latest snapshot. */
@@ -153,6 +166,7 @@ export function createSnapshotStore(db: Connection, warn: (message: string) => v
   const latestMeta = db.prepare<[number], { id: number; head: string; dirty: number; mergeBase: string | null; fingerprints: string | null }>(
     `SELECT id, head, dirty, mergeBase, fingerprints FROM snapshots ${LATEST}`,
   );
+  const latestKey = db.prepare<[number], SnapshotKey>(`SELECT id, head, computedAt, contentHash FROM snapshots ${LATEST}`);
   const latest = db.prepare<[number], SnapshotRow>(`SELECT * FROM snapshots ${LATEST}`);
   const latestReport = db.prepare<[number], { report: string }>(`SELECT report FROM snapshots ${LATEST}`);
   const liveTouched = db.prepare<[], { repoId: number; changeId: number; touched: string | null }>(
@@ -205,6 +219,10 @@ export function createSnapshotStore(db: Connection, warn: (message: string) => v
     latestMeta: (changeId) => {
       const row = latestMeta.get(changeId);
       return row === undefined ? null : { id: row.id, head: row.head, dirty: row.dirty === 1, mergeBase: row.mergeBase, fingerprints: row.fingerprints };
+    },
+    latestKey: (changeId) => {
+      const row = latestKey.get(changeId);
+      return row === undefined ? null : { id: row.id, head: row.head, computedAt: row.computedAt, contentHash: row.contentHash };
     },
     fingerprintsOf: (changeId, id) => fingerprintsOf.get(changeId, id)?.fingerprints ?? null,
     latestReport: (changeId) => latestReport.get(changeId)?.report ?? null,
