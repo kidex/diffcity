@@ -158,8 +158,12 @@ interface Content {
   /** Lot outlines; the towers' own are `towers.lines`. */
   lotLines: FatLines[];
   picker: Picker;
-  /** Frees the content; `keepTowers` leaves the towers (and their GPU buffers) for the next content to lay out again. */
-  dispose(keepTowers?: boolean): void;
+  /**
+   * Takes the content out of the scene and returns what frees its GPU
+   * resources; `keepTowers` leaves the towers (and their buffers) for the next
+   * content to lay out again.
+   */
+  detach(keepTowers?: boolean): () => void;
 }
 
 /** A live-update tween in progress; it starts with the first frame drawn after it was set. */
@@ -229,6 +233,23 @@ export function createCityView(host: HTMLElement, report: Report, options: CityV
   let introPending = false;
   let firstCamera: OrbitState | null = null;
   const labels = new LabelLayer(element);
+  /**
+   * What replaced content leaves to free, released after the next frame is
+   * drawn: three deletes a shader program as soon as no material uses it, so
+   * freeing the old materials before the new ones are drawn would compile
+   * every program again (seconds in a software renderer, DC-110). A hidden
+   * page draws no frame, so it frees at once rather than piling up.
+   */
+  let retired: (() => void)[] = [];
+  const release = (): void => {
+    const pending = retired;
+    retired = [];
+    for (const free of pending) free();
+  };
+  const retire = (free: () => void): void => {
+    retired.push(free);
+    if (document.visibilityState !== 'visible') release();
+  };
 
   let stage: Stage;
   try {
@@ -254,6 +275,7 @@ export function createCityView(host: HTMLElement, report: Report, options: CityV
       },
       afterFrame: () => {
         labels.render(stage.camera);
+        release();
         if (!settled && content !== null && !orbit.introRunning) {
           // Only when the camera rests, never on every drag frame.
           const wait = cameraMovedAt + REST_MS - performance.now();
@@ -357,8 +379,11 @@ export function createCityView(host: HTMLElement, report: Report, options: CityV
     if (c === null) return;
     c.markers.update(shown);
     if (!c.towers.update(shown)) {
-      scene.remove(c.towers.group);
-      c.towers.dispose();
+      const old = c.towers;
+      scene.remove(old.group);
+      retire(() => {
+        old.dispose();
+      });
       const towers = createTowers(shown, motion);
       towerBuilds += 1;
       scene.add(towers.group);
@@ -396,7 +421,7 @@ export function createCityView(host: HTMLElement, report: Report, options: CityV
   function build(city: City, from: City | null = null, reuse = false): Content {
     const previous = content?.city ?? null;
     const reusable = reuse && content !== null ? content.towers : null;
-    content?.dispose(reusable !== null);
+    if (content !== null) retire(content.detach(reusable !== null));
     const voidColor = colorToken('--c-void');
     const { bounds } = city;
     scene.background = voidColor;
@@ -441,14 +466,17 @@ export function createCityView(host: HTMLElement, report: Report, options: CityV
       lotLines: lots.lines,
       parts: [ground.mesh, lots.group, towers.group, markers.group, ...(path === null ? [] : [path.group])],
       picker: new Picker(city),
-      dispose(keepTowers = false) {
-        scene.remove(ground.mesh, lots.group, made.towers.group, markers.group);
+      detach(keepTowers = false) {
+        const towers = made.towers;
+        scene.remove(ground.mesh, lots.group, towers.group, markers.group);
         if (path !== null) scene.remove(path.group);
-        ground.dispose();
-        lots.dispose();
-        if (!keepTowers) made.towers.dispose();
-        markers.dispose();
-        path?.dispose();
+        return () => {
+          ground.dispose();
+          lots.dispose();
+          if (!keepTowers) towers.dispose();
+          markers.dispose();
+          path?.dispose();
+        };
       },
     };
     content = made;
@@ -687,8 +715,9 @@ export function createCityView(host: HTMLElement, report: Report, options: CityV
       clearTimeout(restTimer);
       scheme.removeEventListener('change', onScheme);
       document.removeEventListener('visibilitychange', onVisible);
-      content?.dispose();
+      if (content !== null) retired.push(content.detach());
       content = null;
+      release();
       scene.remove(sky);
       sky.dispose();
       scene.environment = null;
