@@ -13,6 +13,7 @@ import {
   type StoredFinding,
 } from '../findings/index.js';
 import type { ChangeStats, RepoSummary } from '../model/types.js';
+import { applyWhyOverrides } from '../path/why.js';
 import type { Finding, Report, Verdict } from '../report/types.js';
 
 export interface ServedFindings {
@@ -27,12 +28,29 @@ export function hasOverlay(findings: ServedFindings): boolean {
   return findings.stored.length > 0 || Object.keys(findings.ruleStates).length > 0;
 }
 
+/**
+ * The `why` hints of imported findings by symbol id (SPEC.md 5.4 point 5,
+ * DC-97): each stored finding with a hint and state `open`, re-anchored on
+ * `report`, hints the step of its symbol. The first in import order wins on a
+ * symbol; a finding with no symbol, or whose file left the change, hints none.
+ */
+export function whyOverrides(report: Report, stored: readonly StoredFinding[]): Map<string, string> {
+  const overrides = new Map<string, string>();
+  for (const entry of stored) {
+    if (entry.why === undefined || entry.finding.state !== 'open') continue;
+    const symbolId = reanchor(entry, report)?.symbolId;
+    if (symbolId !== undefined && !overrides.has(symbolId)) overrides.set(symbolId, entry.why);
+  }
+  return overrides;
+}
+
 /** The overlaid Report, or null when the stored Report is served as it is. */
 function overlaid(reportJson: string, findings: ServedFindings): Report | null {
   if (!hasOverlay(findings)) return null;
-  // The why overrides of imported findings (DC-97, `applyWhyOverrides` in
-  // src/core/path/) are applied here, to the overlaid Report, once they are on main.
-  return overlay(JSON.parse(reportJson) as Report, findings.stored, findings.ruleStates);
+  const report = JSON.parse(reportJson) as Report;
+  const served = overlay(report, findings.stored, findings.ruleStates);
+  const overrides = whyOverrides(report, findings.stored);
+  return overrides.size === 0 ? served : { ...served, steps: applyWhyOverrides(served.steps, overrides) };
 }
 
 /** The counts of a served Report that the change and repo summaries list (DC-106). */
@@ -59,7 +77,8 @@ export interface ServedOverlay {
 /**
  * The served Report and its counts in one overlay: with no imported finding
  * and no rule state, `reportJson` itself, unparsed; otherwise the stored
- * Report with the overlay applied (findings, `file.verdict`, `summary.byVerdict`).
+ * Report with the overlay applied (findings, `file.verdict`, `summary.byVerdict`,
+ * and the `why` of the steps hinted by imported findings).
  */
 export function serveOverlay(reportJson: string, findings: ServedFindings): ServedOverlay {
   const served = overlaid(reportJson, findings);

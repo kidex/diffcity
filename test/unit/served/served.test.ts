@@ -131,6 +131,52 @@ describe('served counts (DC-106)', () => {
   });
 });
 
+describe('why overrides (DC-106)', () => {
+  const ROUTE = `${CONTROLLER}#cancelRoute`;
+  const CANCEL = `${ORDERS}#OrdersService.cancel`;
+
+  /** The shopfront Report with a reading path: the route, then the service method. */
+  function withSteps(): Report {
+    return {
+      ...shopfrontReport(),
+      steps: [
+        { order: 1, symbolId: ROUTE, fileId: CONTROLLER, why: 'New function', diff: [], section: 'path', entry: ROUTE },
+        { order: 2, symbolId: CANCEL, fileId: ORDERS, why: 'Body changed', diff: [], section: 'path', entry: ROUTE },
+      ],
+    };
+  }
+
+  const steps = (json: string, findings: StoredFinding[]): string[] =>
+    (JSON.parse(serveReport(json, { stored: findings, ruleStates: {} })) as Report).steps.map((step) => step.why);
+
+  it("an open imported finding's why hint replaces the why of its symbol's step; the stored Report is untouched", () => {
+    const json = JSON.stringify(withSteps());
+    const hinted = { ...stored(), why: 'new route, called without an order' };
+    expect(steps(json, [hinted])).toEqual(['new route, called without an order', 'Body changed']);
+    expect(JSON.parse(json)).toEqual(withSteps());
+  });
+
+  it('the first open hint in import order wins on a symbol; fixed, intended and hintless findings change nothing', () => {
+    const json = JSON.stringify(withSteps());
+    const first = { ...stored({ title: 'First' }), why: 'first hint' };
+    const second = { ...stored({ title: 'Second' }), why: 'second hint' };
+    expect(steps(json, [first, second])).toEqual(['first hint', 'Body changed']);
+    expect(steps(json, [second, first])).toEqual(['second hint', 'Body changed']);
+
+    const fixed = { ...first, finding: { ...first.finding, state: 'fixed' as const } };
+    const intended = { ...first, finding: { ...first.finding, state: 'intended' as const } };
+    expect(steps(json, [fixed, second])).toEqual(['second hint', 'Body changed']);
+    expect(steps(json, [intended])).toEqual(['New function', 'Body changed']);
+    expect(steps(json, [stored()])).toEqual(['New function', 'Body changed']);
+  });
+
+  it('the hint follows the re-anchored symbol: a finding on the service method hints its step', () => {
+    const json = JSON.stringify(withSteps());
+    const onCancel = { ...stored({ file: ORDERS, line: 12, title: 'Cancel ignores refunds' }), why: 'cancel no longer refunds' };
+    expect(steps(json, [onCancel])).toEqual(['New function', 'cancel no longer refunds']);
+  });
+});
+
 describe('resolveFinding', () => {
   it('a rule finding of the Report, with its state applied', () => {
     expect(resolveFinding(withRule(), { stored: [], ruleStates: {} }, RULE.id)).toEqual({ origin: 'rule', finding: RULE });
