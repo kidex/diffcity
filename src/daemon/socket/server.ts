@@ -172,6 +172,11 @@ export function createSocketServer(options: SocketServerOptions): SocketServer {
       respond({ ok: false, error: 'request timed out' });
     };
     let timer = setTimeout(timedOut, timeoutMs);
+    /** Gives the exchange the import's own budget, counted from the connection. */
+    const importBudget = (): void => {
+      clearTimeout(timer);
+      timer = setTimeout(timedOut, Math.max(0, importTimeoutMs - (Date.now() - connectedAt)));
+    };
 
     const handleLine = (bytes: Buffer): void => {
       received = true;
@@ -186,11 +191,7 @@ export function createSocketServer(options: SocketServerOptions): SocketServer {
         respond({ ok: false, error: `request exceeds ${String(maxBytes)} bytes` });
         return;
       }
-      if (request.type === 'import') {
-        // The import's own budget, from the start of the connection.
-        clearTimeout(timer);
-        timer = setTimeout(timedOut, Math.max(0, importTimeoutMs - (Date.now() - connectedAt)));
-      }
+      if (request.type === 'import') importBudget();
       dispatch(request).then(
         (response) => {
           respond(response, request.type === 'shutdown' ? options.shutdown : undefined);
@@ -210,7 +211,11 @@ export function createSocketServer(options: SocketServerOptions): SocketServer {
       length += part.length;
       if (length > cap && cap === maxBytes) {
         const head = Buffer.concat(chunks).subarray(0, IMPORT_START_PEEK_BYTES).toString('utf8');
-        if (startsAsImport(head)) cap = Math.max(maxBytes, importMaxBytes);
+        if (startsAsImport(head)) {
+          cap = Math.max(maxBytes, importMaxBytes);
+          // A large import may take longer than the default timeout to arrive.
+          importBudget();
+        }
       }
       if (length > cap) {
         respond({ ok: false, error: `request exceeds ${String(cap)} bytes` });

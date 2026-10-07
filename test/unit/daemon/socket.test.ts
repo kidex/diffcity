@@ -267,6 +267,25 @@ describe('socket server', () => {
     expect(JSON.parse(await raw(path, `${JSON.stringify(track)}\n`))).toEqual({ ok: false, error: 'request timed out' });
   });
 
+  it('a large import line still arriving after the default timeout is given the import budget', async () => {
+    const path = await start({ timeoutMs: 100, importTimeoutMs: 5000 });
+    server?.handlers.handle('import', () => ({ ok: false, error: 'arrived' }));
+    const line = `${JSON.stringify({ v: 1, type: 'import', dir: '/work/sample-shop', findings: [], warnings: [], pad: 'p'.repeat(MAX_REQUEST_BYTES), at: 'now' })}\n`;
+    const reply = await new Promise<string>((resolve, reject) => {
+      const socket = connect(path);
+      let received = '';
+      socket.setEncoding('utf8');
+      socket.on('data', (chunk: string) => (received += chunk));
+      socket.on('close', () => {
+        resolve(received);
+      });
+      socket.on('error', reject);
+      socket.write(line.slice(0, MAX_REQUEST_BYTES + 100));
+      setTimeout(() => socket.end(line.slice(MAX_REQUEST_BYTES + 100)), 400);
+    });
+    expect(JSON.parse(reply)).toEqual({ ok: false, error: 'arrived' });
+  });
+
   it('refuses a second handler for the same type', async () => {
     await start();
     server?.handlers.handle('track', () => ({ ok: false, error: 'x' }));
