@@ -1,0 +1,7 @@
+{
+  // aliases are read as data
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": { "@lib/*": ["src/lib/*"] },
+  },
+}

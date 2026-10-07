@@ -40,6 +40,7 @@ async function loadedModules(args: string[]): Promise<string[]> {
 }
 
 const loadsParser = (url: string): boolean => url.includes('/node_modules/web-tree-sitter/');
+const loadsTsMorph = (url: string): boolean => url.includes('/node_modules/ts-morph/') || url.includes('/node_modules/@ts-morph/');
 const loadsReport = (url: string): boolean => /\/dist\/core\/report\//.test(url);
 
 describe('lazy command modules', () => {
@@ -49,6 +50,19 @@ describe('lazy command modules', () => {
     expect(urls.filter(loadsParser)).toEqual([]);
     expect(urls.filter(loadsReport)).toEqual([]);
     expect(urls.filter((url) => url.endsWith('/dist/cli/diff.js'))).toEqual([]);
+  });
+
+  it('graph/ts-morph-not-loaded-by-track: neither track nor --help loads ts-morph', async () => {
+    const tracked = await loadedModules(['track', temp.userHome]);
+    expect(tracked.filter(loadsTsMorph)).toEqual([]);
+    const help = await loadedModules(['--help']);
+    expect(help.filter(loadsTsMorph)).toEqual([]);
+  });
+
+  it('graph/ts-morph-not-loaded-by-import: import does not load ts-morph', async () => {
+    const urls = await loadedModules(['import', 'findings.json']);
+    expect(urls.length).toBeGreaterThan(0);
+    expect(urls.filter(loadsTsMorph)).toEqual([]);
   });
 
   it('--help loads no command module', async () => {
