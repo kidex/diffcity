@@ -1,9 +1,11 @@
-// DC-109 under real concurrency: one process appends 50 items to the fix queue
-// through the built src/core/fix-queue, while another process takes the queue
-// over and over by renaming it away, as /diffcity-review does with
-// `mv .diffcity/fix-queue.json .diffcity/fix-queue.taking.json`. Every item
-// must end up in exactly one taken file or in the final queue: none lost, none
-// duplicated. The mover renames to a new name each time so every take is kept.
+// The fix queue under real concurrency (DC-111, redesigned by DC-112): one
+// process appends 50 items to the fix queue through the built
+// src/core/fix-queue, while another process takes the queue over and over by
+// renaming its directory away, as /diffcity-review does with
+// `mv .diffcity/fix-queue .diffcity/fix-queue.taking`. Every item must end up
+// in exactly one taken directory or in the final queue: none lost, none
+// duplicated, and no append refused. The mover renames to a new name each
+// time so every take is kept.
 
 import { spawn } from 'node:child_process';
 import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
@@ -52,7 +54,7 @@ for (let n = 0; n < Number(count); n++) {
 process.stdout.write(JSON.stringify(outcomes));
 `;
 
-/** Renames the queue away to taken-<n>.json in a tight loop until the stop file appears. */
+/** Renames the queue directory away to taken-<n> in a tight loop until the stop file appears. */
 const MOVER = `
 import { existsSync, renameSync } from 'node:fs';
 import { join } from 'node:path';
@@ -60,7 +62,7 @@ const [root] = process.argv.slice(1);
 const dir = join(root, '.diffcity');
 let taken = 0;
 while (!existsSync(join(root, 'stop'))) {
-  try { renameSync(join(dir, 'fix-queue.json'), join(dir, 'taken-' + taken + '.json')); taken++; }
+  try { renameSync(join(dir, 'fix-queue'), join(dir, 'taken-' + taken)); taken++; }
   catch (error) { if (error.code !== 'ENOENT') throw error; }
 }
 process.stdout.write(String(taken));
@@ -69,10 +71,14 @@ process.stdout.write(String(taken));
 interface RaceOutcome {
   /** The appender's outcome per item: queued, duplicate or a refusal code. */
   outcomes: string[];
-  /** Every key found in the taken files and the final queue, sorted. */
+  /** Every key found in the taken directories and the final queue, sorted. */
   keys: string[];
+  /** Temporary files left in the final queue directory. */
   temporaries: string[];
 }
+
+/** An item file: 32 hex digits and `.json`; anything else (a temporary file) is not an item. */
+const ITEM_NAME = /^[0-9a-f]{32}\.json$/;
 
 /** One race: the mover takes the queue in a loop while the appender appends ITEMS items. */
 async function race(): Promise<RaceOutcome> {
@@ -86,20 +92,24 @@ async function race(): Promise<RaceOutcome> {
   expect(appender).toMatchObject({ code: 0, stderr: '' });
   expect(moved).toMatchObject({ code: 0, stderr: '' });
 
-  const entries = await readdir(join(root, '.diffcity'));
   const keys: string[] = [];
-  for (const name of entries.filter((entry) => entry.endsWith('.json'))) {
-    const queue = JSON.parse(await readFile(join(root, '.diffcity', name), 'utf8')) as { version: number; items: { key: string }[] };
-    expect(queue.version).toBe(1);
-    keys.push(...queue.items.map((item) => item.key));
+  let temporaries: string[] = [];
+  for (const queue of await readdir(join(root, '.diffcity'))) {
+    const dir = join(root, '.diffcity', queue);
+    const names = await readdir(dir);
+    for (const name of names.filter((entry) => ITEM_NAME.test(entry))) {
+      const item = JSON.parse(await readFile(join(dir, name), 'utf8')) as { key: string };
+      keys.push(item.key);
+    }
+    if (queue === 'fix-queue') temporaries = names.filter((entry) => !ITEM_NAME.test(entry));
   }
-  return { outcomes: JSON.parse(appender.stdout) as string[], keys: keys.sort(), temporaries: entries.filter((entry) => entry.endsWith('.tmp')) };
+  return { outcomes: JSON.parse(appender.stdout) as string[], keys: keys.sort(), temporaries };
 }
 
 const keyOf = (n: number): string => `f:${n.toString(16).padStart(16, '0')}`;
 
-describe('fix-queue/concurrent-take (DC-109)', () => {
-  it('fix-queue/concurrent-take: every queued item ends up in exactly one taken file or the final queue, none lost, none duplicated', async () => {
+describe('fix-queue/concurrent-take (DC-111, DC-112)', () => {
+  it('fix-queue/concurrent-take: every queued item ends up in exactly one taken directory or the final queue, none lost, none duplicated', async () => {
     for (let round = 0; round < ROUNDS; round++) {
       const { outcomes, keys, temporaries } = await race();
       const queued = outcomes.flatMap((outcome, n) => (outcome === 'queued' ? [keyOf(n)] : []));
@@ -108,7 +118,7 @@ describe('fix-queue/concurrent-take (DC-109)', () => {
     }
   }, 120_000);
 
-  it('fix-queue/concurrent-take-no-refusal: a queue taken while it is read is read again, never refused as unsafe', async () => {
+  it('fix-queue/concurrent-take-no-refusal: a queue taken during an append is written again, never refused', async () => {
     for (let round = 0; round < ROUNDS; round++) {
       const { outcomes } = await race();
       expect({ round, outcomes }).toEqual({ round, outcomes: Array.from({ length: ITEMS }, () => 'queued') });
