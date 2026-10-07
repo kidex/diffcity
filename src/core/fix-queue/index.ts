@@ -1,5 +1,15 @@
 // The fix queue (ADR-036): `<working tree>/.diffcity/fix-queue.json`, format
-// version 1, which the /code-review slash command (ADR-037) reads and empties.
+// version 1, which the /diffcity-review slash command (ADR-037) takes by
+// renaming it to `.diffcity/fix-queue.taking.json`, applies, then deletes.
+//
+// The command's rename may land between the daemon's read and its write. So
+// right before its rename the daemon checks the queue again (lstat: the same
+// file, size and mtime as read); when it disappeared or changed, the temporary
+// file is dropped and the read-modify-write runs again, at most
+// FIX_QUEUE_ATTEMPTS times, then `fix-queue-busy`. A queue that did not exist
+// is created with link + unlink instead of rename, so a queue that appeared
+// meanwhile is never overwritten (EEXIST, and another attempt). This way an
+// item the command already took is never written back.
 //
 // The daemon writes only that file, only inside the change's working tree:
 // `.diffcity` and the file are checked with lstat and refused when they are a
@@ -10,7 +20,7 @@
 // Synchronous on purpose: one append runs to its end before another starts.
 
 import { randomBytes } from 'node:crypto';
-import { closeSync, constants, fchmodSync, fstatSync, lstatSync, mkdirSync, openSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync, type Stats } from 'node:fs';
+import { closeSync, constants, fchmodSync, fstatSync, linkSync, lstatSync, mkdirSync, openSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync, type Stats } from 'node:fs';
 import { join } from 'node:path';
 import type { Finding, Report } from '../report/types.js';
 
@@ -21,6 +31,8 @@ export const FIX_QUEUE_MAX_BYTES = 1024 * 1024;
 export const FIX_QUEUE_SUMMARY_MAX_BYTES = 64 * 1024;
 export const FIX_QUEUE_DIR = '.diffcity';
 export const FIX_QUEUE_FILE = 'fix-queue.json';
+/** Read-modify-write rounds before an append gives up with `fix-queue-busy`. */
+export const FIX_QUEUE_ATTEMPTS = 3;
 
 /** A finding to fix. */
 export interface FindingQueueItem {
@@ -51,7 +63,7 @@ export interface FixQueue {
   items: FixQueueItem[];
 }
 
-export type FixQueueRefusal = 'no-working-tree' | 'fix-queue-unsafe' | 'fix-queue-full' | 'fix-queue-invalid';
+export type FixQueueRefusal = 'no-working-tree' | 'fix-queue-unsafe' | 'fix-queue-full' | 'fix-queue-invalid' | 'fix-queue-busy';
 
 export type FixQueueResult =
   /** `queued` is false when an item with the same key was already in the queue (nothing written). */
@@ -106,6 +118,9 @@ function lstatOrNull(path: string): Stats | null {
 
 const sameFile = (a: Stats, b: Stats): boolean => a.dev === b.dev && a.ino === b.ino;
 
+/** The same file, unchanged since `before` was taken: identity, size and modification time. */
+const unchanged = (before: Stats, now: Stats): boolean => sameFile(before, now) && before.size === now.size && before.mtimeMs === now.mtimeMs;
+
 function isQueue(value: unknown): value is FixQueue {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
   const { version, items } = value as Record<string, unknown>;
@@ -142,7 +157,8 @@ function readQueue(path: string, seen: Stats): FixQueue | FixQueueResult {
  * change has none). Idempotent per key. Refusals: `no-working-tree` (no root,
  * or it is not a directory), `fix-queue-unsafe` (a link or a non-regular
  * entry), `fix-queue-full` (over 200 items or 1 MiB), `fix-queue-invalid` (an
- * existing file that is not a version 1 queue, left as it is).
+ * existing file that is not a version 1 queue, left as it is), `fix-queue-busy`
+ * (the queue kept changing under the write, FIX_QUEUE_ATTEMPTS times).
  */
 export function appendToFixQueue(root: string | null, item: FixQueueItem): FixQueueResult {
   if (root === null) return refuse('no-working-tree', 'the change has no working tree to queue a fix in');
@@ -177,6 +193,15 @@ export function appendToFixQueue(root: string | null, item: FixQueueItem): FixQu
   }
 
   const path = join(dir, FIX_QUEUE_FILE);
+  for (let attempt = 0; attempt < FIX_QUEUE_ATTEMPTS; attempt++) {
+    const result = appendOnce(dir, dirStats, path, item);
+    if (result !== 'retry') return result;
+  }
+  return refuse('fix-queue-busy', `${FIX_QUEUE_DIR}/${FIX_QUEUE_FILE} kept changing while the fix was queued; try again`);
+}
+
+/** One read-modify-write of the queue; 'retry' when the queue changed before the write landed. */
+function appendOnce(dir: string, dirStats: Stats, path: string, item: FixQueueItem): FixQueueResult | 'retry' {
   const fileStats = lstatOrNull(path);
   let queue: FixQueue = { version: FIX_QUEUE_VERSION, items: [] };
   if (fileStats !== null) {
@@ -203,13 +228,26 @@ export function appendToFixQueue(root: string | null, item: FixQueueItem): FixQu
     if (now === null || now.isSymbolicLink() || !sameFile(now, dirStats)) {
       return refuse('fix-queue-unsafe', `${FIX_QUEUE_DIR} changed while the fix queue was written`);
     }
-    renameSync(temp, path);
+    if (fileStats === null) {
+      // No queue was read: create it only if none appeared meanwhile (link fails with EEXIST).
+      try {
+        linkSync(temp, path);
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === 'EEXIST') return 'retry';
+        throw error;
+      }
+    } else {
+      // The queue read must still be there, unchanged: /diffcity-review may have taken it meanwhile.
+      const current = lstatOrNull(path);
+      if (current === null || !unchanged(fileStats, current)) return 'retry';
+      renameSync(temp, path);
+    }
     return { ok: true, queued: true, count: next.items.length };
   } finally {
     try {
       unlinkSync(temp);
     } catch {
-      // Renamed into place, which is the normal case.
+      // Renamed into place, which is the normal case; after a link the temporary name is removed here.
     }
   }
 }
