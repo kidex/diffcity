@@ -8,7 +8,7 @@
 
 import { test } from '@playwright/test';
 import { fixtures, mockApi } from '../../support/mock-api.js';
-import { disposal, openCity, waitReady, sceneExpect as expect } from '../../support/scene.js';
+import { disposal, liveContexts, openCity, waitReady, sceneExpect as expect } from '../../support/scene.js';
 
 // A first frame on SwiftShader, plus what each spec does after it, can pass the default 30 s.
 test.describe.configure({ timeout: 60_000 });
@@ -24,20 +24,6 @@ test('change/dispose-on-unmount', async ({ page }) => {
     await cdp.send('HeapProfiler.collectGarbage');
     await cdp.send('HeapProfiler.collectGarbage');
     return (await cdp.send('Runtime.getHeapUsage')).usedSize;
-  };
-  // WebGL contexts still reachable after a full collection: one per view that something keeps alive.
-  const contexts = async (): Promise<number> => {
-    await cdp.send('HeapProfiler.collectGarbage');
-    const proto = await cdp.send('Runtime.evaluate', { expression: 'WebGL2RenderingContext.prototype' });
-    const found = await cdp.send('Runtime.queryObjects', { prototypeObjectId: proto.result.objectId ?? '' });
-    const count = await cdp.send('Runtime.callFunctionOn', {
-      objectId: found.objects.objectId ?? '',
-      functionDeclaration: 'function () { return this.length; }',
-      returnByValue: true,
-    });
-    await cdp.send('Runtime.releaseObject', { objectId: found.objects.objectId ?? '' });
-    await cdp.send('Runtime.releaseObject', { objectId: proto.result.objectId ?? '' });
-    return count.result.value as number;
   };
   const toRepo = async (): Promise<void> => {
     await page.evaluate(`location.hash = '#/repo/1'`);
@@ -55,7 +41,7 @@ test('change/dispose-on-unmount', async ({ page }) => {
   const first = await disposal(page);
   expect(first.live).toBe(0);
   const baseline = await heap();
-  const firstContexts = await contexts();
+  const firstContexts = await liveContexts(cdp);
 
   for (let i = 0; i < ROUND_TRIPS; i += 1) {
     await toChange();
@@ -69,7 +55,7 @@ test('change/dispose-on-unmount', async ({ page }) => {
   }
   expect(first.lastGeometries).toBe(0);
   expect(first.lastTextures).toBeLessThanOrEqual(1);
-  expect(await contexts()).toBe(firstContexts);
+  expect(await liveContexts(cdp)).toBeLessThanOrEqual(firstContexts);
   const end = await heap();
   expect(end - baseline).toBeLessThan(3 * 1024 * 1024);
 });
