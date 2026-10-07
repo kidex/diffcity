@@ -329,6 +329,8 @@ export type SseEvent =
   | { event: 'changes'; data: { repoId: number } }
   | { event: 'snapshot'; data: { repoId: number; changeId: number; head: string } }
   | { event: 'review'; data: { repoId: number; changeId: number } }
+  /** The findings of a change moved (an import, a state, a queued fix; ADR-036): refetch its Report. */
+  | { event: 'findings'; data: { repoId: number; changeId: number } }
   | {
       event: 'collect';
       data: { repoId: number; state: 'started' | 'done' } | { repoId: number; state: 'error'; error: string };

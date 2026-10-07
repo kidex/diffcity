@@ -1,8 +1,9 @@
 // Schema v2 (ADR-018 migrations, ADR-027, ADR-028): a v1 database migrates in
-// place, a second open changes nothing, a newer database is refused.
+// place and a second open changes nothing. The newer-version refusal is in
+// migrate-v3.test.ts (db/v4-refused).
 
 import { afterEach, describe, expect, it } from 'vitest';
-import { MIGRATIONS, newerVersionMessage, openDb } from '../../../src/core/db/index.js';
+import { MIGRATIONS, SCHEMA_VERSION, openDb } from '../../../src/core/db/index.js';
 import { T0, rawConnection, tempDbPath } from './db-helpers.js';
 
 const cleanups: (() => void)[] = [];
@@ -42,7 +43,7 @@ describe('schema v2', () => {
     db.close();
 
     const raw = rawConnection(path, { readOnly: true });
-    expect(raw.pragma('user_version', { simple: true })).toBe(2);
+    expect(raw.pragma('user_version', { simple: true })).toBe(SCHEMA_VERSION);
     const tables = raw.prepare<[], { name: string }>("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name").all();
     expect(tables.map((t) => t.name)).toEqual(expect.arrayContaining(['review_marks', 'review_notes']));
     const columns = raw.prepare<[], { name: string }>('PRAGMA table_info(snapshots)').all().map((c) => c.name);
@@ -139,18 +140,5 @@ describe('schema v2', () => {
     const before = snapshot();
     openDb(path).close();
     expect(snapshot()).toEqual(before);
-  });
-
-  it('db/v3-refused: user_version 3 is a clear error and the file is left as it was', () => {
-    const { path, remove } = tempDbPath();
-    cleanups.push(remove);
-    const raw = rawConnection(path);
-    raw.pragma('user_version = 3');
-    raw.close();
-    expect(() => openDb(path)).toThrow(new Error(newerVersionMessage(3)));
-    expect(newerVersionMessage(3)).toBe('database was created by a newer diffcity (v3); upgrade diffcity');
-    const check = rawConnection(path, { readOnly: true });
-    expect(check.pragma('user_version', { simple: true })).toBe(3);
-    check.close();
   });
 });

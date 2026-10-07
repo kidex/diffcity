@@ -11,6 +11,7 @@ import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest }
 import type { HealthResponse } from '../../core/model/types.js';
 import { errorMessage, type Logger } from '../log.js';
 import type { SseHub } from '../sse.js';
+import { FINDING_KEY_MAX } from '../api/findings.js';
 import { codeForStatus, HttpError, sendError } from './errors.js';
 
 export { HttpError, sendError, apiError } from './errors.js';
@@ -58,9 +59,39 @@ function hasBody(request: FastifyRequest): boolean {
   return (length !== undefined && length !== '0') || request.headers['transfer-encoding'] !== undefined;
 }
 
+/**
+ * The longest URL parameter the router accepts, measured decoded. Fastify's
+ * default of 100 would turn a finding key of 101 characters into the router's
+ * own 414 before the route runs; one past FINDING_KEY_MAX lets the route
+ * answer a key over its cap itself (400 `bad-request`).
+ */
+export const MAX_PARAM_LENGTH = FINDING_KEY_MAX + 1;
+
+/**
+ * Errors the router raises before any route or hook runs (a parameter over
+ * MAX_PARAM_LENGTH, a URL that cannot be decoded), in the ADR-017 shape.
+ * Fastify's own bodies echo the URL; these never do.
+ */
+function frameworkError(error: { code: string }, reply: FastifyReply): void {
+  if (error.code === 'FST_ERR_MAX_PARAM_LENGTH') {
+    sendError(reply, 414, 'uri-too-long', `a URL parameter is longer than ${String(MAX_PARAM_LENGTH)} characters`);
+  } else if (error.code === 'FST_ERR_BAD_URL') {
+    sendError(reply, 400, 'bad-request', 'the URL has an invalid percent-encoding');
+  } else {
+    sendError(reply, 400, 'bad-request', 'the request could not be routed');
+  }
+}
+
 /** Builds the server with its routes registered; the caller listens (or injects). */
 export async function buildHttpServer(options: HttpServerOptions): Promise<FastifyInstance> {
-  const app = Fastify({ logger: false, forceCloseConnections: true });
+  const app = Fastify({
+    logger: false,
+    forceCloseConnections: true,
+    routerOptions: { maxParamLength: MAX_PARAM_LENGTH },
+    frameworkErrors: (error, _request, reply) => {
+      frameworkError(error, reply);
+    },
+  });
   const uiAvailable = existsSync(join(options.uiDir, 'index.html'));
 
   app.addHook('onRequest', async (request: FastifyRequest, reply: FastifyReply) => {

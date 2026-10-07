@@ -72,6 +72,20 @@ export interface ChangeStore {
   listLiveSummaries(repoId: number): ChangeSummary[];
   /** ChangeSummary of each archived change, by `archivedAt` desc. */
   listArchivedSummaries(repoId: number): ChangeSummary[];
+  /**
+   * The head and time of the last approval (ADR-036); meaningful only while
+   * `reviewState` is `approved` (a reconcile that resets the state leaves them).
+   * Null when there is no such change.
+   */
+  approval(id: number): Approval | null;
+  /** Writes the approval columns; nulls clear them. The caller sets `reviewState` through applyPlan in the same transaction. */
+  setApproval(id: number, approval: Approval): void;
+}
+
+/** The approval columns of a change (schema v3). */
+export interface Approval {
+  approvedHead: string | null;
+  approvedAt: string | null;
 }
 
 function toRecord(row: ChangeRow): ChangeRecord {
@@ -186,6 +200,8 @@ export function createChangeStore(db: Connection): ChangeStore {
   const archive = db.prepare<[string, ArchiveReason, string, number], ChangeRow>(
     'UPDATE changes SET archivedAt = ?, archiveReason = ?, updatedAt = ? WHERE id = ? RETURNING *',
   );
+  const approval = db.prepare<[number], Approval>('SELECT approvedHead, approvedAt FROM changes WHERE id = ?');
+  const setApproval = db.prepare<[string | null, string | null, number]>('UPDATE changes SET approvedHead = ?, approvedAt = ? WHERE id = ?');
   const summaryById = db.prepare<[number], ChangeSummaryRow>(`${SUMMARY_SELECT} WHERE c.id = ?`);
   const liveSummaries = db.prepare<[number], ChangeSummaryRow>(
     `${SUMMARY_SELECT} WHERE c.repoId = ? AND c.archivedAt IS NULL ORDER BY c.lastEventAt DESC, c.id DESC`,
@@ -252,5 +268,13 @@ export function createChangeStore(db: Connection): ChangeStore {
     },
     listLiveSummaries: (repoId) => liveSummaries.all(repoId).map(toSummary),
     listArchivedSummaries: (repoId) => archivedSummaries.all(repoId).map(toSummary),
+    approval: (id) => {
+      const row = approval.get(id);
+      return row === undefined ? null : { approvedHead: row.approvedHead, approvedAt: row.approvedAt };
+    },
+    setApproval: (id, value) => {
+      const at = value.approvedAt === null ? null : isoTime(value.approvedAt, 'approvedAt');
+      if (setApproval.run(value.approvedHead, at, id).changes === 0) throw new Error(`change ${String(id)} not found`);
+    },
   };
 }
