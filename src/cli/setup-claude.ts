@@ -100,7 +100,7 @@ export async function runSetupClaude(options: SetupClaudeOptions, deps: SetupCla
     return fail(messageOf(error));
   }
 
-  const choice = await chooseCliInvocation({ pathEnv: env.PATH, nodePath: deps.nodePath ?? process.execPath, cliEntry: deps.cliEntry ?? defaultCliEntry() });
+  const choice = await chooseCliInvocation({ pathEnv: env.PATH, npmCommand: env.npm_command, nodePath: deps.nodePath ?? process.execPath, cliEntry: deps.cliEntry ?? defaultCliEntry() });
   if (!choice.ok) return fail(choice.error);
   const { invocation } = choice;
 

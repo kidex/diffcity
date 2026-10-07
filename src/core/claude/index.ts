@@ -17,7 +17,7 @@ export {
   recordedCli,
   slashCommands,
 } from './command-file.js';
-export { GLOBAL_CLI, chooseCliInvocation, hookCommand, type ChooseCliOptions, type CliInvocation, type CliInvocationResult } from './hook-command.js';
+export { GLOBAL_CLI, chooseCliInvocation, hookCommand, isLocalBin, type ChooseCliOptions, type CliInvocation, type CliInvocationResult } from './hook-command.js';
 export { addStopHook, hasStopHook, removeStopHook, stopHookEntry, type SettingsEdit } from './settings.js';
 export {
   BACKUP_SUFFIX,

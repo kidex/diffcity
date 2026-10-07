@@ -10,7 +10,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { runSetupClaude, type SetupClaudeDeps, type SetupClaudeOptions } from '../../../src/cli/setup-claude.js';
 import { CLAUDE_CONFIG_DIR_ENV, claudeConfigDir } from '../../../src/core/claude/config-dir.js';
 import { COMMAND_MARKER, LEGACY_COMMAND_MARKER, commandFileText } from '../../../src/core/claude/command-file.js';
-import { chooseCliInvocation, hookCommand } from '../../../src/core/claude/hook-command.js';
+import { chooseCliInvocation, hookCommand, isLocalBin } from '../../../src/core/claude/hook-command.js';
 import { CLAUDE_CODE_CHECKED_VERSION } from '../../../src/core/claude/setup.js';
 import { homePaths } from '../../../src/core/home.js';
 import { tempHome, type TempHome } from '../../helpers/config.js';
@@ -33,6 +33,8 @@ const daemons = new DaemonTracker();
 
 beforeEach(async () => {
   temp = await tempHome();
+  // Run under npx the suite would inherit npm_command=exec, which never gives the global form.
+  Reflect.deleteProperty(temp.env, 'npm_command');
   const root = await realpath(temp.root);
   claude = join(root, 'claude-config');
   nodePath = join(root, 'sample-node', 'bin', 'node');
@@ -364,6 +366,31 @@ describe('the hook command', () => {
     expect(global.stdout).toContain('hook command: diffcity track --agent\n');
     expect(JSON.parse(await readFile(settingsPath(), 'utf8'))).toEqual({ hooks: { Stop: [{ matcher: '', hooks: [{ type: 'command', command: 'diffcity track --agent' }] }] } });
     expect(await readFile(commandPath(), 'utf8')).toBe(commandFileText('diffcity'));
+  });
+
+  it('setup/local-bin-is-not-global: a node_modules/.bin copy on the PATH, or a run under npm exec, gives the absolute form', async () => {
+    const localBin = await mkdirp(join(temp.root, 'proj', 'node_modules', '.bin'));
+    await symlink(cliEntry, join(localBin, 'diffcity'));
+    const globalBin = await mkdirp(join(temp.root, 'global-bin'));
+    await symlink(cliEntry, join(globalBin, 'diffcity'));
+    const absolute = { ok: true, invocation: { kind: 'absolute', cli: ABSOLUTE() } };
+
+    // npx and npm exec put the local bin first on the PATH; its diffcity resolves to this CLI.
+    expect(await chooseCliInvocation({ pathEnv: localBin, nodePath, cliEntry })).toEqual(absolute);
+    expect(await chooseCliInvocation({ pathEnv: `${localBin}/`, nodePath, cliEntry })).toEqual(absolute);
+    // A real global install later on the PATH is still found past the local bin.
+    expect(await chooseCliInvocation({ pathEnv: `${localBin}:${globalBin}`, nodePath, cliEntry })).toEqual({ ok: true, invocation: { kind: 'global', cli: 'diffcity' } });
+    // Under npm exec (npm_command=exec, npx too) it is never global.
+    expect(await chooseCliInvocation({ pathEnv: globalBin, nodePath, cliEntry, npmCommand: 'exec' })).toEqual(absolute);
+    expect(await chooseCliInvocation({ pathEnv: globalBin, nodePath, cliEntry, npmCommand: 'run-script' })).toEqual({ ok: true, invocation: { kind: 'global', cli: 'diffcity' } });
+    expect(isLocalBin('/work/proj/node_modules/.bin')).toBe(true);
+    expect(isLocalBin('/work/proj/node_modules/.bin/')).toBe(true);
+    expect(isLocalBin('/work/proj/.bin')).toBe(false);
+    expect(isLocalBin('/opt/sample/bin')).toBe(false);
+
+    // Through setup: the env's npm_command is read.
+    const result = await setup({}, { env: { ...temp.env, [CLAUDE_CONFIG_DIR_ENV]: claude, PATH: globalBin, npm_command: 'exec' } });
+    expect(result.stdout).toContain(`hook command: ${ABSOLUTE()} track --agent\n`);
   });
 
   it('a path the shell, YAML or the allow-list cannot carry is refused with the reason', async () => {

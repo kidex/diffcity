@@ -25,7 +25,7 @@ The command prints each file it wrote (or would write), the hook command it chos
 
 The Stop hook and the slash command call the CLI the same way:
 
-- `diffcity track --agent` when the `diffcity` found on the `PATH` is the CLI running setup (a global install, `npm i -g diffcity`);
+- `diffcity track --agent` when the `diffcity` found on the `PATH` is the CLI running setup from a global install (`npm i -g diffcity`), not a `node_modules/.bin` copy: `PATH` entries ending in `node_modules/.bin` are skipped, and a run under `npx` or `npm exec` (`npm_command=exec`) is never global, because the Claude Code session does not have their `PATH`;
 - otherwise `"<absolute node>" "<absolute dist/cli/index.js>" track --agent`, the node binary and the CLI that ran setup. A path containing `"`, `$`, `` ` ``, `\`, `(`, `)`, `: `, ` #` or a control character is refused: install diffcity globally instead.
 
 The absolute form holds paths of your machine. With `--repo` setup warns about it: do not commit those files, or install diffcity globally and run setup again.

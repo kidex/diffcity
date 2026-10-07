@@ -1,12 +1,18 @@
 // How Claude Code calls the CLI (ADR-037): `diffcity` when the `diffcity` on
-// the PATH is this very CLI (a global install), otherwise the absolute node
+// the PATH is this very CLI from a global install, otherwise the absolute node
 // binary and the absolute CLI entry, each in double quotes. The Stop hook
 // command and the slash command's allow-list use the same invocation, so the
 // allow-list matches the commands the slash command runs.
+//
+// A `node_modules/.bin` copy is not a global install: `npx` and `npm exec`
+// put the project's (or the npx cache's) `node_modules/.bin` first on the
+// PATH, and its `diffcity` resolves to this CLI, but the Claude Code session
+// will not have that PATH. Such PATH entries are skipped, and a run under
+// `npm exec` (npm_command=exec, which npx sets too) is never global.
 
 import { constants } from 'node:fs';
 import { access, realpath } from 'node:fs/promises';
-import { delimiter, isAbsolute, join } from 'node:path';
+import { delimiter, isAbsolute, join, sep } from 'node:path';
 
 /** The invocation of a global install. */
 export const GLOBAL_CLI = 'diffcity';
@@ -27,6 +33,8 @@ export interface ChooseCliOptions {
   nodePath: string;
   /** Absolute path of the CLI entry, dist/cli/index.js. */
   cliEntry: string;
+  /** `npm_command` from the environment: `exec` under `npx` or `npm exec`. */
+  npmCommand?: string | undefined;
 }
 
 /**
@@ -53,10 +61,16 @@ async function sameFile(a: string, b: string): Promise<boolean> {
   }
 }
 
-/** The first executable `diffcity` on the PATH, or null. */
+/** True for a PATH entry `<...>/node_modules/.bin`, a project's or the npx cache's local bin. */
+export function isLocalBin(dir: string): boolean {
+  const parts = dir.split(sep).filter((part) => part !== '');
+  return parts.at(-1) === '.bin' && parts.at(-2) === 'node_modules';
+}
+
+/** The first executable `diffcity` on the PATH outside `node_modules/.bin`, or null. */
 async function findOnPath(pathEnv: string | undefined): Promise<string | null> {
   for (const dir of (pathEnv ?? '').split(delimiter)) {
-    if (dir === '' || !isAbsolute(dir)) continue;
+    if (dir === '' || !isAbsolute(dir) || isLocalBin(dir)) continue;
     const candidate = join(dir, GLOBAL_CLI);
     try {
       await access(candidate, constants.X_OK);
@@ -70,7 +84,7 @@ async function findOnPath(pathEnv: string | undefined): Promise<string | null> {
 
 /** Picks the invocation the hook and the slash command use. */
 export async function chooseCliInvocation(options: ChooseCliOptions): Promise<CliInvocationResult> {
-  const onPath = await findOnPath(options.pathEnv);
+  const onPath = options.npmCommand === 'exec' ? null : await findOnPath(options.pathEnv);
   if (onPath !== null && (await sameFile(onPath, options.cliEntry))) {
     return { ok: true, invocation: { kind: 'global', cli: GLOBAL_CLI } };
   }
