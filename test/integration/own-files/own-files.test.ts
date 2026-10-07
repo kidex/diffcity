@@ -79,7 +79,7 @@ describe('own files in git (SPEC.md section 3a)', () => {
     expect(await dirty(repo)).toBe(true);
   });
 
-  it('own-files/taking-file-is-own: the fix queue renamed to fix-queue.taking.json by /code-review is no touched file and leaves the tree clean', async () => {
+  it('own-files/taking-file-is-own: the fix queue renamed to fix-queue.taking.json by /diffcity-review is no touched file and leaves the tree clean', async () => {
     const repo = await shopOnBranch();
     await repo.write({ '.diffcity/fix-queue.taking.json': QUEUE });
     expect(await touched(repo)).toEqual(['src/cart/total.ts']);

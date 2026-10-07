@@ -2,7 +2,7 @@
 // the real collector and working tree watcher, a branch checked out with no
 // uncommitted change, an import over the socket, a fix queued through the
 // DC-100 route (which writes .diffcity/fix-queue.json) and a
-// .diffcity/findings.json written as /code-review would. None of it reaches
+// .diffcity/findings.json written as /diffcity-review would. None of it reaches
 // the watcher, no snapshot is computed and the change stays clean. Then
 // .diffcity/spec.md, a normal file, does reach it.
 

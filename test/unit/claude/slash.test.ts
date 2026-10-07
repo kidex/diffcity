@@ -1,11 +1,13 @@
-// The `/code-review` command file (SPEC.md section 7.1, ADR-037): the text is
+// The `/diffcity-review` command file (SPEC.md section 7.1, ADR-037): the text is
 // SPEC 7.1 with its frontmatter, the version marker sits right after the
 // frontmatter, and every command the body runs is allowed by `allowed-tools`.
 
 import { readFile } from 'node:fs/promises';
 import { describe, expect, it } from 'vitest';
 import {
+  COMMAND_FILE_NAME,
   COMMAND_MARKER,
+  LEGACY_COMMAND_MARKER,
   allowedTools,
   commandFileText,
   isDiffcityCommandFile,
@@ -61,7 +63,7 @@ function bodyCommands(text: string): string[] {
   return [...text.matchAll(/[Rr]un `([^`]+)`/g)].map((match) => match[1] ?? '');
 }
 
-describe('slash: the /code-review command file', () => {
+describe('slash: the /diffcity-review command file', () => {
   it('slash/body-matches-spec-7-1: the file for a global install is the SPEC 7.1 block, frontmatter included', async () => {
     expect(commandFileText('diffcity')).toBe(await spec71());
   });
@@ -107,8 +109,19 @@ describe('slash: the /code-review command file', () => {
     const lines = commandFileText('diffcity').split('\n');
     expect(lines[0]).toBe('---');
     const close = lines.indexOf('---', 1);
-    expect(lines.slice(1, close).map((line) => line.split(':')[0])).toEqual(['description', 'argument-hint', 'allowed-tools']);
+    expect(lines.slice(1, close).map((line) => line.split(':')[0])).toEqual(['description', 'argument-hint', 'disable-model-invocation', 'allowed-tools']);
     expect(lines[close + 1]).toBe(COMMAND_MARKER);
+  });
+
+  it('slash/user-only: the command is /diffcity-review, started by the user only, with its own marker', () => {
+    const text = commandFileText('diffcity');
+    expect(COMMAND_FILE_NAME).toBe('diffcity-review.md');
+    expect(COMMAND_MARKER).toBe('<!-- diffcity: diffcity-review v1 -->');
+    expect(text.split('\n')).toContain('disable-model-invocation: true');
+    // The old name's marker is not ours any more: a file with it is a leftover, not the current command.
+    expect(LEGACY_COMMAND_MARKER).toBe('<!-- diffcity: code-review v1 -->');
+    expect(isDiffcityCommandFile(text.replace(COMMAND_MARKER, LEGACY_COMMAND_MARKER))).toBe(false);
+    expect(isDiffcityCommandFile(text.replace(COMMAND_MARKER, LEGACY_COMMAND_MARKER), LEGACY_COMMAND_MARKER)).toBe(true);
   });
 
   it('isDiffcityCommandFile: only the marker right after the frontmatter makes a file ours', () => {

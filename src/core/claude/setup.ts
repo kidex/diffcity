@@ -1,5 +1,5 @@
 // `diffcity setup-claude` (ADR-037): plans and applies the two files diffcity
-// owns in a Claude Code configuration, the `/code-review` command file and the
+// owns in a Claude Code configuration, the `/diffcity-review` command file and the
 // Stop hook entry in `settings.json`, plus a one-time backup of that
 // `settings.json`. Planning reads only; nothing is written when any file is
 // refused, so a refusal leaves both files as they were. Writes go through a
@@ -11,7 +11,15 @@ import { randomBytes } from 'node:crypto';
 import { constants } from 'node:fs';
 import { copyFile, lstat, mkdir, readFile, realpath, rename, rm, stat, unlink, writeFile } from 'node:fs/promises';
 import { basename, dirname, join } from 'node:path';
-import { COMMAND_FILE_NAME, COMMAND_MARKER, commandFileText, isDiffcityCommandFile, recordedCli } from './command-file.js';
+import {
+  COMMAND_FILE_NAME,
+  COMMAND_MARKER,
+  LEGACY_COMMAND_FILE_NAME,
+  LEGACY_COMMAND_MARKER,
+  commandFileText,
+  isDiffcityCommandFile,
+  recordedCli,
+} from './command-file.js';
 import { hookCommand } from './hook-command.js';
 import { addStopHook, removeStopHook } from './settings.js';
 
@@ -27,6 +35,8 @@ export interface ClaudeTarget {
   /** The directory holding `commands/` and `settings.json`. */
   dir: string;
   commandFile: string;
+  /** `commands/code-review.md`, the command's first name; only `--remove` touches it, and only with its old marker. */
+  legacyCommandFile: string;
   settingsFile: string;
   backupFile: string;
 }
@@ -34,7 +44,14 @@ export interface ClaudeTarget {
 /** The files of a configuration directory (`~/.claude`, `$CLAUDE_CONFIG_DIR` or `<repo>/.claude`). */
 export function claudeTarget(scope: ClaudeTarget['scope'], dir: string): ClaudeTarget {
   const settingsFile = join(dir, 'settings.json');
-  return { scope, dir, commandFile: join(dir, 'commands', COMMAND_FILE_NAME), settingsFile, backupFile: `${settingsFile}${BACKUP_SUFFIX}` };
+  return {
+    scope,
+    dir,
+    commandFile: join(dir, 'commands', COMMAND_FILE_NAME),
+    legacyCommandFile: join(dir, 'commands', LEGACY_COMMAND_FILE_NAME),
+    settingsFile,
+    backupFile: `${settingsFile}${BACKUP_SUFFIX}`,
+  };
 }
 
 export type FileAction = 'create' | 'update' | 'unchanged' | 'delete' | 'absent' | 'kept';
@@ -128,8 +145,9 @@ export async function planInstall(target: ClaudeTarget, cli: string): Promise<Pl
 
 /**
  * What setup would change to remove what diffcity wrote: the command file when
- * it carries the marker, and every Stop hook whose command is the one of `cli`
- * or the one recorded in diffcity's command file.
+ * it carries the marker, a leftover `commands/code-review.md` when it carries
+ * the old marker, and every Stop hook whose command is the one of `cli` or the
+ * one recorded in either command file.
  */
 export async function planRemove(target: ClaudeTarget, cli: string): Promise<PlanResult> {
   const read = await readBoth(target);
@@ -144,6 +162,19 @@ export async function planRemove(target: ClaudeTarget, cli: string): Promise<Pla
     const recorded = recordedCli(read.command);
     if (recorded !== null && recorded !== cli) commands.push(hookCommand(recorded));
   } else files.push({ path: target.commandFile, kind: 'command', action: 'kept' });
+
+  // A leftover of the command's first name goes too, only when it carries that name's marker.
+  let legacy: string | null;
+  try {
+    legacy = await readOptional(target.legacyCommandFile);
+  } catch (error) {
+    return { ok: false, reason: `cannot read ${target.legacyCommandFile}: ${messageOf(error)}` };
+  }
+  if (legacy !== null && isDiffcityCommandFile(legacy, LEGACY_COMMAND_MARKER)) {
+    files.push({ path: target.legacyCommandFile, kind: 'command', action: 'delete' });
+    const recorded = recordedCli(legacy, LEGACY_COMMAND_MARKER);
+    if (recorded !== null && !commands.includes(hookCommand(recorded))) commands.push(hookCommand(recorded));
+  }
 
   const edit = removeStopHook(read.settings, commands);
   if (!edit.ok) return { ok: false, reason: `${target.settingsFile} ${edit.reason}; fix it or move it away, nothing was written` };

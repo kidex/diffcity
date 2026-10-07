@@ -1,10 +1,10 @@
 // diffcity's own files in a working tree (SPEC.md section 3a, ADR-036 Q6):
-// `.diffcity/findings.json` (written by the /code-review command, read by
+// `.diffcity/findings.json` (written by the /diffcity-review command, read by
 // `diffcity import`) and `.diffcity/fix-queue.json` (written by the daemon).
 // They are never part of a change: left out of the touched files, of the
 // untracked listing and of the dirty check, and ignored by the watcher, so an
 // import or a queued fix creates no Draft and no recollect.
-// `.diffcity/fix-queue.taking.json` is the fix queue while the /code-review
+// `.diffcity/fix-queue.taking.json` is the fix queue while the /diffcity-review
 // command applies it: the command renames the queue to it, so an item the
 // daemon appends meanwhile goes to a new queue and is neither lost nor applied
 // twice (ADR-037), then deletes it. Every other file

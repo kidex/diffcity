@@ -1,5 +1,8 @@
-// The `/code-review` slash command file, `commands/code-review.md` (SPEC.md
-// section 7.1, ADR-037). Claude Code wants the YAML frontmatter at the top of
+// The `/diffcity-review` slash command file, `commands/diffcity-review.md`
+// (SPEC.md section 7.1, ADR-037). It is not called `/code-review`, so it never
+// shadows Claude Code's bundled `code-review` skill, and
+// `disable-model-invocation: true` lets only the user start it (ADR-001: the
+// browser opens only when the user asked). Claude Code wants the YAML frontmatter at the top of
 // the file, so the version marker is the line right after the frontmatter's
 // closing `---`: a file is diffcity's when that line is exactly the marker.
 // setup-claude overwrites or removes only such a file.
@@ -10,10 +13,17 @@
 // are allowed one exact command each.
 
 /** The version marker; v1 is the only version so far. */
-export const COMMAND_MARKER = '<!-- diffcity: code-review v1 -->';
+export const COMMAND_MARKER = '<!-- diffcity: diffcity-review v1 -->';
 
 /** The file name under `commands/`; Claude Code names the command after it. */
-export const COMMAND_FILE_NAME = 'code-review.md';
+export const COMMAND_FILE_NAME = 'diffcity-review.md';
+
+/**
+ * The file and marker of the command's first name, before it was renamed.
+ * `--remove` deletes a leftover file only when it carries this marker.
+ */
+export const LEGACY_COMMAND_FILE_NAME = 'code-review.md';
+export const LEGACY_COMMAND_MARKER = '<!-- diffcity: code-review v1 -->';
 
 /** The fix queue, and the name the command renames it to before applying it (ADR-036, ADR-037). */
 export const FIX_QUEUE_PATH = '.diffcity/fix-queue.json';
@@ -43,6 +53,7 @@ export function commandFileText(cli: string): string {
     '---',
     'description: Review the current change with diffcity and put the findings on the city',
     'argument-hint: [what the task was]',
+    'disable-model-invocation: true',
     `allowed-tools: ${allowedTools(cli)}`,
     '---',
     COMMAND_MARKER,
@@ -73,14 +84,14 @@ export function commandFileText(cli: string): string {
 
 /**
  * True when `text` is a command file diffcity wrote: a frontmatter opened by
- * `---` on the first line, closed by the next `---` line, and the marker on
+ * `---` on the first line, closed by the next `---` line, and `marker` on
  * the line right after it.
  */
-export function isDiffcityCommandFile(text: string): boolean {
+export function isDiffcityCommandFile(text: string, marker: string = COMMAND_MARKER): boolean {
   const lines = text.split(/\r?\n/);
   if (lines[0] !== '---') return false;
   const close = lines.indexOf('---', 1);
-  return close > 0 && lines[close + 1] === COMMAND_MARKER;
+  return close > 0 && lines[close + 1] === marker;
 }
 
 /**
@@ -88,8 +99,8 @@ export function isDiffcityCommandFile(text: string): boolean {
  * `Bash(<cli> diff:*)` entry), or null. `--remove` uses it to find the hook
  * an earlier setup wrote with another invocation.
  */
-export function recordedCli(text: string): string | null {
-  if (!isDiffcityCommandFile(text)) return null;
+export function recordedCli(text: string, marker: string = COMMAND_MARKER): string | null {
+  if (!isDiffcityCommandFile(text, marker)) return null;
   const line = text.split(/\r?\n/).find((candidate) => candidate.startsWith('allowed-tools: '));
   const match = line === undefined ? null : /^allowed-tools: Bash\((.+?) diff:\*\),/.exec(line);
   return match?.[1] ?? null;

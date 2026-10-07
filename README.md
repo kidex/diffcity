@@ -37,7 +37,7 @@ diffcity stop
 | `diffcity scan <dir>` | discover and register every repo under a folder |
 | `diffcity diff --json [--compact] [--base] [--head]` | semantic diff of the current change; `--compact` leaves out untouched files |
 | `diffcity import <file> [--open]` | anchor findings (own JSON or SARIF) to symbols of the current change |
-| `diffcity setup-claude [--repo [<dir>]] [--dry-run] [--remove]` | install the `/code-review` command and the Stop hook for Claude Code |
+| `diffcity setup-claude [--repo [<dir>]] [--dry-run] [--remove]` | install the `/diffcity-review` command and the Stop hook for Claude Code |
 | `diffcity export html\|puml [--out]` | self-contained export of the current change |
 | `diffcity status` | repos ordered by urgency |
 | `diffcity audit [--stale] [<repo>]` | full audit: dependencies, semgrep, gitleaks, AI review on tier 1 |
@@ -50,10 +50,10 @@ diffcity stop
 ### Claude Code
 
 ```sh
-diffcity setup-claude    # once: the /code-review command and the Stop hook
+diffcity setup-claude    # once: the /diffcity-review command and the Stop hook
 ```
 
-After that, `/code-review` in Claude Code reviews the current change and puts the findings on the city, and every finished agent task marks the change as agent work. What setup writes, how it picks the hook command and how to undo it are in [docs/claude-code.md](docs/claude-code.md).
+After that, `/diffcity-review` in Claude Code reviews the current change and puts the findings on the city, and every finished agent task marks the change as agent work. What setup writes, how it picks the hook command and how to undo it are in [docs/claude-code.md](docs/claude-code.md).
 
 ### Semantic diff
 
@@ -91,7 +91,7 @@ node dist/cli/index.js --help
 | `test/` | unit and integration tests, fixtures |
 | `design/mockup.html` | visual reference for the change screen |
 | `docs/findings.md` | findings import format and SARIF mapping |
-| `docs/claude-code.md` | the `/code-review` command and the Stop hook that `setup-claude` installs |
+| `docs/claude-code.md` | the `/diffcity-review` command and the Stop hook that `setup-claude` installs |
 | `docs/guardrails.md` | hooks that guard Claude Code sessions on this repo |
 | `SPEC.md` | full specification |
 

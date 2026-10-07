@@ -123,7 +123,7 @@ describe('lazy command modules', () => {
           );
         });
         // A real run: it wrote the files.
-        expect(stdout).toMatch(/^created .*code-review\.md$/m);
+        expect(stdout).toMatch(/^created .*diffcity-review\.md$/m);
         const urls = (await readFile(log, 'utf8')).split('\n').filter((line) => line !== '');
         expect(urls.some((url) => url.endsWith('/dist/cli/setup-claude.js'))).toBe(true);
         expect(urls.some((url) => url.endsWith('/dist/core/claude/setup.js'))).toBe(true);

@@ -72,7 +72,7 @@ describe("diffcity's own files (SPEC.md section 3a, ADR-036)", () => {
     expect(ignored(join(root, '.diffcity/.fix-queue.json.4242.0123456789ab.tmp'))).toBe(true);
   });
 
-  it('own-files/taking-file-is-own (watcher): the fix queue renamed away by /code-review is ignored at the root only', () => {
+  it('own-files/taking-file-is-own (watcher): the fix queue renamed away by /diffcity-review is ignored at the root only', () => {
     expect(ignored(join(root, '.diffcity/fix-queue.taking.json'))).toBe(true);
     expect(ignored(join(root, 'packages/cart/.diffcity/fix-queue.taking.json'))).toBe(false);
     expect(ignored(join(root, '.diffcity/fix-queue.taking.json.bak'))).toBe(false);

@@ -1,6 +1,6 @@
 # Claude Code integration
 
-`diffcity setup-claude` connects Claude Code to diffcity with two files: the `/code-review` slash command and a Stop hook. After it, `/code-review` in a Claude Code session reviews the current change and puts the findings on the city, and every finished agent task marks the change as "agent worked, not reviewed".
+`diffcity setup-claude` connects Claude Code to diffcity with two files: the `/diffcity-review` slash command and a Stop hook. After it, `/diffcity-review` in a Claude Code session reviews the current change and puts the findings on the city, and every finished agent task marks the change as "agent worked, not reviewed".
 
 ```sh
 diffcity setup-claude                 # the user's Claude Code configuration
@@ -13,7 +13,7 @@ diffcity setup-claude --remove        # remove only what diffcity wrote
 
 | File | Content |
 |---|---|
-| `<config>/commands/code-review.md` | the `/code-review` command (SPEC.md section 7.1) |
+| `<config>/commands/diffcity-review.md` | the `/diffcity-review` command (SPEC.md section 7.1) |
 | `<config>/settings.json` | one Stop hook entry, merged into the existing settings (SPEC.md section 7.2) |
 | `<config>/settings.json.diffcity-backup` | a copy of `settings.json` from before diffcity first changed it, written once |
 
@@ -40,7 +40,9 @@ The hook never blocks the agent: on any failure it prints one line on stderr and
 
 ## The command file
 
-The file starts with its frontmatter (`description`, `argument-hint`, `allowed-tools`); the line right after the closing `---` is the marker `<!-- diffcity: code-review v1 -->`. setup overwrites or removes the file only when that line is exactly the marker; any other `code-review.md` is refused on install and kept on `--remove`.
+The command is called `/diffcity-review`, not `/code-review`, so it never shadows Claude Code's bundled `code-review` skill. Its frontmatter sets `disable-model-invocation: true`: only the user starts it, never the model, so the browser opens only when the user asked for the review.
+
+The file starts with its frontmatter (`description`, `argument-hint`, `disable-model-invocation`, `allowed-tools`); the line right after the closing `---` is the marker `<!-- diffcity: diffcity-review v1 -->`. setup overwrites or removes the file only when that line is exactly the marker; any other `diffcity-review.md` is refused on install and kept on `--remove`.
 
 `allowed-tools` allows exactly what the command runs: `Bash(<cli> diff:*)` and `Bash(<cli> import:*)` with the hook command's invocation, the two fix-queue commands `mv .diffcity/fix-queue.json .diffcity/fix-queue.taking.json` and `rm .diffcity/fix-queue.taking.json`, `Read`, and `Write(.diffcity/findings.json)`. Fixing code from the fix queue goes through Claude Code's usual permission prompts.
 
@@ -53,7 +55,7 @@ The command:
 
 ## --remove
 
-`--remove` deletes the command file when it carries the marker, and removes every Stop hook whose command is the current hook command or the one recorded in diffcity's command file. A Stop entry, `hooks.Stop` or `hooks` left empty by that is removed too; every other key and hook stays. The backup is written first if it does not exist yet.
+`--remove` deletes the command file when it carries the marker, and a leftover `commands/code-review.md` (the command's first name) only when it carries the old marker `<!-- diffcity: code-review v1 -->`; any other `code-review.md` is never touched. It removes every Stop hook whose command is the current hook command or the one recorded in one of those command files. A Stop entry, `hooks.Stop` or `hooks` left empty by that is removed too; every other key and hook stays. The backup is written first if it does not exist yet.
 
 ## Claude Code version
 

@@ -9,7 +9,7 @@ import { join, relative, sep } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { runSetupClaude, type SetupClaudeDeps, type SetupClaudeOptions } from '../../../src/cli/setup-claude.js';
 import { CLAUDE_CONFIG_DIR_ENV, claudeConfigDir } from '../../../src/core/claude/config-dir.js';
-import { COMMAND_MARKER, commandFileText } from '../../../src/core/claude/command-file.js';
+import { COMMAND_MARKER, LEGACY_COMMAND_MARKER, commandFileText } from '../../../src/core/claude/command-file.js';
 import { chooseCliInvocation, hookCommand } from '../../../src/core/claude/hook-command.js';
 import { CLAUDE_CODE_CHECKED_VERSION } from '../../../src/core/claude/setup.js';
 import { homePaths } from '../../../src/core/home.js';
@@ -51,7 +51,7 @@ afterEach(async () => {
 
 const ABSOLUTE = (): string => `"${nodePath}" "${cliEntry}"`;
 const settingsPath = (): string => join(claude, 'settings.json');
-const commandPath = (): string => join(claude, 'commands', 'code-review.md');
+const commandPath = (): string => join(claude, 'commands', 'diffcity-review.md');
 const backupPath = (): string => join(claude, 'settings.json.diffcity-backup');
 
 interface Result {
@@ -151,7 +151,7 @@ describe('setup-claude: install', () => {
     });
     // The file keeps its mode, and no temporary file is left behind.
     expect((await stat(settingsPath())).mode & 0o777).toBe(0o600);
-    expect(Object.keys(await snapshot(claude)).sort()).toEqual(['commands/code-review.md', 'settings.json', 'settings.json.diffcity-backup']);
+    expect(Object.keys(await snapshot(claude)).sort()).toEqual(['commands/diffcity-review.md', 'settings.json', 'settings.json.diffcity-backup']);
   });
 
   it('setup/unparsable-settings-refused: exit 1 with the reason; neither file is written', async () => {
@@ -193,15 +193,15 @@ describe('setup-claude: install', () => {
 
   it('setup/command-file-marker-overwrite (link): a command file that is a symbolic link is written at its target, the link stays', async () => {
     const dotfiles = await mkdirp(join(temp.root, 'dotfiles'));
-    await writeFile(join(dotfiles, 'code-review.md'), `---\ndescription: x\n---\n${COMMAND_MARKER}\nold\n`);
+    await writeFile(join(dotfiles, 'diffcity-review.md'), `---\ndescription: x\n---\n${COMMAND_MARKER}\nold\n`);
     await mkdirp(join(claude, 'commands'));
-    await symlink(join(dotfiles, 'code-review.md'), commandPath());
+    await symlink(join(dotfiles, 'diffcity-review.md'), commandPath());
     expect((await setup()).code).toBe(0);
-    expect(await readlink(commandPath())).toBe(join(dotfiles, 'code-review.md'));
-    expect(await readFile(join(dotfiles, 'code-review.md'), 'utf8')).toBe(commandFileText(ABSOLUTE()));
+    expect(await readlink(commandPath())).toBe(join(dotfiles, 'diffcity-review.md'));
+    expect(await readFile(join(dotfiles, 'diffcity-review.md'), 'utf8')).toBe(commandFileText(ABSOLUTE()));
   });
 
-  it('setup/foreign-command-file-refused: a code-review.md without the marker is refused; nothing is written', async () => {
+  it('setup/foreign-command-file-refused: a diffcity-review.md without the marker is refused; nothing is written', async () => {
     const foreign = '---\ndescription: my own review\n---\nReview the change carefully.\n';
     await mkdirp(join(claude, 'commands'));
     await writeFile(commandPath(), foreign);
@@ -211,7 +211,7 @@ describe('setup-claude: install', () => {
       stdout: '',
       stderr: `diffcity setup-claude: refused: ${commandPath()} exists and was not written by diffcity (no ${COMMAND_MARKER} line after its frontmatter); move it away and run setup-claude again\n`,
     });
-    expect(await snapshot(claude)).toEqual({ 'commands/code-review.md': foreign });
+    expect(await snapshot(claude)).toEqual({ 'commands/diffcity-review.md': foreign });
   });
 });
 
@@ -265,6 +265,43 @@ describe('setup-claude --remove', () => {
     expect(result.stdout).toContain('hook command: diffcity track --agent\n');
     expect(JSON.parse(await readFile(settingsPath(), 'utf8'))).toEqual({});
     expect(await readOptional(commandPath())).toBeNull();
+  });
+
+  it('setup/remove-legacy-command-file: a leftover code-review.md with the old marker is deleted with its hook; a foreign one is never touched', async () => {
+    const legacyPath = join(claude, 'commands', 'code-review.md');
+    const oldCli = '"/opt/sample/node" "/opt/sample/dist/cli/index.js"';
+    const legacy = `---\ndescription: Review the current change with diffcity\nallowed-tools: Bash(${oldCli} diff:*), Bash(${oldCli} import:*), Read\n---\n${LEGACY_COMMAND_MARKER}\nRun \`${oldCli} diff --json --compact\`.\n`;
+    await mkdirp(join(claude, 'commands'));
+    await writeFile(legacyPath, legacy);
+    await writeFile(settingsPath(), JSON.stringify({ hooks: { Stop: [{ matcher: '', hooks: [{ type: 'command', command: `${oldCli} track --agent` }] }] } }));
+    const result = await setup({ remove: true });
+    expect(result.code).toBe(0);
+    expect(result.stdout).toContain(`deleted ${legacyPath}\n`);
+    expect(await readOptional(legacyPath)).toBeNull();
+    // The hook recorded in the old file goes with it.
+    expect(JSON.parse(await readFile(settingsPath(), 'utf8'))).toEqual({});
+
+    // A code-review.md of the user's own, even one naming diffcity, is never deleted nor mentioned.
+    const foreign = '---\ndescription: my own review, run diffcity diff first\n---\nReview the change.\n';
+    await writeFile(legacyPath, foreign);
+    const again = await setup({ remove: true });
+    expect(again.code).toBe(0);
+    expect(again.stdout).not.toContain(legacyPath);
+    expect(await readFile(legacyPath, 'utf8')).toBe(foreign);
+    // The new marker in the old file name is not the old marker either.
+    const renamed = `---\ndescription: x\n---\n${COMMAND_MARKER}\n`;
+    await writeFile(legacyPath, renamed);
+    expect((await setup({ remove: true })).code).toBe(0);
+    expect(await readFile(legacyPath, 'utf8')).toBe(renamed);
+  });
+
+  it('install never touches a leftover code-review.md', async () => {
+    const legacyPath = join(claude, 'commands', 'code-review.md');
+    const legacy = `---\ndescription: x\n---\n${LEGACY_COMMAND_MARKER}\n`;
+    await mkdirp(join(claude, 'commands'));
+    await writeFile(legacyPath, legacy);
+    expect((await setup()).code).toBe(0);
+    expect(await readFile(legacyPath, 'utf8')).toBe(legacy);
   });
 
   it('nothing installed: both files absent, exit 0, nothing created', async () => {
@@ -389,7 +426,7 @@ describe('setup-claude --repo', () => {
       const root = await realpath(repo.dir);
       const result = await setup({ repo: true }, { cwd: join(repo.dir, 'src') });
       expect(result.code).toBe(0);
-      expect(result.stdout).toContain(`created ${join(root, '.claude', 'commands', 'code-review.md')}\n`);
+      expect(result.stdout).toContain(`created ${join(root, '.claude', 'commands', 'diffcity-review.md')}\n`);
       expect(result.stdout).toContain(`created ${join(root, '.claude', 'settings.json')}\n`);
       expect(result.stderr).toBe(
         'diffcity setup-claude: warning: the hook command holds absolute paths of this machine; do not commit these files, or install diffcity globally and run setup-claude again\n',
@@ -400,7 +437,7 @@ describe('setup-claude --repo', () => {
       await symlink(cliEntry, join(bin, 'diffcity'));
       const again = await setup({ repo: repo.dir }, { cwd: temp.userHome, env: { ...temp.env, [CLAUDE_CONFIG_DIR_ENV]: claude, PATH: bin } });
       expect(again).toMatchObject({ code: 0, stderr: '' });
-      expect(await readFile(join(repo.dir, '.claude', 'commands', 'code-review.md'), 'utf8')).toBe(commandFileText('diffcity'));
+      expect(await readFile(join(repo.dir, '.claude', 'commands', 'diffcity-review.md'), 'utf8')).toBe(commandFileText('diffcity'));
     } finally {
       await repo.cleanup();
     }
@@ -444,7 +481,7 @@ describe('setup/temp-claude-config-dir-only', () => {
     });
     expect(result.code).toBe(0);
     expect(result.stdout).toContain(`created ${commandPath()}\n`);
-    expect(Object.keys(await snapshot(claude)).sort()).toEqual(['commands/code-review.md', 'settings.json']);
+    expect(Object.keys(await snapshot(claude)).sort()).toEqual(['commands/diffcity-review.md', 'settings.json']);
     expect(await snapshot(temp.userHome)).toEqual({});
     // setup writes no daemon settings: the diffcity home is not even created.
     await expect(stat(temp.home)).rejects.toMatchObject({ code: 'ENOENT' });

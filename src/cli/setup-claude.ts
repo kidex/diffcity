@@ -1,5 +1,5 @@
 // `diffcity setup-claude [--repo [<dir>]] [--dry-run] [--remove]` (SPEC.md
-// sections 3 and 7, ADR-037). Installs the `/code-review` command file and the
+// sections 3 and 7, ADR-037). Installs the `/diffcity-review` command file and the
 // Stop hook in the user's Claude Code configuration (`$CLAUDE_CONFIG_DIR` or
 // `~/.claude`), or in `<repo>/.claude` with --repo. The work is in
 // src/core/claude; this module picks the target and prints what changed.

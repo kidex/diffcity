@@ -1,4 +1,4 @@
-// Claude Code integration (SPEC.md section 7, ADR-037): the `/code-review`
+// Claude Code integration (SPEC.md section 7, ADR-037): the `/diffcity-review`
 // command file, the Stop hook entry in settings.json and the invocation both
 // use. Plain file and JSON code: no parser, no report, no daemon.
 
@@ -9,6 +9,8 @@ export {
   FINDINGS_PATH,
   FIX_QUEUE_PATH,
   FIX_QUEUE_TAKING_PATH,
+  LEGACY_COMMAND_FILE_NAME,
+  LEGACY_COMMAND_MARKER,
   allowedTools,
   commandFileText,
   isDiffcityCommandFile,

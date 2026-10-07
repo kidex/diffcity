@@ -93,7 +93,7 @@ export function formatSummary(report: Report): string {
 /**
  * The Report without its untouched files (`status: 'same'`) and without the
  * packages that have none left; `meta`, `steps`, `findings`, `checks` and
- * `summary` are kept as they are (ADR-037). The /code-review command reads it:
+ * `summary` are kept as they are (ADR-037). The /diffcity-review command reads it:
  * a large repo's untouched files only cost the agent tokens.
  */
 export function compactReport(report: Report): Report {

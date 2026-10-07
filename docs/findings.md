@@ -24,7 +24,7 @@ interface FindingInput {
 
 `why` is a one-line reading hint for the execution path (for example "new route, called without an order"); it is optional and not part of the finding itself. Newlines and runs of whitespace in it are collapsed to single spaces. `category: 'architecture'` is for findings about layering and structure.
 
-Example, as written by the `/code-review` slash command to `.diffcity/findings.json`:
+Example, as written by the `/diffcity-review` slash command to `.diffcity/findings.json`:
 
 ```json
 [
@@ -188,4 +188,4 @@ warning: runs[0].results[4]: skipped: no physical location
 
 Exit status: `0` when the findings are stored; `1` for a file that cannot be read, is over 8 MiB, is not valid JSON or is rejected by the parser (with one line per problem), a payload over 4 MiB, a directory outside a git repository, or a refusal by the daemon (with its reason). A daemon older than the CLI, which does not know the `import` request, gets: ``the running daemon is older than this CLI; run `diffcity stop` then try again``.
 
-Findings files written next to the code, `.diffcity/findings.json`, and the fix queue, `.diffcity/fix-queue.json` (and `.diffcity/fix-queue.taking.json` while `/code-review` applies it, see [claude-code.md](claude-code.md)), are never part of a change: they are not touched files, they do not make a working tree dirty (so they create no Draft), and the watcher ignores them. Every other file under `.diffcity/`, such as `.diffcity/spec.md`, is a normal file.
+Findings files written next to the code, `.diffcity/findings.json`, and the fix queue, `.diffcity/fix-queue.json` (and `.diffcity/fix-queue.taking.json` while `/diffcity-review` applies it, see [claude-code.md](claude-code.md)), are never part of a change: they are not touched files, they do not make a working tree dirty (so they create no Draft), and the watcher ignores them. Every other file under `.diffcity/`, such as `.diffcity/spec.md`, is a normal file.
