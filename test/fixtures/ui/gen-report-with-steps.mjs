@@ -47,7 +47,7 @@ report.findings = [
     line: 2,
     symbolId: `${MIGRATION}#ALTER TABLE orders`,
     title: 'New column has no default for existing rows',
-    message: 'Orders placed before the migration read discount_cents as NULL.',
+    message: 'Orders placed before the migration read discounted_total as NULL.',
     state: 'open',
   },
   {
