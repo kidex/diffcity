@@ -146,6 +146,15 @@ describe('data/live', () => {
     live.close();
   });
 
+  it('delivers `findings` (a state, an import or a queued fix moved the served Report)', () => {
+    const { live } = connect();
+    const seen: unknown[] = [];
+    live.on('findings', (data) => seen.push(data));
+    latest().dispatch('findings', '{"repoId":3,"changeId":12}');
+    expect(seen).toEqual([{ repoId: 3, changeId: 12 }]);
+    live.close();
+  });
+
   it('stops reconnecting once closed', () => {
     const { live } = connect();
     latest().fail();
