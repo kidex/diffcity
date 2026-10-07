@@ -42,7 +42,9 @@ diffcity stop
 | `diffcity audit [--stale] [<repo>]` | full audit: dependencies, semgrep, gitleaks, AI review on tier 1 |
 | `diffcity --version` | print the installed version |
 
-`import`, `export`, `status` and `audit` are not implemented yet and exit with status 2.
+`export`, `status` and `audit` are not implemented yet and exit with status 2.
+
+`diffcity import` attaches findings to the change checked out in the current directory; the file format, the counts it prints and its exit codes are in [docs/findings.md](docs/findings.md). diffcity's own files `.diffcity/findings.json` and `.diffcity/fix-queue.json` are never part of a change.
 
 ### Semantic diff
 

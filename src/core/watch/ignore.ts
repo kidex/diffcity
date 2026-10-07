@@ -1,6 +1,12 @@
 // What the working tree watchers leave out (ADR-020): any `.git` or
-// `node_modules` segment, every path git reports as ignored, and the linked
-// worktrees nested inside a working tree (they get their own watcher).
+// `node_modules` segment, every path git reports as ignored, the linked
+// worktrees nested inside a working tree (they get their own watcher), and
+// diffcity's own files at the root (`.diffcity/findings.json`,
+// `.diffcity/fix-queue.json`; SPEC.md section 3a, ADR-036), so an import or a
+// queued fix never asks for a collection. The `.diffcity` directory itself is
+// still watched (`.diffcity/spec.md` is a normal file); only an event on the
+// directory entry alone is quiet (quietEvent), since creating the directory
+// for the fix queue changes nothing a collection would see.
 //
 // The ignored set comes from `git ls-files --others --ignored --exclude-standard
 // --directory -z`, which lists ignored files and collapses fully ignored
@@ -10,6 +16,7 @@
 import { readdir } from 'node:fs/promises';
 import { isAbsolute, join, relative, sep } from 'node:path';
 import { git, splitNul } from '../git/exec.js';
+import { OWN_DIR, isOwnFile } from '../git/own-files.js';
 
 /** Directory names never watched, wherever they appear. */
 export const ALWAYS_IGNORED_NAMES: ReadonlySet<string> = new Set(['.git', 'node_modules']);
@@ -50,7 +57,7 @@ export function ignoreMatcher(root: string, ignored: IgnoredSet, nested: readonl
     const parts = rel.split(sep);
     if (parts.some((part) => ALWAYS_IGNORED_NAMES.has(part))) return true;
     const posix = parts.join('/');
-    if (ignored.files.has(posix)) return true;
+    if (ignored.files.has(posix) || isOwnFile(posix)) return true;
     let prefix = '';
     for (const part of parts) {
       prefix = prefix === '' ? part : `${prefix}/${part}`;
@@ -58,6 +65,15 @@ export function ignoreMatcher(root: string, ignored: IgnoredSet, nested: readonl
     }
     return false;
   };
+}
+
+/**
+ * True for an event that asks for no collection although the path is watched:
+ * the `.diffcity` directory entry at the root of the working tree at `root`
+ * (created or removed with the fix queue). Events on files inside it count.
+ */
+export function quietEvent(root: string, path: string): boolean {
+  return relative(root, path).split(sep).join('/') === OWN_DIR;
 }
 
 /**

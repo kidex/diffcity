@@ -7,6 +7,7 @@
 // JSON unchanged. Ids are SQLite integer row ids.
 
 import type { Report, Status, Verdict } from '../report/types.js';
+import type { FindingInput, ParseWarning } from '../findings/types.js';
 
 // ---------------------------------------------------------------------------
 // Enumerations (ADR-018 CHECK constraints, ADR-017, ADR-020)
@@ -352,6 +353,21 @@ export type SocketRequest =
   | { v: SocketProtocolVersion; type: 'track'; dir: string; agent: boolean; at: string }
   /** `dirs` are absolute repo roots (from `scan`). */
   | { v: SocketProtocolVersion; type: 'register'; dirs: string[] }
+  /**
+   * `diffcity import` (ADR-036): the findings the CLI parsed from its file, for
+   * the change checked out in `dir` (absolute). `sources` are the sources the
+   * import covers (ParseResult.sources); when absent, those of the findings.
+   * The only request whose line may exceed 64 KiB (up to 4 MiB).
+   */
+  | {
+      v: SocketProtocolVersion;
+      type: 'import';
+      dir: string;
+      findings: FindingInput[];
+      warnings: ParseWarning[];
+      sources?: string[];
+      at: string;
+    }
   | { v: SocketProtocolVersion; type: 'shutdown' };
 
 export type SocketRequestType = SocketRequest['type'];
@@ -369,8 +385,31 @@ export interface SocketSuccessResponses {
   track: { ok: true; repo: { id: number; name: string } };
   /** `registered`: repos newly registered by this request; `known`: repos that were already registered. */
   register: { ok: true; registered: number; known: number };
+  /**
+   * `import` (ADR-036), once the findings are stored. `imported`: findings
+   * anchored to the change, merged ones included; `merged`: those that
+   * collapsed into an existing entry; `skipped`: entries skipped by the parser
+   * plus findings outside the change; `fixed`: stored findings this import
+   * fixed. `warnings`: the parse warnings, then one per finding outside the
+   * change. `anchoredAgainst` is `previous-snapshot` when no snapshot at the
+   * current content was ready within 20 s.
+   */
+  import: {
+    ok: true;
+    /** `ref` is the change's identity in its repo: `branch:<name>`, `pr:<n>` or `draft:<path>`. */
+    change: { id: number; repoId: number; ref: string };
+    imported: number;
+    merged: number;
+    skipped: number;
+    fixed: number;
+    warnings: ParseWarning[];
+    anchoredAgainst: ImportAnchor;
+  };
   shutdown: { ok: true };
 }
+
+/** Which snapshot an import was anchored against (ADR-036). */
+export type ImportAnchor = 'current-snapshot' | 'previous-snapshot';
 
 /** What the client can receive for a request of type `T`. */
 export type SocketResponseFor<T extends SocketRequestType> = SocketSuccessResponses[T] | SocketErrorResponse;

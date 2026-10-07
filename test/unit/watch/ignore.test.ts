@@ -4,7 +4,7 @@
 import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { countWatchedDirs, gitIgnoreMatcher, ignoreMatcher, parseIgnored } from '../../../src/core/watch/index.js';
+import { countWatchedDirs, gitIgnoreMatcher, ignoreMatcher, parseIgnored, quietEvent } from '../../../src/core/watch/index.js';
 import { tempHome, type TempHome } from '../../helpers/config.js';
 
 const COMMON = '/work/sample-shop/.git';
@@ -59,6 +59,32 @@ describe('ignoreMatcher (ADR-020)', () => {
     const ignored = ignoreMatcher(root, parseIgnored(''), [join(root, 'trees/rack'), '/work/outside']);
     expect(ignored(join(root, 'trees/rack/src/a.ts'))).toBe(true);
     expect(ignored(join(root, 'trees/other.ts'))).toBe(false);
+  });
+});
+
+describe("diffcity's own files (SPEC.md section 3a, ADR-036)", () => {
+  const root = '/work/sample-shop';
+  const ignored = ignoreMatcher(root, parseIgnored(''));
+
+  it('own-files/watcher-ignores-own-files: findings.json, fix-queue.json and the queue temp file at the root are ignored', () => {
+    expect(ignored(join(root, '.diffcity/findings.json'))).toBe(true);
+    expect(ignored(join(root, '.diffcity/fix-queue.json'))).toBe(true);
+    expect(ignored(join(root, '.diffcity/.fix-queue.json.4242.0123456789ab.tmp'))).toBe(true);
+  });
+
+  it('own-files/spec-md-is-a-normal-file (watcher): the directory, spec.md and nested copies stay watched', () => {
+    expect(ignored(join(root, '.diffcity'))).toBe(false);
+    expect(ignored(join(root, '.diffcity/spec.md'))).toBe(false);
+    expect(ignored(join(root, '.diffcity/notes/findings.json'))).toBe(false);
+    expect(ignored(join(root, 'packages/cart/.diffcity/findings.json'))).toBe(false);
+    expect(ignored(join(root, '.diffcity/.fix-queue.json.tmp'))).toBe(false);
+  });
+
+  it('an event on the .diffcity directory entry alone is quiet; events inside it are not', () => {
+    expect(quietEvent(root, join(root, '.diffcity'))).toBe(true);
+    expect(quietEvent(root, join(root, '.diffcity/spec.md'))).toBe(false);
+    expect(quietEvent(root, join(root, 'packages/.diffcity'))).toBe(false);
+    expect(quietEvent(root, root)).toBe(false);
   });
 });
 

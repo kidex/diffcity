@@ -37,6 +37,13 @@ export function findingKey(source: string, file: string, category: FindingCatego
 
 export type PathResult = { ok: true; path: string } | { ok: false; reason: string };
 
+/**
+ * The working tree root, or every spelling of it an absolute path may use
+ * (git's physical path and the logical one reached through a symbolic link,
+ * see rootSpellings in src/core/git/change.ts).
+ */
+export type RepoRoot = string | readonly string[];
+
 function decodeUri(uri: string): string {
   try {
     return decodeURIComponent(uri);
@@ -50,28 +57,30 @@ function decodeUri(uri: string): string {
  * or a relative reference, percent-decoded either way. Invalid percent-encoding
  * is kept as written. The own format's `file` is a path and is not decoded.
  */
-export function normalizeSarifUri(uri: string, repoRoot: string): PathResult {
+export function normalizeSarifUri(uri: string, repoRoot: RepoRoot): PathResult {
   const trimmed = uri.trim();
   return normalizePath(trimmed.startsWith('file://') ? trimmed : decodeUri(trimmed), repoRoot);
 }
 
 /**
  * A path as the Report writes it: repo-relative, `/` separators, no `..`.
- * Absolute paths (and `file://` URIs) are made relative to `repoRoot`, or refused.
+ * Absolute paths (and `file://` URIs) are made relative to `repoRoot` (the
+ * first spelling they start with), or refused.
  */
-export function normalizePath(raw: string, repoRoot?: string): PathResult {
+export function normalizePath(raw: string, repoRoot?: RepoRoot): PathResult {
   let path = raw.trim();
   if (path.startsWith('file://')) path = decodeUri(path.slice('file://'.length).replace(/^\/(?=[A-Za-z]:)/, ''));
   path = path.replace(/\\/g, '/');
   if (path === '') return { ok: false, reason: 'empty path' };
   const absolute = path.startsWith('/') || /^[A-Za-z]:\//.test(path);
   if (absolute) {
-    if (repoRoot === undefined) return { ok: false, reason: `absolute path "${path}" and no repository root` };
-    const root = repoRoot.replace(/\\/g, '/').replace(/\/+$/, '');
-    if (path !== root && !path.startsWith(`${root}/`)) {
-      return { ok: false, reason: `absolute path "${path}" is outside the repository` };
-    }
-    path = path.slice(root.length + 1);
+    const roots = repoRoot === undefined ? [] : typeof repoRoot === 'string' ? [repoRoot] : repoRoot;
+    if (roots.length === 0) return { ok: false, reason: `absolute path "${path}" and no repository root` };
+    const inside = roots
+      .map((given) => given.replace(/\\/g, '/').replace(/\/+$/, ''))
+      .find((root) => path === root || path.startsWith(`${root}/`));
+    if (inside === undefined) return { ok: false, reason: `absolute path "${path}" is outside the repository` };
+    path = path.slice(inside.length + 1);
   }
   if (path.split('/').includes('..')) return { ok: false, reason: `path "${path}" contains ".."` };
   const clean = posix.normalize(path).replace(/^(\.\/)+/, '');

@@ -114,6 +114,11 @@ export interface Collector extends CollectorPort {
    * `agent` event when there is none. Run it after a collection.
    */
   markAgent(repoId: number, dir: string, at: string): Promise<void>;
+  /**
+   * The working tree containing `dir` (a realpath) as the repo's last
+   * collection listed it; null when none does or the repo was never listed.
+   */
+  worktreeOf(repoId: number, dir: string): WorktreeInfo | null;
   /** Refuses new requests, stops the pools and waits for the running collections. */
   close(): Promise<void>;
 }
@@ -498,6 +503,7 @@ export function createCollector(options: CollectorOptions): Collector {
         settle(repoId);
       }
     },
+    worktreeOf: (repoId, dir) => worktreeContaining(worktreesSeen.get(repoId) ?? [], dir),
     async markAgent(repoId, dir, at) {
       if (closing) return;
       const resolved = await realpath(dir).catch(() => dir);

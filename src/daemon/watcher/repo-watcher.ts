@@ -3,8 +3,8 @@
 // - git: one chokidar instance on the git common dir, filtered to HEAD,
 //   packed-refs, refs/** and the HEAD of each linked worktree (gitIgnoreMatcher);
 // - working trees: one watcher per working tree, at most MAX_WORKTREES,
-//   ignoring `.git`, `node_modules`, what git ignores and the linked worktrees
-//   nested inside it. The ignored set is recomputed after each collection
+//   ignoring `.git`, `node_modules`, what git ignores, the linked worktrees
+//   nested inside it and diffcity's own files (core/watch/ignore.ts). The ignored set is recomputed after each collection
 //   (syncWorktrees) and on any `.gitignore` event.
 //
 // The working tree backend depends on the platform (ADR-020 amendment):
@@ -42,7 +42,7 @@
 import { watch as fsWatch, type FSWatcher as NativeWatcher } from 'node:fs';
 import { basename, join } from 'node:path';
 import { watch, type FSWatcher } from 'chokidar';
-import { countWatchedDirs, gitIgnoreMatcher, ignoreMatcher, listIgnored, missingFromWatched, topmostDirs, unheldLinks, walkWatched, type IgnoredSet, type WalkEntry } from '../../core/watch/index.js';
+import { countWatchedDirs, gitIgnoreMatcher, ignoreMatcher, listIgnored, missingFromWatched, quietEvent, topmostDirs, unheldLinks, walkWatched, type IgnoredSet, type WalkEntry } from '../../core/watch/index.js';
 import { systemClock, type Clock, type TimerHandle } from '../clock.js';
 import { errorMessage, type Logger } from '../log.js';
 
@@ -320,7 +320,7 @@ function createWorktreeWatcher(options: WorktreeWatcherOptions): WorktreeWatcher
   };
 
   const onPath = (path: string): void => {
-    if (isClosed() || isIgnored(path)) return;
+    if (isClosed() || isIgnored(path) || quietEvent(root, path)) return;
     if (basename(path) === '.gitignore') void refresh();
     options.onEvent(path);
   };
