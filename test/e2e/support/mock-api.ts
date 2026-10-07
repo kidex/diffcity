@@ -27,6 +27,8 @@ export const fixtures = {
   repoLongList: () => load('repo-long-list.json') as RepoDetail,
   repoArchived: () => load('repo-archived.json') as ChangeSummary[],
   reportOrderDiscounts: () => load('report-order-discounts.json') as Report,
+  /** The golden order-discounts Report with its real steps (path, migrations, unconnected) and three findings on step symbols (gen-report-with-steps.mjs). */
+  reportWithSteps: () => load('report-order-discounts-with-steps.json') as Report,
   /** The golden Report of the order-discounts scenario (17 files, the mockup's change). */
   reportGolden: () => JSON.parse(readFileSync(scenarioGolden, 'utf8')) as Report,
   /** The `large` preset: 2,000 files, about 20,000 floors, 300 touched, 40 packages; written by gen-large-city.mjs in the global setup. */
