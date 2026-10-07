@@ -49,14 +49,12 @@ const defaultCliEntry = (): string => fileURLToPath(new URL('./index.js', import
 const messageOf = (error: unknown): string => (error instanceof Error ? error.message : String(error));
 
 function describe(file: PlannedFile, dryRun: boolean, remove: boolean): string {
+  const hook = file.hook === undefined ? '' : ` (${file.hook} the Stop hook)`;
   switch (file.action) {
     case 'create':
       return `${dryRun ? 'would create' : 'created'} ${file.path}`;
-    case 'update': {
-      const verb = `${dryRun ? 'would update' : 'updated'} ${file.path}`;
-      if (file.kind === 'command') return verb;
-      return `${verb} (${remove ? 'Stop hook removed' : 'Stop hook added'})`;
-    }
+    case 'update':
+      return `${dryRun ? 'would update' : 'updated'} ${file.path}${hook}`;
     case 'delete':
       return `${dryRun ? 'would delete' : 'deleted'} ${file.path}`;
     case 'unchanged':

@@ -62,6 +62,8 @@ export interface PlannedFile {
   action: FileAction;
   /** The new content, for `create` and `update`. */
   text?: string;
+  /** For a changed settings.json: what happened to diffcity's Stop hook. */
+  hook?: 'added' | 'removed' | 'replaced';
 }
 
 export interface SetupPlan {
@@ -117,7 +119,12 @@ async function backupFor(target: ClaudeTarget, settingsExisted: boolean): Promis
   return { from: target.settingsFile, to: target.backupFile };
 }
 
-/** What setup would change to install the command file and the Stop hook for invocation `cli`. */
+/**
+ * What setup would change to install the command file and the Stop hook for
+ * invocation `cli`. When diffcity's command file records another invocation
+ * (setup ran before from another install), that invocation's hook is removed
+ * first, so the old hook does not stay beside the new one.
+ */
 export async function planInstall(target: ClaudeTarget, cli: string): Promise<PlanResult> {
   const read = await readBoth(target);
   if (!read.ok) return read;
@@ -134,12 +141,33 @@ export async function planInstall(target: ClaudeTarget, cli: string): Promise<Pl
   } else if (read.command === text) files.push({ path: target.commandFile, kind: 'command', action: 'unchanged' });
   else files.push({ path: target.commandFile, kind: 'command', action: 'update', text });
 
-  const edit = addStopHook(read.settings, command);
-  if (!edit.ok) return { ok: false, reason: `${target.settingsFile} ${edit.reason}; fix it or move it away, nothing was written` };
-  if (!edit.changed) files.push({ path: target.settingsFile, kind: 'settings', action: 'unchanged' });
-  else files.push({ path: target.settingsFile, kind: 'settings', action: read.settings === null ? 'create' : 'update', text: edit.text });
+  const recorded = read.command === null ? null : recordedCli(read.command);
+  let settings = read.settings;
+  let replaced = false;
+  if (recorded !== null && recorded !== cli) {
+    const removal = removeStopHook(settings, [hookCommand(recorded)]);
+    if (!removal.ok) return { ok: false, reason: `${target.settingsFile} ${removal.reason}; fix it or move it away, nothing was written` };
+    if (removal.changed) {
+      settings = removal.text;
+      replaced = true;
+    }
+  }
+  const added = addStopHook(settings, command);
+  if (!added.ok) return { ok: false, reason: `${target.settingsFile} ${added.reason}; fix it or move it away, nothing was written` };
+  // The new text: the merge's, or the removal's alone when the new hook was already there.
+  const next = added.changed ? added.text : replaced ? settings : null;
+  if (next === null) files.push({ path: target.settingsFile, kind: 'settings', action: 'unchanged' });
+  else {
+    files.push({
+      path: target.settingsFile,
+      kind: 'settings',
+      action: read.settings === null ? 'create' : 'update',
+      text: next,
+      hook: replaced ? 'replaced' : 'added',
+    });
+  }
 
-  const settingsChanges = edit.changed && read.settings !== null;
+  const settingsChanges = next !== null && read.settings !== null;
   return { ok: true, plan: { target, hookCommand: command, files, backup: settingsChanges ? await backupFor(target, true) : null } };
 }
 
@@ -180,7 +208,7 @@ export async function planRemove(target: ClaudeTarget, cli: string): Promise<Pla
   if (!edit.ok) return { ok: false, reason: `${target.settingsFile} ${edit.reason}; fix it or move it away, nothing was written` };
   if (read.settings === null) files.push({ path: target.settingsFile, kind: 'settings', action: 'absent' });
   else if (!edit.changed) files.push({ path: target.settingsFile, kind: 'settings', action: 'unchanged' });
-  else files.push({ path: target.settingsFile, kind: 'settings', action: 'update', text: edit.text });
+  else files.push({ path: target.settingsFile, kind: 'settings', action: 'update', text: edit.text, hook: 'removed' });
 
   return { ok: true, plan: { target, hookCommand: command, files, backup: edit.changed ? await backupFor(target, true) : null } };
 }

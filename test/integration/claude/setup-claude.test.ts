@@ -146,7 +146,7 @@ describe('setup-claude: install', () => {
   it('setup/keeps-existing-hooks-and-keys (files): the existing settings stay, the hook is appended', async () => {
     await writeFile(join(await mkdirp(claude), 'settings.json'), JSON.stringify(existingSettings, null, 4), { mode: 0o600 });
     const result = await setup();
-    expect(result.stdout).toContain(`updated ${settingsPath()} (Stop hook added)\n`);
+    expect(result.stdout).toContain(`updated ${settingsPath()} (added the Stop hook)\n`);
     expect(JSON.parse(await readFile(settingsPath(), 'utf8'))).toEqual({
       ...existingSettings,
       hooks: { Stop: [...existingSettings.hooks.Stop, { matcher: '', hooks: [{ type: 'command', command: `${ABSOLUTE()} track --agent` }] }] },
@@ -181,6 +181,48 @@ describe('setup-claude: install', () => {
     await rm(backupPath());
     expect((await setup()).stdout).not.toContain('backed up');
     expect(await readOptional(backupPath())).toBeNull();
+  });
+
+  it('setup/reinstall-replaces-recorded-hook: setup from another install replaces the hook its command file recorded', async () => {
+    const original = JSON.stringify(existingSettings);
+    await writeFile(join(await mkdirp(claude), 'settings.json'), original);
+    expect((await setup()).code).toBe(0);
+    // diffcity is now installed globally: the next run uses `diffcity`.
+    const bin = await mkdirp(join(temp.root, 'global-bin'));
+    await symlink(cliEntry, join(bin, 'diffcity'));
+    const env = { ...temp.env, [CLAUDE_CONFIG_DIR_ENV]: claude, PATH: bin };
+    const result = await setup({}, { env });
+    expect(result).toEqual({
+      code: 0,
+      stderr: '',
+      stdout: [
+        `updated ${commandPath()}`,
+        `updated ${settingsPath()} (replaced the Stop hook)`,
+        'hook command: diffcity track --agent',
+        `checked against Claude Code ${CLAUDE_CODE_CHECKED_VERSION}`,
+        '',
+      ].join('\n'),
+    });
+    expect(JSON.parse(await readFile(settingsPath(), 'utf8'))).toEqual({
+      ...existingSettings,
+      hooks: { Stop: [...existingSettings.hooks.Stop, { matcher: '', hooks: [{ type: 'command', command: 'diffcity track --agent' }] }] },
+    });
+    expect(await readFile(commandPath(), 'utf8')).toBe(commandFileText('diffcity'));
+    // The backup is still the settings from before the first run.
+    expect(await readFile(backupPath(), 'utf8')).toBe(original);
+    // Running again with the same install changes nothing.
+    expect((await setup({}, { env })).stdout).toContain(`unchanged ${settingsPath()} (the Stop hook is already there)\n`);
+  });
+
+  it('setup/reinstall-replaces-recorded-hook (both present): the old hook goes, the new one already there stays once', async () => {
+    expect((await setup()).code).toBe(0);
+    const old = `${ABSOLUTE()} track --agent`;
+    await writeFile(settingsPath(), JSON.stringify({ hooks: { Stop: [{ matcher: '', hooks: [{ type: 'command', command: old }] }, { matcher: '', hooks: [{ type: 'command', command: 'diffcity track --agent' }] }] } }));
+    const bin = await mkdirp(join(temp.root, 'global-bin'));
+    await symlink(cliEntry, join(bin, 'diffcity'));
+    const result = await setup({}, { env: { ...temp.env, [CLAUDE_CONFIG_DIR_ENV]: claude, PATH: bin } });
+    expect(result.stdout).toContain(`updated ${settingsPath()} (replaced the Stop hook)\n`);
+    expect(JSON.parse(await readFile(settingsPath(), 'utf8'))).toEqual({ hooks: { Stop: [{ matcher: '', hooks: [{ type: 'command', command: 'diffcity track --agent' }] }] } });
   });
 
   it('setup/command-file-marker-overwrite: a file with the marker after its frontmatter is overwritten', async () => {
@@ -227,7 +269,7 @@ describe('setup-claude --remove', () => {
       stderr: '',
       stdout: [
         `deleted ${commandPath()}`,
-        `updated ${settingsPath()} (Stop hook removed)`,
+        `updated ${settingsPath()} (removed the Stop hook)`,
         `hook command: ${ABSOLUTE()} track --agent`,
         `checked against Claude Code ${CLAUDE_CODE_CHECKED_VERSION}`,
         '',
@@ -325,7 +367,7 @@ describe('setup-claude --dry-run', () => {
       stdout: [
         `would back up ${settingsPath()} to ${backupPath()}`,
         `would create ${commandPath()}`,
-        `would update ${settingsPath()} (Stop hook added)`,
+        `would update ${settingsPath()} (added the Stop hook)`,
         `hook command: ${ABSOLUTE()} track --agent`,
         `checked against Claude Code ${CLAUDE_CODE_CHECKED_VERSION}`,
         '',
@@ -336,7 +378,7 @@ describe('setup-claude --dry-run', () => {
     expect((await setup()).code).toBe(0);
     const installed = await snapshot(claude);
     const dryRemove = await setup({ remove: true, dryRun: true });
-    expect(dryRemove.stdout).toContain(`would delete ${commandPath()}\nwould update ${settingsPath()} (Stop hook removed)\n`);
+    expect(dryRemove.stdout).toContain(`would delete ${commandPath()}\nwould update ${settingsPath()} (removed the Stop hook)\n`);
     expect(await snapshot(claude)).toEqual(installed);
   });
 

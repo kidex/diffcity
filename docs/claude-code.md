@@ -35,7 +35,7 @@ The hook never blocks the agent: on any failure it prints one line on stderr and
 ## settings.json
 
 - The file is parsed as JSON. A file that is not JSON, is not an object, or has a `hooks` that is not an object or a `hooks.Stop` that is not an array is refused, never rewritten. A missing or blank file counts as `{}`.
-- `{ "matcher": "", "hooks": [{ "type": "command", "command": "<hook command>" }] }` is appended to `hooks.Stop`, unless a hook with the identical command is already there. Every other key and hook is kept; the file is written back as two-space JSON.
+- `{ "matcher": "", "hooks": [{ "type": "command", "command": "<hook command>" }] }` is appended to `hooks.Stop`, unless a hook with the identical command is already there. When diffcity's command file records another invocation (setup ran before from another install), the hook of that invocation is removed first and setup prints `replaced the Stop hook`. Every other key and hook is kept; the file is written back as two-space JSON.
 - The new file is written to a temporary file in the same directory and renamed into place, keeping the file's mode. A `settings.json` that is a symbolic link is written at its target, so the link stays.
 
 ## The command file
