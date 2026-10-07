@@ -215,10 +215,10 @@ describe('fixQueueItem', () => {
 });
 
 describe('fixQueueRoot', () => {
-  it('the working tree of the change; the repo for a branch that is not checked out; none for a PR that is not', () => {
-    expect(fixQueueRoot({ kind: 'draft', worktreePath: '/work/shopfront-wt' }, '/work/shopfront')).toBe('/work/shopfront-wt');
-    expect(fixQueueRoot({ kind: 'pr', worktreePath: '/work/shopfront-wt' }, '/work/shopfront')).toBe('/work/shopfront-wt');
-    expect(fixQueueRoot({ kind: 'branch', worktreePath: null }, '/work/shopfront')).toBe('/work/shopfront');
-    expect(fixQueueRoot({ kind: 'pr', worktreePath: null }, '/work/shopfront')).toBeNull();
+  it('the working tree at the change head; none when no working tree has it checked out, whatever the kind', () => {
+    expect(fixQueueRoot({ worktreePath: '/work/shopfront-wt' })).toBe('/work/shopfront-wt');
+    // worktreePath is null only when no working tree is at the change head: the repo
+    // path would be another commit, so a branch, a PR or a draft without one cannot queue.
+    expect(fixQueueRoot({ worktreePath: null })).toBeNull();
   });
 });

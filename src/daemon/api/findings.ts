@@ -144,10 +144,8 @@ export function registerFindingsRoutes(http: FastifyInstance, deps: FindingsDeps
     notArchived(change);
     const { report } = latestOf(change);
     const resolved = findingOf(change, report, key);
-    const repo = db.repos.get(change.repoId);
-    if (repo === null) throw new HttpError(404, 'not-found', `repo ${String(change.repoId)} not found`);
     const item = fixQueueItem(report, resolved.finding, deps.now().toISOString());
-    const result = appendToFixQueue(fixQueueRoot(change, repo.path), item);
+    const result = appendToFixQueue(fixQueueRoot(change), item);
     if (!result.ok) throw new HttpError(409, result.code, result.message);
     signal(change, ['findings']);
     const answer: FixAnswer = { key: item.key, queued: result.queued, count: result.count };
