@@ -9,7 +9,7 @@
 
 import { randomBytes } from 'node:crypto';
 import { constants } from 'node:fs';
-import { copyFile, lstat, mkdir, readFile, realpath, rename, rm, stat, unlink, writeFile } from 'node:fs/promises';
+import { copyFile, lstat, mkdir, readFile, readdir, realpath, rename, rm, rmdir, stat, unlink, writeFile } from 'node:fs/promises';
 import { basename, dirname, join } from 'node:path';
 import {
   COMMAND_FILE_NAME,
@@ -58,7 +58,8 @@ export type FileAction = 'create' | 'update' | 'unchanged' | 'delete' | 'absent'
 
 export interface PlannedFile {
   path: string;
-  kind: 'command' | 'settings';
+  /** `directory`: the `commands/` directory, removed by `--remove` when it is left empty. */
+  kind: 'command' | 'settings' | 'directory';
   action: FileAction;
   /** The new content, for `create` and `update`. */
   text?: string;
@@ -175,7 +176,11 @@ export async function planInstall(target: ClaudeTarget, cli: string): Promise<Pl
  * What setup would change to remove what diffcity wrote: the command file when
  * it carries the marker, a leftover `commands/code-review.md` when it carries
  * the old marker, and every Stop hook whose command is the one of `cli` or the
- * one recorded in either command file.
+ * one recorded in either command file. Removing writes no backup. When the
+ * settings are `{}` after that and there is no backup (setup backs up a
+ * settings.json that existed, so diffcity created this one), settings.json is
+ * deleted. The `commands/` directory is removed when nothing is left in it:
+ * whether diffcity created it cannot be told, and an empty one holds nothing.
  */
 export async function planRemove(target: ClaudeTarget, cli: string): Promise<PlanResult> {
   const read = await readBoth(target);
@@ -208,9 +213,29 @@ export async function planRemove(target: ClaudeTarget, cli: string): Promise<Pla
   if (!edit.ok) return { ok: false, reason: `${target.settingsFile} ${edit.reason}; fix it or move it away, nothing was written` };
   if (read.settings === null) files.push({ path: target.settingsFile, kind: 'settings', action: 'absent' });
   else if (!edit.changed) files.push({ path: target.settingsFile, kind: 'settings', action: 'unchanged' });
-  else files.push({ path: target.settingsFile, kind: 'settings', action: 'update', text: edit.text, hook: 'removed' });
+  else if (isEmptyObject(edit.text) && !(await exists(target.backupFile))) {
+    files.push({ path: target.settingsFile, kind: 'settings', action: 'delete', hook: 'removed' });
+  } else files.push({ path: target.settingsFile, kind: 'settings', action: 'update', text: edit.text, hook: 'removed' });
 
-  return { ok: true, plan: { target, hookCommand: command, files, backup: edit.changed ? await backupFor(target, true) : null } };
+  const commandsDir = dirname(target.commandFile);
+  const deleted = new Set(files.filter((file) => file.kind === 'command' && file.action === 'delete').map((file) => basename(file.path)));
+  if (deleted.size > 0 && (await leftIn(commandsDir, deleted)) === 0) files.push({ path: commandsDir, kind: 'directory', action: 'delete' });
+
+  return { ok: true, plan: { target, hookCommand: command, files, backup: null } };
+}
+
+function isEmptyObject(text: string): boolean {
+  const value: unknown = JSON.parse(text);
+  return typeof value === 'object' && value !== null && !Array.isArray(value) && Object.keys(value).length === 0;
+}
+
+/** How many entries of `dir` are not in `deleted`; -1 when it cannot be listed. */
+async function leftIn(dir: string, deleted: ReadonlySet<string>): Promise<number> {
+  try {
+    return (await readdir(dir)).filter((name) => !deleted.has(name)).length;
+  } catch {
+    return -1;
+  }
 }
 
 /** The path to write: the target of an existing symbolic link, the path itself otherwise. */
@@ -256,6 +281,14 @@ export async function applyPlan(plan: SetupPlan): Promise<void> {
   }
   for (const file of plan.files) {
     if ((file.action === 'create' || file.action === 'update') && file.text !== undefined) await writeFileAtomic(file.path, file.text);
-    else if (file.action === 'delete') await unlink(file.path);
+    else if (file.action === 'delete' && file.kind === 'directory') {
+      try {
+        // rmdir removes only an empty directory: a file put there meanwhile keeps it.
+        await rmdir(file.path);
+      } catch (error) {
+        const code = (error as NodeJS.ErrnoException).code;
+        if (code !== 'ENOTEMPTY' && code !== 'EEXIST' && code !== 'ENOENT') throw error;
+      }
+    } else if (file.action === 'delete') await unlink(file.path);
   }
 }

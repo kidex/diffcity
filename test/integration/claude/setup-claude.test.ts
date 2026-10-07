@@ -3,7 +3,7 @@
 // os.tmpdir(), never at the real ~/.claude.
 
 import { execFile, spawn } from 'node:child_process';
-import { mkdir, readFile, readdir, readlink, realpath, rm, stat, symlink, writeFile } from 'node:fs/promises';
+import { lstat, mkdir, readFile, readdir, readlink, realpath, rm, stat, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, relative, sep } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -270,6 +270,7 @@ describe('setup-claude --remove', () => {
       stdout: [
         `deleted ${commandPath()}`,
         `updated ${settingsPath()} (removed the Stop hook)`,
+        `removed ${join(claude, 'commands')} (empty)`,
         `hook command: ${ABSOLUTE()} track --agent`,
         `checked against Claude Code ${CLAUDE_CODE_CHECKED_VERSION}`,
         '',
@@ -277,6 +278,8 @@ describe('setup-claude --remove', () => {
     });
     expect(await readOptional(commandPath())).toBeNull();
     expect(JSON.parse(await readFile(settingsPath(), 'utf8'))).toEqual(existingSettings);
+    // The backup is the one install wrote; removing writes none.
+    expect(Object.keys(await snapshot(claude)).sort()).toEqual(['settings.json', 'settings.json.diffcity-backup']);
   });
 
   it('setup/remove-only-ours (foreign): a foreign command file and foreign hooks are kept; exit 0', async () => {
@@ -293,9 +296,44 @@ describe('setup-claude --remove', () => {
     expect(await snapshot(claude)).toEqual(before);
   });
 
-  it('setup/remove-only-ours (emptied containers): a settings.json diffcity created goes back to {}', async () => {
+  it('setup/remove-deletes-what-it-created: a settings.json diffcity created, left {}, and an emptied commands/ are removed', async () => {
     expect((await setup()).code).toBe(0);
-    expect((await setup({ remove: true })).code).toBe(0);
+    const result = await setup({ remove: true });
+    expect(result).toEqual({
+      code: 0,
+      stderr: '',
+      stdout: [
+        `deleted ${commandPath()}`,
+        `deleted ${settingsPath()} (removed the Stop hook)`,
+        `removed ${join(claude, 'commands')} (empty)`,
+        `hook command: ${ABSOLUTE()} track --agent`,
+        `checked against Claude Code ${CLAUDE_CODE_CHECKED_VERSION}`,
+        '',
+      ].join('\n'),
+    });
+    expect(await readdir(claude)).toEqual([]);
+  });
+
+  it('setup/remove-writes-no-backup: removing never writes settings.json.diffcity-backup; keys added after install stay', async () => {
+    expect((await setup()).code).toBe(0);
+    const installed = JSON.parse(await readFile(settingsPath(), 'utf8')) as Record<string, unknown>;
+    await writeFile(settingsPath(), JSON.stringify({ model: 'sample-model', ...installed }));
+    const dry = await setup({ remove: true, dryRun: true });
+    expect(dry.stdout).not.toContain('back up');
+    const result = await setup({ remove: true });
+    expect(result.stdout).not.toContain('backed up');
+    expect(result.stdout).toContain(`updated ${settingsPath()} (removed the Stop hook)\n`);
+    expect(JSON.parse(await readFile(settingsPath(), 'utf8'))).toEqual({ model: 'sample-model' });
+    expect(await readOptional(backupPath())).toBeNull();
+  });
+
+  it('setup/remove-keeps-used-dirs: a commands/ with another command stays, and a {} settings.json with a backup stays', async () => {
+    await writeFile(join(await mkdirp(claude), 'settings.json'), '{}\n');
+    expect((await setup()).code).toBe(0);
+    await writeFile(join(claude, 'commands', 'sample-other.md'), '---\ndescription: another command\n---\nDo it.\n');
+    const result = await setup({ remove: true });
+    expect(result.stdout).not.toContain('(empty)');
+    expect(Object.keys(await snapshot(claude)).sort()).toEqual(['commands/sample-other.md', 'settings.json', 'settings.json.diffcity-backup']);
     expect(JSON.parse(await readFile(settingsPath(), 'utf8'))).toEqual({});
   });
 
@@ -307,7 +345,8 @@ describe('setup-claude --remove', () => {
     const result = await setup({ remove: true }, { env: { ...temp.env, [CLAUDE_CONFIG_DIR_ENV]: claude, PATH: bin } });
     expect(result.code).toBe(0);
     expect(result.stdout).toContain('hook command: diffcity track --agent\n');
-    expect(JSON.parse(await readFile(settingsPath(), 'utf8'))).toEqual({});
+    // diffcity created settings.json and it is {} again: it is gone.
+    expect(await readOptional(settingsPath())).toBeNull();
     expect(await readOptional(commandPath())).toBeNull();
   });
 
@@ -317,16 +356,19 @@ describe('setup-claude --remove', () => {
     const legacy = `---\ndescription: Review the current change with diffcity\nallowed-tools: Bash(${oldCli} diff:*), Bash(${oldCli} import:*), Read\n---\n${LEGACY_COMMAND_MARKER}\nRun \`${oldCli} diff --json --compact\`.\n`;
     await mkdirp(join(claude, 'commands'));
     await writeFile(legacyPath, legacy);
-    await writeFile(settingsPath(), JSON.stringify({ hooks: { Stop: [{ matcher: '', hooks: [{ type: 'command', command: `${oldCli} track --agent` }] }] } }));
+    await writeFile(settingsPath(), JSON.stringify({ model: 'sample-model', hooks: { Stop: [{ matcher: '', hooks: [{ type: 'command', command: `${oldCli} track --agent` }] }] } }));
     const result = await setup({ remove: true });
     expect(result.code).toBe(0);
     expect(result.stdout).toContain(`deleted ${legacyPath}\n`);
     expect(await readOptional(legacyPath)).toBeNull();
     // The hook recorded in the old file goes with it.
-    expect(JSON.parse(await readFile(settingsPath(), 'utf8'))).toEqual({});
+    expect(JSON.parse(await readFile(settingsPath(), 'utf8'))).toEqual({ model: 'sample-model' });
 
     // A code-review.md of the user's own, even one naming diffcity, is never deleted nor mentioned.
+    // The emptied commands/ went with it.
+    expect(result.stdout).toContain(`removed ${join(claude, 'commands')} (empty)\n`);
     const foreign = '---\ndescription: my own review, run diffcity diff first\n---\nReview the change.\n';
+    await mkdirp(join(claude, 'commands'));
     await writeFile(legacyPath, foreign);
     const again = await setup({ remove: true });
     expect(again.code).toBe(0);
@@ -346,6 +388,14 @@ describe('setup-claude --remove', () => {
     await writeFile(legacyPath, legacy);
     expect((await setup()).code).toBe(0);
     expect(await readFile(legacyPath, 'utf8')).toBe(legacy);
+  });
+
+  it('setup/dangling-settings-link: a settings.json that is a dangling link is replaced by a regular file', async () => {
+    await mkdirp(claude);
+    await symlink(join(temp.root, 'missing-settings.json'), settingsPath());
+    expect((await setup()).code).toBe(0);
+    expect((await lstat(settingsPath())).isSymbolicLink()).toBe(false);
+    expect(JSON.parse(await readFile(settingsPath(), 'utf8'))).toEqual({ hooks: { Stop: [{ matcher: '', hooks: [{ type: 'command', command: `${ABSOLUTE()} track --agent` }] }] } });
   });
 
   it('nothing installed: both files absent, exit 0, nothing created', async () => {

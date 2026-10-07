@@ -56,7 +56,8 @@ function describe(file: PlannedFile, dryRun: boolean, remove: boolean): string {
     case 'update':
       return `${dryRun ? 'would update' : 'updated'} ${file.path}${hook}`;
     case 'delete':
-      return `${dryRun ? 'would delete' : 'deleted'} ${file.path}`;
+      if (file.kind === 'directory') return `${dryRun ? 'would remove' : 'removed'} ${file.path} (empty)`;
+      return `${dryRun ? 'would delete' : 'deleted'} ${file.path}${hook}`;
     case 'unchanged':
       if (file.kind === 'command') return `unchanged ${file.path}`;
       return `unchanged ${file.path} (${remove ? 'no diffcity Stop hook' : 'the Stop hook is already there'})`;

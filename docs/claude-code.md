@@ -19,7 +19,7 @@ diffcity setup-claude --remove        # remove only what diffcity wrote
 
 `<config>` is `$CLAUDE_CONFIG_DIR` when it is set (it must be an absolute path), `~/.claude` otherwise, or `<repo>/.claude` with `--repo`. setup writes nothing else, and no diffcity settings.
 
-The command prints each file it wrote (or would write), the hook command it chose and the Claude Code version the files were checked against. It exits 0 on success and 1 on a refusal, with the reason on stderr; a refusal writes neither file.
+The command prints each file it wrote (or would write), the hook command it chose and the Claude Code version the files were checked against. It exits 0 on success and 1 on a refusal, with the reason on stderr; a refusal writes neither file. A write that fails half way, for example on a read-only directory, can leave one file written and not the other; running setup again once the directory is writable completes it.
 
 ## The hook command
 
@@ -36,7 +36,7 @@ The hook never blocks the agent: on any failure it prints one line on stderr and
 
 - The file is parsed as JSON. A file that is not JSON, is not an object, or has a `hooks` that is not an object or a `hooks.Stop` that is not an array is refused, never rewritten. A missing or blank file counts as `{}`.
 - `{ "matcher": "", "hooks": [{ "type": "command", "command": "<hook command>" }] }` is appended to `hooks.Stop`, unless a hook with the identical command is already there. When diffcity's command file records another invocation (setup ran before from another install), the hook of that invocation is removed first and setup prints `replaced the Stop hook`. Every other key and hook is kept; the file is written back as two-space JSON.
-- The new file is written to a temporary file in the same directory and renamed into place, keeping the file's mode. A `settings.json` that is a symbolic link is written at its target, so the link stays.
+- The new file is written to a temporary file in the same directory and renamed into place, keeping the file's mode. A `settings.json` that is a symbolic link is written at its target, so the link stays. A dangling link (its target does not exist) is replaced by a regular file.
 
 ## The command file
 
@@ -57,7 +57,7 @@ The command:
 
 ## --remove
 
-`--remove` deletes the command file when it carries the marker, and a leftover `commands/code-review.md` (the command's first name) only when it carries the old marker `<!-- diffcity: code-review v1 -->`; any other `code-review.md` is never touched. It removes every Stop hook whose command is the current hook command or the one recorded in one of those command files. A Stop entry, `hooks.Stop` or `hooks` left empty by that is removed too; every other key and hook stays. The backup is written first if it does not exist yet.
+`--remove` deletes the command file when it carries the marker, and a leftover `commands/code-review.md` (the command's first name) only when it carries the old marker `<!-- diffcity: code-review v1 -->`; any other `code-review.md` is never touched. It removes every Stop hook whose command is the current hook command or the one recorded in one of those command files. A Stop entry, `hooks.Stop` or `hooks` left empty by that is removed too; every other key and hook stays. `--remove` writes no backup. When `settings.json` is `{}` after that and there is no `settings.json.diffcity-backup`, diffcity created the file (setup backs up a `settings.json` that existed before it), so it is deleted. The `commands/` directory is removed when nothing is left in it; whether diffcity created it cannot be told, so an empty one is always removed.
 
 ## Claude Code version
 
