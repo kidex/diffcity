@@ -1,7 +1,10 @@
 // e2e/change/dispose-on-unmount: leaving the change releases the city. After
 // ten round trips between the repo and the change no view is alive, each
 // view gave back the same GPU resources before closing its context, and the
-// JS heap is back where it was after the first trip.
+// JS heap is back where it was after the first trip. No closed view stays
+// reachable either: the number of WebGL contexts left in the heap does not
+// grow with the trips (three's shared lookup texture used to keep every
+// disposed renderer, and the screen around its canvas, alive: DC-101).
 
 import { test } from '@playwright/test';
 import { fixtures, mockApi } from '../../support/mock-api.js';
@@ -22,6 +25,20 @@ test('change/dispose-on-unmount', async ({ page }) => {
     await cdp.send('HeapProfiler.collectGarbage');
     return (await cdp.send('Runtime.getHeapUsage')).usedSize;
   };
+  // WebGL contexts still reachable after a full collection: one per view that something keeps alive.
+  const contexts = async (): Promise<number> => {
+    await cdp.send('HeapProfiler.collectGarbage');
+    const proto = await cdp.send('Runtime.evaluate', { expression: 'WebGL2RenderingContext.prototype' });
+    const found = await cdp.send('Runtime.queryObjects', { prototypeObjectId: proto.result.objectId ?? '' });
+    const count = await cdp.send('Runtime.callFunctionOn', {
+      objectId: found.objects.objectId ?? '',
+      functionDeclaration: 'function () { return this.length; }',
+      returnByValue: true,
+    });
+    await cdp.send('Runtime.releaseObject', { objectId: found.objects.objectId ?? '' });
+    await cdp.send('Runtime.releaseObject', { objectId: proto.result.objectId ?? '' });
+    return count.result.value as number;
+  };
   const toRepo = async (): Promise<void> => {
     await page.evaluate(`location.hash = '#/repo/1'`);
     await expect(page.getByTestId('change-row').first()).toBeVisible();
@@ -38,6 +55,7 @@ test('change/dispose-on-unmount', async ({ page }) => {
   const first = await disposal(page);
   expect(first.live).toBe(0);
   const baseline = await heap();
+  const firstContexts = await contexts();
 
   for (let i = 0; i < ROUND_TRIPS; i += 1) {
     await toChange();
@@ -51,6 +69,7 @@ test('change/dispose-on-unmount', async ({ page }) => {
   }
   expect(first.lastGeometries).toBe(0);
   expect(first.lastTextures).toBeLessThanOrEqual(1);
+  expect(await contexts()).toBe(firstContexts);
   const end = await heap();
   expect(end - baseline).toBeLessThan(3 * 1024 * 1024);
 });
