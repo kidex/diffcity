@@ -1,0 +1,96 @@
+// The `/code-review` slash command file, `commands/code-review.md` (SPEC.md
+// section 7.1, ADR-037). Claude Code wants the YAML frontmatter at the top of
+// the file, so the version marker is the line right after the frontmatter's
+// closing `---`: a file is diffcity's when that line is exactly the marker.
+// setup-claude overwrites or removes only such a file.
+//
+// `<cli>` in the text is the invocation of the Stop hook command, so the
+// `Bash(<cli> diff:*)` and `Bash(<cli> import:*)` entries of `allowed-tools`
+// are prefixes of the exact commands the body asks for. The fix-queue steps
+// are allowed one exact command each.
+
+/** The version marker; v1 is the only version so far. */
+export const COMMAND_MARKER = '<!-- diffcity: code-review v1 -->';
+
+/** The file name under `commands/`; Claude Code names the command after it. */
+export const COMMAND_FILE_NAME = 'code-review.md';
+
+/** The fix queue, and the name the command renames it to before applying it (ADR-036, ADR-037). */
+export const FIX_QUEUE_PATH = '.diffcity/fix-queue.json';
+export const FIX_QUEUE_TAKING_PATH = '.diffcity/fix-queue.taking.json';
+export const FINDINGS_PATH = '.diffcity/findings.json';
+
+/** The commands the body runs, for an invocation `cli`. */
+export function slashCommands(cli: string): { diff: string; import: string; take: string; drop: string } {
+  return {
+    diff: `${cli} diff --json --compact`,
+    import: `${cli} import ${FINDINGS_PATH} --open`,
+    take: `mv ${FIX_QUEUE_PATH} ${FIX_QUEUE_TAKING_PATH}`,
+    drop: `rm ${FIX_QUEUE_TAKING_PATH}`,
+  };
+}
+
+/** The `allowed-tools` value: exactly what the body needs, nothing more. */
+export function allowedTools(cli: string): string {
+  const { take, drop } = slashCommands(cli);
+  return [`Bash(${cli} diff:*)`, `Bash(${cli} import:*)`, `Bash(${take})`, `Bash(${drop})`, 'Read', `Write(${FINDINGS_PATH})`].join(', ');
+}
+
+/** The full file for an invocation `cli`. */
+export function commandFileText(cli: string): string {
+  const run = slashCommands(cli);
+  return [
+    '---',
+    'description: Review the current change with diffcity and put the findings on the city',
+    'argument-hint: [what the task was]',
+    `allowed-tools: ${allowedTools(cli)}`,
+    '---',
+    COMMAND_MARKER,
+    'First take the fixes queued from diffcity. If `.diffcity/fix-queue.taking.json` exists, an earlier run',
+    'stopped halfway: apply it and delete it as below before anything else.',
+    `Run \`${run.take}\`; when \`${FIX_QUEUE_PATH}\` does not exist, nothing is queued.`,
+    `Otherwise read \`${FIX_QUEUE_TAKING_PATH}\` (\`{ "version": 1, "items": [...] }\`) and apply every item:`,
+    'an item with `file`, `line`, `title`, `message` and `fix` is a finding to fix; an item with',
+    '`kind: "review-summary"` is the reviewer\'s summary, in `message`.',
+    `Then run \`${run.drop}\`.`,
+    '',
+    `Run \`${run.diff}\` and read the result: it is the semantic diff of the current change`,
+    '(touched files and symbols, changed signatures with call sites, the execution path, tier 1 zones).',
+    'Review this change with a focus on: security (auth/authz, input validation, secrets),',
+    'correctness (unhandled errors, edge cases, money arithmetic), scope creep relative to $ARGUMENTS,',
+    'tests that actually assert something, architecture violations.',
+    `Write the findings to \`${FINDINGS_PATH}\` as a JSON array, one object per finding, with`,
+    '`source: "claude"`, `file`, `line`, `severity` (`high`, `med` or `low`), `category` (`security`,',
+    '`correctness`, `scope`, `style`, `tests` or `architecture`), `title` (one line), `message` (what is',
+    'wrong and when it breaks) and `fix` (the change to make). `file` is the repo-relative path of a file',
+    'in the diff and `line` a line of its current version: never invent a file or a line.',
+    'Set `why`, a one-line hint on why the code is there, only on a `scope` finding.',
+    'Write `[]` when you find nothing.',
+    `Then run \`${run.import}\`.`,
+    '',
+  ].join('\n');
+}
+
+/**
+ * True when `text` is a command file diffcity wrote: a frontmatter opened by
+ * `---` on the first line, closed by the next `---` line, and the marker on
+ * the line right after it.
+ */
+export function isDiffcityCommandFile(text: string): boolean {
+  const lines = text.split(/\r?\n/);
+  if (lines[0] !== '---') return false;
+  const close = lines.indexOf('---', 1);
+  return close > 0 && lines[close + 1] === COMMAND_MARKER;
+}
+
+/**
+ * The invocation recorded in a diffcity command file (from its
+ * `Bash(<cli> diff:*)` entry), or null. `--remove` uses it to find the hook
+ * an earlier setup wrote with another invocation.
+ */
+export function recordedCli(text: string): string | null {
+  if (!isDiffcityCommandFile(text)) return null;
+  const line = text.split(/\r?\n/).find((candidate) => candidate.startsWith('allowed-tools: '));
+  const match = line === undefined ? null : /^allowed-tools: Bash\((.+?) diff:\*\),/.exec(line);
+  return match?.[1] ?? null;
+}
