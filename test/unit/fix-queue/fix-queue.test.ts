@@ -11,6 +11,7 @@ import {
   FIX_QUEUE_MAX_BYTES,
   FIX_QUEUE_MAX_ITEMS,
   fixQueueItem,
+  fixQueueRoot,
   type FindingQueueItem,
   type FixQueueItem,
 } from '../../../src/core/fix-queue/index.js';
@@ -210,5 +211,14 @@ describe('fixQueueItem', () => {
       message: 'When order is undefined the guard returns true.',
       queuedAt: AT,
     });
+  });
+});
+
+describe('fixQueueRoot', () => {
+  it('the working tree of the change; the repo for a branch that is not checked out; none for a PR that is not', () => {
+    expect(fixQueueRoot({ kind: 'draft', worktreePath: '/work/shopfront-wt' }, '/work/shopfront')).toBe('/work/shopfront-wt');
+    expect(fixQueueRoot({ kind: 'pr', worktreePath: '/work/shopfront-wt' }, '/work/shopfront')).toBe('/work/shopfront-wt');
+    expect(fixQueueRoot({ kind: 'branch', worktreePath: null }, '/work/shopfront')).toBe('/work/shopfront');
+    expect(fixQueueRoot({ kind: 'pr', worktreePath: null }, '/work/shopfront')).toBeNull();
   });
 });
