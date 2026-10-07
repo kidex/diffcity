@@ -1,6 +1,7 @@
-// The Report as the daemon serves it (ADR-036), and the finding a findings
-// action names. Pure: the daemon reads the stored Report, the stored findings
-// and the rule states, and caches the result per snapshot and findings version.
+// The Report as the daemon serves it (ADR-036), its verdict counts for the
+// change list (DC-106), and the finding a findings action names. Pure: the
+// daemon reads the stored Report, the stored findings and the rule states, and
+// caches the result per snapshot and findings version.
 
 import {
   dedup,
@@ -11,7 +12,9 @@ import {
   type FindingState,
   type StoredFinding,
 } from '../findings/index.js';
-import type { Finding, Report } from '../report/types.js';
+import type { ChangeStats, RepoSummary } from '../model/types.js';
+import { applyWhyOverrides } from '../path/why.js';
+import type { Finding, Report, Verdict } from '../report/types.js';
 
 export interface ServedFindings {
   /** The imported findings of the change, in import order (FindingsStore.list). */
@@ -20,17 +23,102 @@ export interface ServedFindings {
   ruleStates: Readonly<Record<string, FindingState>>;
 }
 
+/** Whether the served Report differs from the stored one: any imported finding or rule state. */
+export function hasOverlay(findings: ServedFindings): boolean {
+  return findings.stored.length > 0 || Object.keys(findings.ruleStates).length > 0;
+}
+
 /**
- * The served Report as JSON text. With no imported finding and no rule state
- * it is `reportJson` itself, unparsed; otherwise the stored Report with the
- * overlay applied (findings, `file.verdict`, `summary.byVerdict`).
+ * The `why` hints of imported findings by symbol id (SPEC.md 5.4 point 5,
+ * DC-97): each stored finding with a hint that is `open` or `intended`,
+ * re-anchored on `report`, hints the step of its symbol. An intended finding
+ * still explains its step (the reviewer accepted the code); a fixed one no
+ * longer describes the code, so it hints none. The first in import order wins
+ * on a symbol; a finding with no symbol, or whose file left the change, hints none.
  */
+export function whyOverrides(report: Report, stored: readonly StoredFinding[]): Map<string, string> {
+  const overrides = new Map<string, string>();
+  for (const entry of stored) {
+    if (entry.why === undefined || entry.finding.state === 'fixed') continue;
+    const symbolId = reanchor(entry, report)?.symbolId;
+    if (symbolId !== undefined && !overrides.has(symbolId)) overrides.set(symbolId, entry.why);
+  }
+  return overrides;
+}
+
+/**
+ * The overlaid Report, or null when the stored Report is served as it is.
+ * `withWhy: false` leaves the steps as stored: the counts do not read them.
+ */
+function overlaid(reportJson: string, findings: ServedFindings, options: { withWhy: boolean } = { withWhy: true }): Report | null {
+  if (!hasOverlay(findings)) return null;
+  const report = JSON.parse(reportJson) as Report;
+  const served = overlay(report, findings.stored, findings.ruleStates);
+  if (!options.withWhy) return served;
+  const overrides = whyOverrides(report, findings.stored);
+  return overrides.size === 0 ? served : { ...served, steps: applyWhyOverrides(served.steps, overrides) };
+}
+
+/** The counts of a served Report that the change and repo summaries list (DC-106). */
+export interface ServedCounts {
+  /** `summary.byVerdict`. */
+  byVerdict: Record<Verdict, number>;
+  /** Findings with state `open` and severity `high`: rule and imported, merged, on files in the change. */
+  openHigh: number;
+}
+
+/** The counts of a served Report. */
+export function reportCounts(report: Pick<Report, 'findings' | 'summary'>): ServedCounts {
+  const openHigh = report.findings.filter((finding) => finding.state === 'open' && finding.severity === 'high').length;
+  return { byVerdict: { ...report.summary.byVerdict }, openHigh };
+}
+
+/** The served Report as text, and the counts it carries. */
+export interface ServedOverlay {
+  body: string;
+  /** Its counts; null when `body` is the stored string (the stored counts stand). */
+  counts: ServedCounts | null;
+}
+
+/**
+ * The served Report and its counts in one overlay: with no imported finding
+ * and no rule state, `reportJson` itself, unparsed; otherwise the stored
+ * Report with the overlay applied (findings, `file.verdict`, `summary.byVerdict`,
+ * and the `why` of the steps hinted by imported findings).
+ */
+export function serveOverlay(reportJson: string, findings: ServedFindings): ServedOverlay {
+  const served = overlaid(reportJson, findings);
+  return served === null ? { body: reportJson, counts: null } : { body: JSON.stringify(served), counts: reportCounts(served) };
+}
+
+/** The served Report as JSON text (`serveOverlay(...).body`). */
 export function serveReport(reportJson: string, findings: ServedFindings): string {
-  if (findings.stored.length === 0 && Object.keys(findings.ruleStates).length === 0) return reportJson;
-  const served = overlay(JSON.parse(reportJson) as Report, findings.stored, findings.ruleStates);
-  // The why overrides of imported findings (DC-97, `applyWhyOverrides` in
-  // src/core/path/) are applied here, to `served`, once they are on main.
-  return JSON.stringify(served);
+  return serveOverlay(reportJson, findings).body;
+}
+
+/**
+ * The served Report's counts without serialising it (the change and repo
+ * summaries, DC-106); null when there is nothing to overlay, so the stored
+ * counts stand and `reportJson` is not parsed.
+ */
+export function servedCounts(reportJson: string, findings: ServedFindings): ServedCounts | null {
+  // The why hints change only the steps, which the counts never read.
+  const served = overlaid(reportJson, findings, { withWhy: false });
+  return served === null ? null : reportCounts(served);
+}
+
+/** `stats` as listed for a served Report with counts `byVerdict` (DC-106): only `filesByVerdict` moves. */
+export function servedStats(stats: ChangeStats, byVerdict: Readonly<Record<Verdict, number>>): ChangeStats {
+  return { ...stats, filesByVerdict: { ...byVerdict } };
+}
+
+/**
+ * `summary` with `highFindings` as the served Reports of its live changes
+ * count them (DC-106): the stored part (the store's count for changes with no
+ * imported finding and no rule state) plus `openHigh` of each overlaid change.
+ */
+export function servedRepoSummary(summary: RepoSummary, overlaidCounts: readonly ServedCounts[]): RepoSummary {
+  return { ...summary, highFindings: overlaidCounts.reduce((total, counts) => total + counts.openHigh, summary.highFindings) };
 }
 
 /** A part of a served finding: one stored imported finding and its state. */

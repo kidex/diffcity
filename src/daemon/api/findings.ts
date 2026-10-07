@@ -103,10 +103,10 @@ export function registerFindingsRoutes(http: FastifyInstance, deps: FindingsDeps
     return resolved;
   };
 
-  const signal = (change: ChangeRecord, events: readonly ('findings' | 'review' | 'changes')[]): void => {
+  const signal = (change: ChangeRecord, events: readonly ('findings' | 'review' | 'changes' | 'repo')[]): void => {
     for (const event of events) {
       deps.broadcast(
-        event === 'changes'
+        event === 'changes' || event === 'repo'
           ? { event, data: { repoId: change.repoId } }
           : { event, data: { repoId: change.repoId, changeId: change.id } },
       );
@@ -134,7 +134,8 @@ export function registerFindingsRoutes(http: FastifyInstance, deps: FindingsDeps
       recordReviewActivity(db, change, at);
       return written;
     });
-    signal(change, ['findings', 'changes']);
+    // The Report, the listed counts and the repo's highFindings (Fleet) moved (DC-106).
+    signal(change, ['findings', 'changes', 'repo']);
     return { key, state, keys };
   });
 

@@ -22,7 +22,7 @@ interface FindingInput {
 }
 ```
 
-`why` is a one-line reading hint for the execution path (for example "new route, called without an order"); it is optional and not part of the finding itself. Newlines and runs of whitespace in it are collapsed to single spaces. `category: 'architecture'` is for findings about layering and structure.
+`why` is a one-line reading hint for the execution path (for example "new route, called without an order"); it is optional and not part of the finding itself. Newlines and runs of whitespace in it are collapsed to single spaces. While the finding is `open` or `intended`, its hint replaces the `why` of the step of the symbol it is anchored to (after re-anchoring on the latest snapshot) in the Report diffcity serves; the stored Report is not changed. An `intended` finding keeps its hint because the reviewer accepted the code and the hint still explains the step; a `fixed` finding does not, because the code it described has changed. When several such findings with a hint are on one symbol, the first in import order wins. A `fixed` finding, or one with no symbol, changes no step. `category: 'architecture'` is for findings about layering and structure.
 
 Example, as written by the `/diffcity-review` slash command to `.diffcity/findings.json`:
 

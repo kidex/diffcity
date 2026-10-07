@@ -131,8 +131,13 @@ function compareSummaries(a: RepoSummary, b: RepoSummary): number {
 
 // Live = archivedAt IS NULL. The repo's last event covers repo-level events and
 // those of live changes, plus each live change's lastEventAt (a commit time is
-// not always an event row). High findings count open `high` findings on the
-// head of each live change's latest snapshot; the table is empty until phase 4.
+// not always an event row). `highFindings` here is the stored part only: 0,
+// since a stored snapshot summary carries no count of its rule findings (no
+// rule computes findings before T12). The open high findings of a change with
+// imported findings or rule states are counted on its served Report and added
+// by the daemon (servedRepoSummary, DC-106); counting findings rows here would
+// miss re-anchored findings, count merged duplicates twice and keep findings
+// whose file left the change.
 const SUMMARY_SELECT = `
 SELECT r.*,
   (SELECT count(*) FROM changes c WHERE c.repoId = r.id AND c.archivedAt IS NULL AND c.kind = 'draft') AS drafts,
@@ -140,11 +145,7 @@ SELECT r.*,
   (SELECT count(*) FROM changes c WHERE c.repoId = r.id AND c.archivedAt IS NULL AND c.kind = 'pr') AS prs,
   (SELECT count(*) FROM changes c
      WHERE c.repoId = r.id AND c.archivedAt IS NULL AND c.reviewState = 'unreviewed') AS unreviewed,
-  (SELECT count(*) FROM findings f JOIN changes c ON c.id = f.changeId
-     WHERE c.repoId = r.id AND c.archivedAt IS NULL AND f.state = 'open'
-       AND json_extract(f.finding, '$.severity') = 'high'
-       AND f.head = (SELECT s.head FROM snapshots s WHERE s.changeId = c.id
-                     ORDER BY s.computedAt DESC, s.id DESC LIMIT 1)) AS highFindings,
+  0 AS highFindings,
   (SELECT count(*) FROM changes c WHERE c.repoId = r.id AND c.archivedAt IS NOT NULL) AS archivedCount,
   (SELECT max(e.at) FROM events e LEFT JOIN changes c ON c.id = e.changeId
      WHERE e.repoId = r.id AND (e.changeId IS NULL OR c.archivedAt IS NULL)) AS lastRepoEventAt,
