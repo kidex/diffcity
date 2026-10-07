@@ -14,9 +14,9 @@ import { selected, selectedFloor, waitReady } from '../support/scene.js';
 
 const symbolName = (step: Step): string => step.symbolId.slice(step.symbolId.indexOf('#') + 1);
 
+/** Brings a card into view in the panel's list. */
 async function showCard(card: Locator): Promise<void> {
   await card.scrollIntoViewIfNeeded();
-  await card.evaluate('(node) => node.scrollIntoView({ block: "start" })');
 }
 
 test('DC-97: the reading panel walks the real execution path of a golden change', async ({ page, proof }) => {
