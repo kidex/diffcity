@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { anchor, dedup, findingKey } from '../../../src/core/findings/index.js';
+import { anchor, dedup, findingKey, overlay } from '../../../src/core/findings/index.js';
 import type { FindingInput, StoredFinding } from '../../../src/core/findings/index.js';
 import { shopfrontFingerprints, shopfrontReport } from './support.js';
 
@@ -87,6 +87,21 @@ describe('findings', () => {
     expect(merged[0]?.finding.severity).toBe('high');
     expect(merged[0]?.finding.fix).toBe('Map it to a 404.');
     expect(dedup([stored({ state: 'open' }), stored({ source: 'a', state: 'intended' })])[0]?.finding.state).toBe('intended');
+  });
+
+  it('dedup-fixed-part-does-not-hide-open', () => {
+    // PO decision 2026-10-07: any intended part gives intended, else any open part gives open; fixed only when all are fixed.
+    const parts = [stored({ severity: 'high', state: 'fixed' }), stored({ source: 'semgrep', severity: 'high', state: 'open' })];
+    const merged = dedup(parts);
+    expect(merged).toHaveLength(1);
+    expect(merged[0]?.finding.state).toBe('open');
+    expect(merged[0]?.finding.sources).toEqual(['claude', 'semgrep']);
+    const served = overlay(shopfrontReport(), parts, {});
+    expect(served.packages.flatMap((p) => p.files).find((f) => f.path === ORDERS)?.verdict).toBe('risky');
+    // The other orders give the same result.
+    expect(dedup([...parts].reverse())[0]?.finding.state).toBe('open');
+    expect(dedup([stored({ state: 'fixed' }), stored({ source: 'a', state: 'open' }), stored({ source: 'b', state: 'intended' })])[0]?.finding.state).toBe('intended');
+    expect(dedup([stored({ state: 'fixed' }), stored({ source: 'a', state: 'fixed' })])[0]?.finding.state).toBe('fixed');
   });
 
   it('dedup-different-category-kept', () => {

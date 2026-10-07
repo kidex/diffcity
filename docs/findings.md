@@ -129,7 +129,7 @@ Example, a result from a run of `semgrep`:
 
 ## Deduplication
 
-Findings with the same `symbolId`, the same `category` and the same normalized title (lower case, collapsed whitespace, trailing punctuation removed) merge into one entry. The first source in import order is `source`; every source is listed in `sources`, `source` included. The highest severity wins, the first non-empty `fix` wins, and the state is the most closed of the merged ones (`intended` over `open`).
+Findings with the same `symbolId`, the same `category` and the same normalized title (lower case, collapsed whitespace, trailing punctuation removed) merge into one entry. The first source in import order is `source`; every source is listed in `sources`, `source` included. The highest severity wins and the first non-empty `fix` wins. The merged state is `intended` when any part is `intended`; otherwise `open` when any part is `open`; it is `fixed` only when every part is `fixed`. A part one source fixed does not hide a part another source still reports as open.
 
 ## States
 

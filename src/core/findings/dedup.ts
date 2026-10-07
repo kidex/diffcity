@@ -3,7 +3,17 @@ import { normalizeTitle } from './normalize.js';
 import type { FindingState, StoredFinding } from './types.js';
 
 const SEVERITY_RANK: Record<Finding['severity'], number> = { low: 0, med: 1, high: 2 };
-const STATE_RANK: Record<FindingState, number> = { open: 0, intended: 1, fixed: 2 };
+
+/**
+ * The state of a merged entry (PO decision 2026-10-07): any `intended` part
+ * gives `intended`; otherwise any `open` part gives `open`; `fixed` only when
+ * every part is fixed. A fixed part from one source never hides an open one.
+ */
+function mergeState(a: FindingState, b: FindingState): FindingState {
+  if (a === 'intended' || b === 'intended') return 'intended';
+  if (a === 'open' || b === 'open') return 'open';
+  return 'fixed';
+}
 
 /** What makes two findings the same one: symbol (or file at file level), category, normalized title. */
 export function dedupIdentity(finding: Pick<Finding, 'symbolId' | 'file' | 'category' | 'title'>): string {
@@ -15,7 +25,11 @@ export function dedupIdentity(finding: Pick<Finding, 'symbolId' | 'file' | 'cate
  * Merges findings with the same identity (SPEC.md 5.6, ADR-036). The first in
  * input order keeps its key, `source`, message and anchor; `sources` lists
  * every source in order; the highest severity and the first non-empty `fix`
- * win; the state is the most closed one (`intended` over `open`).
+ * win; the state is `intended` if any part is, else `open` if any part is,
+ * else `fixed`.
+ *
+ * The result depends on input order, so the store must return findings in
+ * import order (the order they were first imported) for a deterministic merge.
  */
 export function dedup(stored: readonly StoredFinding[]): StoredFinding[] {
   const merged = new Map<string, StoredFinding>();
@@ -41,7 +55,7 @@ export function dedup(stored: readonly StoredFinding[]): StoredFinding[] {
         ...base,
         sources: [...new Set([...(a.sources ?? [a.source]), b.source, ...(b.sources ?? [])])],
         severity: SEVERITY_RANK[b.severity] > SEVERITY_RANK[a.severity] ? b.severity : a.severity,
-        state: STATE_RANK[b.state] > STATE_RANK[a.state] ? b.state : a.state,
+        state: mergeState(a.state, b.state),
         ...(fix === undefined ? {} : { fix }),
       },
     });
