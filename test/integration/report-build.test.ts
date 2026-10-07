@@ -195,9 +195,12 @@ describe('report/summary-counts', () => {
     expect(Object.keys(report.summary.byVerdict)).toEqual(['eyes', 'risky', 'spec', 'ok', 'same'] satisfies Verdict[]);
   });
 
-  it('has the phase 1 constants and meta', () => {
+  it('has the phase 1 constants and meta, and steps that point at its own files (ADR-034)', () => {
     const report = shared();
-    expect(report.steps).toEqual([]);
+    // The execution path is filled since DC-97; its rules are tested in test/unit/path-*.test.ts.
+    const fileIds = new Set(allFiles(report).map((file) => file.id));
+    expect(report.steps.map((step) => step.order)).toEqual(report.steps.map((_, index) => index + 1));
+    expect(report.steps.every((step) => fileIds.has(step.fileId) && step.symbolId.startsWith(`${step.fileId}#`))).toBe(true);
     expect(report.findings).toEqual([]);
     expect(report.meta).toMatchObject({ base: 'main', head: 'feature/work', commits: 1, generatedAt: NOW.toISOString() });
   });
