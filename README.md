@@ -35,8 +35,9 @@ diffcity stop
 | `diffcity shell-init [zsh\|bash\|fish]` | print the shell hook that registers a repo when you `cd` into it |
 | `diffcity track [<dir>] [--agent]` | register a repo and ask the daemon to collect its changes |
 | `diffcity scan <dir>` | discover and register every repo under a folder |
-| `diffcity diff --json [--base] [--head]` | semantic diff of the current change |
+| `diffcity diff --json [--compact] [--base] [--head]` | semantic diff of the current change; `--compact` leaves out untouched files |
 | `diffcity import <file> [--open]` | anchor findings (own JSON or SARIF) to symbols of the current change |
+| `diffcity setup-claude [--repo [<dir>]] [--dry-run] [--remove]` | install the `/code-review` command and the Stop hook for Claude Code |
 | `diffcity export html\|puml [--out]` | self-contained export of the current change |
 | `diffcity status` | repos ordered by urgency |
 | `diffcity audit [--stale] [<repo>]` | full audit: dependencies, semgrep, gitleaks, AI review on tier 1 |
@@ -44,7 +45,15 @@ diffcity stop
 
 `export`, `status` and `audit` are not implemented yet and exit with status 2.
 
-`diffcity import` attaches findings to the change checked out in the current directory; the file format, the counts it prints and its exit codes are in [docs/findings.md](docs/findings.md). diffcity's own files `.diffcity/findings.json` and `.diffcity/fix-queue.json` are never part of a change.
+`diffcity import` attaches findings to the change checked out in the current directory; the file format, the counts it prints and its exit codes are in [docs/findings.md](docs/findings.md). diffcity's own files `.diffcity/findings.json`, `.diffcity/fix-queue.json` and `.diffcity/fix-queue.taking.json` are never part of a change.
+
+### Claude Code
+
+```sh
+diffcity setup-claude    # once: the /code-review command and the Stop hook
+```
+
+After that, `/code-review` in Claude Code reviews the current change and puts the findings on the city, and every finished agent task marks the change as agent work. What setup writes, how it picks the hook command and how to undo it are in [docs/claude-code.md](docs/claude-code.md).
 
 ### Semantic diff
 
@@ -82,6 +91,7 @@ node dist/cli/index.js --help
 | `test/` | unit and integration tests, fixtures |
 | `design/mockup.html` | visual reference for the change screen |
 | `docs/findings.md` | findings import format and SARIF mapping |
+| `docs/claude-code.md` | the `/code-review` command and the Stop hook that `setup-claude` installs |
 | `docs/guardrails.md` | hooks that guard Claude Code sessions on this repo |
 | `SPEC.md` | full specification |
 
