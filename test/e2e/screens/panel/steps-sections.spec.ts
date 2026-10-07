@@ -32,7 +32,7 @@ test('panel/steps-sections/sections-render-with-headings', async () => {
   await expect(page.getByRole('heading', { level: 3, name: /^Execution path/ })).toBeVisible();
   await expect(page.getByTestId('section-note')).toHaveText([
     'From each entry point, in the order the code runs',
-    'Touched SQL migrations, after the last database call',
+    'Touched SQL migrations, read after the execution path',
     'Touched symbols no entry point reaches',
   ]);
   // Every step has its card, once, in the order of the steps; the empty text is gone.

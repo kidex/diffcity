@@ -74,7 +74,7 @@ export type SectionId = NonNullable<Step['section']>;
 /** The sections of the Execution order tab, in the order they are read (SPEC.md section 5.4): their heading and one line on what they hold. */
 export const SECTIONS: readonly { id: SectionId; label: string; note: string }[] = [
   { id: 'path', label: 'Execution path', note: 'From each entry point, in the order the code runs' },
-  { id: 'migration', label: 'Migrations', note: 'Touched SQL migrations, after the last database call' },
+  { id: 'migration', label: 'Migrations', note: 'Touched SQL migrations, read after the execution path' },
   { id: 'unconnected', label: 'Unconnected', note: 'Touched symbols no entry point reaches' },
 ];
 
