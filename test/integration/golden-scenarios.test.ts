@@ -6,7 +6,7 @@
 // output must equal expected.json byte for byte.
 //
 // Regenerate the goldens with `UPDATE_GOLDEN=1 npm test`, then review every
-// changed expected.json against SPEC.md 5.1-5.3 and ADR-005..009 before
+// changed expected.json against SPEC.md 5.1-5.4 and ADR-005..009, ADR-034 before
 // committing. The tables in ./golden-review.ts (every file, every symbol,
 // packages, tier 1 files; summary counts derived from them) are written by
 // hand and never regenerated: they catch a golden that was accepted blindly.
@@ -124,6 +124,19 @@ describe.each(scenarios)('scenario $name', (scenario) => {
     expect(Object.keys(table.symbols).sort()).toEqual(table.files.map(([path]) => path).sort());
     expect(report.packages.map((pkg) => [pkg.path, pkg.tier1])).toEqual(table.packages);
     expect(report.summary.tier1Files).toEqual(table.tier1Files);
+  });
+
+  it('the execution path matches the hand-reviewed table, step by step (SPEC.md 5.4, ADR-034)', () => {
+    const table: ReviewedScenario | undefined = reviewed[scenario.name];
+    if (table === undefined) throw new Error(`no hand-reviewed table for ${scenario.name}`);
+    expect(report.steps.map((step) => [step.section ?? 'path', step.symbolId, step.entry ?? null, step.why])).toEqual(table.path);
+    expect(report.steps.map((step) => step.order)).toEqual(table.path.map((_, index) => index + 1));
+    const files = report.packages.flatMap((pkg) => pkg.files);
+    expect(report.steps.map((step) => step.fileId)).toEqual(report.steps.map((step) => step.symbolId.slice(0, step.symbolId.indexOf('#'))));
+    const sig = Object.fromEntries(
+      files.flatMap((file) => file.symbols.filter((symbol) => symbol.status === 'sig').map((symbol) => [symbol.id, symbol.callsites])),
+    );
+    expect(sig).toEqual(table.callsites);
   });
 
   it('summary counts match the ones derived from the hand-reviewed table', () => {
