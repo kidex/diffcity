@@ -3,7 +3,11 @@
 // `diffcity import`) and `.diffcity/fix-queue.json` (written by the daemon).
 // They are never part of a change: left out of the touched files, of the
 // untracked listing and of the dirty check, and ignored by the watcher, so an
-// import or a queued fix creates no Draft and no recollect. Every other file
+// import or a queued fix creates no Draft and no recollect.
+// `.diffcity/fix-queue.taking.json` is the fix queue while the /code-review
+// command applies it: the command renames the queue to it, so an item the
+// daemon appends meanwhile goes to a new queue and is neither lost nor applied
+// twice (ADR-037), then deletes it. Every other file
 // under `.diffcity/` (`.diffcity/spec.md`, say) is a normal file.
 //
 // Only the copies at the working tree root count: `pkg/.diffcity/findings.json`
@@ -14,7 +18,7 @@
 export const OWN_DIR = '.diffcity';
 
 /** Root-relative, `/`-separated paths of the own files. */
-export const OWN_FILES: readonly string[] = [`${OWN_DIR}/findings.json`, `${OWN_DIR}/fix-queue.json`];
+export const OWN_FILES: readonly string[] = [`${OWN_DIR}/findings.json`, `${OWN_DIR}/fix-queue.json`, `${OWN_DIR}/fix-queue.taking.json`];
 
 const OWN_SET: ReadonlySet<string> = new Set(OWN_FILES);
 
