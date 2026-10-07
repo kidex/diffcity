@@ -26,6 +26,7 @@ import {
   stopIsCurrent,
   stopSections,
   stopsOf,
+  summaryLine,
   touchedSymbols,
 } from '../../../src/ui/screens/change/model/panel.js';
 
@@ -226,6 +227,16 @@ describe('panel model: sections of the execution path', () => {
     // Only unconnected steps: they are listed, under their heading, without the empty text.
     expect(emptyStepsText(report({ steps: [step(1, a, 'early', 'unconnected')] }))).toBeNull();
     expect(emptyStepsText(withSteps())).toBeNull();
+  });
+
+  it('panel-model/summary-line: the order the code runs when every stop is on the path, reading order otherwise', () => {
+    expect(summaryLine(report())).toBe('3 stops, in the order the code runs');
+    expect(summaryLine(report({ steps: [step(1, a, 'early', 'path')] }))).toBe('1 stop, in the order the code runs');
+    expect(summaryLine(report({ steps: [step(1, a, 'early'), step(2, b, 'only', 'migration')] }))).toBe('2 stops, in reading order');
+    expect(summaryLine(report({ steps: [step(1, a, 'early', 'unconnected')] }))).toBe('1 stop, in reading order');
+    // A step on a file the Report does not have is no stop and does not count.
+    expect(summaryLine(report({ steps: [step(1, a, 'early'), step(2, { ...c, id: 'src/gone.ts' }, 'x', 'unconnected')] }))).toBe('1 stop, in the order the code runs');
+    expect(summaryLine(withSteps())).toBe('24 stops, in reading order');
   });
 
   it('panel-model/fixture-generated: report-order-discounts-with-steps.json is what its generator writes from the golden', () => {

@@ -271,9 +271,16 @@ export function fileViewData(report: Report, fileId: string): FileViewData | nul
   return { placed, counts, stops, loose };
 }
 
-/** The reading-time-free summary under the title: "6 stops" or "3 touched symbols". */
+/**
+ * The reading-time-free summary under the title: "6 stops, in the order the
+ * code runs" when every stop is on the execution path, "24 stops, in reading
+ * order" when migrations or unconnected symbols follow it.
+ */
 export function summaryLine(report: Report): string {
-  const c = counters(report);
-  if (c.order > 0) return `${String(c.order)} ${c.order === 1 ? 'stop' : 'stops'}, in the order the code runs`;
+  const stops = stopsOf(report);
+  if (stops.length > 0) {
+    const count = `${String(stops.length)} ${stops.length === 1 ? 'stop' : 'stops'}`;
+    return stops.every((stop) => sectionOf(stop.step) === 'path') ? `${count}, in the order the code runs` : `${count}, in reading order`;
+  }
   return 'No execution path for this change yet';
 }

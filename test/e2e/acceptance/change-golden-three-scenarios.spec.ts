@@ -200,7 +200,9 @@ async function panelTabs(page: Page, report: Report): Promise<void> {
   await expect(page.getByTestId('tab-symbols')).toHaveText(`Symbols${String(symbols)}`);
   // The execution path is computed with the snapshot (ADR-034): the panel counts its stops.
   const stops = report.steps.length;
+  const onPath = report.steps.every((one) => (one.section ?? 'path') === 'path');
+  const count = `${String(stops)} ${stops === 1 ? 'stop' : 'stops'}`;
   await expect(panel.getByTestId('panel-summary')).toHaveText(
-    stops > 0 ? `${String(stops)} ${stops === 1 ? 'stop' : 'stops'}, in the order the code runs` : 'No execution path for this change yet',
+    stops > 0 ? `${count}, ${onPath ? 'in the order the code runs' : 'in reading order'}` : 'No execution path for this change yet',
   );
 }
