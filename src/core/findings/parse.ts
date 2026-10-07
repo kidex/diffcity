@@ -137,19 +137,33 @@ function str(value: unknown): string | undefined {
   return typeof value === 'string' && value.trim() !== '' ? value : undefined;
 }
 
-/** The longest title, in characters, derived from a SARIF message (docs/findings.md). */
+/** The longest title, in characters, derived from a SARIF message (docs/findings.md); LIMITS.title also applies. */
 const MESSAGE_TITLE_CHARS = 200;
 const GRAPHEMES = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
+const ELLIPSIS = '…';
 
 /**
  * The title of a SARIF result with no `ruleId`: the first non-blank line of
- * its message, whitespace collapsed, cut to 200 characters (grapheme clusters) with
- * a trailing "…" when longer. The full text stays in `message`.
+ * its message, whitespace collapsed. When it is over 200 characters (grapheme
+ * clusters) or over the title byte limit, it is cut at whichever comes first,
+ * on a whole character, and ends in "…" within the byte limit. The full text
+ * stays in `message`.
  */
 function titleFromMessage(text: string): string {
   const line = text.split(/\r\n|\r|\n/).find((candidate) => candidate.trim() !== '') ?? '';
-  const chars = Array.from(GRAPHEMES.segment(line.replace(/\s+/g, ' ').trim()), (part) => part.segment);
-  return chars.length > MESSAGE_TITLE_CHARS ? `${chars.slice(0, MESSAGE_TITLE_CHARS).join('')}…` : chars.join('');
+  const collapsed = line.replace(/\s+/g, ' ').trim();
+  const chars = Array.from(GRAPHEMES.segment(collapsed), (part) => part.segment);
+  if (chars.length <= MESSAGE_TITLE_CHARS && bytes(collapsed) <= LIMITS.title) return collapsed;
+  const budget = LIMITS.title - bytes(ELLIPSIS);
+  let title = '';
+  let used = 0;
+  for (const char of chars.slice(0, MESSAGE_TITLE_CHARS)) {
+    const size = bytes(char);
+    if (used + size > budget) break;
+    title += char;
+    used += size;
+  }
+  return `${title}${ELLIPSIS}`;
 }
 
 /** SARIF 2.1: each `runs[].results[]` entry becomes one finding, mapped as in docs/findings.md. */

@@ -83,7 +83,7 @@ Each entry of `runs[].results[]` becomes one finding.
 | `results[].properties.category` | `category` (default `correctness`) |
 | `results[].fixes[0].description.text` | `fix` |
 
-A result with no `ruleId` takes its title from `message.text`: the first non-blank line, with runs of whitespace collapsed to single spaces, cut to 200 characters (grapheme clusters, so an emoji or an accented letter is never split) followed by `…` when it is longer. The full text stays in `message`.
+A result with no `ruleId` takes its title from `message.text`: the first non-blank line, with runs of whitespace collapsed to single spaces, and cut at 200 characters or 4 KiB, whichever comes first, when it is longer. Characters are grapheme clusters, so an emoji or an accented letter is never split. A cut title ends in `…`, and with it stays within 4 KiB, so a derived title never rejects the file. The full text stays in `message`.
 
 The size limits of the own format apply to SARIF too: more than 5,000 results in all runs, or a result whose message is over 16 KiB or whose `ruleId` or fix is over 4 KiB, rejects the file.
 

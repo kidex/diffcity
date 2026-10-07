@@ -165,6 +165,18 @@ describe('findings', () => {
     const family = '\u{1F468}\u200D\u{1F469}\u200D\u{1F467}';
     expect(titleOf(family.repeat(201))?.title).toBe(`${family.repeat(200)}…`);
     expect(titleOf('e\u0301'.repeat(201))?.title).toBe(`${'e\u0301'.repeat(200)}…`);
+    // 200 characters or 4 KiB, whichever comes first: 201 tag-sequence flags (28 bytes each) are cut by bytes.
+    const flag = '\u{1F3F4}\u{E0067}\u{E0062}\u{E0065}\u{E006E}\u{E0067}\u{E007F}';
+    expect(Buffer.byteLength(flag, 'utf8')).toBe(28);
+    const flags = parseSarif(sarif([sarifResult({ ruleId: undefined, message: { text: flag.repeat(201) } })]), ROOT);
+    expect(flags.ok).toBe(true);
+    const flagTitle = flags.ok ? (flags.findings[0]?.title ?? '') : '';
+    expect(Buffer.byteLength(flagTitle, 'utf8')).toBeLessThanOrEqual(4096);
+    expect(flagTitle.endsWith('…')).toBe(true);
+    // Whole flags only: (4096 - 3 bytes of the ellipsis) / 28 = 146.
+    expect(flagTitle).toBe(`${flag.repeat(146)}…`);
+    // Under both limits: kept whole, even when close to 4 KiB.
+    expect(titleOf(flag.repeat(146))?.title).toBe(flag.repeat(146));
     // A message over the 4 KiB title limit no longer rejects the file; the 16 KiB message limit still does.
     const long = `${'x'.repeat(5_000)}\nsecond line`;
     expect(titleOf(long)?.title).toBe(`${'x'.repeat(200)}…`);
