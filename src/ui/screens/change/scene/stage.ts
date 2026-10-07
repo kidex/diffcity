@@ -10,8 +10,10 @@ import {
   AgXToneMapping,
   HalfFloatType,
   PerspectiveCamera,
+  Mesh,
   Scene,
   SRGBColorSpace,
+  Texture,
   Vector2,
   WebGLRenderer,
   WebGLRenderTarget,
@@ -41,6 +43,34 @@ class CountingRenderPass extends RenderPass {
     this.calls = renderer.info.render.calls - before;
     this.triangles = renderer.info.render.triangles - trianglesBefore;
   }
+}
+
+/**
+ * three's lookup texture for physically based materials (DFG_LUT) is one
+ * module-level texture shared by every renderer. Each renderer that uploads it
+ * adds a dispose listener to it, and WebGLRenderer.dispose() does not take that
+ * listener off: the texture would keep every disposed renderer, its context,
+ * its canvas and the whole change screen around the canvas alive. The renderer
+ * sets it on its material uniforms when it draws, which is where the stage
+ * finds it; the stage disposes it on its way out, which runs those listeners
+ * and so removes them. The next renderer uploads it again.
+ */
+function sharedLookup(renderer: WebGLRenderer, scene: Scene): Texture | null {
+  let found: Texture | null = null;
+  scene.traverse((object) => {
+    if (found !== null || !(object instanceof Mesh)) return;
+    const materials: unknown[] = Array.isArray(object.material) ? object.material : [object.material];
+    for (const material of materials) {
+      if (!renderer.properties.has(material)) continue;
+      const uniforms = (renderer.properties.get(material) as { uniforms?: Record<string, { value: unknown } | undefined> }).uniforms;
+      const value = uniforms?.['dfgLUT']?.value;
+      if (value instanceof Texture) {
+        found = value;
+        return;
+      }
+    }
+  });
+  return found;
 }
 
 /** Bloom whose blur chain starts at `scale` of the drawing buffer instead of the half the pass uses by default. */
@@ -106,6 +136,8 @@ export class Stage {
   };
   private probedFps: number | null = null;
   private probeDone = false;
+  /** three's shared lookup texture, once a frame has used it (see sharedLookup). */
+  private lookup: Texture | null = null;
 
   /** Throws when WebGL2 is not available. */
   constructor(options: StageOptions) {
@@ -256,6 +288,7 @@ export class Stage {
     const again = this.options.beforeFrame({ now });
     this.renderer.info.reset();
     this.composer.render();
+    this.lookup ??= sharedLookup(this.renderer, this.scene);
     this.frames += 1;
     this.options.afterFrame({ now });
     if (again || now < this.continuousUntil || this.probeState?.running === true) this.request();
@@ -281,6 +314,8 @@ export class Stage {
     this.composer.renderTarget2.dispose();
     this.composer.dispose();
     const { geometries, textures } = this.renderer.info.memory;
+    this.lookup?.dispose();
+    this.lookup = null;
     this.renderer.dispose();
     this.renderer.forceContextLoss();
     return { geometries, textures };
