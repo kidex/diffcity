@@ -18,6 +18,7 @@ import {
   WebGLRenderer,
   WebGLRenderTarget,
 } from 'three';
+import type { Object3D } from 'three';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
@@ -55,9 +56,9 @@ class CountingRenderPass extends RenderPass {
  * finds it; the stage disposes it on its way out, which runs those listeners
  * and so removes them. The next renderer uploads it again.
  */
-function sharedLookup(renderer: WebGLRenderer, scene: Scene): Texture | null {
+function sharedLookup(renderer: WebGLRenderer, root: Object3D): Texture | null {
   let found: Texture | null = null;
-  scene.traverse((object) => {
+  root.traverse((object) => {
     if (found !== null || !(object instanceof Mesh)) return;
     const materials: unknown[] = Array.isArray(object.material) ? object.material : [object.material];
     for (const material of materials) {
@@ -276,6 +277,15 @@ export class Stage {
     });
   }
 
+  /**
+   * Picks three's shared lookup texture up from a scene this renderer has
+   * drawn outside the stage (the PMREM environment at mount), so a view closed
+   * before its first frame releases it too. Call before that scene is disposed.
+   */
+  keepLookupFrom(root: Object3D): void {
+    this.lookup ??= sharedLookup(this.renderer, root);
+  }
+
   /** Draws every frame for `ms` milliseconds (the bench), then goes back to on-demand. */
   runContinuously(ms: number): void {
     this.continuousUntil = performance.now() + ms;
@@ -288,6 +298,7 @@ export class Stage {
     const again = this.options.beforeFrame({ now });
     this.renderer.info.reset();
     this.composer.render();
+    // A fallback for a lookup texture the mount did not upload.
     this.lookup ??= sharedLookup(this.renderer, this.scene);
     this.frames += 1;
     this.options.afterFrame({ now });
