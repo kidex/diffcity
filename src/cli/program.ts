@@ -5,6 +5,7 @@
 import { Command } from 'commander';
 import type { DiffCommandOptions } from './diff.js';
 import type { ImportCommandOptions } from './import.js';
+import type { SetupClaudeOptions } from './setup-claude.js';
 import type { StartCommandOptions } from './start.js';
 import type { TrackCommandOptions } from './track.js';
 import type { TrustCommandOptions } from './trust.js';
@@ -148,6 +149,17 @@ export function buildProgram(io: CliIo = defaultIo): Command {
     .action(async (file: string, options: ImportCommandOptions) => {
       const { runImport } = await import('./import.js');
       process.exitCode = await runImport(file, options, { io, env: io.env?.() ?? process.env, cwd: io.cwd?.() ?? process.cwd() });
+    });
+
+  program
+    .command('setup-claude')
+    .description('install the /code-review command and the Stop hook for Claude Code')
+    .option('--repo [dir]', "write to the repo's .claude/ instead of the user's Claude Code configuration")
+    .option('--dry-run', 'print what would change, write nothing')
+    .option('--remove', 'remove only what diffcity wrote')
+    .action(async (options: SetupClaudeOptions) => {
+      const { runSetupClaude } = await import('./setup-claude.js');
+      process.exitCode = await runSetupClaude(options, { io, env: io.env?.() ?? process.env, cwd: io.cwd?.() ?? process.cwd() });
     });
 
   program
