@@ -195,7 +195,17 @@ test('findings/actions/fix-queue-unsafe-reason-shown', async ({ page }) => {
   await askButton(card).click();
   await expect(reason).toHaveText(noTree);
 
-  // A dropped connection: a generic line, then a retry that works clears it.
+  // Any other answer of the daemon shows its message too: the finding is gone from the latest snapshot.
+  const gone = `No finding ${HIGH} in change 11.`;
+  queue.failNext = { status: 404, code: 'finding-not-found', message: gone };
+  await askButton(card).click();
+  await expect(reason).toHaveText(gone);
+  // The write guard refused the page's origin: it says where to open diffcity.
+  queue.failNext = { status: 403, code: 'cross-site', message: 'cross-site write refused' };
+  await askButton(card).click();
+  await expect(reason).toHaveText('Open diffcity from the address `diffcity start` prints.');
+
+  // A dropped connection (no answer at all): the generic line, then a retry that works clears it.
   queue.dropNext = true;
   await askButton(card).click();
   await expect(reason).toHaveText('Could not reach the diffcity daemon. Try again.');

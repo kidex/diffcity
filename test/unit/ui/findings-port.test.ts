@@ -1,11 +1,12 @@
 // The findings calls of the API client and the FindingsPort (ADR-036): routes
 // and methods with the key as one encoded path segment, the JSON body only on
-// the state write, 409 refusals as answers with the daemon's message, other
-// failures as rejections, and the refetch hook after an accepted write only.
+// the state write, every error answer as a refusal with the daemon's message
+// (403 `cross-site` with its own), only a request with no answer as a
+// rejection, and the refetch hook after an accepted write only.
 
 import { describe, expect, it } from 'vitest';
 import { ApiRequestError, createApi } from '../../../src/ui/data/api.js';
-import { createFindingsPort } from '../../../src/ui/data/findings-port.js';
+import { createFindingsPort, CROSS_SITE } from '../../../src/ui/data/findings-port.js';
 
 interface Seen {
   url: string;
@@ -40,11 +41,12 @@ describe('ui/findings-port', () => {
     expect((seen[1]?.init?.headers as Record<string, string>)['content-type']).toBeUndefined();
   });
 
-  it('a 409 is a refusal with the message; anything else rejects; only an accepted write refetches', async () => {
+  it('an error answer is a refusal with its message; no answer rejects; only an accepted write refetches', async () => {
     let written = 0;
     const { fetch } = stub((url) => {
       if (url.includes('/unsafe/')) return json({ error: { code: 'fix-queue-unsafe', message: '.diffcity/fix-queue.json is a symlink' } }, 409);
       if (url.includes('/gone/')) return json({ error: { code: 'finding-not-found', message: 'no finding gone' } }, 404);
+      if (url.includes('/foreign/')) return json({ error: { code: 'cross-site', message: 'cross-site write refused' } }, 403);
       if (url.includes('/down/')) return Promise.reject(new TypeError('Failed to fetch'));
       return json({ key: 'ok', queued: false, count: 2 });
     });
@@ -53,10 +55,13 @@ describe('ui/findings-port', () => {
     });
     expect(await port.ask('unsafe')).toEqual({ ok: false, refusal: { code: 'fix-queue-unsafe', message: '.diffcity/fix-queue.json is a symlink' } });
     expect(written).toBe(0);
-    const gone = await port.setState('gone', 'open').catch((error: unknown) => error);
-    expect(gone).toBeInstanceOf(ApiRequestError);
-    expect(gone).toMatchObject({ status: 404, code: 'finding-not-found' });
-    await expect(port.ask('down')).rejects.toThrow('Failed to fetch');
+    expect(await port.setState('gone', 'open')).toEqual({ ok: false, refusal: { code: 'finding-not-found', message: 'no finding gone' } });
+    expect(await port.ask('foreign')).toEqual({ ok: false, refusal: { code: 'cross-site', message: CROSS_SITE } });
+    expect(CROSS_SITE).toBe('Open diffcity from the address `diffcity start` prints.');
+    // A network failure is not an ApiRequestError: it rejects, and the screen shows the generic line.
+    const down = await port.ask('down').catch((error: unknown) => error);
+    expect(down).not.toBeInstanceOf(ApiRequestError);
+    expect(down).toBeInstanceOf(TypeError);
     expect(written).toBe(0);
     // Already queued (`queued: false`) is an accepted answer like any other.
     expect(await port.ask('ok')).toEqual({ ok: true, value: { key: 'ok', queued: false, count: 2 } });

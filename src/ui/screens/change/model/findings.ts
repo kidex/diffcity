@@ -11,7 +11,7 @@ export const ASK_FIX = 'Ask agent to fix';
 export const QUEUED = 'Queued';
 export const MARK_INTENDED = 'Mark as intended';
 export const UNDO = 'Undo';
-/** A request that never got an answer (no daemon, a network error, an unexpected error). */
+/** A request that never got an answer (no daemon, a dropped connection); any answer of the daemon shows its own message. */
 export const ACTION_FAILED = 'Could not reach the diffcity daemon. Try again.';
 
 /** Every source that reported the finding, `source` first, each once (`[source]` when the Report has no `sources`). */
@@ -31,7 +31,7 @@ export interface FindingSession {
   pending: ReadonlyMap<string, FindingAction>;
   /** Keys whose state was written and whose refetched Report has not shown it yet. */
   expected: ReadonlyMap<string, 'open' | 'intended'>;
-  /** The line under a key's buttons after a refusal or a failed request. */
+  /** The line under a key's buttons after an error answer (its message) or a request with no answer. */
   errors: ReadonlyMap<string, string>;
 }
 

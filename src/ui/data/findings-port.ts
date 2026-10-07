@@ -8,14 +8,17 @@
 import type { Api, FindingStateAnswer, FixAnswer } from './api.js';
 import { ApiRequestError } from './api.js';
 
-/** A request the daemon understood and refused (409): its code and the message to show. */
+/** A request the daemon answered with an error (409 refusals, 404 `finding-not-found`, 403, ...): its code and the message to show. */
 export interface FindingRefusal {
   code: string;
   message: string;
 }
 
-/** What an action got back: the daemon's answer, or its refusal. A failed request (no daemon, a 4xx other than 409, a 5xx) rejects. */
+/** What an action got back: the daemon's answer, or its error. Only a request that got no answer (no daemon, a dropped connection) rejects. */
 export type FindingAnswer<T> = { ok: true; value: T } | { ok: false; refusal: FindingRefusal };
+
+/** The write guard refused the page's origin (403 `cross-site`): the page was opened from another address than the daemon's. */
+export const CROSS_SITE = 'Open diffcity from the address `diffcity start` prints.';
 
 export interface FindingsPort {
   /** "Ask agent to fix" on finding `key` (a `Finding.id`). */
@@ -28,8 +31,11 @@ async function answer<T>(request: Promise<T>): Promise<FindingAnswer<T>> {
   try {
     return { ok: true, value: await request };
   } catch (error) {
-    // A refusal names its reason (fix-queue-unsafe, no-working-tree, archived, ...): the screen shows the message.
-    if (error instanceof ApiRequestError && error.status === 409) return { ok: false, refusal: { code: error.code, message: error.message } };
+    // Any answer of the daemon names its reason (fix-queue-unsafe, no-working-tree, finding-not-found, ...): the screen shows its message.
+    if (error instanceof ApiRequestError) {
+      const message = error.status === 403 && error.code === 'cross-site' ? CROSS_SITE : error.message;
+      return { ok: false, refusal: { code: error.code, message } };
+    }
     throw error;
   }
 }

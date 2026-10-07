@@ -81,19 +81,19 @@ export interface FleetPort {
   open(): void;
 }
 
-/** A finding action the daemon understood and refused (409): its code and the message to show. */
+/** A finding action the daemon answered with an error (a 409 refusal, 404, 403, ...): its code and the message to show. */
 export interface FindingRefusal {
   code: string;
   message: string;
 }
 
-/** The daemon's answer to a finding action, or its refusal. */
+/** The daemon's answer to a finding action, or its error. */
 export type FindingAnswer<T> = { ok: true; value: T } | { ok: false; refusal: FindingRefusal };
 
 /**
  * "Ask agent to fix" and "Mark as intended" (ADR-036). Structurally the port of
- * src/ui/data/findings-port.ts. A failed request (no daemon, any other error)
- * rejects. Without it the finding cards have no action buttons: the HTML
+ * src/ui/data/findings-port.ts. Only a request that got no answer (no daemon,
+ * a dropped connection) rejects. Without it the finding cards have no action buttons: the HTML
  * export shows the findings and their state only.
  */
 export interface FindingsPort {
