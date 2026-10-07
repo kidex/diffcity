@@ -2,7 +2,7 @@
 // step of the Report, in order. A card has a rail and a node, the symbol, the
 // file, the file's verdict tag and the status tag, `why`, the inline diff with
 // its gutters, and the findings anchored to the symbol with their source and
-// the two buttons that arrive in a later version.
+// the "Ask agent to fix" and "Mark as intended" buttons (the SPA has a FindingsPort).
 
 import { test } from '@playwright/test';
 import { sceneExpect as expect } from '../../support/scene.js';
@@ -35,15 +35,15 @@ test('panel/steps-render-from-report', async ({ page }) => {
   await expect(lines.nth(2).locator('.g')).toHaveText('+');
   await expect(lines.nth(2)).toContainText('order.owner === user.id');
 
-  // The finding anchored to the symbol, with its source and disabled buttons.
+  // The finding anchored to the symbol, with its source and its two buttons.
   const pin = first.getByTestId('finding');
   await expect(pin).toHaveCount(1);
   await expect(pin).toContainText('Guard skips the owner check on cancel');
   await expect(pin.getByTestId('finding-source')).toHaveText('claude');
   for (const name of ['Ask agent to fix', 'Mark as intended']) {
-    const button = pin.getByRole('button', { name });
-    await expect(button).toHaveAttribute('aria-disabled', 'true');
-    await expect(button).toHaveAttribute('title', 'Arrives in a later version');
+    const button = pin.getByRole('button', { name: `${name}: Guard skips the owner check on cancel` });
+    await expect(button).toBeEnabled();
+    await expect(button).not.toHaveAttribute('title', 'Arrives in a later version');
   }
 
   // The second card shows the semgrep finding but not the fixed eslint one it shares a file with.

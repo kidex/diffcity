@@ -1,0 +1,1623 @@
+{
+  "meta": {
+    "repo": "shopfront",
+    "base": "main",
+    "head": "feature/order-discounts",
+    "commits": 3,
+    "generatedAt": "2026-09-21T10:00:00.000Z"
+  },
+  "packages": [
+    {
+      "id": "db/migrations",
+      "path": "db/migrations",
+      "tier1": true,
+      "files": [
+        {
+          "id": "db/migrations/20260811_orders.sql",
+          "path": "db/migrations/20260811_orders.sql",
+          "language": "sql",
+          "status": "same",
+          "verdict": "same",
+          "inSpec": null,
+          "symbols": [
+            {
+              "id": "db/migrations/20260811_orders.sql#CREATE TABLE orders",
+              "name": "CREATE TABLE orders",
+              "kind": "sql",
+              "status": "same",
+              "range": {
+                "start": 2,
+                "end": 7
+              }
+            }
+          ]
+        },
+        {
+          "id": "db/migrations/20260921_order_discounts.sql",
+          "path": "db/migrations/20260921_order_discounts.sql",
+          "language": "sql",
+          "status": "add",
+          "verdict": "eyes",
+          "inSpec": null,
+          "symbols": [
+            {
+              "id": "db/migrations/20260921_order_discounts.sql#ALTER TABLE orders",
+              "name": "ALTER TABLE orders",
+              "kind": "sql",
+              "status": "add",
+              "range": {
+                "start": 1,
+                "end": 3
+              }
+            },
+            {
+              "id": "db/migrations/20260921_order_discounts.sql#CREATE INDEX orders_discount_idx",
+              "name": "CREATE INDEX orders_discount_idx",
+              "kind": "sql",
+              "status": "add",
+              "range": {
+                "start": 4,
+                "end": 4
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "src/api/orders",
+      "path": "src/api/orders",
+      "tier1": false,
+      "files": [
+        {
+          "id": "src/api/orders/orders.controller.spec.ts",
+          "path": "src/api/orders/orders.controller.spec.ts",
+          "language": "typescript",
+          "status": "add",
+          "verdict": "ok",
+          "inSpec": null,
+          "symbols": [
+            {
+              "id": "src/api/orders/orders.controller.spec.ts#list",
+              "name": "list",
+              "kind": "function",
+              "status": "same",
+              "range": {
+                "start": 4,
+                "end": 12
+              }
+            },
+            {
+              "id": "src/api/orders/orders.controller.spec.ts#create",
+              "name": "create",
+              "kind": "function",
+              "status": "mod",
+              "range": {
+                "start": 14,
+                "end": 24
+              }
+            },
+            {
+              "id": "src/api/orders/orders.controller.spec.ts#cancel",
+              "name": "cancel",
+              "kind": "function",
+              "status": "add",
+              "range": {
+                "start": 26,
+                "end": 34
+              }
+            }
+          ]
+        },
+        {
+          "id": "src/api/orders/orders.controller.ts",
+          "path": "src/api/orders/orders.controller.ts",
+          "language": "typescript",
+          "status": "add",
+          "verdict": "ok",
+          "inSpec": null,
+          "symbols": [
+            {
+              "id": "src/api/orders/orders.controller.ts#OrdersController",
+              "name": "OrdersController",
+              "kind": "class",
+              "status": "same",
+              "range": {
+                "start": 15,
+                "end": 37
+              }
+            },
+            {
+              "id": "src/api/orders/orders.controller.ts#OrdersController.constructor",
+              "name": "OrdersController.constructor",
+              "kind": "method",
+              "status": "same",
+              "range": {
+                "start": 16,
+                "end": 16
+              }
+            },
+            {
+              "id": "src/api/orders/orders.controller.ts#OrdersController.list",
+              "name": "OrdersController.list",
+              "kind": "method",
+              "status": "same",
+              "range": {
+                "start": 18,
+                "end": 20
+              }
+            },
+            {
+              "id": "src/api/orders/orders.controller.ts#OrdersController.get",
+              "name": "OrdersController.get",
+              "kind": "method",
+              "status": "same",
+              "range": {
+                "start": 22,
+                "end": 24
+              }
+            },
+            {
+              "id": "src/api/orders/orders.controller.ts#OrdersController.create",
+              "name": "OrdersController.create",
+              "kind": "method",
+              "status": "mod",
+              "range": {
+                "start": 26,
+                "end": 30
+              }
+            },
+            {
+              "id": "src/api/orders/orders.controller.ts#OrdersController.cancel",
+              "name": "OrdersController.cancel",
+              "kind": "method",
+              "status": "add",
+              "range": {
+                "start": 32,
+                "end": 36
+              }
+            }
+          ]
+        },
+        {
+          "id": "src/api/orders/orders.dto.ts",
+          "path": "src/api/orders/orders.dto.ts",
+          "language": "typescript",
+          "status": "add",
+          "verdict": "ok",
+          "inSpec": null,
+          "symbols": [
+            {
+              "id": "src/api/orders/orders.dto.ts#CreateOrderDto",
+              "name": "CreateOrderDto",
+              "kind": "class",
+              "status": "mod",
+              "range": {
+                "start": 3,
+                "end": 13
+              }
+            },
+            {
+              "id": "src/api/orders/orders.dto.ts#CreateOrderDto.from",
+              "name": "CreateOrderDto.from",
+              "kind": "method",
+              "status": "same",
+              "range": {
+                "start": 8,
+                "end": 12
+              }
+            },
+            {
+              "id": "src/api/orders/orders.dto.ts#CancelOrderDto",
+              "name": "CancelOrderDto",
+              "kind": "class",
+              "status": "add",
+              "range": {
+                "start": 15,
+                "end": 25
+              }
+            },
+            {
+              "id": "src/api/orders/orders.dto.ts#CancelOrderDto.from",
+              "name": "CancelOrderDto.from",
+              "kind": "method",
+              "status": "add",
+              "range": {
+                "start": 19,
+                "end": 24
+              }
+            }
+          ]
+        },
+        {
+          "id": "src/api/orders/orders.routes.ts",
+          "path": "src/api/orders/orders.routes.ts",
+          "language": "typescript",
+          "status": "mod",
+          "verdict": "ok",
+          "inSpec": null,
+          "symbols": [
+            {
+              "id": "src/api/orders/orders.routes.ts#registerRoutes",
+              "name": "registerRoutes",
+              "kind": "function",
+              "status": "mod",
+              "range": {
+                "start": 9,
+                "end": 14
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "src/auth",
+      "path": "src/auth",
+      "tier1": true,
+      "files": [
+        {
+          "id": "src/auth/order.guard.ts",
+          "path": "src/auth/order.guard.ts",
+          "language": "typescript",
+          "status": "sig",
+          "verdict": "eyes",
+          "inSpec": null,
+          "symbols": [
+            {
+              "id": "src/auth/order.guard.ts#OrderGuard",
+              "name": "OrderGuard",
+              "kind": "class",
+              "status": "same",
+              "range": {
+                "start": 12,
+                "end": 21
+              }
+            },
+            {
+              "id": "src/auth/order.guard.ts#OrderGuard.canRead",
+              "name": "OrderGuard.canRead",
+              "kind": "method",
+              "status": "same",
+              "range": {
+                "start": 13,
+                "end": 15
+              }
+            },
+            {
+              "id": "src/auth/order.guard.ts#OrderGuard.canPlace",
+              "name": "OrderGuard.canPlace",
+              "kind": "method",
+              "status": "sig",
+              "range": {
+                "start": 17,
+                "end": 20
+              },
+              "signatureBefore": "canPlace(user: User): boolean",
+              "signatureAfter": "canPlace(user: User, order?: Order): boolean",
+              "callsites": 0
+            }
+          ]
+        },
+        {
+          "id": "src/auth/roles.ts",
+          "path": "src/auth/roles.ts",
+          "language": "typescript",
+          "status": "same",
+          "verdict": "same",
+          "inSpec": null,
+          "symbols": [
+            {
+              "id": "src/auth/roles.ts#Role",
+              "name": "Role",
+              "kind": "export",
+              "status": "same",
+              "range": {
+                "start": 1,
+                "end": 4
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "src/repo",
+      "path": "src/repo",
+      "tier1": false,
+      "files": [
+        {
+          "id": "src/repo/orders.repo.ts",
+          "path": "src/repo/orders.repo.ts",
+          "language": "typescript",
+          "status": "add",
+          "verdict": "ok",
+          "inSpec": null,
+          "symbols": [
+            {
+              "id": "src/repo/orders.repo.ts#OrdersRepo",
+              "name": "OrdersRepo",
+              "kind": "class",
+              "status": "same",
+              "range": {
+                "start": 14,
+                "end": 33
+              }
+            },
+            {
+              "id": "src/repo/orders.repo.ts#OrdersRepo.constructor",
+              "name": "OrdersRepo.constructor",
+              "kind": "method",
+              "status": "same",
+              "range": {
+                "start": 15,
+                "end": 15
+              }
+            },
+            {
+              "id": "src/repo/orders.repo.ts#OrdersRepo.findById",
+              "name": "OrdersRepo.findById",
+              "kind": "method",
+              "status": "same",
+              "range": {
+                "start": 17,
+                "end": 20
+              }
+            },
+            {
+              "id": "src/repo/orders.repo.ts#OrdersRepo.insert",
+              "name": "OrdersRepo.insert",
+              "kind": "method",
+              "status": "mod",
+              "range": {
+                "start": 22,
+                "end": 28
+              }
+            },
+            {
+              "id": "src/repo/orders.repo.ts#OrdersRepo.markCancelled",
+              "name": "OrdersRepo.markCancelled",
+              "kind": "method",
+              "status": "add",
+              "range": {
+                "start": 30,
+                "end": 32
+              }
+            }
+          ]
+        },
+        {
+          "id": "src/repo/users.repo.ts",
+          "path": "src/repo/users.repo.ts",
+          "language": "typescript",
+          "status": "same",
+          "verdict": "same",
+          "inSpec": null,
+          "symbols": [
+            {
+              "id": "src/repo/users.repo.ts#UsersRepo",
+              "name": "UsersRepo",
+              "kind": "class",
+              "status": "same",
+              "range": {
+                "start": 5,
+                "end": 17
+              }
+            },
+            {
+              "id": "src/repo/users.repo.ts#UsersRepo.constructor",
+              "name": "UsersRepo.constructor",
+              "kind": "method",
+              "status": "same",
+              "range": {
+                "start": 6,
+                "end": 6
+              }
+            },
+            {
+              "id": "src/repo/users.repo.ts#UsersRepo.findById",
+              "name": "UsersRepo.findById",
+              "kind": "method",
+              "status": "same",
+              "range": {
+                "start": 8,
+                "end": 11
+              }
+            },
+            {
+              "id": "src/repo/users.repo.ts#UsersRepo.byEmail",
+              "name": "UsersRepo.byEmail",
+              "kind": "method",
+              "status": "same",
+              "range": {
+                "start": 13,
+                "end": 16
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "src/services/orders",
+      "path": "src/services/orders",
+      "tier1": false,
+      "files": [
+        {
+          "id": "src/services/orders/discount.rules.ts",
+          "path": "src/services/orders/discount.rules.ts",
+          "language": "typescript",
+          "status": "add",
+          "verdict": "ok",
+          "inSpec": null,
+          "symbols": [
+            {
+              "id": "src/services/orders/discount.rules.ts#DiscountRule",
+              "name": "DiscountRule",
+              "kind": "export",
+              "status": "add",
+              "range": {
+                "start": 3,
+                "end": 5
+              }
+            },
+            {
+              "id": "src/services/orders/discount.rules.ts#percentage",
+              "name": "percentage",
+              "kind": "function",
+              "status": "add",
+              "range": {
+                "start": 7,
+                "end": 9
+              }
+            },
+            {
+              "id": "src/services/orders/discount.rules.ts#threshold",
+              "name": "threshold",
+              "kind": "function",
+              "status": "add",
+              "range": {
+                "start": 11,
+                "end": 13
+              }
+            }
+          ]
+        },
+        {
+          "id": "src/services/orders/mailer.ts",
+          "path": "src/services/orders/mailer.ts",
+          "language": "typescript",
+          "status": "add",
+          "verdict": "ok",
+          "inSpec": null,
+          "symbols": [
+            {
+              "id": "src/services/orders/mailer.ts#send",
+              "name": "send",
+              "kind": "function",
+              "status": "mod",
+              "range": {
+                "start": 1,
+                "end": 3
+              }
+            },
+            {
+              "id": "src/services/orders/mailer.ts#template",
+              "name": "template",
+              "kind": "function",
+              "status": "add",
+              "range": {
+                "start": 5,
+                "end": 7
+              }
+            }
+          ]
+        },
+        {
+          "id": "src/services/orders/orders.service.ts",
+          "path": "src/services/orders/orders.service.ts",
+          "language": "typescript",
+          "status": "add",
+          "verdict": "risky",
+          "inSpec": null,
+          "symbols": [
+            {
+              "id": "src/services/orders/orders.service.ts#OrdersService",
+              "name": "OrdersService",
+              "kind": "class",
+              "status": "same",
+              "range": {
+                "start": 9,
+                "end": 38
+              }
+            },
+            {
+              "id": "src/services/orders/orders.service.ts#OrdersService.constructor",
+              "name": "OrdersService.constructor",
+              "kind": "method",
+              "status": "same",
+              "range": {
+                "start": 10,
+                "end": 10
+              }
+            },
+            {
+              "id": "src/services/orders/orders.service.ts#OrdersService.place",
+              "name": "OrdersService.place",
+              "kind": "method",
+              "status": "mod",
+              "range": {
+                "start": 12,
+                "end": 19
+              }
+            },
+            {
+              "id": "src/services/orders/orders.service.ts#OrdersService.validate",
+              "name": "OrdersService.validate",
+              "kind": "method",
+              "status": "mod",
+              "range": {
+                "start": 21,
+                "end": 24
+              }
+            },
+            {
+              "id": "src/services/orders/orders.service.ts#OrdersService.calcTotal",
+              "name": "OrdersService.calcTotal",
+              "kind": "method",
+              "status": "add",
+              "range": {
+                "start": 26,
+                "end": 28
+              }
+            },
+            {
+              "id": "src/services/orders/orders.service.ts#OrdersService.applyDiscount",
+              "name": "OrdersService.applyDiscount",
+              "kind": "method",
+              "status": "add",
+              "range": {
+                "start": 30,
+                "end": 33
+              }
+            },
+            {
+              "id": "src/services/orders/orders.service.ts#OrdersService.notify",
+              "name": "OrdersService.notify",
+              "kind": "method",
+              "status": "add",
+              "range": {
+                "start": 35,
+                "end": 37
+              }
+            }
+          ]
+        },
+        {
+          "id": "src/services/orders/pricing.ts",
+          "path": "src/services/orders/pricing.ts",
+          "language": "typescript",
+          "status": "del",
+          "verdict": "ok",
+          "inSpec": null,
+          "symbols": [
+            {
+              "id": "src/services/orders/pricing.ts#basePrice",
+              "name": "basePrice",
+              "kind": "function",
+              "status": "same",
+              "range": {
+                "start": 3,
+                "end": 5
+              }
+            },
+            {
+              "id": "src/services/orders/pricing.ts#vat",
+              "name": "vat",
+              "kind": "function",
+              "status": "same",
+              "range": {
+                "start": 7,
+                "end": 9
+              }
+            },
+            {
+              "id": "src/services/orders/pricing.ts#roundMoney",
+              "name": "roundMoney",
+              "kind": "function",
+              "status": "del",
+              "range": {
+                "start": 11,
+                "end": 13
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "src/shared",
+      "path": "src/shared",
+      "tier1": false,
+      "files": [
+        {
+          "id": "src/shared/errors.ts",
+          "path": "src/shared/errors.ts",
+          "language": "typescript",
+          "status": "same",
+          "verdict": "same",
+          "inSpec": null,
+          "symbols": [
+            {
+              "id": "src/shared/errors.ts#AppError",
+              "name": "AppError",
+              "kind": "class",
+              "status": "same",
+              "range": {
+                "start": 1,
+                "end": 1
+              }
+            },
+            {
+              "id": "src/shared/errors.ts#NotFound",
+              "name": "NotFound",
+              "kind": "class",
+              "status": "same",
+              "range": {
+                "start": 3,
+                "end": 3
+              }
+            },
+            {
+              "id": "src/shared/errors.ts#Forbidden",
+              "name": "Forbidden",
+              "kind": "class",
+              "status": "same",
+              "range": {
+                "start": 5,
+                "end": 5
+              }
+            }
+          ]
+        },
+        {
+          "id": "src/shared/logger.ts",
+          "path": "src/shared/logger.ts",
+          "language": "typescript",
+          "status": "same",
+          "verdict": "same",
+          "inSpec": null,
+          "symbols": [
+            {
+              "id": "src/shared/logger.ts#log",
+              "name": "log",
+              "kind": "function",
+              "status": "same",
+              "range": {
+                "start": 1,
+                "end": 3
+              }
+            }
+          ]
+        },
+        {
+          "id": "src/shared/money.ts",
+          "path": "src/shared/money.ts",
+          "language": "typescript",
+          "status": "same",
+          "verdict": "same",
+          "inSpec": null,
+          "symbols": [
+            {
+              "id": "src/shared/money.ts#Money",
+              "name": "Money",
+              "kind": "class",
+              "status": "same",
+              "range": {
+                "start": 1,
+                "end": 19
+              }
+            },
+            {
+              "id": "src/shared/money.ts#Money.constructor",
+              "name": "Money.constructor",
+              "kind": "method",
+              "status": "same",
+              "range": {
+                "start": 2,
+                "end": 2
+              }
+            },
+            {
+              "id": "src/shared/money.ts#Money.of",
+              "name": "Money.of",
+              "kind": "method",
+              "status": "same",
+              "range": {
+                "start": 4,
+                "end": 6
+              }
+            },
+            {
+              "id": "src/shared/money.ts#Money.zero",
+              "name": "Money.zero",
+              "kind": "method",
+              "status": "same",
+              "range": {
+                "start": 8,
+                "end": 10
+              }
+            },
+            {
+              "id": "src/shared/money.ts#Money.plus",
+              "name": "Money.plus",
+              "kind": "method",
+              "status": "same",
+              "range": {
+                "start": 12,
+                "end": 14
+              }
+            },
+            {
+              "id": "src/shared/money.ts#Money.times",
+              "name": "Money.times",
+              "kind": "method",
+              "status": "same",
+              "range": {
+                "start": 16,
+                "end": 18
+              }
+            },
+            {
+              "id": "src/shared/money.ts#round",
+              "name": "round",
+              "kind": "function",
+              "status": "same",
+              "range": {
+                "start": 21,
+                "end": 23
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "steps": [
+    {
+      "order": 1,
+      "symbolId": "src/api/orders/orders.routes.ts#registerRoutes",
+      "fileId": "src/api/orders/orders.routes.ts",
+      "why": "New endpoint POST /orders/:id/cancel",
+      "diff": [
+        {
+          "kind": "ctx",
+          "text": "  router.get('/orders', ctrl.list);"
+        },
+        {
+          "kind": "ctx",
+          "text": "  router.get('/orders/:id', ctrl.get);"
+        },
+        {
+          "kind": "ctx",
+          "text": "  router.post('/orders', guard.canPlace, ctrl.create);"
+        },
+        {
+          "kind": "add",
+          "text": "  router.post('/orders/:id/cancel', guard.canPlace, ctrl.cancel);"
+        },
+        {
+          "kind": "ctx",
+          "text": "}"
+        }
+      ],
+      "section": "path",
+      "entry": "src/api/orders/orders.routes.ts#registerRoutes"
+    },
+    {
+      "order": 2,
+      "symbolId": "src/api/orders/orders.controller.ts#OrdersController.create",
+      "fileId": "src/api/orders/orders.controller.ts",
+      "why": "Body changed",
+      "diff": [
+        {
+          "kind": "ctx",
+          "text": "  async create(req: Req, res: Res) {"
+        },
+        {
+          "kind": "ctx",
+          "text": "    const dto = CreateOrderDto.from(req.body);"
+        },
+        {
+          "kind": "ctx",
+          "text": "    const order = await this.svc.place(req.user, dto);"
+        },
+        {
+          "kind": "del",
+          "text": "    res.status(201).json(order);"
+        },
+        {
+          "kind": "add",
+          "text": "    res.status(201).json({ order, discounted: dto.discountPct > 0 });"
+        },
+        {
+          "kind": "ctx",
+          "text": "  }"
+        }
+      ],
+      "section": "path",
+      "entry": "src/api/orders/orders.controller.ts#OrdersController.create"
+    },
+    {
+      "order": 3,
+      "symbolId": "src/services/orders/orders.service.ts#OrdersService.place",
+      "fileId": "src/services/orders/orders.service.ts",
+      "why": "Body changed",
+      "diff": [
+        {
+          "kind": "ctx",
+          "text": "  async place(user: { id: string }, dto: CreateOrderDto) {"
+        },
+        {
+          "kind": "ctx",
+          "text": "    this.validate(dto);"
+        },
+        {
+          "kind": "del",
+          "text": "    const total = dto.items.reduce((sum, item) => sum.plus(Money.of(item.length)), Money.zero());"
+        },
+        {
+          "kind": "del",
+          "text": "    return this.repo.insert({ ownerId: user.id, total });"
+        },
+        {
+          "kind": "add",
+          "text": "    const total = this.calcTotal(dto);"
+        },
+        {
+          "kind": "add",
+          "text": "    const discounted = this.applyDiscount(total, dto.rules);"
+        },
+        {
+          "kind": "add",
+          "text": "    const order = await this.repo.insert({ ownerId: user.id, total, discounted, discountPct: dto.discountPct });"
+        },
+        {
+          "kind": "add",
+          "text": "    await this.notify(user.id);"
+        },
+        {
+          "kind": "add",
+          "text": "    return order;"
+        },
+        {
+          "kind": "ctx",
+          "text": "  }"
+        }
+      ],
+      "section": "path",
+      "entry": "src/api/orders/orders.controller.ts#OrdersController.create"
+    },
+    {
+      "order": 4,
+      "symbolId": "src/services/orders/orders.service.ts#OrdersService.validate",
+      "fileId": "src/services/orders/orders.service.ts",
+      "why": "Body changed",
+      "diff": [
+        {
+          "kind": "ctx",
+          "text": "  validate(dto: CreateOrderDto): void {"
+        },
+        {
+          "kind": "ctx",
+          "text": "    if (dto.items.length === 0) throw new NotFound('items');"
+        },
+        {
+          "kind": "add",
+          "text": "    if (dto.discountPct < 0) throw new NotFound('discount');"
+        },
+        {
+          "kind": "ctx",
+          "text": "  }"
+        }
+      ],
+      "section": "path",
+      "entry": "src/api/orders/orders.controller.ts#OrdersController.create"
+    },
+    {
+      "order": 5,
+      "symbolId": "src/services/orders/orders.service.ts#OrdersService.calcTotal",
+      "fileId": "src/services/orders/orders.service.ts",
+      "why": "New method",
+      "diff": [
+        {
+          "kind": "add",
+          "text": "  calcTotal(dto: CreateOrderDto): Money {"
+        },
+        {
+          "kind": "add",
+          "text": "    return dto.items.reduce((sum, item) => sum.plus(Money.of(item.length)), Money.zero());"
+        },
+        {
+          "kind": "add",
+          "text": "  }"
+        }
+      ],
+      "section": "path",
+      "entry": "src/api/orders/orders.controller.ts#OrdersController.create"
+    },
+    {
+      "order": 6,
+      "symbolId": "src/services/orders/orders.service.ts#OrdersService.applyDiscount",
+      "fileId": "src/services/orders/orders.service.ts",
+      "why": "New method",
+      "diff": [
+        {
+          "kind": "add",
+          "text": "  private applyDiscount(total: Money, rules: DiscountRule[]) {"
+        },
+        {
+          "kind": "add",
+          "text": "    const pct = rules.reduce((p, r) => p + r.percentage(total), 0);"
+        },
+        {
+          "kind": "add",
+          "text": "    return total.times(1 - pct / 100);"
+        },
+        {
+          "kind": "add",
+          "text": "  }"
+        }
+      ],
+      "section": "path",
+      "entry": "src/api/orders/orders.controller.ts#OrdersController.create"
+    },
+    {
+      "order": 7,
+      "symbolId": "src/repo/orders.repo.ts#OrdersRepo.insert",
+      "fileId": "src/repo/orders.repo.ts",
+      "why": "Body changed",
+      "diff": [
+        {
+          "kind": "ctx",
+          "text": "  async insert(order: NewOrder) {"
+        },
+        {
+          "kind": "ctx",
+          "text": "    const { rows } = await this.db.query("
+        },
+        {
+          "kind": "del",
+          "text": "      'INSERT INTO orders (id, owner_id, total) VALUES (gen_random_uuid(), $1, $2) RETURNING *',"
+        },
+        {
+          "kind": "del",
+          "text": "      [order.ownerId, order.total.cents],"
+        },
+        {
+          "kind": "add",
+          "text": "      'INSERT INTO orders (id, owner_id, total, discount_pct, discounted_total) VALUES (gen_random_uuid(), $1, $2, $3, $4) RETURNING *',"
+        },
+        {
+          "kind": "add",
+          "text": "      [order.ownerId, order.total.cents, order.discountPct, order.discounted.cents],"
+        },
+        {
+          "kind": "ctx",
+          "text": "    );"
+        },
+        {
+          "kind": "ctx",
+          "text": "    return rows[0];"
+        },
+        {
+          "kind": "ctx",
+          "text": "  }"
+        }
+      ],
+      "section": "path",
+      "entry": "src/api/orders/orders.controller.ts#OrdersController.create"
+    },
+    {
+      "order": 8,
+      "symbolId": "src/services/orders/orders.service.ts#OrdersService.notify",
+      "fileId": "src/services/orders/orders.service.ts",
+      "why": "New method",
+      "diff": [
+        {
+          "kind": "add",
+          "text": "  async notify(userId: string): Promise<void> {"
+        },
+        {
+          "kind": "add",
+          "text": "    await send(userId, 'Your order was placed');"
+        },
+        {
+          "kind": "add",
+          "text": "  }"
+        }
+      ],
+      "section": "path",
+      "entry": "src/api/orders/orders.controller.ts#OrdersController.create"
+    },
+    {
+      "order": 9,
+      "symbolId": "src/services/orders/mailer.ts#send",
+      "fileId": "src/services/orders/mailer.ts",
+      "why": "Body changed",
+      "diff": [
+        {
+          "kind": "ctx",
+          "text": "export async function send(to: string, subject: string): Promise<void> {"
+        },
+        {
+          "kind": "del",
+          "text": "  await Promise.resolve({ to, subject });"
+        },
+        {
+          "kind": "add",
+          "text": "  await Promise.resolve({ to, subject, body: template(subject) });"
+        },
+        {
+          "kind": "ctx",
+          "text": "}"
+        }
+      ],
+      "section": "path",
+      "entry": "src/api/orders/orders.controller.ts#OrdersController.create"
+    },
+    {
+      "order": 10,
+      "symbolId": "src/services/orders/mailer.ts#template",
+      "fileId": "src/services/orders/mailer.ts",
+      "why": "New function",
+      "diff": [
+        {
+          "kind": "add",
+          "text": "export function template(subject: string): string {"
+        },
+        {
+          "kind": "add",
+          "text": "  return `<h1>${subject}</h1>`;"
+        },
+        {
+          "kind": "add",
+          "text": "}"
+        }
+      ],
+      "section": "path",
+      "entry": "src/api/orders/orders.controller.ts#OrdersController.create"
+    },
+    {
+      "order": 11,
+      "symbolId": "src/api/orders/orders.controller.ts#OrdersController.cancel",
+      "fileId": "src/api/orders/orders.controller.ts",
+      "why": "New method",
+      "diff": [
+        {
+          "kind": "add",
+          "text": "  async cancel(req: Req, res: Res) {"
+        },
+        {
+          "kind": "add",
+          "text": "    const dto = CancelOrderDto.from(req.params, req.body);"
+        },
+        {
+          "kind": "add",
+          "text": "    const order = await this.svc.cancel(req.user, dto);"
+        },
+        {
+          "kind": "add",
+          "text": "    res.status(200).json(order);"
+        },
+        {
+          "kind": "add",
+          "text": "  }"
+        }
+      ],
+      "section": "path",
+      "entry": "src/api/orders/orders.controller.ts#OrdersController.cancel"
+    },
+    {
+      "order": 12,
+      "symbolId": "src/api/orders/orders.dto.ts#CancelOrderDto.from",
+      "fileId": "src/api/orders/orders.dto.ts",
+      "why": "New method",
+      "diff": [
+        {
+          "kind": "add",
+          "text": "  static from(params: Record<string, string>, body: unknown): CancelOrderDto {"
+        },
+        {
+          "kind": "add",
+          "text": "    const dto = new CancelOrderDto();"
+        },
+        {
+          "kind": "add",
+          "text": "    dto.id = params.id ?? '';"
+        },
+        {
+          "kind": "add",
+          "text": "    dto.reason = (body as { reason?: string }).reason ?? '';"
+        },
+        {
+          "kind": "add",
+          "text": "    return dto;"
+        },
+        {
+          "kind": "add",
+          "text": "  }"
+        }
+      ],
+      "section": "path",
+      "entry": "src/api/orders/orders.controller.ts#OrdersController.cancel"
+    },
+    {
+      "order": 13,
+      "symbolId": "src/api/orders/orders.dto.ts#CancelOrderDto",
+      "fileId": "src/api/orders/orders.dto.ts",
+      "why": "New class",
+      "diff": [
+        {
+          "kind": "add",
+          "text": "export class CancelOrderDto {"
+        },
+        {
+          "kind": "add",
+          "text": "  id = '';"
+        },
+        {
+          "kind": "add",
+          "text": "  reason = '';"
+        },
+        {
+          "kind": "add",
+          "text": ""
+        },
+        {
+          "kind": "add",
+          "text": "  static from(params: Record<string, string>, body: unknown): CancelOrderDto {"
+        },
+        {
+          "kind": "add",
+          "text": "    const dto = new CancelOrderDto();"
+        },
+        {
+          "kind": "add",
+          "text": "    dto.id = params.id ?? '';"
+        },
+        {
+          "kind": "add",
+          "text": "    dto.reason = (body as { reason?: string }).reason ?? '';"
+        },
+        {
+          "kind": "add",
+          "text": "    return dto;"
+        },
+        {
+          "kind": "add",
+          "text": "  }"
+        },
+        {
+          "kind": "add",
+          "text": "}"
+        }
+      ],
+      "section": "path",
+      "entry": "src/api/orders/orders.controller.ts#OrdersController.cancel"
+    },
+    {
+      "order": 14,
+      "symbolId": "src/auth/order.guard.ts#OrderGuard.canPlace",
+      "fileId": "src/auth/order.guard.ts",
+      "why": "Signature changed",
+      "diff": [
+        {
+          "kind": "del",
+          "text": "  canPlace(user: User): boolean {"
+        },
+        {
+          "kind": "add",
+          "text": "  canPlace(user: User, order?: Order): boolean {"
+        },
+        {
+          "kind": "ctx",
+          "text": "    if (user.role === Role.Admin) return true;"
+        },
+        {
+          "kind": "del",
+          "text": "    return user.role === Role.Member;"
+        },
+        {
+          "kind": "add",
+          "text": "    return order ? order.ownerId === user.id : true;"
+        },
+        {
+          "kind": "ctx",
+          "text": "  }"
+        }
+      ],
+      "section": "path",
+      "entry": "src/auth/order.guard.ts#OrderGuard.canPlace"
+    },
+    {
+      "order": 15,
+      "symbolId": "src/api/orders/orders.controller.spec.ts#cancel",
+      "fileId": "src/api/orders/orders.controller.spec.ts",
+      "why": "New test",
+      "diff": [
+        {
+          "kind": "add",
+          "text": "describe('cancel', () => {"
+        },
+        {
+          "kind": "add",
+          "text": "  it('answers 200 with the cancelled order', async () => {"
+        },
+        {
+          "kind": "add",
+          "text": "    const codes: number[] = [];"
+        },
+        {
+          "kind": "add",
+          "text": "    const svc = { cancel: async () => ({ id: 'o1' }) };"
+        },
+        {
+          "kind": "add",
+          "text": "    const res = { status: (code: number) => (codes.push(code), res), json: () => undefined };"
+        },
+        {
+          "kind": "add",
+          "text": "    await new OrdersController(svc as never).cancel({ user: { id: 'u1' }, params: { id: 'o1' }, body: {} }, res);"
+        },
+        {
+          "kind": "add",
+          "text": "    expect(codes).toEqual([200]);"
+        },
+        {
+          "kind": "add",
+          "text": "  });"
+        },
+        {
+          "kind": "add",
+          "text": "});"
+        }
+      ],
+      "section": "path",
+      "entry": "src/api/orders/orders.controller.spec.ts#cancel"
+    },
+    {
+      "order": 16,
+      "symbolId": "db/migrations/20260921_order_discounts.sql#ALTER TABLE orders",
+      "fileId": "db/migrations/20260921_order_discounts.sql",
+      "why": "Schema modified: ALTER TABLE orders",
+      "diff": [
+        {
+          "kind": "add",
+          "text": "ALTER TABLE orders"
+        },
+        {
+          "kind": "add",
+          "text": "  ADD COLUMN discount_pct NUMERIC(5,2) NOT NULL DEFAULT 0,"
+        },
+        {
+          "kind": "add",
+          "text": "  ADD COLUMN discounted_total NUMERIC(12,2);"
+        }
+      ],
+      "section": "migration"
+    },
+    {
+      "order": 17,
+      "symbolId": "db/migrations/20260921_order_discounts.sql#CREATE INDEX orders_discount_idx",
+      "fileId": "db/migrations/20260921_order_discounts.sql",
+      "why": "Schema modified: CREATE INDEX orders_discount_idx",
+      "diff": [
+        {
+          "kind": "add",
+          "text": "CREATE INDEX orders_discount_idx ON orders (discount_pct);"
+        }
+      ],
+      "section": "migration"
+    },
+    {
+      "order": 18,
+      "symbolId": "src/api/orders/orders.controller.spec.ts#create",
+      "fileId": "src/api/orders/orders.controller.spec.ts",
+      "why": "Body changed",
+      "diff": [
+        {
+          "kind": "ctx",
+          "text": "describe('create', () => {"
+        },
+        {
+          "kind": "del",
+          "text": "  it('answers 201 with the placed order', async () => {"
+        },
+        {
+          "kind": "add",
+          "text": "  it('answers 201 with the placed order and the discount flag', async () => {"
+        },
+        {
+          "kind": "ctx",
+          "text": "    const codes: number[] = [];"
+        },
+        {
+          "kind": "add",
+          "text": "    const seen: unknown[] = [];"
+        },
+        {
+          "kind": "ctx",
+          "text": "    const svc = { place: async () => ({ id: 'o1' }) };"
+        },
+        {
+          "kind": "del",
+          "text": "    const res = { status: (code: number) => (codes.push(code), res), json: () => undefined };"
+        },
+        {
+          "kind": "add",
+          "text": "    const res = { status: (code: number) => (codes.push(code), res), json: (value: unknown) => void seen.push(value) };"
+        },
+        {
+          "kind": "ctx",
+          "text": "    await new OrdersController(svc as never).create({ user: { id: 'u1' }, params: {}, body: { items: ['tea'] } }, res);"
+        },
+        {
+          "kind": "ctx",
+          "text": "    expect(codes).toEqual([201]);"
+        },
+        {
+          "kind": "add",
+          "text": "    expect(seen).toEqual([{ order: { id: 'o1' }, discounted: false }]);"
+        },
+        {
+          "kind": "ctx",
+          "text": "  });"
+        },
+        {
+          "kind": "ctx",
+          "text": "});"
+        }
+      ],
+      "section": "unconnected"
+    },
+    {
+      "order": 19,
+      "symbolId": "src/api/orders/orders.dto.ts#CreateOrderDto",
+      "fileId": "src/api/orders/orders.dto.ts",
+      "why": "Body changed",
+      "diff": [
+        {
+          "kind": "ctx",
+          "text": "export class CreateOrderDto {"
+        },
+        {
+          "kind": "ctx",
+          "text": "  items: string[] = [];"
+        },
+        {
+          "kind": "add",
+          "text": "  discountPct = 0;"
+        },
+        {
+          "kind": "add",
+          "text": "  rules: DiscountRule[] = [];"
+        },
+        {
+          "kind": "ctx",
+          "text": ""
+        },
+        {
+          "kind": "ctx",
+          "text": "  static from(body: unknown): CreateOrderDto {"
+        },
+        {
+          "kind": "ctx",
+          "text": "    const dto = new CreateOrderDto();"
+        }
+      ],
+      "section": "unconnected"
+    },
+    {
+      "order": 20,
+      "symbolId": "src/repo/orders.repo.ts#OrdersRepo.markCancelled",
+      "fileId": "src/repo/orders.repo.ts",
+      "why": "New method",
+      "diff": [
+        {
+          "kind": "add",
+          "text": "  async markCancelled(id: string) {"
+        },
+        {
+          "kind": "add",
+          "text": "    await this.db.query('UPDATE orders SET cancelled_at = now() WHERE id = $1', [id]);"
+        },
+        {
+          "kind": "add",
+          "text": "  }"
+        }
+      ],
+      "section": "unconnected"
+    },
+    {
+      "order": 21,
+      "symbolId": "src/services/orders/discount.rules.ts#DiscountRule",
+      "fileId": "src/services/orders/discount.rules.ts",
+      "why": "New export",
+      "diff": [
+        {
+          "kind": "add",
+          "text": "export interface DiscountRule {"
+        },
+        {
+          "kind": "add",
+          "text": "  percentage(total: Money): number;"
+        },
+        {
+          "kind": "add",
+          "text": "}"
+        }
+      ],
+      "section": "unconnected"
+    },
+    {
+      "order": 22,
+      "symbolId": "src/services/orders/discount.rules.ts#percentage",
+      "fileId": "src/services/orders/discount.rules.ts",
+      "why": "New function",
+      "diff": [
+        {
+          "kind": "add",
+          "text": "export function percentage(pct: number): DiscountRule {"
+        },
+        {
+          "kind": "add",
+          "text": "  return { percentage: () => pct };"
+        },
+        {
+          "kind": "add",
+          "text": "}"
+        }
+      ],
+      "section": "unconnected"
+    },
+    {
+      "order": 23,
+      "symbolId": "src/services/orders/discount.rules.ts#threshold",
+      "fileId": "src/services/orders/discount.rules.ts",
+      "why": "New function",
+      "diff": [
+        {
+          "kind": "add",
+          "text": "export function threshold(minimum: Money, pct: number): DiscountRule {"
+        },
+        {
+          "kind": "add",
+          "text": "  return { percentage: (total) => (total.cents >= minimum.cents ? pct : 0) };"
+        },
+        {
+          "kind": "add",
+          "text": "}"
+        }
+      ],
+      "section": "unconnected"
+    },
+    {
+      "order": 24,
+      "symbolId": "src/services/orders/pricing.ts#roundMoney",
+      "fileId": "src/services/orders/pricing.ts",
+      "why": "Removed function",
+      "diff": [
+        {
+          "kind": "del",
+          "text": "export function roundMoney(amount: Money): Money {"
+        },
+        {
+          "kind": "del",
+          "text": "  return Money.of(Math.round(amount.cents));"
+        },
+        {
+          "kind": "del",
+          "text": "}"
+        }
+      ],
+      "section": "unconnected"
+    }
+  ],
+  "findings": [
+    {
+      "id": "f:1a2b3c4d5e6f7a81",
+      "source": "claude",
+      "sources": [
+        "claude",
+        "semgrep"
+      ],
+      "severity": "high",
+      "category": "security",
+      "file": "src/services/orders/orders.service.ts",
+      "line": 14,
+      "symbolId": "src/services/orders/orders.service.ts#OrdersService.place",
+      "title": "Discount is applied twice on a retried order",
+      "message": "place() runs applyDiscount again when the insert is retried, so the stored total drops below the price.",
+      "fix": "Apply the discount once, before the retry loop.",
+      "state": "open"
+    },
+    {
+      "id": "f:2b3c4d5e6f7a8192",
+      "source": "semgrep",
+      "sources": [
+        "semgrep"
+      ],
+      "severity": "med",
+      "category": "correctness",
+      "file": "src/services/orders/orders.service.ts",
+      "line": 27,
+      "symbolId": "src/services/orders/orders.service.ts#OrdersService.calcTotal",
+      "title": "Total is not rounded before it is stored",
+      "message": "calcTotal keeps fractions of a cent; round it with roundMoney.",
+      "state": "open"
+    },
+    {
+      "id": "rule:file-size:7d3e9a10",
+      "source": "rule:file-size",
+      "severity": "med",
+      "category": "architecture",
+      "file": "src/api/orders/orders.controller.ts",
+      "line": 1,
+      "title": "File is over the size limit",
+      "message": "orders.controller.ts has more lines than the repo allows.",
+      "state": "open"
+    },
+    {
+      "id": "f:3c4d5e6f7a8192a3",
+      "source": "claude",
+      "sources": [
+        "claude"
+      ],
+      "severity": "med",
+      "category": "scope",
+      "file": "src/services/orders/mailer.ts",
+      "line": 2,
+      "symbolId": "src/services/orders/mailer.ts#send",
+      "title": "Mailer change is outside the task",
+      "message": "The confirmation mail was not part of the request.",
+      "state": "intended"
+    },
+    {
+      "id": "f:4d5e6f7a8192a3b4",
+      "source": "eslint",
+      "sources": [
+        "eslint"
+      ],
+      "severity": "low",
+      "category": "style",
+      "file": "src/repo/orders.repo.ts",
+      "line": 23,
+      "symbolId": "src/repo/orders.repo.ts#OrdersRepo.insert",
+      "title": "Unused import of Money",
+      "message": "Money is imported but never used.",
+      "state": "fixed"
+    }
+  ],
+  "summary": {
+    "files": 17,
+    "byStatus": {
+      "add": 14,
+      "mod": 8,
+      "sig": 1,
+      "del": 1,
+      "same": 32
+    },
+    "byVerdict": {
+      "eyes": 2,
+      "risky": 1,
+      "spec": 0,
+      "ok": 8,
+      "same": 6
+    },
+    "tier1Files": [
+      "db/migrations/20260921_order_discounts.sql",
+      "src/auth/order.guard.ts"
+    ]
+  }
+}

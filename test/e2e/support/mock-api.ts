@@ -7,6 +7,8 @@ import { fileURLToPath } from 'node:url';
 import type { Page, Route } from '@playwright/test';
 import type { ApiError, ChangeSummary, FileDiff, RepoDetail, RepoSummary, SearchResult } from '../../../src/core/model/types.js';
 import type { Report } from '../../../src/core/report/types.js';
+import type { FindingsMock } from './findings-api.js';
+import { answerFindings, createFindingsMock } from './findings-api.js';
 import type { ReviewMock, ReviewSeed } from './review-api.js';
 import { answerReview, createReviewMock } from './review-api.js';
 
@@ -29,6 +31,8 @@ export const fixtures = {
   reportOrderDiscounts: () => load('report-order-discounts.json') as Report,
   /** The golden order-discounts Report with its real steps (path, migrations, unconnected) and three findings on step symbols (gen-report-with-steps.mjs). */
   reportWithSteps: () => load('report-order-discounts-with-steps.json') as Report,
+  /** The steps Report with five findings (ADR-036): an open high one with two sources (its file risky), an open med one, an open rule finding, an intended and a fixed one. */
+  reportFindingsMixed: () => load('report-findings-mixed.json') as Report,
   /** The golden Report of the order-discounts scenario (17 files, the mockup's change). */
   reportGolden: () => JSON.parse(readFileSync(scenarioGolden, 'utf8')) as Report,
   /** The `large` preset: 2,000 files, about 20,000 floors, 300 touched, 40 packages; written by gen-large-city.mjs in the global setup. */
@@ -66,6 +70,8 @@ export interface ApiData {
   review?: ReviewSeed;
   /** The review state per change id: pass the same Map to two pages and they share one daemon's marks. */
   reviewMocks: Map<number, ReviewMock>;
+  /** The fix queue and the writes of the findings routes per change id (ADR-036), created on first use. */
+  findingsMocks: Map<number, FindingsMock>;
 }
 
 export interface MockedApi {
@@ -74,6 +80,8 @@ export interface MockedApi {
   count(pathname: string): number;
   /** The review state of a change (marks, note, writes made, hooks to fail or hold a write), created on first use. */
   review(changeId: number): ReviewMock;
+  /** The findings routes' state of a change (writes made, fix queue, hooks to fail, drop or hold a write), created on first use. */
+  findings(changeId: number): FindingsMock;
 }
 
 export function defaultApiData(): ApiData {
@@ -85,6 +93,7 @@ export function defaultApiData(): ApiData {
     reports: { 11: fixtures.reportOrderDiscounts() },
     search: () => results,
     reviewMocks: new Map(),
+    findingsMocks: new Map(),
     diff: ({ path }) => ({
       snapshotId: 1,
       head: 'aaaaaaa',
@@ -111,6 +120,15 @@ export async function mockApi(page: Page, overrides: Partial<ApiData> = {}): Pro
     if (mock === undefined) {
       mock = createReviewMock({ ...data.review, marks: [...(data.review?.marks ?? [])] });
       reviews.set(changeId, mock);
+    }
+    return mock;
+  };
+
+  const findings = (changeId: number): FindingsMock => {
+    let mock = data.findingsMocks.get(changeId);
+    if (mock === undefined) {
+      mock = createFindingsMock();
+      data.findingsMocks.set(changeId, mock);
     }
     return mock;
   };
@@ -155,6 +173,10 @@ export async function mockApi(page: Page, overrides: Partial<ApiData> = {}): Pro
         if (data.review === undefined && !reviews.has(id)) return answer(route, { error: { code: 'no-snapshot', message: 'no snapshot yet' } }, 409);
         return answerReview(route, review(id), data.reports[id], match[2] ?? '');
       }
+      if ((match = /^\/api\/changes\/(\d+)\/findings\/([^/]+)\/([a-z]+)$/.exec(path))) {
+        const id = Number(match[1]);
+        return answerFindings(route, findings(id), data.reports[id], decodeURIComponent(match[2] ?? ''), match[3] ?? '');
+      }
       if ((match = /^\/api\/changes\/(\d+)\/diff$/.exec(path))) {
         const reply = await data.diff({ changeId: Number(match[1]), path: url.searchParams.get('path') ?? '', symbol: url.searchParams.get('symbol'), call: diffCalls++ });
         // A held request the page gave up on (an aborted fetch) cannot be answered any more.
@@ -175,5 +197,6 @@ export async function mockApi(page: Page, overrides: Partial<ApiData> = {}): Pro
     requests,
     count: (pathname) => requests.filter((url) => url.pathname === pathname).length,
     review,
+    findings,
   };
 }
