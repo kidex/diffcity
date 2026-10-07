@@ -73,7 +73,7 @@ Each entry of `runs[].results[]` becomes one finding.
 | SARIF | Finding |
 |---|---|
 | `runs[].tool.driver.name` | `source` |
-| `results[].ruleId` | `title` (`message.text` when `ruleId` is missing) |
+| `results[].ruleId` | `title` (derived from `message.text` when `ruleId` is missing, see below) |
 | `results[].message.text` | `message` |
 | `results[].level` | `severity`: `error` → `high`, `warning` → `med`, `note` / `none` / missing → `low` |
 | `results[].locations[0].physicalLocation.artifactLocation.uri` | `file` (made repo-relative) |
@@ -81,7 +81,9 @@ Each entry of `runs[].results[]` becomes one finding.
 | `results[].properties.category` | `category` (default `correctness`) |
 | `results[].fixes[0].description.text` | `fix` |
 
-The size limits of the own format apply to SARIF too: more than 5,000 results in all runs, or a result whose message is over 16 KiB or whose title or fix is over 4 KiB, rejects the file.
+A result with no `ruleId` takes its title from `message.text`: the first non-blank line, with runs of whitespace collapsed to single spaces, cut to 200 characters (grapheme clusters, so an emoji or an accented letter is never split) followed by `…` when it is longer. The full text stays in `message`.
+
+The size limits of the own format apply to SARIF too: more than 5,000 results in all runs, or a result whose message is over 16 KiB or whose `ruleId` or fix is over 4 KiB, rejects the file.
 
 Each run's `tool.driver.name` is the `source` of its results (`sarif` when missing). Warnings, with `runs[i].results[j]` as the place unless said otherwise:
 

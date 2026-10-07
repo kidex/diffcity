@@ -133,6 +133,32 @@ describe('findings', () => {
     expect(noRule?.title).toBe('Something is wrong.');
   });
 
+  it('sarif-no-ruleid-title-from-first-line', () => {
+    const titleOf = (text: string): FindingInput | undefined =>
+      okFindings(parseSarif(sarif([sarifResult({ ruleId: undefined, message: { text } })]), ROOT))[0];
+    // First line only, whitespace collapsed; the message keeps the full text.
+    const multi = 'Order   is\tused\n\nbefore it is checked.';
+    expect(titleOf(multi)?.title).toBe('Order is used');
+    expect(titleOf(multi)?.message).toBe(multi);
+    // Leading blank lines are skipped.
+    expect(titleOf('\n  \r\n  Guard allows all.\nMore.')?.title).toBe('Guard allows all.');
+    // Exactly 200 characters: kept as is. Longer: cut to 200 with a trailing ellipsis.
+    expect(titleOf('a'.repeat(200))?.title).toBe('a'.repeat(200));
+    expect(titleOf('a'.repeat(201))?.title).toBe(`${'a'.repeat(200)}…`);
+    // Characters, not UTF-16 units or code points: an emoji or a combined character is never split.
+    expect(titleOf('😀'.repeat(250))?.title).toBe(`${'😀'.repeat(200)}…`);
+    const family = '\u{1F468}\u200D\u{1F469}\u200D\u{1F467}';
+    expect(titleOf(family.repeat(201))?.title).toBe(`${family.repeat(200)}…`);
+    expect(titleOf('e\u0301'.repeat(201))?.title).toBe(`${'e\u0301'.repeat(200)}…`);
+    // A message over the 4 KiB title limit no longer rejects the file; the 16 KiB message limit still does.
+    const long = `${'x'.repeat(5_000)}\nsecond line`;
+    expect(titleOf(long)?.title).toBe(`${'x'.repeat(200)}…`);
+    expect(titleOf(long)?.message).toBe(long);
+    expect(parseSarif(sarif([sarifResult({ ruleId: undefined, message: { text: 'x'.repeat(16 * 1024 + 1) } })]), ROOT).ok).toBe(false);
+    // A ruleId is still the title as given, and still limited to 4 KiB.
+    expect(parseSarif(sarif([sarifResult({ ruleId: 'r'.repeat(4097) })]), ROOT).ok).toBe(false);
+  });
+
   it('sarif-no-location-skipped', () => {
     const result = parseSarif(
       sarif([

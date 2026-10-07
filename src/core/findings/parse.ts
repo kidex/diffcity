@@ -137,6 +137,21 @@ function str(value: unknown): string | undefined {
   return typeof value === 'string' && value.trim() !== '' ? value : undefined;
 }
 
+/** The longest title, in characters, derived from a SARIF message (docs/findings.md). */
+const MESSAGE_TITLE_CHARS = 200;
+const GRAPHEMES = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
+
+/**
+ * The title of a SARIF result with no `ruleId`: the first non-blank line of
+ * its message, whitespace collapsed, cut to 200 characters (grapheme clusters) with
+ * a trailing "…" when longer. The full text stays in `message`.
+ */
+function titleFromMessage(text: string): string {
+  const line = text.split(/\r\n|\r|\n/).find((candidate) => candidate.trim() !== '') ?? '';
+  const chars = Array.from(GRAPHEMES.segment(line.replace(/\s+/g, ' ').trim()), (part) => part.segment);
+  return chars.length > MESSAGE_TITLE_CHARS ? `${chars.slice(0, MESSAGE_TITLE_CHARS).join('')}…` : chars.join('');
+}
+
 /** SARIF 2.1: each `runs[].results[]` entry becomes one finding, mapped as in docs/findings.md. */
 export function parseSarif(json: unknown, repoRoot: string): ParseResult {
   if (!isObj(json) || !Array.isArray(json['runs'])) {
@@ -188,7 +203,7 @@ export function parseSarif(json: unknown, repoRoot: string): ParseResult {
       }
       const messageText = isObj(result['message']) ? str(result['message']['text']) : undefined;
       const ruleId = str(result['ruleId']);
-      const title = ruleId ?? messageText;
+      const title = ruleId ?? (messageText === undefined ? undefined : titleFromMessage(messageText));
       if (title === undefined) {
         warnings.push({ at, message: 'skipped: no ruleId and no message text' });
         return;
