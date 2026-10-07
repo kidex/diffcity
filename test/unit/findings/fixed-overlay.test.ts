@@ -115,6 +115,15 @@ describe('findings', () => {
     expect(finding).toMatchObject({ symbolId: `${ORDERS}#OrdersService.cancel`, line: 35 });
     // The stored finding is not changed.
     expect(open.finding.line).toBe(15);
+    // The shifted line is clamped to the symbol's new range: cancel shrank, refund now starts after it.
+    const late = stored({ line: 28 });
+    expect(late.anchor).toMatchObject({ symbolName: 'OrdersService.cancel', symbolStart: 10 });
+    orders.symbols = [
+      symbol(ORDERS, 'OrdersService.cancel', 'method', 'mod', 10, 15),
+      symbol(ORDERS, 'OrdersService.refund', 'method', 'mod', 17, 40),
+    ];
+    const clamped = reanchor(late, report);
+    expect(clamped).toMatchObject({ symbolId: `${ORDERS}#OrdersService.cancel`, line: 15 });
   });
 
   it('reanchor-line-fallback', () => {

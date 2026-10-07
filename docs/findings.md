@@ -127,7 +127,7 @@ Example, a result from a run of `semgrep`:
 - A file that is not part of the change is skipped and counted as `skipped-not-in-change`.
 - When several symbols contain the line, the innermost one is used (a method inside its class). A symbol that was deleted never matches: a finding line is a line of the `after` version.
 - The finding keeps the symbol's name, kind and first line, and the fingerprint of the symbol (of the file, at file level) at import time.
-- On a later head the finding is found again by file, symbol name and kind, and its line moves with the symbol. When the symbol no longer exists, it is anchored by its line, clamped to the last symbol of the file. When the file is no longer in the change, the finding is left out of the Report but kept in the store, and comes back with the file.
+- On a later head the finding is found again by file, symbol name and kind, and its line moves with the symbol, kept within the symbol's lines. When the symbol no longer exists, it is anchored by its line, clamped to the last symbol of the file. When the file is no longer in the change, the finding is left out of the Report but kept in the store, and comes back with the file.
 - Findings with no file belong to the change and come only from rules. They change no file verdict.
 
 ## Deduplication

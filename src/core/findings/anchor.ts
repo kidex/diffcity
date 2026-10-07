@@ -91,9 +91,10 @@ export function anchor(input: FindingInput, report: Report, fingerprints?: Finge
 
 /**
  * The finding as it reads on this Report (a later head, ADR-036): found again
- * by `(file, symbol name, kind)`, its line carried by the symbol's shift; when
- * the symbol is gone, by its line clamped to the file's last symbol. `null`
- * when the file is not in the Report (the finding stays in the table).
+ * by `(file, symbol name, kind)`, its line carried by the symbol's shift and
+ * clamped to the symbol's range; when the symbol is gone, by its line clamped
+ * to the file's last symbol. `null` when the file is not in the Report (the
+ * finding stays in the table).
  */
 export function reanchor(stored: StoredFinding, report: Report): Finding | null {
   const { finding, anchor: a } = stored;
@@ -106,7 +107,9 @@ export function reanchor(stored: StoredFinding, report: Report): Finding | null 
   const start = a.symbolStart ?? finding.line;
   const same = symbolByName(file, a.symbolName, a.symbolKind, start);
   if (same !== undefined) {
-    const line = Math.max(1, finding.line + (same.range.start - start));
+    // Carried by the symbol's shift, then kept inside the symbol it is anchored to.
+    const shifted = finding.line + (same.range.start - start);
+    const line = Math.max(1, Math.min(Math.max(shifted, same.range.start), same.range.end));
     return { ...rest, line, symbolId: same.id };
   }
   const last = file.symbols.reduce((max, symbol) => (symbol.status === 'del' ? max : Math.max(max, symbol.range.end)), 0);
