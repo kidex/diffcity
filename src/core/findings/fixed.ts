@@ -7,7 +7,8 @@ import type { StoredFinding } from './types.js';
 /**
  * Keys of the stored findings an import closes as `fixed` (docs/findings.md).
  * A stored `open` finding of a source the import covers, which the import did
- * not report again, is fixed when its file left the change or its anchor's
+ * not report again (same key, or same source, symbol or file, category and
+ * normalized title), is fixed when its file left the change or its anchor's
  * fingerprint differs from the one stored at import. An unchanged anchor, or
  * a stored fingerprint that is unknown, leaves it open. A snapshot alone never
  * fixes anything: this runs on an import only.
@@ -27,7 +28,9 @@ export function fixedKeys(args: {
   const { stored, imported, report, fingerprints } = args;
   const covered = new Set(args.sources ?? imported.map((entry) => entry.finding.source));
   const reportedKeys = new Set(imported.map((entry) => entry.key));
-  const reportedIdentities = new Set(imported.map((entry) => dedupIdentity(entry.finding)));
+  // Reported again means by the same source: eslint reporting X does not keep semgrep's X open.
+  const reported = (source: string, identity: string): string => `${source}\0${identity}`;
+  const reportedIdentities = new Set(imported.map((entry) => reported(entry.finding.source, dedupIdentity(entry.finding))));
 
   const keys: string[] = [];
   for (const entry of stored) {
@@ -38,7 +41,7 @@ export function fixedKeys(args: {
       keys.push(entry.key);
       continue;
     }
-    if (reportedIdentities.has(dedupIdentity(current))) continue;
+    if (reportedIdentities.has(reported(entry.finding.source, dedupIdentity(current)))) continue;
     const file = findFile(report, entry.finding.file);
     if (file === undefined) continue;
     const { symbolName, symbolKind, symbolStart, fingerprint } = entry.anchor;

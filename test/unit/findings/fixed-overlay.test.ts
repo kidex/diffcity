@@ -50,6 +50,13 @@ describe('findings', () => {
     if (orders === undefined) throw new Error('fixture');
     orders.symbols = orders.symbols.filter((s) => s.name !== 'OrdersService.cancel');
     expect(fixedKeys({ stored: [open], imported: [other], report, fingerprints: shopfrontFingerprints() })).toEqual([open.key]);
+    // Another source reporting the same symbol, category and title does not keep this source's finding open.
+    const semgrep = stored({ source: 'semgrep' });
+    const eslintSame = stored({ source: 'eslint', line: 18 });
+    const args = { stored: [semgrep], imported: [eslintSame], report: shopfrontReport(), fingerprints: fp };
+    expect(fixedKeys({ ...args, sources: ['semgrep', 'eslint'] })).toEqual([semgrep.key]);
+    // The same source reporting it again does.
+    expect(fixedKeys({ ...args, imported: [stored({ source: 'semgrep', line: 18 })] })).toEqual([]);
   });
 
   it('stays-open-when-symbol-unchanged', () => {
