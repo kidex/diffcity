@@ -81,6 +81,7 @@ Integrate (phase 5) has no CLI command: merge, push and PR run only from the cha
 - The shell hook calls `track` in the background only when you enter a repo (its root or any subfolder) or move to another repo; moving between folders of the same repo does nothing (ADR-016).
 - A repo is active (watched and polled for PRs) if you entered it, an agent worked in it, or you opened it in the UI in the last 7 days. Repos found by `scan` are registered inactive and collected once (ADR-020).
 - The 2 s debounce has a 10 s maximum wait, so the UI updates at least every 10 s while an agent keeps writing (ADR-020).
+- diffcity's own files `.diffcity/findings.json` and `.diffcity/fix-queue.json` are never part of a change: they are left out of the touched files and ignored by the watcher, so an import or a queued fix creates no Draft and no recollect (ADR-036). Every other file under `.diffcity/` is a normal file.
 
 ### Change list per repo
 
@@ -130,10 +131,13 @@ interface Symbol {
   status: Status; range: { start: number; end: number }; signatureBefore?: string; signatureAfter?: string;
   callsites?: number;       // how many calls the agent rewrote, for 'sig'
 }
-interface Step { order: number; symbolId: string; fileId: string; why: string; diff: DiffLine[]; }
+interface Step { order: number; symbolId: string; fileId: string; why: string; diff: DiffLine[];
+                 section?: 'path' | 'migration' | 'unconnected';   // missing is read as 'path' (ADR-034)
+                 entry?: string; }                                   // symbolId of the entry point the step hangs from
 interface DiffLine { kind: 'ctx' | 'add' | 'del'; text: string; }
 interface Finding {
   id: string; source: string;                 // 'claude' | 'semgrep' | 'eslint' | 'rule:<id>' | ...
+  sources?: string[];                          // every source of a deduplicated entry, always including source (ADR-036)
   severity: 'high' | 'med' | 'low';
   category: 'security' | 'correctness' | 'scope' | 'style' | 'tests' | 'architecture';
   file: string; line: number; symbolId?: string;   // symbolId is resolved on import; file '' and line 0 for a change-level finding
@@ -215,7 +219,9 @@ If `.diffcity/spec.md` exists (or the `--spec` argument is given), touched files
 - Own format: an array of `Finding` without `symbolId`.
 - SARIF 2.1: `results[]` → `Finding` (ruleId → title, level → severity, physicalLocation → file/line, tool.driver.name → source).
 - Anchoring: the line maps to the symbol whose `range` contains it, in the `after` version. Findings without a symbol stay at file level.
-- Simple dedup: same `symbolId` + `category` + normalized title → a single entry with the list of sources.
+- Simple dedup: same `symbolId` + `category` + normalized title → a single entry with the list of sources. The merged entry is `intended` if any part is, otherwise `open` if any part is, and `fixed` only when every part is (ADR-036).
+- Findings belong to the change, not to one head: on each served Report they are re-anchored against the latest snapshot by file, symbol name and kind, then by line. An imported finding may carry a one-line `why` hint that replaces the reading-path text of its symbol's step.
+- `fixed`: on an import, a stored `open` finding of a source the import covers, which the import no longer reports and whose anchor changed since it was imported, becomes `fixed`; a finding whose file left the change is `fixed`. A snapshot alone never marks a finding `fixed`.
 - Rule findings (`source: "rule:<id>"`) are anchored the same way. A finding with no file (`file: ""`, for example a failed CI check without annotations) belongs to the change: it shows in the top bar and the Findings tab and changes no file verdict.
 
 ---
