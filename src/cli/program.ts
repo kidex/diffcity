@@ -122,6 +122,7 @@ export function buildProgram(io: CliIo = defaultIo): Command {
     .command('diff')
     .description('semantic diff of the current change')
     .option('--json', 'print the report as JSON')
+    .option('--compact', 'with --json: leave out untouched files and the packages left without files')
     .option('--base <ref>', 'base ref')
     .option('--head <ref>', 'head ref')
     .action(async (options: DiffCommandOptions) => {

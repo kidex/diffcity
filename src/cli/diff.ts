@@ -1,11 +1,14 @@
-// `diffcity diff [--json] [--base <ref>] [--head <ref>]` (SPEC.md section 3, ADR-011).
-// Builds the Report in-process through src/core; never starts or contacts the daemon.
+// `diffcity diff [--json [--compact]] [--base <ref>] [--head <ref>]` (SPEC.md
+// section 3, ADR-011, ADR-037). Builds the Report in-process through src/core;
+// never starts or contacts the daemon. `--compact` is an output filter only.
 
 import { buildReport, type BuildReportOptions } from '../core/report/index.js';
 import type { Report, Status, Verdict } from '../core/report/types.js';
 
 export interface DiffCommandOptions {
   json?: boolean;
+  /** With --json: leave out untouched files and the packages left with none (ADR-037). */
+  compact?: boolean;
   base?: string;
   head?: string;
 }
@@ -87,6 +90,19 @@ export function formatSummary(report: Report): string {
   return `${lines.join('\n')}\n`;
 }
 
+/**
+ * The Report without its untouched files (`status: 'same'`) and without the
+ * packages that have none left; `meta`, `steps`, `findings`, `checks` and
+ * `summary` are kept as they are (ADR-037). The /code-review command reads it:
+ * a large repo's untouched files only cost the agent tokens.
+ */
+export function compactReport(report: Report): Report {
+  const packages = report.packages
+    .map((pkg) => ({ ...pkg, files: pkg.files.filter((file) => file.status !== 'same') }))
+    .filter((pkg) => pkg.files.length > 0);
+  return { ...report, packages };
+}
+
 function oneLine(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error);
   return message.replace(/\s*\n\s*/g, ' ').trim();
@@ -108,6 +124,11 @@ export async function runDiff(options: DiffCommandOptions, deps: DiffDeps): Prom
     deps.io.stderr(`diffcity diff: ${oneLine(error)}\n`);
     return 1;
   }
-  deps.io.stdout(options.json === true ? `${JSON.stringify(report, null, 2)}\n` : formatSummary(report));
+  if (options.json !== true) {
+    deps.io.stdout(formatSummary(report));
+    return 0;
+  }
+  const output = options.compact === true ? compactReport(report) : report;
+  deps.io.stdout(`${JSON.stringify(output, null, 2)}\n`);
   return 0;
 }

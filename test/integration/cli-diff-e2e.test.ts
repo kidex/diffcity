@@ -187,6 +187,18 @@ describe('e2e: diffcity diff --json on a branch with sig, mod, add and del', () 
   it('starts no daemon and writes nothing to DIFFCITY_HOME', async () => {
     expect(await readdir(home)).toEqual([]);
   });
+
+  it('compact/drops-untouched-files (built CLI): --compact leaves out the untouched migration and keeps the rest', async () => {
+    const compactRun = await runCli(['diff', '--json', '--compact']);
+    expect(compactRun).toMatchObject({ code: 0, stderr: '' });
+    const compact = JSON.parse(compactRun.stdout) as Report;
+    expect(fileMap(compact).has('db/migrations/001_orders.sql')).toBe(false);
+    const expected = {
+      ...report,
+      packages: report.packages.map((pkg) => ({ ...pkg, files: pkg.files.filter((entry) => entry.status !== 'same') })),
+    };
+    expect({ ...compact, meta: { ...compact.meta, generatedAt: '' } }).toEqual({ ...expected, meta: { ...expected.meta, generatedAt: '' } });
+  });
 });
 
 describe('e2e: a touched README in the working tree', () => {
