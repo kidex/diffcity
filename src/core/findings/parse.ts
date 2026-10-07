@@ -1,6 +1,6 @@
 // Own-format and SARIF 2.1 parsing (ADR-036, docs/findings.md). Pure.
 
-import { isRuleSource, normalizePath, normalizeSarifUri, ruleSourceWarning } from './normalize.js';
+import { isRuleSource, normalizePath, normalizeSarifUri, ruleSourceWarning, type RepoRoot } from './normalize.js';
 import {
   CATEGORIES,
   LIMITS,
@@ -44,7 +44,7 @@ function tooMany(count: number): string | undefined {
 }
 
 /** Own format: an array of findings without `symbolId`. Any invalid entry rejects the file; a bad path skips the entry. */
-export function parseOwn(json: unknown, repoRoot?: string): ParseResult {
+export function parseOwn(json: unknown, repoRoot?: RepoRoot): ParseResult {
   if (!Array.isArray(json)) return { ok: false, errors: ['the file must be a JSON array of findings'] };
   const overLimit = tooMany(json.length);
   if (overLimit !== undefined) return { ok: false, errors: [overLimit] };
@@ -167,7 +167,7 @@ function titleFromMessage(text: string): string {
 }
 
 /** SARIF 2.1: each `runs[].results[]` entry becomes one finding, mapped as in docs/findings.md. */
-export function parseSarif(json: unknown, repoRoot: string): ParseResult {
+export function parseSarif(json: unknown, repoRoot: RepoRoot): ParseResult {
   if (!isObj(json) || !Array.isArray(json['runs'])) {
     return { ok: false, errors: ['not a SARIF 2.1 log: "runs" must be an array'] };
   }

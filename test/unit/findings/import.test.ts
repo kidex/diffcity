@@ -66,6 +66,13 @@ describe('parseFindingsText', () => {
     expect(result).toMatchObject({ ok: true, format: 'sarif', sources: ['semgrep', 'eslint'], findings: [{ source: 'semgrep', line: 12 }] });
   });
 
+  it('absolute paths may use any spelling of the root; a leading byte order mark is ignored', () => {
+    const own = [guardFinding({ file: '/logical/shopfront/src/auth/order.guard.ts' })];
+    expect(parseFindingsText(JSON.stringify(own), [ROOT, '/logical/shopfront'])).toMatchObject({ ok: true, findings: [{ file: 'src/auth/order.guard.ts' }] });
+    expect(parseFindingsText(JSON.stringify(own), ROOT)).toMatchObject({ ok: true, findings: [], warnings: [{ message: 'skipped: absolute path "/logical/shopfront/src/auth/order.guard.ts" is outside the repository' }] });
+    expect(parseFindingsText(`\uFEFF${JSON.stringify([guardFinding()])}`, ROOT)).toMatchObject({ ok: true, format: 'own' });
+  });
+
   it('invalid JSON and an invalid file are errors', () => {
     expect(parseFindingsText('{ not json', ROOT)).toEqual({ ok: false, errors: [expect.stringMatching(/^the file is not valid JSON/)] });
     expect(parseFindingsText('{"findings": []}', ROOT)).toEqual({ ok: false, errors: ['the file must be a JSON array of findings'] });

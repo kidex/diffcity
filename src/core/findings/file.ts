@@ -3,6 +3,7 @@
 // the bytes (at most MAX_FINDINGS_FILE_BYTES) and passes the text. No parser,
 // no Report code: the CLI loads this module.
 
+import type { RepoRoot } from './normalize.js';
 import { parseOwn, parseSarif } from './parse.js';
 import type { ParseResult } from './types.js';
 
@@ -24,12 +25,12 @@ export function detectFindingsFormat(json: unknown): FindingsFormat {
   return fields['version'] !== undefined && fields['runs'] !== undefined ? 'sarif' : 'own';
 }
 
-/** Parses the text of a findings file; `repoRoot` is the working tree root, for absolute paths. */
-export function parseFindingsText(text: string, repoRoot: string): FindingsFileResult {
+/** Parses the text of a findings file; `repoRoot` is the working tree root (or its spellings), for absolute paths. */
+export function parseFindingsText(text: string, repoRoot: RepoRoot): FindingsFileResult {
   let json: unknown;
   try {
     // A leading byte order mark is not JSON, but editors write one.
-    json = JSON.parse(text.startsWith('﻿') ? text.slice(1) : text);
+    json = JSON.parse(text.startsWith('\uFEFF') ? text.slice(1) : text);
   } catch (error) {
     return { ok: false, errors: [`the file is not valid JSON: ${error instanceof Error ? error.message : String(error)}`] };
   }
