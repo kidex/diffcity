@@ -62,7 +62,11 @@ describe('findings', () => {
         },
         expect.objectContaining({ line: 3 }),
       ],
+      sources: ['claude'],
     });
+    // The distinct entry sources, in order of first appearance.
+    const many = parseOwn([own({ source: 'semgrep' }), own(), own({ source: 'semgrep', line: 2 }), own({ source: 'eslint', file: '../x.ts' })], ROOT);
+    expect(many.ok && many.sources).toEqual(['semgrep', 'claude', 'eslint']);
   });
 
   it('own-missing-field-rejected', () => {
@@ -169,6 +173,19 @@ describe('findings', () => {
       ],
     };
     expect(okFindings(parseSarif(log, ROOT)).map((f) => f.source)).toEqual(['semgrep', 'eslint', 'eslint', 'sarif']);
+    // Every run is a source the import covers, also one whose results were all skipped or empty.
+    const covered = parseSarif(
+      {
+        runs: [
+          ...log.runs,
+          { tool: { driver: { name: 'gitleaks' } }, results: [] },
+          { tool: { driver: { name: 'semgrep' } }, results: [sarifResult({ locations: [] })] },
+          { tool: { driver: { name: 'crashed' } } },
+        ],
+      },
+      ROOT,
+    );
+    expect(covered.ok && covered.sources).toEqual(['semgrep', 'eslint', 'sarif', 'gitleaks']);
     // The same result from two tools becomes one entry that lists both.
     const twice = {
       version: '2.1.0',

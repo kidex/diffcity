@@ -13,8 +13,9 @@ import type { StoredFinding } from './types.js';
  * fixes anything: this runs on an import only.
  *
  * `imported` are the findings of the new import, anchored on `report`;
- * `sources` defaults to the sources found in `imported` (pass the tool names
- * of a file whose run reported nothing).
+ * `sources` are the sources the import covers: pass `ParseResult.sources`,
+ * so a tool run that reported nothing still fixes its findings. It defaults
+ * to the sources found in `imported`.
  */
 export function fixedKeys(args: {
   stored: readonly StoredFinding[];

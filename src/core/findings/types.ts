@@ -51,7 +51,19 @@ export interface ParseWarning {
 }
 
 export type ParseResult =
-  | { ok: true; findings: FindingInput[]; warnings: ParseWarning[] }
+  | {
+      ok: true;
+      findings: FindingInput[];
+      warnings: ParseWarning[];
+      /**
+       * The sources this import covers, in order of first appearance; `fixed`
+       * runs for these (pass them to `fixedKeys`). SARIF: the driver name (or
+       * `sarif`) of every run with a `results` array, also an empty one or one
+       * whose results were all skipped. Own format: the distinct sources of the
+       * valid entries, also those skipped for their path.
+       */
+      sources: string[];
+    }
   | { ok: false; errors: string[] };
 
 /** What a finding is anchored to, kept with it so a later head can re-anchor it. */

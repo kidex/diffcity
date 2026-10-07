@@ -51,6 +51,7 @@ export function parseOwn(json: unknown, repoRoot?: string): ParseResult {
   const errors: string[] = [];
   const warnings: ParseWarning[] = [];
   const findings: FindingInput[] = [];
+  const sources = new Set<string>();
 
   json.forEach((entry: unknown, index) => {
     const at = `findings[${String(index)}]`;
@@ -96,6 +97,7 @@ export function parseOwn(json: unknown, repoRoot?: string): ParseResult {
       errors.push(...sizes);
       return;
     }
+    sources.add(source.trim());
     const path = normalizePath(file, repoRoot);
     if (!path.ok) {
       warnings.push({ at, message: `skipped: ${path.reason}` });
@@ -117,7 +119,7 @@ export function parseOwn(json: unknown, repoRoot?: string): ParseResult {
   });
 
   if (errors.length > 0) return { ok: false, errors: errors.slice(0, MAX_ERRORS) };
-  return { ok: true, findings, warnings };
+  return { ok: true, findings, warnings, sources: [...sources] };
 }
 
 function sarifSeverity(level: unknown): FindingSeverity {
@@ -144,12 +146,15 @@ export function parseSarif(json: unknown, repoRoot: string): ParseResult {
   const errors: string[] = [];
   const warnings: ParseWarning[] = [];
   const findings: FindingInput[] = [];
+  const sources = new Set<string>();
 
   runs.forEach((run, runIndex) => {
+    // A run without `results` did not compute any (SARIF 2.1 3.14.23): it covers nothing.
     if (!isObj(run) || !Array.isArray(run['results'])) return;
     const tool = isObj(run['tool']) ? run['tool'] : {};
     const driver = isObj(tool['driver']) ? tool['driver'] : {};
-    const source = str(driver['name']) ?? 'sarif';
+    const source = str(driver['name'])?.trim() ?? 'sarif';
+    sources.add(source);
     (run['results'] as unknown[]).forEach((result, resultIndex) => {
       const at = `runs[${String(runIndex)}].results[${String(resultIndex)}]`;
       if (!isObj(result)) {
@@ -215,5 +220,5 @@ export function parseSarif(json: unknown, repoRoot: string): ParseResult {
   });
 
   if (errors.length > 0) return { ok: false, errors: errors.slice(0, MAX_ERRORS) };
-  return { ok: true, findings, warnings };
+  return { ok: true, findings, warnings, sources: [...sources] };
 }

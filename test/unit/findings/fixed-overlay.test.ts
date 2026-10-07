@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { anchor, fixedKeys, overlay, reanchor } from '../../../src/core/findings/index.js';
+import { anchor, fixedKeys, overlay, parseSarif, reanchor } from '../../../src/core/findings/index.js';
 import type { FindingInput, StoredFinding } from '../../../src/core/findings/index.js';
 import type { Fingerprints } from '../../../src/core/model/types.js';
 import type { File, Report } from '../../../src/core/report/types.js';
@@ -78,6 +78,19 @@ describe('findings', () => {
     // Sources the import covers can be named when it reported nothing.
     expect(fixedKeys({ stored: [open], imported: [], report: shopfrontReport(), fingerprints: changed, sources: ['claude'] })).toEqual([open.key]);
     expect(fixedKeys({ stored: [open], imported: [], report: shopfrontReport(), fingerprints: changed })).toEqual([]);
+  });
+
+  it('fixed-when-tool-reports-nothing', () => {
+    const parsed = parseSarif({ runs: [{ tool: { driver: { name: 'semgrep' } }, results: [] }] }, '/work/shopfront');
+    expect(parsed).toEqual({ ok: true, findings: [], warnings: [], sources: ['semgrep'] });
+    if (!parsed.ok) return;
+    const semgrep = stored({ source: 'semgrep' });
+    const claude = stored({ source: 'claude', line: 40, title: 'Another thing' });
+    const changed = shopfrontFingerprints();
+    changed.symbols[`${ORDERS}#OrdersService.cancel`] = 'edited';
+    changed.symbols[`${ORDERS}#OrdersService.refund`] = 'edited';
+    const args = { stored: [semgrep, claude], imported: [], report: shopfrontReport(), fingerprints: changed };
+    expect(fixedKeys({ ...args, sources: parsed.sources })).toEqual([semgrep.key]);
   });
 
   it('fixed-when-file-left-change', () => {
