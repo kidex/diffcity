@@ -11,9 +11,9 @@ const real = (path: string): Promise<string | null> => realpath(path).catch(() =
 /**
  * `root` (as git gives it), its realpath, and the logical root of every
  * directory in `logical` (the cwd as the caller knows it, `$PWD`) that lies
- * inside it: the directory with its path below the root taken off. A
- * directory whose spelling does not end with that path (a link inside the
- * repo) adds nothing. Duplicates are dropped; `root` comes first.
+ * inside it: the directory with its path below the root taken off, kept only
+ * when that prefix resolves to the root itself. A directory reached through a
+ * link inside the repo adds nothing. Duplicates are dropped; `root` comes first.
  */
 export async function rootSpellings(root: string, logical: readonly (string | undefined)[]): Promise<string[]> {
   const spellings = [root];
@@ -27,8 +27,10 @@ export async function rootSpellings(root: string, logical: readonly (string | un
     const below = relative(realRoot, realDir);
     if (below.startsWith('..') || isAbsolute(below)) continue;
     const trimmed = dir.replace(/[\\/]+$/, '');
-    if (below === '') spellings.push(trimmed);
-    else if (trimmed.endsWith(`${sep}${below}`)) spellings.push(trimmed.slice(0, -(below.length + 1)));
+    const candidate = below === '' ? trimmed : trimmed.endsWith(`${sep}${below}`) ? trimmed.slice(0, -(below.length + 1)) : null;
+    // A spelling that merely ends like the path below the root (a link into the
+    // repo named like its target) is not the root: the prefix must resolve to it.
+    if (candidate !== null && candidate !== '' && (await real(candidate)) === realRoot) spellings.push(candidate);
   }
   return [...new Set(spellings)];
 }
