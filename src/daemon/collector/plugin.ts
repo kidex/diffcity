@@ -10,6 +10,9 @@
 // register (scan, Q6): registers the new repos as inactive and collects each
 // new one once, at low priority. Known repos keep their state.
 //
+// import (ADR-036): sees the repo like `track`, waits for a collection of the
+// working tree and stores the findings (import.ts).
+//
 // On start, every active repo gets one low-priority collection (ADR-020).
 //
 // Opening a repo in the UI (provideRepoOpen, called by GET /api/repos/:id)
@@ -34,6 +37,7 @@ import type { DaemonContext, DaemonPlugin } from '../plugin.js';
 import { provideRuntime } from '../runtime.js';
 import type { SocketRequestOf } from '../socket/server.js';
 import { createCollector, type Collector } from './collector.js';
+import { handleImport, IMPORT_SNAPSHOT_WAIT_MS } from './import.js';
 import { defaultPoolSize } from './pool.js';
 import { createSnapshotPool, type SnapshotRunnerKind } from './snapshot-pool.js';
 
@@ -52,6 +56,8 @@ export interface CollectionPluginOptions {
   /** Runs gh; defaults to execFile. Tests inject a stub. */
   gh?: CommandRunner;
   now?: () => Date;
+  /** How long `import` waits for a snapshot at the current content; defaults to IMPORT_SNAPSHOT_WAIT_MS (tests shorten it). */
+  importWaitMs?: number;
 }
 
 export interface Collection {
@@ -153,15 +159,25 @@ export function createCollection(options: CollectionPluginOptions = {}): Collect
     return true;
   }
 
-  async function track(context: DaemonContext, request: SocketRequestOf<'track'>): Promise<SocketSuccessResponses['track']> {
+  /**
+   * `track` and `import` see a repo (C2, Q6): registered (active, seen at
+   * `at`) when unknown, else marked seen and active again. `activated` when it
+   * was unknown or inactive.
+   */
+  function see(context: DaemonContext, identity: RepoIdentity, at: string): { repo: RepoRecord; activated: boolean } {
     const store = need(db, 'database');
-    const active = need(collector, 'collector');
-    const identity = await identifyRepo(request.dir);
-    const at = requestTime(request.at, now());
     const { repo, created } = store.repos.upsert({ ...identity, active: true, seenAt: at });
     const reactivated = !created && markSeen(store, repo, at);
     if (created || reactivated) emitActivated(context, repo.id);
     context.broadcast({ event: 'repo', data: { repoId: repo.id } });
+    return { repo, activated: created || reactivated };
+  }
+
+  async function track(context: DaemonContext, request: SocketRequestOf<'track'>): Promise<SocketSuccessResponses['track']> {
+    const active = need(collector, 'collector');
+    const identity = await identifyRepo(request.dir);
+    const at = requestTime(request.at, now());
+    const { repo } = see(context, identity, at);
     later(async () => {
       await active.request(repo.id, 'full', 'high');
       if (request.agent) await active.markAgent(repo.id, request.dir, at);
@@ -239,6 +255,21 @@ export function createCollection(options: CollectionPluginOptions = {}): Collect
       provideRepoOpen(context, (repoId) => open(context, repoId));
       context.socket.handle('track', (request) => track(context, request));
       context.socket.handle('register', (request) => register(context, request));
+      context.socket.handle('import', (request) =>
+        handleImport(
+          {
+            db: opened,
+            collector: created,
+            broadcast: (event) => {
+              context.broadcast(event);
+            },
+            see: (identity, at) => see(context, identity, at),
+            time: (at) => requestTime(at, now()),
+            waitMs: options.importWaitMs ?? IMPORT_SNAPSHOT_WAIT_MS,
+          },
+          request,
+        ),
+      );
     },
     start(context) {
       const active = need(collector, 'collector');
