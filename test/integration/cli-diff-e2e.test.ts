@@ -167,7 +167,14 @@ describe('e2e: diffcity diff --json on a branch with sig, mod, add and del', () 
   });
 
   it('summary counts symbols by status, files by verdict, and lists touched tier 1 files', () => {
-    expect(report.steps).toEqual([]);
+    // No entry point in this change (ADR-034): the SQL tail, then Unconnected in file then range order.
+    expect(report.steps.map((step) => [step.order, step.section, step.symbolId, step.why])).toEqual([
+      [1, 'migration', 'db/migrations/002_discount.sql#ALTER TABLE orders', 'Schema modified: ALTER TABLE orders'],
+      [2, 'unconnected', 'src/auth/token.ts#issueToken', 'Body changed'],
+      [3, 'unconnected', 'src/lib/legacy.ts#oldHelper', 'Removed function'],
+      [4, 'unconnected', 'src/lib/pricing.ts#applyDiscount', 'Signature changed'],
+      [5, 'unconnected', 'src/lib/pricing.ts#formatPrice', 'Body changed'],
+    ]);
     expect(report.findings).toEqual([]);
     expect(report.summary).toEqual({
       files: 5,

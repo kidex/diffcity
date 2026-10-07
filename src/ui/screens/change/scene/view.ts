@@ -295,6 +295,8 @@ export function createCityView(host: HTMLElement, report: Report, options: CityV
   const pmrem = new PMREMGenerator(renderer);
   const room = new RoomEnvironment();
   const environment = pmrem.fromScene(room, 0.04);
+  // The room's standard material is the first upload of three's shared lookup texture.
+  stage.keepLookupFrom(room);
   room.dispose();
   pmrem.dispose();
   scene.environment = environment.texture;

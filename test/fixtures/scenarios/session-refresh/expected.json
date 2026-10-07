@@ -360,7 +360,8 @@
                 "end": 16
               },
               "signatureBefore": "function refreshSession(raw: string): Session | null",
-              "signatureAfter": "function refreshSession(session: Session, now: number = Date.now()): Session | null"
+              "signatureAfter": "function refreshSession(session: Session, now: number = Date.now()): Session | null",
+              "callsites": 2
             },
             {
               "id": "src/session/refresh.ts#rotate",
@@ -377,7 +378,273 @@
       ]
     }
   ],
-  "steps": [],
+  "steps": [
+    {
+      "order": 1,
+      "symbolId": "src/session/refresh.test.ts#refreshSession",
+      "fileId": "src/session/refresh.test.ts",
+      "why": "New test",
+      "diff": [
+        {
+          "kind": "add",
+          "text": "describe('refreshSession', () => {"
+        },
+        {
+          "kind": "add",
+          "text": "  it('rotates a live session', () => {"
+        },
+        {
+          "kind": "add",
+          "text": "    const session = { userId: 'u1', issuedAt: 1_000, rotation: 0 };"
+        },
+        {
+          "kind": "add",
+          "text": "    expect(refreshSession(session, 2_000)).toEqual({ userId: 'u1', issuedAt: 2_000, rotation: 1 });"
+        },
+        {
+          "kind": "add",
+          "text": "  });"
+        },
+        {
+          "kind": "add",
+          "text": ""
+        },
+        {
+          "kind": "add",
+          "text": "  it('drops an expired session', () => {"
+        },
+        {
+          "kind": "add",
+          "text": "    const session = { userId: 'u1', issuedAt: 0, rotation: 0 };"
+        },
+        {
+          "kind": "add",
+          "text": "    expect(refreshSession(session, 16 * 60 * 1000)).toBeNull();"
+        },
+        {
+          "kind": "add",
+          "text": "  });"
+        },
+        {
+          "kind": "add",
+          "text": "});"
+        }
+      ],
+      "section": "path",
+      "entry": "src/session/refresh.test.ts#refreshSession"
+    },
+    {
+      "order": 2,
+      "symbolId": "src/session/refresh.ts#refreshSession",
+      "fileId": "src/session/refresh.ts",
+      "why": "Signature changed, 2 call sites rewritten",
+      "diff": [
+        {
+          "kind": "del",
+          "text": "export function refreshSession(raw: string): Session | null {"
+        },
+        {
+          "kind": "del",
+          "text": "  const session = readCookie(raw);"
+        },
+        {
+          "kind": "del",
+          "text": "  if (session === null) return null;"
+        },
+        {
+          "kind": "del",
+          "text": "  return { ...session, issuedAt: Date.now() };"
+        },
+        {
+          "kind": "add",
+          "text": "export function refreshSession(session: Session, now: number = Date.now()): Session | null {"
+        },
+        {
+          "kind": "add",
+          "text": "  if (isExpired(session, now)) return null;"
+        },
+        {
+          "kind": "add",
+          "text": "  return rotate(session, now);"
+        },
+        {
+          "kind": "ctx",
+          "text": "}"
+        }
+      ],
+      "section": "path",
+      "entry": "src/session/refresh.test.ts#refreshSession"
+    },
+    {
+      "order": 3,
+      "symbolId": "src/session/refresh.ts#isExpired",
+      "fileId": "src/session/refresh.ts",
+      "why": "Body changed",
+      "diff": [
+        {
+          "kind": "ctx",
+          "text": "export function isExpired(session: Session, now: number): boolean {"
+        },
+        {
+          "kind": "del",
+          "text": "  return now - session.issuedAt > SESSION_TTL_MS;"
+        },
+        {
+          "kind": "add",
+          "text": "  return now - session.issuedAt >= SESSION_TTL_MS;"
+        },
+        {
+          "kind": "ctx",
+          "text": "}"
+        }
+      ],
+      "section": "path",
+      "entry": "src/session/refresh.test.ts#refreshSession"
+    },
+    {
+      "order": 4,
+      "symbolId": "src/session/refresh.ts#rotate",
+      "fileId": "src/session/refresh.ts",
+      "why": "New function",
+      "diff": [
+        {
+          "kind": "add",
+          "text": "export function rotate(session: Session, now: number): Session {"
+        },
+        {
+          "kind": "add",
+          "text": "  return { ...session, issuedAt: now, rotation: session.rotation + 1 };"
+        },
+        {
+          "kind": "add",
+          "text": "}"
+        }
+      ],
+      "section": "path",
+      "entry": "src/session/refresh.test.ts#refreshSession"
+    },
+    {
+      "order": 5,
+      "symbolId": "scripts/seed-ledger.js#seedJournal",
+      "fileId": "scripts/seed-ledger.js",
+      "why": "New function",
+      "diff": [
+        {
+          "kind": "add",
+          "text": "export const seedJournal = () => [...seedAccounts(), credit('bank', 250, 'transfer')];"
+        }
+      ],
+      "section": "unconnected"
+    },
+    {
+      "order": 6,
+      "symbolId": "src/ledger/journal.ts#balance",
+      "fileId": "src/ledger/journal.ts",
+      "why": "Body changed",
+      "diff": [
+        {
+          "kind": "ctx",
+          "text": "export function balance(entries: Entry[], account: string): number {"
+        },
+        {
+          "kind": "del",
+          "text": "  return entries.filter((e) => e.account === account).reduce((sum, e) => sum + e.amount, 0);"
+        },
+        {
+          "kind": "add",
+          "text": "  const total = entries.filter((e) => e.account === account).reduce((sum, e) => sum + e.amount, 0);"
+        },
+        {
+          "kind": "add",
+          "text": "  return Math.round(total * 100) / 100;"
+        },
+        {
+          "kind": "ctx",
+          "text": "}"
+        }
+      ],
+      "section": "unconnected"
+    },
+    {
+      "order": 7,
+      "symbolId": "src/session/cookie.ts#readCookie",
+      "fileId": "src/session/cookie.ts",
+      "why": "Removed function",
+      "diff": [
+        {
+          "kind": "del",
+          "text": "export function readCookie(raw: string): Session | null {"
+        },
+        {
+          "kind": "del",
+          "text": "  const [userId, issuedAt] = raw.split('.');"
+        },
+        {
+          "kind": "del",
+          "text": "  if (userId === undefined || issuedAt === undefined) return null;"
+        },
+        {
+          "kind": "del",
+          "text": "  return { userId, issuedAt: Number(issuedAt) };"
+        },
+        {
+          "kind": "del",
+          "text": "}"
+        }
+      ],
+      "section": "unconnected"
+    },
+    {
+      "order": 8,
+      "symbolId": "src/session/cookie.ts#writeCookie",
+      "fileId": "src/session/cookie.ts",
+      "why": "Removed function",
+      "diff": [
+        {
+          "kind": "del",
+          "text": "export function writeCookie(session: Session): string {"
+        },
+        {
+          "kind": "del",
+          "text": "  return `${session.userId}.${String(session.issuedAt)}`;"
+        },
+        {
+          "kind": "del",
+          "text": "}"
+        }
+      ],
+      "section": "unconnected"
+    },
+    {
+      "order": 9,
+      "symbolId": "src/session/refresh.ts#Session",
+      "fileId": "src/session/refresh.ts",
+      "why": "Body changed",
+      "diff": [
+        {
+          "kind": "ctx",
+          "text": "export interface Session {"
+        },
+        {
+          "kind": "ctx",
+          "text": "  userId: string;"
+        },
+        {
+          "kind": "ctx",
+          "text": "  issuedAt: number;"
+        },
+        {
+          "kind": "add",
+          "text": "  rotation: number;"
+        },
+        {
+          "kind": "ctx",
+          "text": "}"
+        }
+      ],
+      "section": "unconnected"
+    }
+  ],
   "findings": [],
   "summary": {
     "files": 9,

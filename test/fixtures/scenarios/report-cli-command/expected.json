@@ -298,7 +298,8 @@
                 "end": 9
               },
               "signatureBefore": "function formatDuration(ms: number): string\nfunction formatDuration(start: Date, end: Date): string\nfunction formatDuration(a: number | Date, b?: Date): string",
-              "signatureAfter": "function formatDuration(ms: number): string\nfunction formatDuration(ms: bigint): string\nfunction formatDuration(start: Date, end: Date): string\nfunction formatDuration(a: number | bigint | Date, b?: Date): string"
+              "signatureAfter": "function formatDuration(ms: number): string\nfunction formatDuration(ms: bigint): string\nfunction formatDuration(start: Date, end: Date): string\nfunction formatDuration(a: number | bigint | Date, b?: Date): string",
+              "callsites": 2
             }
           ]
         }
@@ -379,7 +380,348 @@
       ]
     }
   ],
-  "steps": [],
+  "steps": [
+    {
+      "order": 1,
+      "symbolId": "src/commands/index.ts#registerReport",
+      "fileId": "src/commands/index.ts",
+      "why": "New export",
+      "diff": [
+        {
+          "kind": "add",
+          "text": "export { registerReport, runReport as report } from './report.js';"
+        }
+      ],
+      "section": "unconnected"
+    },
+    {
+      "order": 2,
+      "symbolId": "src/commands/index.ts#report",
+      "fileId": "src/commands/index.ts",
+      "why": "New export",
+      "diff": [
+        {
+          "kind": "add",
+          "text": "export { registerReport, runReport as report } from './report.js';"
+        }
+      ],
+      "section": "unconnected"
+    },
+    {
+      "order": 3,
+      "symbolId": "src/commands/report.ts#Period",
+      "fileId": "src/commands/report.ts",
+      "why": "New export",
+      "diff": [
+        {
+          "kind": "add",
+          "text": "export type Period = 'day' | 'week';"
+        }
+      ],
+      "section": "unconnected"
+    },
+    {
+      "order": 4,
+      "symbolId": "src/commands/report.ts#parsePeriod",
+      "fileId": "src/commands/report.ts",
+      "why": "New function",
+      "diff": [
+        {
+          "kind": "add",
+          "text": "export function parsePeriod(value: string): Period;"
+        },
+        {
+          "kind": "add",
+          "text": "export function parsePeriod(value: undefined): undefined;"
+        },
+        {
+          "kind": "add",
+          "text": "export function parsePeriod(value: string | undefined): Period | undefined {"
+        },
+        {
+          "kind": "add",
+          "text": "  if (value === undefined) return undefined;"
+        },
+        {
+          "kind": "add",
+          "text": "  return value === 'week' ? 'week' : 'day';"
+        },
+        {
+          "kind": "add",
+          "text": "}"
+        }
+      ],
+      "section": "unconnected"
+    },
+    {
+      "order": 5,
+      "symbolId": "src/commands/report.ts#runReport",
+      "fileId": "src/commands/report.ts",
+      "why": "New function",
+      "diff": [
+        {
+          "kind": "add",
+          "text": "export async function runReport(period: Period = 'day'): Promise<string> {"
+        },
+        {
+          "kind": "add",
+          "text": "  return `report for one ${period}, built in ${formatDuration(0)}`;"
+        },
+        {
+          "kind": "add",
+          "text": "}"
+        }
+      ],
+      "section": "unconnected"
+    },
+    {
+      "order": 6,
+      "symbolId": "src/commands/report.ts#registerReport",
+      "fileId": "src/commands/report.ts",
+      "why": "New function",
+      "diff": [
+        {
+          "kind": "add",
+          "text": "export function registerReport(program: Program): void {"
+        },
+        {
+          "kind": "add",
+          "text": "  program.command('report', async (args) => {"
+        },
+        {
+          "kind": "add",
+          "text": "    const [period] = args;"
+        },
+        {
+          "kind": "add",
+          "text": "    process.stdout.write(`${await runReport(period === undefined ? undefined : parsePeriod(period))}\\n`);"
+        },
+        {
+          "kind": "add",
+          "text": "  });"
+        },
+        {
+          "kind": "add",
+          "text": "}"
+        }
+      ],
+      "section": "unconnected"
+    },
+    {
+      "order": 7,
+      "symbolId": "src/config/schema.ts#configSchema",
+      "fileId": "src/config/schema.ts",
+      "why": "Body changed",
+      "diff": [
+        {
+          "kind": "ctx",
+          "text": "export const configSchema = {"
+        },
+        {
+          "kind": "ctx",
+          "text": "  output: { type: 'string', default: 'text' },"
+        },
+        {
+          "kind": "ctx",
+          "text": "  color: { type: 'boolean', default: true },"
+        },
+        {
+          "kind": "add",
+          "text": "  report: { type: 'string', default: 'day' },"
+        },
+        {
+          "kind": "ctx",
+          "text": "};"
+        }
+      ],
+      "section": "unconnected"
+    },
+    {
+      "order": 8,
+      "symbolId": "src/format/duration.ts#formatDuration",
+      "fileId": "src/format/duration.ts",
+      "why": "Signature changed, 2 call sites rewritten",
+      "diff": [
+        {
+          "kind": "ctx",
+          "text": "export function formatDuration(ms: number): string;"
+        },
+        {
+          "kind": "add",
+          "text": "export function formatDuration(ms: bigint): string;"
+        },
+        {
+          "kind": "ctx",
+          "text": "export function formatDuration(start: Date, end: Date): string;"
+        },
+        {
+          "kind": "del",
+          "text": "export function formatDuration(a: number | Date, b?: Date): string {"
+        },
+        {
+          "kind": "del",
+          "text": "  const ms = typeof a === 'number' ? a : (b?.getTime() ?? 0) - a.getTime();"
+        },
+        {
+          "kind": "add",
+          "text": "export function formatDuration(a: number | bigint | Date, b?: Date): string {"
+        },
+        {
+          "kind": "add",
+          "text": "  const ms = typeof a === 'number' || typeof a === 'bigint' ? Number(a) : (b?.getTime() ?? 0) - a.getTime();"
+        },
+        {
+          "kind": "ctx",
+          "text": "  return `${(ms / MS_PER_SECOND).toFixed(1)}s`;"
+        },
+        {
+          "kind": "ctx",
+          "text": "}"
+        }
+      ],
+      "section": "unconnected"
+    },
+    {
+      "order": 9,
+      "symbolId": "src/release/version.ts#nextVersion",
+      "fileId": "src/release/version.ts",
+      "why": "Body changed",
+      "diff": [
+        {
+          "kind": "ctx",
+          "text": "export function nextVersion(current: string): string {"
+        },
+        {
+          "kind": "ctx",
+          "text": "  const [major = 0, minor = 0] = current.split('.').map(Number);"
+        },
+        {
+          "kind": "add",
+          "text": "  if (Number.isNaN(major) || Number.isNaN(minor)) throw new Error(`not a version: ${current}`);"
+        },
+        {
+          "kind": "ctx",
+          "text": "  return `${String(major)}.${String(minor + 1)}.0`;"
+        },
+        {
+          "kind": "ctx",
+          "text": "}"
+        }
+      ],
+      "section": "unconnected"
+    },
+    {
+      "order": 10,
+      "symbolId": "src/ui/ReportTable.tsx#ReportRow",
+      "fileId": "src/ui/ReportTable.tsx",
+      "why": "New export",
+      "diff": [
+        {
+          "kind": "add",
+          "text": "export interface ReportRow {"
+        },
+        {
+          "kind": "add",
+          "text": "  name: string;"
+        },
+        {
+          "kind": "add",
+          "text": "  runs: number;"
+        },
+        {
+          "kind": "add",
+          "text": "}"
+        }
+      ],
+      "section": "unconnected"
+    },
+    {
+      "order": 11,
+      "symbolId": "src/ui/ReportTable.tsx#ReportTable",
+      "fileId": "src/ui/ReportTable.tsx",
+      "why": "New function",
+      "diff": [
+        {
+          "kind": "add",
+          "text": "export function ReportTable({ rows }: { rows: ReportRow[] }) {"
+        },
+        {
+          "kind": "add",
+          "text": "  return ("
+        },
+        {
+          "kind": "add",
+          "text": "    <table>"
+        },
+        {
+          "kind": "add",
+          "text": "      <tbody>"
+        },
+        {
+          "kind": "add",
+          "text": "        {rows.map((row) => ("
+        },
+        {
+          "kind": "add",
+          "text": "          <ReportLine key={row.name} row={row} />"
+        },
+        {
+          "kind": "add",
+          "text": "        ))}"
+        },
+        {
+          "kind": "add",
+          "text": "      </tbody>"
+        },
+        {
+          "kind": "add",
+          "text": "    </table>"
+        },
+        {
+          "kind": "add",
+          "text": "  );"
+        },
+        {
+          "kind": "add",
+          "text": "}"
+        }
+      ],
+      "section": "unconnected"
+    },
+    {
+      "order": 12,
+      "symbolId": "src/ui/ReportTable.tsx#ReportLine",
+      "fileId": "src/ui/ReportTable.tsx",
+      "why": "New function",
+      "diff": [
+        {
+          "kind": "add",
+          "text": "export const ReportLine = ({ row }: { row: ReportRow }) => ("
+        },
+        {
+          "kind": "add",
+          "text": "  <tr>"
+        },
+        {
+          "kind": "add",
+          "text": "    <td>{row.name}</td>"
+        },
+        {
+          "kind": "add",
+          "text": "    <td>{row.runs}</td>"
+        },
+        {
+          "kind": "add",
+          "text": "  </tr>"
+        },
+        {
+          "kind": "add",
+          "text": ");"
+        }
+      ],
+      "section": "unconnected"
+    }
+  ],
   "findings": [],
   "summary": {
     "files": 11,
