@@ -1,6 +1,7 @@
-// DC-106 (SPEC.md 5.4 point 5, DC-97): an open imported finding with a `why`
-// hint replaces the `why` of its symbol's step in the served Report; the
-// stored Report is not changed, and "Mark as intended" takes the hint back out.
+// DC-106 (SPEC.md 5.4 point 5, DC-97): an imported finding with a `why` hint
+// that is not fixed replaces the `why` of its symbol's step in the served
+// Report; the stored Report is not changed. "Mark as intended" keeps the hint;
+// once the finding is fixed the rule text is back.
 
 import { describe, expect, it } from 'vitest';
 import { anchor } from '../../../src/core/findings/index.js';
@@ -66,6 +67,13 @@ describe('why override (DC-106)', () => {
 
     const key = hinted.stored.key;
     expect((await call(port, 'PUT', `/api/changes/${String(change.id)}/findings/${key}/state`, { body: { state: 'intended' } })).status).toBe(200);
+    expect(await served()).toEqual(['New function', 'called by the new route without a lock']);
+
+    // An import that no longer reports the finding fixes it (an intended row is
+    // kept as intended, so it is reopened first): the rule text is back.
+    expect((await call(port, 'PUT', `/api/changes/${String(change.id)}/findings/${key}/state`, { body: { state: 'open' } })).status).toBe(200);
+    storeFindingsImport({ db, broadcast: () => undefined }, repo.id, { changeId: change.id, head: change.head, findings: [], fixed: [key], at: T0 });
+    expect(db.findings.get(change.id, key)?.finding.state).toBe('fixed');
     expect(await served()).toEqual(['New function', 'Body changed']);
     expect(db.snapshots.latestReport(change.id)).toBe(stored);
   });

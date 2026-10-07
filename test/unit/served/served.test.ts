@@ -156,7 +156,7 @@ describe('why overrides (DC-106)', () => {
     expect(JSON.parse(json)).toEqual(withSteps());
   });
 
-  it('the first open hint in import order wins on a symbol; fixed, intended and hintless findings change nothing', () => {
+  it('the first hint of a finding that is not fixed wins on a symbol, in import order; intended keeps its hint, fixed and hintless change nothing', () => {
     const json = JSON.stringify(withSteps());
     const first = { ...stored({ title: 'First' }), why: 'first hint' };
     const second = { ...stored({ title: 'Second' }), why: 'second hint' };
@@ -165,8 +165,10 @@ describe('why overrides (DC-106)', () => {
 
     const fixed = { ...first, finding: { ...first.finding, state: 'fixed' as const } };
     const intended = { ...first, finding: { ...first.finding, state: 'intended' as const } };
+    expect(steps(json, [intended])).toEqual(['first hint', 'Body changed']);
+    expect(steps(json, [intended, second])).toEqual(['first hint', 'Body changed']);
+    expect(steps(json, [fixed])).toEqual(['New function', 'Body changed']);
     expect(steps(json, [fixed, second])).toEqual(['second hint', 'Body changed']);
-    expect(steps(json, [intended])).toEqual(['New function', 'Body changed']);
     expect(steps(json, [stored()])).toEqual(['New function', 'Body changed']);
   });
 

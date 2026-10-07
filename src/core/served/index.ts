@@ -30,14 +30,16 @@ export function hasOverlay(findings: ServedFindings): boolean {
 
 /**
  * The `why` hints of imported findings by symbol id (SPEC.md 5.4 point 5,
- * DC-97): each stored finding with a hint and state `open`, re-anchored on
- * `report`, hints the step of its symbol. The first in import order wins on a
- * symbol; a finding with no symbol, or whose file left the change, hints none.
+ * DC-97): each stored finding with a hint that is `open` or `intended`,
+ * re-anchored on `report`, hints the step of its symbol. An intended finding
+ * still explains its step (the reviewer accepted the code); a fixed one no
+ * longer describes the code, so it hints none. The first in import order wins
+ * on a symbol; a finding with no symbol, or whose file left the change, hints none.
  */
 export function whyOverrides(report: Report, stored: readonly StoredFinding[]): Map<string, string> {
   const overrides = new Map<string, string>();
   for (const entry of stored) {
-    if (entry.why === undefined || entry.finding.state !== 'open') continue;
+    if (entry.why === undefined || entry.finding.state === 'fixed') continue;
     const symbolId = reanchor(entry, report)?.symbolId;
     if (symbolId !== undefined && !overrides.has(symbolId)) overrides.set(symbolId, entry.why);
   }
