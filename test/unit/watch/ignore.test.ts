@@ -66,16 +66,24 @@ describe("diffcity's own files (SPEC.md section 3a, ADR-036)", () => {
   const root = '/work/sample-shop';
   const ignored = ignoreMatcher(root, parseIgnored(''));
 
-  it('own-files/watcher-ignores-own-files: findings.json, fix-queue.json and the queue temp file at the root are ignored', () => {
+  it('own-files/watcher-ignores-own-files: findings.json and the fix queue directories with everything in them are ignored at the root', () => {
     expect(ignored(join(root, '.diffcity/findings.json'))).toBe(true);
-    expect(ignored(join(root, '.diffcity/fix-queue.json'))).toBe(true);
-    expect(ignored(join(root, '.diffcity/.fix-queue.json.4242.0123456789ab.tmp'))).toBe(true);
+    expect(ignored(join(root, '.diffcity/fix-queue'))).toBe(true);
+    expect(ignored(join(root, '.diffcity/fix-queue/0123456789abcdef0123456789abcdef.json'))).toBe(true);
+    expect(ignored(join(root, '.diffcity/.fix-queue.0123456789abcdef0123456789abcdef.4242.0123456789ab.tmp'))).toBe(true);
+    expect(ignored(join(root, '.diffcity/fix-queue.taking'))).toBe(true);
+    expect(ignored(join(root, '.diffcity/fix-queue.taking/0123456789abcdef0123456789abcdef.json'))).toBe(true);
   });
 
-  it('own-files/taking-file-is-own (watcher): the fix queue renamed away by /diffcity-review is ignored at the root only', () => {
-    expect(ignored(join(root, '.diffcity/fix-queue.taking.json'))).toBe(true);
-    expect(ignored(join(root, 'packages/cart/.diffcity/fix-queue.taking.json'))).toBe(false);
-    expect(ignored(join(root, '.diffcity/fix-queue.taking.json.bak'))).toBe(false);
+  it('own-files/taking-dir-is-own (watcher): only the two directories at the root are own, not look-alikes or nested copies', () => {
+    expect(ignored(join(root, 'packages/cart/.diffcity/fix-queue/a.json'))).toBe(false);
+    expect(ignored(join(root, 'packages/cart/.diffcity/fix-queue.taking'))).toBe(false);
+    expect(ignored(join(root, '.diffcity/fix-queue.bak'))).toBe(false);
+    expect(ignored(join(root, '.diffcity/fix-queue-notes.md'))).toBe(false);
+    expect(ignored(join(root, '.diffcity/fix-queue.taking.bak/a.json'))).toBe(false);
+    expect(ignored(join(root, '.diffcity/.fix-queue.tmp'))).toBe(false);
+    // The single-file queue of the first design is a normal file now.
+    expect(ignored(join(root, '.diffcity/fix-queue.json'))).toBe(false);
   });
 
   it('own-files/spec-md-is-a-normal-file (watcher): the directory, spec.md and nested copies stay watched', () => {
@@ -83,13 +91,16 @@ describe("diffcity's own files (SPEC.md section 3a, ADR-036)", () => {
     expect(ignored(join(root, '.diffcity/spec.md'))).toBe(false);
     expect(ignored(join(root, '.diffcity/notes/findings.json'))).toBe(false);
     expect(ignored(join(root, 'packages/cart/.diffcity/findings.json'))).toBe(false);
-    expect(ignored(join(root, '.diffcity/.fix-queue.json.tmp'))).toBe(false);
   });
 
-  it('an event on the .diffcity directory entry alone is quiet; events inside it are not', () => {
+  it('an event on the .diffcity directory entry or a fix queue directory entry is quiet; events on other files are not', () => {
     expect(quietEvent(root, join(root, '.diffcity'))).toBe(true);
+    expect(quietEvent(root, join(root, '.diffcity/fix-queue'))).toBe(true);
+    expect(quietEvent(root, join(root, '.diffcity/fix-queue.taking'))).toBe(true);
     expect(quietEvent(root, join(root, '.diffcity/spec.md'))).toBe(false);
+    expect(quietEvent(root, join(root, '.diffcity/fix-queue.bak'))).toBe(false);
     expect(quietEvent(root, join(root, 'packages/.diffcity'))).toBe(false);
+    expect(quietEvent(root, join(root, 'packages/.diffcity/fix-queue'))).toBe(false);
     expect(quietEvent(root, root)).toBe(false);
   });
 });
