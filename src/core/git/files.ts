@@ -7,6 +7,7 @@ import { tmpdir } from 'node:os';
 import { basename, dirname, isAbsolute, join, posix, relative, sep } from 'node:path';
 import type { ResolvedChange } from './change.js';
 import { GitError, git, gitRaw, gitStream, splitNul } from './exec.js';
+import { isOwnFile } from './own-files.js';
 
 export type ChangeType = 'add' | 'del' | 'mod' | 'rename';
 
@@ -126,11 +127,26 @@ async function isBinaryOnDisk(absPath: string): Promise<boolean> {
 
 /**
  * Non-ignored untracked files, relative to the root. Nested repositories
- * (listed by git as `dir/`) are not files of this change and are left out.
+ * (listed by git as `dir/`) are not files of this change and are left out, and
+ * so are diffcity's own files (own-files.ts).
  */
 async function untrackedFiles(root: string): Promise<string[]> {
   const entries = splitNul(await git(root, ['ls-files', '-z', '--others', '--exclude-standard', '--full-name']));
-  return entries.filter((path) => !path.endsWith('/'));
+  return entries.filter((path) => !path.endsWith('/') && !isOwnFile(path));
+}
+
+/**
+ * Leaves diffcity's own files out of a diff (own-files.ts): an own file is
+ * dropped; a rename from an own file is the plain add of its new path.
+ */
+function withoutOwnFiles(files: ChangedFile[]): ChangedFile[] {
+  const kept: ChangedFile[] = [];
+  for (const file of files) {
+    if (isOwnFile(file.path)) continue;
+    if (file.oldPath !== null && file.oldPath !== file.path && isOwnFile(file.oldPath)) kept.push({ ...file, oldPath: null, type: 'add' });
+    else kept.push(file);
+  }
+  return kept;
 }
 
 /**
@@ -244,13 +260,15 @@ async function withOthers(root: string, files: ChangedFile[], others: string[]):
  * Files that differ between before (merge-base) and after, sorted by path.
  * Renames are detected with `-M` (50% similarity), including between a deleted
  * tracked file and an untracked one. In the working tree case, non-ignored
- * untracked files are reported as `add`.
+ * untracked files are reported as `add`. diffcity's own files at the root
+ * (`.diffcity/findings.json`, `.diffcity/fix-queue.json`) are never listed,
+ * committed or not.
  */
 export async function changedFiles(change: ResolvedChange): Promise<ChangedFile[]> {
   const files = change.worktree
     ? await worktreeChanges(change.root, change.mergeBase)
     : parseDiffOutput(await git(change.root, ['diff', ...DIFF_FLAGS, change.mergeBase, change.headCommit, '--']));
-  return files.sort(byPath);
+  return withoutOwnFiles(files).sort(byPath);
 }
 
 function badPath(path: string, reason: string): GitError {
