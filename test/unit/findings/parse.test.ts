@@ -108,6 +108,12 @@ describe('findings', () => {
     expect(parseOwn([own({ message: 'x'.repeat(16 * 1024) })], ROOT).ok).toBe(true);
     expect(parseOwn([own({ title: 'x'.repeat(4097) })], ROOT).ok).toBe(false);
     expect(parseOwn([own({ fix: 'x'.repeat(4097) })], ROOT).ok).toBe(false);
+    // `why` is capped at 4 KiB of UTF-8, like title (a 2-byte character counts twice).
+    expect(parseOwn([own({ why: 'x'.repeat(4096) })], ROOT).ok).toBe(true);
+    expect(parseOwn([own({ why: 'é'.repeat(2049) })], ROOT)).toEqual({ ok: false, errors: ['findings[0]: why is over 4096 bytes'] });
+    // It is a one-line hint: newlines and whitespace runs collapse to single spaces.
+    const hint = parseOwn([own({ why: '  new route,\n\tcalled   without\r\nan order ' })], ROOT);
+    expect(hint.ok && hint.findings[0]?.why).toBe('new route, called without an order');
   });
 
   it('sarif-level-mapping', () => {

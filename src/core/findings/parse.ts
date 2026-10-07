@@ -30,11 +30,12 @@ function oneOf<T extends string>(value: unknown, allowed: readonly T[]): T | und
 }
 
 /** Checks the size limits shared by both formats; returns the messages of the ones broken. */
-function sizeErrors(at: string, input: { title: string; message: string; fix?: string }): string[] {
+function sizeErrors(at: string, input: { title: string; message: string; fix?: string; why?: string }): string[] {
   const errors: string[] = [];
   if (bytes(input.message) > LIMITS.message) errors.push(`${at}: message is over ${String(LIMITS.message)} bytes`);
   if (bytes(input.title) > LIMITS.title) errors.push(`${at}: title is over ${String(LIMITS.title)} bytes`);
   if (input.fix !== undefined && bytes(input.fix) > LIMITS.fix) errors.push(`${at}: fix is over ${String(LIMITS.fix)} bytes`);
+  if (input.why !== undefined && bytes(input.why) > LIMITS.why) errors.push(`${at}: why is over ${String(LIMITS.why)} bytes`);
   return errors;
 }
 
@@ -96,12 +97,14 @@ export function parseOwn(json: unknown, repoRoot?: string): ParseResult {
       warnings.push({ at, message: ruleSourceWarning(source.trim()) });
       return;
     }
-    const sizes = sizeErrors(at, { title, message, ...(fix === undefined ? {} : { fix }) });
+    const sizes = sizeErrors(at, { title, message, ...(fix === undefined ? {} : { fix }), ...(why === undefined ? {} : { why }) });
     if (sizes.length > 0) {
       errors.push(...sizes);
       return;
     }
     sources.add(source.trim());
+    // `why` is a one-line hint: newlines and whitespace runs become single spaces.
+    const hint = why === undefined ? '' : why.replace(/\s+/g, ' ').trim();
     const path = normalizePath(file, repoRoot);
     if (!path.ok) {
       warnings.push({ at, message: `skipped: ${path.reason}` });
@@ -117,7 +120,7 @@ export function parseOwn(json: unknown, repoRoot?: string): ParseResult {
       title: title.trim(),
       message,
       ...(fix === undefined || fix === '' ? {} : { fix }),
-      ...(why === undefined || why.trim() === '' ? {} : { why: why.trim() }),
+      ...(hint === '' ? {} : { why: hint }),
       ...(state === undefined ? {} : { state }),
     });
   });

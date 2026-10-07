@@ -17,12 +17,12 @@ interface FindingInput {
   title: string;               // one line, at most 4 KiB
   message: string;             // what is wrong and when it breaks, at most 16 KiB
   fix?: string;                // suggested change, at most 4 KiB
-  why?: string;                // one-line reading hint for the execution path
+  why?: string;                // one-line reading hint for the execution path, at most 4 KiB
   state?: 'open' | 'intended' | 'fixed';   // default "open"
 }
 ```
 
-`why` is a one-line reading hint for the execution path (for example "new route, called without an order"); it is optional and not part of the finding itself. `category: 'architecture'` is for findings about layering and structure.
+`why` is a one-line reading hint for the execution path (for example "new route, called without an order"); it is optional and not part of the finding itself. Newlines and runs of whitespace in it are collapsed to single spaces. `category: 'architecture'` is for findings about layering and structure.
 
 Example, as written by the `/code-review` slash command to `.diffcity/findings.json`:
 
@@ -52,7 +52,7 @@ Example, as written by the `/code-review` slash command to `.diffcity/findings.j
 
 `source` must not start with `rule:`: that prefix belongs to findings computed by diffcity's rules. Such an entry is skipped with the warning `skipped: source "<source>" is reserved for rule findings`.
 
-A file with a missing or malformed field is rejected as a whole, with one message per problem. A file with more than 5,000 findings, or a message over 16 KiB, a title or a fix over 4 KiB, is rejected. An entry whose `file` cannot be made repo-relative is skipped with a warning (see Paths).
+A file with a missing or malformed field is rejected as a whole, with one message per problem. A file with more than 5,000 findings, or a message over 16 KiB, a title, a fix or a `why` over 4 KiB, is rejected. Sizes are counted in bytes of UTF-8. An entry whose `file` cannot be made repo-relative is skipped with a warning (see Paths).
 
 ## Paths
 

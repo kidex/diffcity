@@ -23,6 +23,7 @@ export const LIMITS = {
   message: 16 * 1024,
   title: 4 * 1024,
   fix: 4 * 1024,
+  why: 4 * 1024,
 } as const;
 
 /** A normalized finding as imported, before anchoring. Both formats end up here. */
@@ -39,7 +40,7 @@ export interface FindingInput {
   title: string;
   message: string;
   fix?: string;
-  /** One-line reading hint for the execution path (ADR-034); own format only. */
+  /** One-line reading hint for the execution path (ADR-034); own format only, whitespace collapsed. */
   why?: string;
   state?: FindingState;
 }
