@@ -52,9 +52,12 @@ class CountingRenderPass extends RenderPass {
  * adds a dispose listener to it, and WebGLRenderer.dispose() does not take that
  * listener off: the texture would keep every disposed renderer, its context,
  * its canvas and the whole change screen around the canvas alive. The renderer
- * sets it on its material uniforms when it draws, which is where the stage
- * finds it; the stage disposes it on its way out, which runs those listeners
- * and so removes them. The next renderer uploads it again.
+ * sets it on the uniforms of the materials it draws, which is where the stage
+ * finds it. The first upload happens at mount, when the PMREM environment
+ * renders its room's standard material, before any frame: the view hands that
+ * room over (keepLookupFrom) before disposing it, and each frame looks again
+ * as a fallback. The stage disposes the texture on its way out, which runs
+ * those listeners and so removes them. The next renderer uploads it again.
  */
 function sharedLookup(renderer: WebGLRenderer, root: Object3D): Texture | null {
   let found: Texture | null = null;
