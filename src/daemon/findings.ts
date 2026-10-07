@@ -13,16 +13,16 @@ export interface FindingsWriteDeps {
   broadcast: (event: SseEvent) => void;
 }
 
-/** The `import` event written with the batch: its payload (`at` is the batch's). */
+/** The `import` event written with the batch (`at` is the batch's); its payload is built from what was stored. */
 export interface ImportEventInput {
-  payload: Record<string, unknown>;
+  payload: (stored: FindingsImportResult) => Record<string, unknown>;
 }
 
 export function storeFindingsImport(deps: FindingsWriteDeps, repoId: number, batch: FindingsImport, event?: ImportEventInput): FindingsImportResult {
   const { db } = deps;
   const result = db.transaction(() => {
     const stored = db.findings.importBatch(batch);
-    if (event !== undefined) db.events.add({ repoId, changeId: batch.changeId, type: 'import', at: batch.at, payload: event.payload });
+    if (event !== undefined) db.events.add({ repoId, changeId: batch.changeId, type: 'import', at: batch.at, payload: event.payload(stored) });
     return stored;
   });
   deps.broadcast({ event: 'findings', data: { repoId, changeId: batch.changeId } });

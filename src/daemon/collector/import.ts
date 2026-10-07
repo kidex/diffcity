@@ -104,7 +104,8 @@ export async function handleImport(deps: ImportDeps, request: SocketRequestOf<'i
     { db, broadcast: deps.broadcast },
     repo.id,
     { changeId: change.id, head: snapshot.head, findings: plan.findings, fixed: plan.fixed, at },
-    { payload: { head: snapshot.head, ...counts, fixed: plan.fixed.length, sources, anchoredAgainst } },
+    // `fixed` is what the store fixed, in the event as in the reply.
+    { payload: (result) => ({ head: snapshot.head, ...counts, fixed: result.fixed, sources, anchoredAgainst }) },
   );
   return {
     ok: true,

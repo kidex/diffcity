@@ -108,6 +108,21 @@ describe('import over the socket (ADR-036)', () => {
     await test.idle();
   });
 
+  it('an import that fixes a finding reports the same fixed count in its reply and its event', async () => {
+    const repo = await shopOnBranch();
+    const test = await startTestDaemon({ gh: ghNotInstalled() });
+    const repoId = await tracked(test, repo);
+    const first = await send(test, importRequest(repo.dir, [finding()]));
+    expect(first).toMatchObject({ ok: true, imported: 1, fixed: 0 });
+    // The symbol changes and claude no longer reports the finding: it is fixed.
+    await repo.write({ 'src/cart/total.ts': 'export function total(items: number[]): number {\n  return items.filter((item) => item > 0).reduce((a, b) => a + b, 0);\n}\n' });
+    const second = await send(test, importRequest(repo.dir, []));
+    expect(second).toMatchObject({ ok: true, imported: 0, fixed: 1, anchoredAgainst: 'current-snapshot' });
+    const events = test.collection.db().events.listForRepo(repoId).filter((event) => event.type === 'import');
+    expect(events.map((event) => (event.payload as { fixed: number }).fixed).sort()).toEqual([0, 1]);
+    await test.idle();
+  });
+
   it('import/waits-for-snapshot: a file written just before the import is part of the snapshot the findings anchor to', async () => {
     const repo = await shopOnBranch();
     const test = await startTestDaemon({ gh: ghNotInstalled() });
