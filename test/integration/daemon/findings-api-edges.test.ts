@@ -10,6 +10,7 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { Db } from '../../../src/core/db/index.js';
 import { anchor, type StoredFinding } from '../../../src/core/findings/index.js';
+import { fixQueueBytes, hasFixQueue, readFixQueue } from '../../helpers/fix-queue.js';
 import type { ApiError, ChangeRecord } from '../../../src/core/model/types.js';
 import type { Finding, Report } from '../../../src/core/report/types.js';
 import { FINDING_KEY_MAX } from '../../../src/daemon/api/findings.js';
@@ -170,8 +171,7 @@ describe('findings actions under concurrency', () => {
       call(w.port, 'POST', url(change, `/findings/${RULE.id}/fix`)),
     ]);
     expect(answers.map((x) => x.status)).toEqual([200, 200]);
-    const queue = JSON.parse(readFileSync(join(change.worktreePath ?? '', '.diffcity', 'fix-queue.json'), 'utf8')) as { items: { key: string }[] };
-    expect(queue.items.map((i) => i.key).sort()).toEqual([f.key, RULE.id].sort());
+    expect(readFixQueue(change.worktreePath ?? '').map((i) => i.key)).toEqual([f.key, RULE.id].sort());
   });
 });
 
@@ -191,7 +191,7 @@ describe('odd keys in the URL', () => {
     }
     expect(w.db.findings.list(change.id).every((s) => s.finding.state === 'open')).toBe(true);
     expect(w.db.findings.ruleStates(change.id)).toEqual({});
-    expect(() => readFileSync(join(change.worktreePath ?? '', '.diffcity', 'fix-queue.json'))).toThrow();
+    expect(hasFixQueue(change.worktreePath ?? '')).toBe(false);
   });
 
   it('a long key gets the route answer of FINDING_KEY_MAX in the ADR-017 error shape', async () => {
@@ -316,15 +316,15 @@ describe('fix queue on unusual working trees over HTTP', () => {
     expect(readFileSync(dot, 'utf8')).toBe('not a directory\n');
   });
 
-  it('an existing queue of another version is fix-queue-invalid and left as it is', async () => {
+  it('.diffcity/fix-queue as a regular file is fix-queue-unsafe and left as it is', async () => {
     const w = await world();
-    const change = addChange(w, 'other-version', { rule: true, worktree: true });
+    const change = addChange(w, 'queue-file', { rule: true, worktree: true });
     mkdirSync(join(change.worktreePath ?? '', '.diffcity'));
-    const file = join(change.worktreePath ?? '', '.diffcity', 'fix-queue.json');
-    const content = '{"version":2,"items":[{"key":"f:1111111111111111"}]}';
+    const file = join(change.worktreePath ?? '', '.diffcity', 'fix-queue');
+    const content = '{"version":1,"items":[{"key":"f:1111111111111111"}]}';
     writeFileSync(file, content);
     const answer = await call(w.port, 'POST', url(change, `/findings/${RULE.id}/fix`));
-    expect([answer.status, codeOf(answer)]).toEqual([409, 'fix-queue-invalid']);
+    expect([answer.status, codeOf(answer)]).toEqual([409, 'fix-queue-unsafe']);
     expect(readFileSync(file, 'utf8')).toBe(content);
   });
 
@@ -342,9 +342,8 @@ describe('fix queue on unusual working trees over HTTP', () => {
     }
     expect(codes.filter((c) => c === 200).length).toBe(5);
     expect(codes.slice(5)).toEqual(['fix-queue-full', 'fix-queue-full', 'fix-queue-full']);
-    const text = readFileSync(join(change.worktreePath ?? '', '.diffcity', 'fix-queue.json'));
-    expect(text.byteLength).toBeLessThanOrEqual(1024 * 1024);
-    expect((JSON.parse(text.toString('utf8')) as { items: unknown[] }).items).toHaveLength(5);
+    expect(fixQueueBytes(change.worktreePath ?? '')).toBeLessThanOrEqual(1024 * 1024);
+    expect(readFixQueue(change.worktreePath ?? '')).toHaveLength(5);
   });
 });
 

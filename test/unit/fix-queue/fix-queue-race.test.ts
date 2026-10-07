@@ -1,17 +1,24 @@
-// DC-109: /diffcity-review takes the fix queue by renaming it away (ADR-037).
-// When that rename lands between the daemon's read and its write, the append
-// must not write the taken items back. node:fs is wrapped so a test can act
-// right after the temporary file is written, that is between the read and the
-// rename into place.
+// DC-112: /diffcity-review takes the fix queue by renaming its directory
+// away (ADR-037). node:fs is wrapped so a test can take the queue at chosen
+// moments of an append: right before the item's rename into the queue, after
+// the temporary file is written, and while the directory is listed. The item
+// must land exactly once: in the taken directory if its rename came first,
+// otherwise in a fresh queue directory.
 
 import * as fs from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { FIX_QUEUE_ATTEMPTS, appendToFixQueue, type FindingQueueItem, type FixQueue } from '../../../src/core/fix-queue/index.js';
+import { FIX_QUEUE_ATTEMPTS, appendToFixQueue, fixQueueItemName, type FindingQueueItem } from '../../../src/core/fix-queue/index.js';
 
-/** Runs once per temporary file the writer creates, right after it is written. */
-const hooks: { afterTempWrite: ((count: number) => void) | null; writes: number; linkError: string | null } = { afterTempWrite: null, writes: 0, linkError: null };
+const hooks: {
+  afterTempWrite: ((count: number) => void) | null;
+  beforeRename: ((count: number) => void) | null;
+  beforeReaddir: ((count: number) => void) | null;
+  writes: number;
+  renames: number;
+  listings: number;
+} = { afterTempWrite: null, beforeRename: null, beforeReaddir: null, writes: 0, renames: 0, listings: 0 };
 
 vi.mock('node:fs', async (importOriginal) => {
   const actual = await importOriginal<typeof fs>();
@@ -22,19 +29,32 @@ vi.mock('node:fs', async (importOriginal) => {
       hooks.afterTempWrite(hooks.writes);
     }
   };
-  // A filesystem without hard links (exFAT, some FUSE mounts) refuses link.
-  const linkSync: typeof actual.linkSync = (existing, created) => {
-    if (hooks.linkError !== null) throw Object.assign(new Error(`${hooks.linkError}: operation not permitted, link`), { code: hooks.linkError });
-    actual.linkSync(existing, created);
+  // Typed loosely: readdirSync has many overloads and the writer uses the plain one.
+  const readdirSync = ((path: fs.PathLike, ...rest: unknown[]) => {
+    if (hooks.beforeReaddir !== null) {
+      hooks.listings++;
+      hooks.beforeReaddir(hooks.listings);
+    }
+    return (actual.readdirSync as (path: fs.PathLike, ...rest: unknown[]) => unknown)(path, ...rest);
+  }) as typeof actual.readdirSync;
+  const renameSync: typeof actual.renameSync = (from, to) => {
+    if (typeof from === 'string' && from.endsWith('.tmp') && hooks.beforeRename !== null) {
+      hooks.renames++;
+      hooks.beforeRename(hooks.renames);
+    }
+    actual.renameSync(from, to);
   };
-  return { ...actual, writeFileSync, linkSync };
+  return { ...actual, writeFileSync, readdirSync, renameSync };
 });
 
 const dirs: string[] = [];
 afterEach(() => {
   hooks.afterTempWrite = null;
+  hooks.beforeRename = null;
+  hooks.beforeReaddir = null;
   hooks.writes = 0;
-  hooks.linkError = null;
+  hooks.renames = 0;
+  hooks.listings = 0;
   for (const dir of dirs.splice(0)) fs.rmSync(dir, { recursive: true, force: true });
 });
 
@@ -56,91 +76,100 @@ function item(n: number): FindingQueueItem {
   };
 }
 
-const queuePath = (root: string): string => join(root, '.diffcity', 'fix-queue.json');
-const takingPath = (root: string): string => join(root, '.diffcity', 'fix-queue.taking.json');
-const readJson = (path: string): FixQueue => JSON.parse(fs.readFileSync(path, 'utf8')) as FixQueue;
-const leftovers = (root: string): string[] => fs.readdirSync(join(root, '.diffcity')).filter((name) => name.endsWith('.tmp'));
+const queueDir = (root: string): string => join(root, '.diffcity', 'fix-queue');
+const takenDir = (root: string, n: number): string => join(root, '.diffcity', `taken-${String(n)}`);
+const take = (root: string, n: number): void => {
+  fs.renameSync(queueDir(root), takenDir(root, n));
+};
+/** The keys of the item files in `dir`, sorted; temporary files are not items. */
+const keysIn = (dir: string): string[] =>
+  fs
+    .readdirSync(dir)
+    .filter((name) => /^[0-9a-f]{32}\.json$/.test(name))
+    .map((name) => (JSON.parse(fs.readFileSync(join(dir, name), 'utf8')) as { key: string }).key)
+    .sort();
 
-describe('fix queue against /diffcity-review taking it (DC-109)', () => {
-  it('fix-queue/taken-between-read-and-write: the new queue holds only the new item; the taken one is not written back', () => {
+describe('fix queue against /diffcity-review taking it (DC-112)', () => {
+  it('fix-queue/taken-before-rename: the queue taken right before the item rename: the item goes to a fresh directory; the taken one keeps only what it had', () => {
     const root = tree();
-    expect(appendToFixQueue(root, item(1))).toMatchObject({ ok: true, queued: true, count: 1 });
+    expect(appendToFixQueue(root, item(1))).toMatchObject({ ok: true, queued: true });
+    hooks.beforeRename = (count) => {
+      if (count === 1) take(root, 1);
+    };
+    expect(appendToFixQueue(root, item(2))).toEqual({ ok: true, queued: true, count: 2 });
+    expect(keysIn(queueDir(root))).toEqual([item(2).key]);
+    expect(keysIn(takenDir(root, 1))).toEqual([item(1).key]);
+    // The temporary file was written once and renamed on the second try.
+    expect(hooks.renames).toBe(2);
+    expect(fs.readdirSync(queueDir(root))).toEqual([fixQueueItemName(item(2).key)]);
+    expect(fs.readdirSync(join(root, '.diffcity')).sort()).toEqual(['fix-queue', 'taken-1']);
+  });
 
-    // The review renames the queue away after the daemon read it, before the daemon's rename.
+  it('fix-queue/taken-after-temp-write: the queue taken after the temporary write goes the same way', () => {
+    const root = tree();
+    expect(appendToFixQueue(root, item(1))).toMatchObject({ ok: true, queued: true });
     hooks.afterTempWrite = (count) => {
-      if (count === 1) fs.renameSync(queuePath(root), takingPath(root));
+      if (count === 1) take(root, 1);
+    };
+    expect(appendToFixQueue(root, item(2))).toEqual({ ok: true, queued: true, count: 2 });
+    expect(keysIn(queueDir(root))).toEqual([item(2).key]);
+    expect(keysIn(takenDir(root, 1))).toEqual([item(1).key]);
+    expect(hooks.writes).toBe(1);
+  });
+
+  it('fix-queue/taken-while-listed: the queue taken while it is listed is written again, never refused', () => {
+    const root = tree();
+    expect(appendToFixQueue(root, item(1))).toMatchObject({ ok: true });
+    hooks.beforeReaddir = (count) => {
+      if (count === 1) take(root, 1);
     };
     expect(appendToFixQueue(root, item(2))).toEqual({ ok: true, queued: true, count: 1 });
-    expect(readJson(queuePath(root)).items.map((entry) => entry.key)).toEqual([item(2).key]);
-    expect(readJson(takingPath(root)).items.map((entry) => entry.key)).toEqual([item(1).key]);
-    expect(hooks.writes).toBe(2);
-    expect(leftovers(root)).toEqual([]);
+    expect(keysIn(queueDir(root))).toEqual([item(2).key]);
+    expect(keysIn(takenDir(root, 1))).toEqual([item(1).key]);
   });
 
-  it('fix-queue/changed-between-read-and-write: an item written meanwhile is kept, read again', () => {
+  it('a key still queued is not written again: no temporary file, so no take', () => {
     const root = tree();
     expect(appendToFixQueue(root, item(1))).toMatchObject({ ok: true });
     hooks.afterTempWrite = (count) => {
-      if (count === 1) fs.writeFileSync(queuePath(root), `${JSON.stringify({ version: 1, items: [item(1), item(3)] }, null, 2)}\n`);
+      if (count === 1) take(root, 1);
     };
-    expect(appendToFixQueue(root, item(2))).toEqual({ ok: true, queued: true, count: 3 });
-    expect(readJson(queuePath(root)).items.map((entry) => entry.key)).toEqual([item(1).key, item(3).key, item(2).key]);
+    expect(appendToFixQueue(root, item(1))).toEqual({ ok: true, queued: false, count: 1 });
+    // Already queued: nothing written, so the take hook never ran.
+    expect(hooks.writes).toBe(0);
   });
 
-  it('fix-queue/created-meanwhile: with no queue at the read, one that appears before the write is never overwritten', () => {
-    const root = tree();
-    fs.mkdirSync(join(root, '.diffcity'));
-    hooks.afterTempWrite = (count) => {
-      if (count === 1) fs.writeFileSync(queuePath(root), `${JSON.stringify({ version: 1, items: [item(5)] }, null, 2)}\n`);
-    };
-    expect(appendToFixQueue(root, item(2))).toEqual({ ok: true, queued: true, count: 2 });
-    expect(readJson(queuePath(root)).items.map((entry) => entry.key)).toEqual([item(5).key, item(2).key]);
-    expect(leftovers(root)).toEqual([]);
-  });
-
-  it('fix-queue/busy: a queue that changes under every attempt is refused with fix-queue-busy, nothing written back', () => {
+  it('fix-queue/busy: a queue taken before every rename gives fix-queue-busy; the item is in none of the queues and no temporary file is left', () => {
     const root = tree();
     expect(appendToFixQueue(root, item(1))).toMatchObject({ ok: true });
-    hooks.afterTempWrite = (count) => {
-      fs.writeFileSync(queuePath(root), `${JSON.stringify({ version: 1, items: Array.from({ length: count }, (_, n) => item(10 + n)) }, null, 2)}\n`);
+    hooks.beforeRename = (count) => {
+      take(root, count);
     };
-    const result = appendToFixQueue(root, item(2));
-    expect(result).toEqual({ ok: false, code: 'fix-queue-busy', message: '.diffcity/fix-queue.json kept changing while the fix was queued; try again' });
-    expect(hooks.writes).toBe(FIX_QUEUE_ATTEMPTS);
-    // The last queue the other writer left is untouched, without the new item.
-    expect(readJson(queuePath(root)).items.map((entry) => entry.key)).toEqual([item(10).key, item(11).key, item(12).key]);
-    expect(leftovers(root)).toEqual([]);
+    expect(appendToFixQueue(root, item(2))).toEqual({
+      ok: false,
+      code: 'fix-queue-busy',
+      message: '.diffcity/fix-queue was taken while the fix was queued, 3 times; try again',
+    });
+    // The first attempt renames into the queue it saw, then into the one it made;
+    // the next ones find no queue and rename once, into the one they make.
+    expect(hooks.renames).toBe(FIX_QUEUE_ATTEMPTS + 1);
+    expect(keysIn(takenDir(root, 1))).toEqual([item(1).key]);
+    for (let n = 2; n <= hooks.renames; n++) expect(keysIn(takenDir(root, n))).toEqual([]);
+    expect(fs.existsSync(queueDir(root))).toBe(false);
+    expect(fs.readdirSync(join(root, '.diffcity')).filter((name) => name.endsWith('.tmp'))).toEqual([]);
   });
 
-  it.each(['EPERM', 'ENOTSUP'])('fix-queue/no-hard-links: link failing with %s falls back to a rename; the queue is still written', (code) => {
+  it('the queue directory swapped for a link after the temporary write is refused, nothing written through it', () => {
     const root = tree();
-    hooks.linkError = code;
-    expect(appendToFixQueue(root, item(1))).toEqual({ ok: true, queued: true, count: 1 });
-    expect(readJson(queuePath(root)).items.map((entry) => entry.key)).toEqual([item(1).key]);
-    expect(leftovers(root)).toEqual([]);
-    // A queue that appears before the fallback rename is still never overwritten.
-    fs.rmSync(queuePath(root));
+    expect(appendToFixQueue(root, item(3))).toMatchObject({ ok: true });
+    const elsewhere = tree();
     hooks.afterTempWrite = (count) => {
-      if (count === 1) fs.writeFileSync(queuePath(root), `${JSON.stringify({ version: 1, items: [item(5)] }, null, 2)}\n`);
+      if (count === 1) {
+        take(root, 1);
+        fs.symlinkSync(elsewhere, queueDir(root), 'dir');
+      }
     };
-    expect(appendToFixQueue(root, item(2))).toEqual({ ok: true, queued: true, count: 2 });
-    expect(readJson(queuePath(root)).items.map((entry) => entry.key)).toEqual([item(5).key, item(2).key]);
-    expect(leftovers(root)).toEqual([]);
-  });
-
-  it('another link error is not swallowed', () => {
-    const root = tree();
-    hooks.linkError = 'EIO';
-    expect(() => appendToFixQueue(root, item(1))).toThrow('EIO');
-    expect(leftovers(root)).toEqual([]);
-  });
-
-  it('a quiet queue is written in one attempt', () => {
-    const root = tree();
-    hooks.afterTempWrite = () => undefined;
-    expect(appendToFixQueue(root, item(1))).toEqual({ ok: true, queued: true, count: 1 });
-    expect(appendToFixQueue(root, item(2))).toEqual({ ok: true, queued: true, count: 2 });
-    expect(hooks.writes).toBe(2);
-    expect(fs.statSync(queuePath(root)).nlink).toBe(1);
+    expect(appendToFixQueue(root, item(1))).toMatchObject({ ok: false, code: 'fix-queue-unsafe' });
+    expect(fs.readdirSync(elsewhere)).toEqual([]);
   });
 });
