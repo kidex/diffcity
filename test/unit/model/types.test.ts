@@ -232,7 +232,7 @@ describe('model types', () => {
     expectTypeOf<WatchMode>().toEqualTypeOf<'full' | 'git-only' | 'off'>();
     expectTypeOf<CollectPriority>().toEqualTypeOf<'high' | 'normal' | 'low'>();
     expectTypeOf<SseEventName>().toEqualTypeOf<'hello' | 'repo' | 'changes' | 'snapshot' | 'review' | 'findings' | 'collect'>();
-    expectTypeOf<SocketRequest['type']>().toEqualTypeOf<'ping' | 'track' | 'register' | 'shutdown'>();
+    expectTypeOf<SocketRequest['type']>().toEqualTypeOf<'ping' | 'track' | 'register' | 'import' | 'shutdown'>();
     expectTypeOf<SocketRequest['v']>().toEqualTypeOf<1>();
   });
 

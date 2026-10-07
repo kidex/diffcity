@@ -1,5 +1,6 @@
 // The socket protocol v1 (ADR-016): one JSON line each way per connection,
 // 64 KiB per request, a 5 s timeout, mode 0600, a registry for track/register.
+// `import` (ADR-036): up to 4 MiB for a line that starts as an import, 30 s.
 
 import { connect } from 'node:net';
 import { mkdtemp, rm, stat } from 'node:fs/promises';
@@ -9,7 +10,15 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { SocketRequest } from '../../../src/core/model/types.js';
 import { sendRequest } from '../../../src/daemon/client.js';
 import { createStreamLogger } from '../../../src/daemon/log.js';
-import { parseRequest, MAX_REQUEST_BYTES, REQUEST_TIMEOUT_MS } from '../../../src/daemon/socket/protocol.js';
+import {
+  IMPORT_REQUEST_TIMEOUT_MS,
+  MAX_IMPORT_REQUEST_BYTES,
+  maxBytesFor,
+  parseRequest,
+  MAX_REQUEST_BYTES,
+  REQUEST_TIMEOUT_MS,
+  startsAsImport,
+} from '../../../src/daemon/socket/protocol.js';
 import { createSocketServer, RESPONSE_LINGER_MS, sweepTempSockets, type SocketServer } from '../../../src/daemon/socket/server.js';
 import { PassThrough } from 'node:stream';
 
@@ -27,7 +36,7 @@ afterEach(async () => {
   await rm(dir, { recursive: true, force: true });
 });
 
-async function start(options: { timeoutMs?: number; lingerMs?: number } = {}): Promise<string> {
+async function start(options: { timeoutMs?: number; lingerMs?: number; importTimeoutMs?: number; importMaxBytes?: number } = {}): Promise<string> {
   const path = join(dir, 'daemon.sock');
   server = createSocketServer({
     path,
@@ -69,6 +78,7 @@ describe('parseRequest', () => {
       { v: 1, type: 'shutdown' },
       { v: 1, type: 'track', dir: '/work/sample-shop', agent: true, at: '2026-01-01T00:00:00.000Z' },
       { v: 1, type: 'register', dirs: ['/work/sample-shop', '/work/order-service'] },
+      { v: 1, type: 'import', dir: '/work/sample-shop', findings: [IMPORTED], warnings: [{ at: 'findings[1]', message: 'skipped: empty path' }], sources: ['claude'], at: '2026-01-01T00:00:00.000Z' },
     ];
     for (const request of requests) expect(parseRequest(JSON.stringify(request))).toEqual({ ok: true, request });
   });
@@ -84,17 +94,43 @@ describe('parseRequest', () => {
     ['{"v":1,"type":"track","dir":"/a","agent":"yes","at":"x"}', /agent must be a boolean/],
     ['{"v":1,"type":"track","dir":"/a","agent":false}', /at must be a string/],
     ['{"v":1,"type":"register","dirs":["/a","b"]}', /dirs must be absolute paths/],
+    ['{"v":1,"type":"import","dir":"relative","findings":[],"warnings":[],"at":"x"}', /invalid import request: dir must be an absolute path/],
+    ['{"v":1,"type":"import","dir":"/a","findings":[],"warnings":[]}', /invalid import request: at must be a string/],
+    ['{"v":1,"type":"import","dir":"/a","findings":{},"warnings":[],"at":"x"}', /invalid import request: findings must be an array/],
+    ['{"v":1,"type":"import","dir":"/a","findings":[{"source":"claude"}],"warnings":[],"at":"x"}', /invalid import request: findings\[0\]/],
   ])('refuses %s', (line, error) => {
     const result = parseRequest(line);
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.error).toMatch(error);
   });
 
-  it('limits are 64 KiB and 5 s', () => {
+  it('limits are 64 KiB and 5 s; an import has 4 MiB and 30 s', () => {
     expect(MAX_REQUEST_BYTES).toBe(64 * 1024);
     expect(REQUEST_TIMEOUT_MS).toBe(5000);
+    expect(MAX_IMPORT_REQUEST_BYTES).toBe(4 * 1024 * 1024);
+    expect(IMPORT_REQUEST_TIMEOUT_MS).toBe(30_000);
+    expect(maxBytesFor('import')).toBe(MAX_IMPORT_REQUEST_BYTES);
+    expect(maxBytesFor('track')).toBe(MAX_REQUEST_BYTES);
+  });
+
+  it('recognises the start of an import line, as the CLI writes it or with whitespace', () => {
+    expect(startsAsImport(JSON.stringify({ v: 1, type: 'import', dir: '/a' }))).toBe(true);
+    expect(startsAsImport('{ "v" : 1 ,\n "type": "import", ')).toBe(true);
+    expect(startsAsImport('{"type":"import","v":1,')).toBe(false);
+    expect(startsAsImport('{"v":1,"type":"importer",')).toBe(false);
+    expect(startsAsImport('{"v":1,"type":"track",')).toBe(false);
   });
 });
+
+const IMPORTED = {
+  source: 'claude',
+  severity: 'high' as const,
+  category: 'security' as const,
+  file: 'src/auth/order.guard.ts',
+  line: 14,
+  title: 'Optional order defaults to allow',
+  message: 'When order is undefined the guard returns true.',
+};
 
 describe('socket server', () => {
   it('creates the socket with mode 0600', async () => {
@@ -178,6 +214,57 @@ describe('socket server', () => {
       registered: 2,
       known: 0,
     });
+  });
+
+  it('import answers with an explicit error until a handler is registered, then routes to it', async () => {
+    const path = await start();
+    const request = { v: 1 as const, type: 'import' as const, dir: '/work/sample-shop', findings: [IMPORTED], warnings: [], sources: ['claude'], at: 'now' };
+    expect(await sendRequest(path, request)).toEqual({ ok: false, error: 'import is not supported by this daemon yet' });
+    server?.handlers.handle('import', (received) => ({
+      ok: true,
+      change: { id: 3, repoId: 1, ref: 'branch:feature/cancel' },
+      imported: received.findings.length,
+      merged: 0,
+      skipped: 0,
+      fixed: 0,
+      warnings: [],
+      anchoredAgainst: 'current-snapshot',
+    }));
+    expect(await sendRequest(path, request)).toMatchObject({ ok: true, imported: 1 });
+  });
+
+  it('an import line may pass 64 KiB up to the import cap; past it, it is refused at once', async () => {
+    const path = await start({ importMaxBytes: 256 * 1024 });
+    server?.handlers.handle('import', (received) => ({ ok: false, error: `got ${String(received.findings.length)}` }));
+    const findings = Array.from({ length: 600 }, (_, index) => ({ ...IMPORTED, title: `Finding ${String(index)}` }));
+    const line = JSON.stringify({ v: 1, type: 'import', dir: '/work/sample-shop', findings, warnings: [], at: 'now' });
+    expect(Buffer.byteLength(line)).toBeGreaterThan(MAX_REQUEST_BYTES);
+    expect(Buffer.byteLength(line)).toBeLessThan(256 * 1024);
+    expect(JSON.parse(await raw(path, `${line}\n`))).toEqual({ ok: false, error: 'got 600' });
+    const oversized = await raw(path, Buffer.concat([Buffer.from('{"v":1,"type":"import",'), Buffer.alloc(256 * 1024, 'a')]), { end: false });
+    expect(JSON.parse(oversized)).toEqual({ ok: false, error: `request exceeds ${String(256 * 1024)} bytes` });
+  });
+
+  it('a line read under the import cap whose last type key is not import is refused at 64 KiB', async () => {
+    const path = await start();
+    server?.handlers.handle('track', () => ({ ok: true, repo: { id: 1, name: 'x' } }));
+    const line = `{"v":1,"type":"import","pad":"${'p'.repeat(MAX_REQUEST_BYTES)}","type":"track","dir":"/a","agent":false,"at":"now"}`;
+    expect(JSON.parse(await raw(path, `${line}\n`))).toEqual({ ok: false, error: `request exceeds ${String(MAX_REQUEST_BYTES)} bytes` });
+  });
+
+  it('an import exchange gets the import timeout instead of the default one', async () => {
+    const path = await start({ timeoutMs: 50, importTimeoutMs: 400 });
+    // Answers after 200 ms: past the default timeout, within the import one.
+    server?.handlers.handle('import', () => new Promise((resolve) => {
+      setTimeout(() => {
+        resolve({ ok: false, error: 'released' });
+      }, 200);
+    }));
+    const request = { v: 1, type: 'import', dir: '/work/sample-shop', findings: [], warnings: [], at: 'now' };
+    expect(JSON.parse(await raw(path, `${JSON.stringify(request)}\n`))).toEqual({ ok: false, error: 'released' });
+    server?.handlers.handle('track', () => new Promise(() => undefined));
+    const track = { v: 1, type: 'track', dir: '/a', agent: false, at: 'now' };
+    expect(JSON.parse(await raw(path, `${JSON.stringify(track)}\n`))).toEqual({ ok: false, error: 'request timed out' });
   });
 
   it('refuses a second handler for the same type', async () => {

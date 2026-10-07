@@ -1,6 +1,8 @@
 // The daemon's socket server (ADR-016). `ping` and `shutdown` are built in;
-// `track` and `register` go through a handler registry that the collection
-// (DC-29) fills, and answer with an explicit error until then.
+// `track`, `register` and `import` go through a handler registry that the
+// collection fills, and answer with an explicit error until then. A line is
+// read up to 64 KiB, or up to 4 MiB when it starts as an `import` request,
+// whose exchange may also take 30 s instead of 5 (ADR-036, protocol.ts).
 
 import { randomBytes } from 'node:crypto';
 import { chmod, lstat, readdir, rename, rm } from 'node:fs/promises';
@@ -9,10 +11,18 @@ import { dirname, join } from 'node:path';
 import type { SocketRequest, SocketResponse, SocketResponseFor, SocketSuccessResponses } from '../../core/model/types.js';
 import { fileIdentity, type BoundFile } from '../files.js';
 import { errorMessage, type Logger } from '../log.js';
-import { MAX_REQUEST_BYTES, parseRequest, REQUEST_TIMEOUT_MS } from './protocol.js';
+import {
+  IMPORT_REQUEST_TIMEOUT_MS,
+  IMPORT_START_PEEK_BYTES,
+  MAX_IMPORT_REQUEST_BYTES,
+  MAX_REQUEST_BYTES,
+  parseRequest,
+  REQUEST_TIMEOUT_MS,
+  startsAsImport,
+} from './protocol.js';
 
 /** Request types served by a registered handler rather than by the socket server itself. */
-export type PluggableRequestType = 'track' | 'register';
+export type PluggableRequestType = 'track' | 'register' | 'import';
 
 export type SocketRequestOf<T extends SocketRequest['type']> = Extract<SocketRequest, { type: T }>;
 
@@ -35,6 +45,10 @@ export interface SocketServerOptions {
   shutdown: () => void;
   timeoutMs?: number;
   maxBytes?: number;
+  /** Defaults to IMPORT_REQUEST_TIMEOUT_MS. */
+  importTimeoutMs?: number;
+  /** Defaults to MAX_IMPORT_REQUEST_BYTES. */
+  importMaxBytes?: number;
   /** Defaults to RESPONSE_LINGER_MS. */
   lingerMs?: number;
 }
@@ -101,6 +115,8 @@ const notSupported = (type: PluggableRequestType): SocketResponse => ({
 export function createSocketServer(options: SocketServerOptions): SocketServer {
   const timeoutMs = options.timeoutMs ?? REQUEST_TIMEOUT_MS;
   const maxBytes = options.maxBytes ?? MAX_REQUEST_BYTES;
+  const importMaxBytes = options.importMaxBytes ?? MAX_IMPORT_REQUEST_BYTES;
+  const importTimeoutMs = options.importTimeoutMs ?? IMPORT_REQUEST_TIMEOUT_MS;
   const lingerMs = options.lingerMs ?? RESPONSE_LINGER_MS;
   const handlerMap: HandlerMap = {};
   const connections = new Set<Socket>();
@@ -123,12 +139,19 @@ export function createSocketServer(options: SocketServerOptions): SocketServer {
         return handlerMap.track ? await handlerMap.track(request) : notSupported('track');
       case 'register':
         return handlerMap.register ? await handlerMap.register(request) : notSupported('register');
+      case 'import':
+        return handlerMap.import ? await handlerMap.import(request) : notSupported('import');
     }
   }
 
   function serve(socket: Socket): void {
     connections.add(socket);
-    let buffered = Buffer.alloc(0);
+    const connectedAt = Date.now();
+    /** The line so far, in chunks: a 4 MiB import is not copied again on every chunk. */
+    const chunks: Buffer[] = [];
+    let length = 0;
+    /** The cap of this line: MAX_REQUEST_BYTES until it is seen to start as an import. */
+    let cap = maxBytes;
     let answered = false;
     let received = false;
     let linger: NodeJS.Timeout | undefined;
@@ -145,18 +168,29 @@ export function createSocketServer(options: SocketServerOptions): SocketServer {
       linger.unref();
     };
 
-    const timer = setTimeout(() => {
+    const timedOut = (): void => {
       respond({ ok: false, error: 'request timed out' });
-    }, timeoutMs);
+    };
+    let timer = setTimeout(timedOut, timeoutMs);
 
-    const handleLine = (line: string): void => {
+    const handleLine = (bytes: Buffer): void => {
       received = true;
-      const parsed = parseRequest(line);
+      const parsed = parseRequest(bytes.toString('utf8'));
       if (!parsed.ok) {
         respond({ ok: false, error: parsed.error });
         return;
       }
       const { request } = parsed;
+      // A line read under the import cap whose last `type` key says otherwise.
+      if (request.type !== 'import' && bytes.length > maxBytes) {
+        respond({ ok: false, error: `request exceeds ${String(maxBytes)} bytes` });
+        return;
+      }
+      if (request.type === 'import') {
+        // The import's own budget, from the start of the connection.
+        clearTimeout(timer);
+        timer = setTimeout(timedOut, Math.max(0, importTimeoutMs - (Date.now() - connectedAt)));
+      }
       dispatch(request).then(
         (response) => {
           respond(response, request.type === 'shutdown' ? options.shutdown : undefined);
@@ -170,16 +204,21 @@ export function createSocketServer(options: SocketServerOptions): SocketServer {
 
     socket.on('data', (chunk: Buffer) => {
       if (answered || received) return;
-      buffered = Buffer.concat([buffered, chunk]);
-      const newline = buffered.indexOf(0x0a);
-      const lineLength = newline === -1 ? buffered.length : newline;
-      if (lineLength > maxBytes) {
-        respond({ ok: false, error: `request exceeds ${String(maxBytes)} bytes` });
+      const newline = chunk.indexOf(0x0a);
+      const part = newline === -1 ? chunk : chunk.subarray(0, newline);
+      chunks.push(part);
+      length += part.length;
+      if (length > cap && cap === maxBytes) {
+        const head = Buffer.concat(chunks).subarray(0, IMPORT_START_PEEK_BYTES).toString('utf8');
+        if (startsAsImport(head)) cap = Math.max(maxBytes, importMaxBytes);
+      }
+      if (length > cap) {
+        respond({ ok: false, error: `request exceeds ${String(cap)} bytes` });
         return;
       }
       if (newline !== -1) {
-        handleLine(buffered.subarray(0, newline).toString('utf8'));
-        buffered = Buffer.alloc(0);
+        handleLine(Buffer.concat(chunks, length));
+        chunks.length = 0;
         // Anything after the first line is ignored: one request per connection.
         socket.removeAllListeners('data');
         socket.resume();
@@ -187,7 +226,7 @@ export function createSocketServer(options: SocketServerOptions): SocketServer {
     });
     socket.on('end', () => {
       if (answered || received) return;
-      if (buffered.length > 0) handleLine(buffered.toString('utf8'));
+      if (length > 0) handleLine(Buffer.concat(chunks, length));
       else respond({ ok: false, error: 'empty request' });
     });
     socket.on('error', () => {
