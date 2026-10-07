@@ -64,6 +64,25 @@ describe('findings store', () => {
     expect(db.findings.hasAny(changeId)).toBe(true);
   });
 
+  it('liveChangesWithAny: the live changes of the repo with an imported finding or a rule state, by id (DC-106)', () => {
+    const { created } = db.changes.applyPlan(repoId, { create: [branchFields('rule-only'), branchFields('quiet'), branchFields('gone')], update: [], archive: [] }, T0);
+    const [ruleOnly, quiet, gone] = created;
+    if (ruleOnly === undefined || quiet === undefined || gone === undefined) throw new Error('no changes');
+    const other = addRepo(db, 'other-shop');
+    const foreign = db.changes.applyPlan(other.id, { create: [branchFields('foreign')], update: [], archive: [] }, T0).created[0];
+    if (foreign === undefined) throw new Error('no change');
+    expect(db.findings.liveChangesWithAny(repoId)).toEqual([]);
+
+    db.findings.importBatch({ changeId, head, findings: [anchored(), anchored({ source: 'semgrep' })], fixed: [], at: T0 });
+    db.findings.setRuleState(ruleOnly.id, 'rule:size:0001', ruleOnly.head, 'intended', T0);
+    db.findings.importBatch({ changeId: gone.id, head: gone.head, findings: [anchored()], fixed: [], at: T0 });
+    db.findings.importBatch({ changeId: foreign.id, head: foreign.head, findings: [anchored()], fixed: [], at: T0 });
+    db.changes.applyPlan(repoId, { create: [], update: [], archive: [{ id: gone.id, reason: 'merged' }] }, T0);
+
+    expect(db.findings.liveChangesWithAny(repoId)).toEqual([changeId, ruleOnly.id]);
+    expect(db.findings.liveChangesWithAny(other.id)).toEqual([foreign.id]);
+  });
+
   it('a repeated key keeps its place and an intended state, takes the new finding, and fixed closes only open rows', () => {
     const a = anchored();
     const b = anchored({ file: ORDERS, line: 12, title: 'Cancel ignores refunds' });

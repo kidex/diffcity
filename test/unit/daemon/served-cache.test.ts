@@ -2,7 +2,7 @@
 // same key, least recently used changes dropped past the limit.
 
 import { describe, expect, it } from 'vitest';
-import { createServedCache, SERVED_CACHE_MAX } from '../../../src/daemon/api/served-cache.js';
+import { createServedCache, SERVED_CACHE_MAX, SERVED_SUMMARIES_MAX } from '../../../src/daemon/api/served-cache.js';
 
 describe('served cache', () => {
   it('hits on the same key only; a new key replaces the entry of the change', () => {
@@ -28,5 +28,13 @@ describe('served cache', () => {
     expect(cache.get(1, 'k')).toBe('one');
     expect(cache.get(3, 'k')).toBe('three');
     expect(cache.size).toBe(2);
+  });
+
+  it('holds any value: the verdict counts of the change list (DC-106)', () => {
+    expect(SERVED_SUMMARIES_MAX).toBeGreaterThan(SERVED_CACHE_MAX);
+    const cache = createServedCache<Record<string, number>>(SERVED_SUMMARIES_MAX);
+    cache.set(1, 'k', { risky: 2 });
+    expect(cache.get(1, 'k')).toEqual({ risky: 2 });
+    expect(cache.get(1, 'k2')).toBeUndefined();
   });
 });
