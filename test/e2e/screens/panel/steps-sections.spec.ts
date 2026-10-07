@@ -29,7 +29,9 @@ test('panel/steps-sections/sections-render-with-headings', async () => {
   await expect(sections).toHaveCount(3);
   await expect(sections.getByTestId('section-label')).toHaveText(['Execution path', 'Migrations', 'Unconnected']);
   await expect(page.getByTestId('section-heading')).toHaveText(['Execution path15', 'Migrations2', 'Unconnected7']);
-  await expect(page.getByRole('heading', { level: 3, name: /^Execution path/ })).toBeVisible();
+  for (const name of ['Execution path, 15 stops', 'Migrations, 2 stops', 'Unconnected, 7 stops']) {
+    await expect(page.getByRole('heading', { level: 3, name, exact: true })).toBeVisible();
+  }
   await expect(page.getByTestId('section-note')).toHaveText([
     'From each entry point, in the order the code runs',
     'Touched SQL migrations, read after the execution path',

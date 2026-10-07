@@ -105,7 +105,12 @@ function stopSection(section: StopSection, actions: TabActions, cards: StopCard[
     { class: `stop-section ${section.id}`, 'data-testid': 'stop-section', 'data-section': section.id },
     h(
       'h3',
-      { class: 'section-head', 'data-testid': 'section-heading' },
+      // Named in words: the label and the count would read as one word ("Execution path15").
+      {
+        class: 'section-head',
+        'data-testid': 'section-heading',
+        'aria-label': `${section.label}, ${String(section.stops.length)} ${section.stops.length === 1 ? 'stop' : 'stops'}`,
+      },
       h('span', { 'data-testid': 'section-label' }, section.label),
       h('span', { class: 'cnt', 'data-testid': 'section-count' }, String(section.stops.length)),
     ),
