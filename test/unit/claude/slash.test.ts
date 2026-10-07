@@ -105,6 +105,11 @@ describe('slash: the /diffcity-review command file', () => {
     }
   });
 
+  it('slash/paths-from-repo-root: the body says its paths are relative to the repository root, right after the marker', () => {
+    const lines = commandFileText('diffcity').split('\n');
+    expect(lines[lines.indexOf(COMMAND_MARKER) + 1]).toBe('All paths below are relative to the repository root: run every command from there.');
+  });
+
   it('the marker is the line right after the frontmatter, and the frontmatter opens the file', () => {
     const lines = commandFileText('diffcity').split('\n');
     expect(lines[0]).toBe('---');

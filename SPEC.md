@@ -276,6 +276,7 @@ disable-model-invocation: true
 allowed-tools: Bash(diffcity diff:*), Bash(diffcity import:*), Bash(mv .diffcity/fix-queue.json .diffcity/fix-queue.taking.json), Bash(rm .diffcity/fix-queue.taking.json), Read, Write(.diffcity/findings.json)
 ---
 <!-- diffcity: diffcity-review v1 -->
+All paths below are relative to the repository root: run every command from there.
 First take the fixes queued from diffcity. If `.diffcity/fix-queue.taking.json` exists, an earlier run
 stopped halfway: apply it and delete it as below before anything else.
 Run `mv .diffcity/fix-queue.json .diffcity/fix-queue.taking.json`; when `.diffcity/fix-queue.json` does not exist, nothing is queued.

@@ -46,6 +46,8 @@ The file starts with its frontmatter (`description`, `argument-hint`, `disable-m
 
 `allowed-tools` allows exactly what the command runs: `Bash(<cli> diff:*)` and `Bash(<cli> import:*)` with the hook command's invocation, the two fix-queue commands `mv .diffcity/fix-queue.json .diffcity/fix-queue.taking.json` and `rm .diffcity/fix-queue.taking.json`, `Read`, and `Write(.diffcity/findings.json)`. Fixing code from the fix queue goes through Claude Code's usual permission prompts.
 
+The command's paths (`.diffcity/...`) are relative to the repository root, and the body says so: its commands run from the root, so start the Claude Code session there, or let the agent move there first.
+
 The command:
 
 1. takes the fix queue by renaming `.diffcity/fix-queue.json` to `.diffcity/fix-queue.taking.json`, applies its items and deletes the taken file, so an item diffcity queues meanwhile lands in a new queue and is neither lost nor applied twice;

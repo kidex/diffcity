@@ -57,6 +57,7 @@ export function commandFileText(cli: string): string {
     `allowed-tools: ${allowedTools(cli)}`,
     '---',
     COMMAND_MARKER,
+    'All paths below are relative to the repository root: run every command from there.',
     'First take the fixes queued from diffcity. If `.diffcity/fix-queue.taking.json` exists, an earlier run',
     'stopped halfway: apply it and delete it as below before anything else.',
     `Run \`${run.take}\`; when \`${FIX_QUEUE_PATH}\` does not exist, nothing is queued.`,
