@@ -77,6 +77,14 @@ describe('report', () => {
     expect(price?.callsites).toBe(3);
     expect(sig.steps.find((step) => step.symbolId === 'src/price.ts#price')?.why).toBe('Signature changed, 3 call sites rewritten');
 
+    // A route file that git sees as changed but is only reformatted (status same) still registers the route.
+    const reformatted = await reportOf('entry/route-file-reformatted');
+    const server = reformatted.packages.flatMap((pkg) => pkg.files).find((file) => file.path === 'src/server.ts');
+    expect(server?.status).toBe('same');
+    expect(reformatted.steps.map((step) => [step.symbolId, step.section, step.why])).toEqual([
+      ['src/items.ts#listItems', 'path', 'Endpoint changed: GET /items'],
+    ]);
+
     // Working-tree mode: the registration in src/server.ts is untouched, the handler changed.
     const route = await reportOf('entry/express-route-handler-modified', false);
     expect(route.steps).toEqual([

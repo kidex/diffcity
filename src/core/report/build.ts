@@ -221,6 +221,9 @@ async function describeChanged(change: ResolvedChange, file: ChangedFile): Promi
   // A touched code file that was parsed: its steps' diffs and entry facts are taken now, while both versions are in memory.
   if (status !== 'same' && !input.binary) {
     described.path = await preparePathFile({ path: file.path, oldPath, status, before, after, symbols, ranges });
+  } else if (!input.binary && after !== null) {
+    // Touched but `same` (reformatted only): like an untouched file, its registrations can make a handler an entry.
+    described.path = (await prepareUntouchedFile(file.path, after, symbols)) ?? undefined;
   }
   return described;
 }
