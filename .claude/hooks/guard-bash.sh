@@ -4,7 +4,9 @@
 set -uo pipefail
 source "$(dirname "$0")/lib.sh"
 
-cmd="$(jq -r '.tool_input.command // ""')"
+input="$(cat)"
+cmd="$(jq -r '.tool_input.command // ""' <<<"$input")"
+hook_cwd="$(jq -r '.cwd // ""' <<<"$input")"
 [ -z "$cmd" ] && exit 0
 
 # Destructive commands from the deny list.
@@ -30,8 +32,19 @@ while read -r target; do
 done < <(grep -Eo '(>>?|tee([[:space:]]+-a)?)[[:space:]]*[^[:space:];&|]+' <<<"$cmd" | sed -E 's/^(>>?|tee([[:space:]]+-a)?)[[:space:]]*//' | grep -v '^&')
 
 # Commits must pass lint and typecheck.
-if grep -Eq '(^|[;&|[:space:]])git[[:space:]]+commit' <<<"$cmd"; then
-  root="$(git -C "$PROJECT_DIR" rev-parse --show-toplevel 2>/dev/null || echo "$PROJECT_DIR")"
+if grep -Eq '(^|[;&|[:space:]])git([[:space:]]+-C[[:space:]]+[^[:space:];&|]+|[[:space:]]+-c[[:space:]]+[^[:space:];&|]+)*[[:space:]]+commit' <<<"$cmd"; then
+  # Check the checkout being committed (often a worktree), not the main one:
+  # `git -C <dir>`, then a leading `cd <dir> &&`, then the hook's cwd.
+  target="$(grep -Eo 'git[[:space:]]+-C[[:space:]]+[^[:space:];&|]+' <<<"$cmd" | head -n 1 | sed -E 's/^git[[:space:]]+-C[[:space:]]+//')"
+  [ -z "$target" ] && target="$(grep -Eo '^[[:space:]]*cd[[:space:]]+[^[:space:];&|]+' <<<"$cmd" | head -n 1 | sed -E 's/^[[:space:]]*cd[[:space:]]+//')"
+  [ -z "$target" ] && target="$hook_cwd"
+  target="${target%\"}"; target="${target#\"}"; target="${target%\'}"; target="${target#\'}"
+  case "$target" in
+    ""|/*) ;;
+    *) target="${hook_cwd:-$PROJECT_DIR}/$target" ;;
+  esac
+  root="$(git -C "${target:-$PROJECT_DIR}" rev-parse --show-toplevel 2>/dev/null \
+    || git -C "$PROJECT_DIR" rev-parse --show-toplevel 2>/dev/null || echo "$PROJECT_DIR")"
   if [ -f "$root/package.json" ] && [ -d "$root/node_modules" ]; then
     if ! out="$(cd "$root" && npm run --silent lint 2>&1)"; then
       block "lint fails, fix before committing:"$'\n'"$(tail -n 30 <<<"$out")"

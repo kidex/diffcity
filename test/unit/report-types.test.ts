@@ -119,7 +119,6 @@ describe('Report types (SPEC.md 4.1)', () => {
       signatureAfter?: string;
       callsites?: number;
     }>();
-    // Section 4.1 plus the ADR-034 addition: section and entry.
     expectTypeOf<Step>().toEqualTypeOf<{
       order: number;
       symbolId: string;
@@ -133,6 +132,7 @@ describe('Report types (SPEC.md 4.1)', () => {
     expectTypeOf<Finding>().toEqualTypeOf<{
       id: string;
       source: string;
+      sources?: string[];
       severity: 'high' | 'med' | 'low';
       category: 'security' | 'correctness' | 'scope' | 'style' | 'tests' | 'architecture';
       file: string;
