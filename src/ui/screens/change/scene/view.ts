@@ -1,7 +1,10 @@
 // The night data city of a Report (ADR-026): stage, ground, lots, towers and
 // roof labels, the mockup's orbit camera, hover and selection. Rebuilt in
 // place on a new Report, keeping the camera, the selected building and the
-// city's row width (so lots before a change stay put), and on a theme change. Everything it creates is released by dispose().
+// city's row width (so lots before a change stay put), and on a theme change.
+// A Report that keeps the layout (a finding's state, a verdict) is only
+// repainted: markers, outlines, beams, pulses and labels, nothing rebuilt.
+// Everything it creates is released by dispose().
 
 import { Fog, HemisphereLight, PMREMGenerator, Vector3 } from 'three';
 import type { Object3D } from 'three';
@@ -10,12 +13,12 @@ import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import type { Report } from '../../../../core/report/types.js';
 import { h } from '../../../shared/dom.js';
 import type { City, CityBuilding, CityFloor } from '../model/city.js';
-import { buildCity } from '../model/city.js';
+import { buildCity, sameLayout } from '../model/city.js';
 import type { Critical, Marks } from '../model/critical.js';
 import { criticalFloors } from '../model/critical.js';
 import { canvasLabel } from '../model/hud.js';
 import { findingMarkers } from '../model/markers.js';
-import { pathStops } from '../model/path.js';
+import { pathStops, samePath } from '../model/path.js';
 import type { CityPaint, Filters, RuleIndex } from '../model/view.js';
 import { focusPaint, NO_FILTERS, paintCity, ruleIndex } from '../model/view.js';
 import { easeOut, needsTween, TWEEN_MS, tweenCity } from '../model/tween.js';
@@ -53,6 +56,8 @@ export interface SceneStats {
   triangles: number;
   /** Times the towers' instanced buffers were built: once per Report, again only when a tween frame needs another instance count. */
   builds: number;
+  /** Times the city was built (ground, lots, markers, path): at mount, for a Report with another layout and on a theme change; never for one that only repaints. */
+  layouts: number;
 }
 
 /** What the night effects drew, for the debug hook (read-only). */
@@ -215,6 +220,8 @@ export function createCityView(host: HTMLElement, report: Report, options: CityV
   let trace: { id: string; heights: number[] } | null = null;
   /** Times the towers' instanced buffers were built, for the stats. */
   let towerBuilds = 0;
+  /** Times build() ran, for the stats. */
+  let layouts = 0;
   /** The paint of the shown city for the filters alone: hover and selection are laid over it. */
   let baseline: CityPaint | null = null;
   const hooks = options.hooks;
@@ -420,6 +427,7 @@ export function createCityView(host: HTMLElement, report: Report, options: CityV
    */
   function build(city: City, from: City | null = null, reuse = false): Content {
     const previous = content?.city ?? null;
+    layouts += 1;
     const reusable = reuse && content !== null ? content.towers : null;
     if (content !== null) retire(content.detach(reusable !== null));
     const voidColor = colorToken('--c-void');
@@ -495,7 +503,30 @@ export function createCityView(host: HTMLElement, report: Report, options: CityV
       }
     }
     applyCamera();
+    settle(city, previous);
+    return made;
+  }
 
+  /**
+   * A new Report that lays out as the city on screen (a finding's state, a
+   * verdict, the marks): the ground, the lots, the path and the towers' buffers
+   * stay, and only what the Report paints is drawn again, so no material or
+   * texture is made anew (DC-110).
+   */
+  function refresh(city: City): void {
+    const c = content;
+    if (c === null) return;
+    const previous = c.city;
+    c.city = city;
+    c.picker = new Picker(city);
+    c.markers.setPlan(findingMarkers(city, lastReport.findings));
+    showCity(city);
+    labels.setCity(city);
+    settle(city, previous);
+  }
+
+  /** After a new city: hover, selection and focused floor follow it, the paint is redone and the hooks hear of it. */
+  function settle(city: City, previous: City | null): void {
     // Hover does not survive a rebuild; the selection does while its file exists.
     hovered = null;
     hoveredFloor = null;
@@ -515,7 +546,6 @@ export function createCityView(host: HTMLElement, report: Report, options: CityV
     if (lost !== null) hooks?.selectionLost(lost);
     settled = false;
     stage.request();
-    return made;
   }
 
   const pickAt = (clientX: number, clientY: number): Pick | null => content?.picker.pick(clientX, clientY, canvas, camera) ?? null;
@@ -617,13 +647,17 @@ export function createCityView(host: HTMLElement, report: Report, options: CityV
     element,
     setReport(next) {
       if (disposed) return;
+      const previousSteps = lastReport.steps;
       lastReport = next;
       canvas.setAttribute('aria-label', canvasLabel(next));
       rules = ruleIndex(next);
       critical = criticalFloors(next, marks);
       // A tween in progress continues from what is on screen.
       const from = options.reducedMotion ? null : (content?.shown ?? null);
-      build(cityOf(next), from, true);
+      const city = cityOf(next);
+      const c = content;
+      if (c !== null && tween === null && sameLayout(c.city, city) && samePath(pathStops(c.city, previousSteps), pathStops(city, next.steps))) refresh(city);
+      else build(city, from, true);
     },
     select,
     hover: setHover,
@@ -671,6 +705,7 @@ export function createCityView(host: HTMLElement, report: Report, options: CityV
         geometries: renderer.info.memory.geometries,
         textures: renderer.info.memory.textures,
         builds: towerBuilds,
+        layouts,
       };
     },
     quality: () => stage.quality,

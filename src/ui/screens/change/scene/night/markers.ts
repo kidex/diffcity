@@ -47,6 +47,8 @@ export interface Markers {
   group: Group;
   /** Follows the buildings of `city` (a tween frame); drawn again by the next setPaint. */
   update(city: City): void;
+  /** The finding markers of a new Report of the same city; drawn again by the next setPaint. */
+  setPlan(plan: readonly FindingMarker[]): void;
   /** Draws the markers for the paint of the city given to update. */
   setPaint(paint: CityPaint): void;
   list(): MarkerInfo[];
@@ -110,7 +112,8 @@ class Shape {
   }
 }
 
-export function createMarkers(plan: readonly FindingMarker[], first: City): Markers {
+export function createMarkers(first: readonly FindingMarker[], firstCity: City): Markers {
+  let plan = first;
   const group = new Group();
   const material = new MeshBasicMaterial({ color: new Color(1, 1, 1) });
 
@@ -130,7 +133,7 @@ export function createMarkers(plan: readonly FindingMarker[], first: City): Mark
   const del = colorToken('--del');
   const voidColor = colorToken('--c-void');
 
-  let city = first;
+  let city = firstCity;
   let listed: MarkerInfo[] = [];
   const flat = new Quaternion().setFromAxisAngle(new Vector3(1, 0, 0), -Math.PI / 2);
   const identity = new Quaternion();
@@ -240,6 +243,9 @@ export function createMarkers(plan: readonly FindingMarker[], first: City): Mark
     group,
     update(next) {
       city = next;
+    },
+    setPlan(next) {
+      plan = next;
     },
     setPaint(next) {
       paint = next;

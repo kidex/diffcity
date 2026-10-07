@@ -355,3 +355,44 @@ export function labelledBuildings(city: City, focus: LabelFocus = {}, max = MAX_
     .slice(0, max)
     .map((entry) => entry.building);
 }
+
+const near = (a: number, b: number): boolean => Math.abs(a - b) <= 1e-6;
+
+/**
+ * Whether `next` lays out exactly as `current`: the same lots (place, package
+ * and tier 1, so the same plates, names and rings) and the same buildings in
+ * the same order, place and size, floor for floor. A finding's state, a
+ * verdict or a review mark changes none of it, so the scene draws such a
+ * Report in place instead of building the city again.
+ */
+export function sameLayout(current: City, next: City): boolean {
+  if (current.lots.length !== next.lots.length || current.buildings.length !== next.buildings.length) return false;
+  const lotsSame = current.lots.every((lot, i) => {
+    const other = next.lots[i];
+    return (
+      other !== undefined &&
+      other.id === lot.id &&
+      other.pkg.path === lot.pkg.path &&
+      other.tier1 === lot.tier1 &&
+      near(other.x0, lot.x0) &&
+      near(other.z0, lot.z0) &&
+      near(other.x1, lot.x1) &&
+      near(other.z1, lot.z1)
+    );
+  });
+  if (!lotsSame) return false;
+  return current.buildings.every((building, i) => {
+    const other = next.buildings[i];
+    return (
+      other !== undefined &&
+      other.id === building.id &&
+      other.lot === building.lot &&
+      near(other.x, building.x) &&
+      near(other.z, building.z) &&
+      near(other.side, building.side) &&
+      near(other.height, building.height) &&
+      other.floors.length === building.floors.length &&
+      other.floors.every((floor, f) => floor.symbolId === building.floors[f]?.symbolId)
+    );
+  });
+}
