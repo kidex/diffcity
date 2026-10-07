@@ -172,6 +172,12 @@ describe('why overrides (DC-106)', () => {
     expect(steps(json, [stored()])).toEqual(['New function', 'Body changed']);
   });
 
+  it('servedCounts skips the hints and still equals the counts of the served Report', () => {
+    const json = JSON.stringify(withSteps());
+    const findings = { stored: [{ ...stored(), why: 'new route, called without an order' }], ruleStates: {} };
+    expect(servedCounts(json, findings)).toEqual(serveOverlay(json, findings).counts);
+  });
+
   it('the hint follows the re-anchored symbol: a finding on the service method hints its step', () => {
     const json = JSON.stringify(withSteps());
     const onCancel = { ...stored({ file: ORDERS, line: 12, title: 'Cancel ignores refunds' }), why: 'cancel no longer refunds' };

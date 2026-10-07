@@ -46,11 +46,15 @@ export function whyOverrides(report: Report, stored: readonly StoredFinding[]): 
   return overrides;
 }
 
-/** The overlaid Report, or null when the stored Report is served as it is. */
-function overlaid(reportJson: string, findings: ServedFindings): Report | null {
+/**
+ * The overlaid Report, or null when the stored Report is served as it is.
+ * `withWhy: false` leaves the steps as stored: the counts do not read them.
+ */
+function overlaid(reportJson: string, findings: ServedFindings, options: { withWhy: boolean } = { withWhy: true }): Report | null {
   if (!hasOverlay(findings)) return null;
   const report = JSON.parse(reportJson) as Report;
   const served = overlay(report, findings.stored, findings.ruleStates);
+  if (!options.withWhy) return served;
   const overrides = whyOverrides(report, findings.stored);
   return overrides.size === 0 ? served : { ...served, steps: applyWhyOverrides(served.steps, overrides) };
 }
@@ -98,7 +102,8 @@ export function serveReport(reportJson: string, findings: ServedFindings): strin
  * counts stand and `reportJson` is not parsed.
  */
 export function servedCounts(reportJson: string, findings: ServedFindings): ServedCounts | null {
-  const served = overlaid(reportJson, findings);
+  // The why hints change only the steps, which the counts never read.
+  const served = overlaid(reportJson, findings, { withWhy: false });
   return served === null ? null : reportCounts(served);
 }
 
