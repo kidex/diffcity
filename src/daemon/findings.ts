@@ -2,8 +2,9 @@
 // the anchored batch, the `fixed` keys (FindingsStore.importBatch, which
 // bumps the change's findings version, so the served Report's cache misses)
 // and, for `diffcity import`, its `import` event; then SSE `findings` (the
-// change's Report moved) and `changes` (its listed verdict counts moved,
-// DC-106), as the findings state route sends them.
+// change's Report moved), `changes` (its listed verdict counts moved) and
+// `repo` (the repo's highFindings moved, so Fleet reloads; DC-106), as the
+// findings state route sends them.
 // Parsing, anchoring and `fixedKeys` are src/core's; the socket handler is
 // src/daemon/collector/import.ts.
 
@@ -29,5 +30,6 @@ export function storeFindingsImport(deps: FindingsWriteDeps, repoId: number, bat
   });
   deps.broadcast({ event: 'findings', data: { repoId, changeId: batch.changeId } });
   deps.broadcast({ event: 'changes', data: { repoId } });
+  deps.broadcast({ event: 'repo', data: { repoId } });
   return result;
 }

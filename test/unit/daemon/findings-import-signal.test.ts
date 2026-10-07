@@ -1,5 +1,6 @@
-// storeFindingsImport signals `findings` (the change's Report moved) and
-// `changes` (its listed counts moved, DC-106), like the findings state route.
+// storeFindingsImport signals `findings` (the change's Report moved),
+// `changes` (its listed counts moved) and `repo` (the repo's highFindings
+// moved, so Fleet reloads; DC-106), like the findings state route.
 
 import { afterEach, describe, expect, it } from 'vitest';
 import type { SseEvent } from '../../../src/core/model/types.js';
@@ -13,7 +14,7 @@ afterEach(() => {
 });
 
 describe('storeFindingsImport signals', () => {
-  it('an import sends `findings` for the change and `changes` for its repo', () => {
+  it('an import sends `findings` for the change, then `changes` and `repo` for its repo', () => {
     temp = tempDb();
     const { db } = temp;
     const repo = addRepo(db, 'corner-till');
@@ -25,6 +26,7 @@ describe('storeFindingsImport signals', () => {
     expect(sent).toEqual([
       { event: 'findings', data: { repoId: repo.id, changeId: change.id } },
       { event: 'changes', data: { repoId: repo.id } },
+      { event: 'repo', data: { repoId: repo.id } },
     ]);
   });
 });
