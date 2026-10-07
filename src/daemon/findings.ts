@@ -1,7 +1,9 @@
 // Storing an import's findings in the daemon (ADR-036): one transaction for
 // the anchored batch, the `fixed` keys (FindingsStore.importBatch, which
 // bumps the change's findings version, so the served Report's cache misses)
-// and, for `diffcity import`, its `import` event; then SSE `findings`.
+// and, for `diffcity import`, its `import` event; then SSE `findings` (the
+// change's Report moved) and `changes` (its listed verdict counts moved,
+// DC-106), as the findings state route sends them.
 // Parsing, anchoring and `fixedKeys` are src/core's; the socket handler is
 // src/daemon/collector/import.ts.
 
@@ -26,5 +28,6 @@ export function storeFindingsImport(deps: FindingsWriteDeps, repoId: number, bat
     return stored;
   });
   deps.broadcast({ event: 'findings', data: { repoId, changeId: batch.changeId } });
+  deps.broadcast({ event: 'changes', data: { repoId } });
   return result;
 }
