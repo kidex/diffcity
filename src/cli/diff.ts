@@ -99,7 +99,11 @@ export async function runDiff(options: DiffCommandOptions, deps: DiffDeps): Prom
   try {
     const now = deps.now === undefined ? undefined : parseNow(deps.now);
     // Run by hand inside the repo: the user chose to run its config (ADR-030).
-    report = await build({ repoDir: deps.cwd, base: options.base, head: options.head, now, trustConfig: true });
+    // Notes meant for daemon.log (the call graph's fallback) go to stderr: stdout stays the report alone.
+    const log = (message: string): void => {
+      deps.io.stderr(`diffcity diff: ${message}\n`);
+    };
+    report = await build({ repoDir: deps.cwd, base: options.base, head: options.head, now, trustConfig: true, log });
   } catch (error) {
     deps.io.stderr(`diffcity diff: ${oneLine(error)}\n`);
     return 1;
