@@ -40,10 +40,14 @@ export function slashCommands(cli: string): { diff: string; import: string; take
   };
 }
 
-/** The `allowed-tools` value: exactly what the body needs, nothing more. */
-export function allowedTools(cli: string): string {
+/**
+ * The `allowed-tools` entries: exactly what the body needs, nothing more.
+ * Written as a YAML list, one entry per item, which Claude Code 2.1.288 reads
+ * as it reads a comma-separated string, without splitting one rule from the next.
+ */
+export function allowedTools(cli: string): string[] {
   const { take, drop } = slashCommands(cli);
-  return [`Bash(${cli} diff:*)`, `Bash(${cli} import:*)`, `Bash(${take})`, `Bash(${drop})`, 'Read', `Write(${FINDINGS_PATH})`].join(', ');
+  return [`Bash(${cli} diff:*)`, `Bash(${cli} import:*)`, `Bash(${take})`, `Bash(${drop})`, 'Read', `Write(${FINDINGS_PATH})`];
 }
 
 /** The full file for an invocation `cli`. */
@@ -54,7 +58,8 @@ export function commandFileText(cli: string): string {
     'description: Review the current change with diffcity and put the findings on the city',
     'argument-hint: [what the task was]',
     'disable-model-invocation: true',
-    `allowed-tools: ${allowedTools(cli)}`,
+    'allowed-tools:',
+    ...allowedTools(cli).map((entry) => `  - ${entry}`),
     '---',
     COMMAND_MARKER,
     'All paths below are relative to the repository root: run every command from there.',
@@ -97,12 +102,15 @@ export function isDiffcityCommandFile(text: string, marker: string = COMMAND_MAR
 
 /**
  * The invocation recorded in a diffcity command file (from its
- * `Bash(<cli> diff:*)` entry), or null. `--remove` uses it to find the hook
- * an earlier setup wrote with another invocation.
+ * `Bash(<cli> diff:*)` entry), or null. setup uses it to find the hook an
+ * earlier setup wrote with another invocation. Reads the list form and the
+ * comma-separated form the first files had.
  */
 export function recordedCli(text: string, marker: string = COMMAND_MARKER): string | null {
   if (!isDiffcityCommandFile(text, marker)) return null;
-  const line = text.split(/\r?\n/).find((candidate) => candidate.startsWith('allowed-tools: '));
-  const match = line === undefined ? null : /^allowed-tools: Bash\((.+?) diff:\*\),/.exec(line);
-  return match?.[1] ?? null;
+  for (const line of text.split(/\r?\n/)) {
+    const match = /^ {2}- Bash\((.+) diff:\*\)$/.exec(line) ?? /^allowed-tools: Bash\((.+?) diff:\*\),/.exec(line);
+    if (match?.[1] !== undefined) return match[1];
+  }
+  return null;
 }

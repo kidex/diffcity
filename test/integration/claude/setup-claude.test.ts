@@ -456,10 +456,17 @@ describe('the hook command', () => {
       const hook = settings.hooks.Stop[0]?.hooks[0]?.command ?? '';
       expect(hook).toMatch(/ track --agent$/);
       const cli = hook.slice(0, -' track --agent'.length);
-      const allowed = (await readFile(commandPath(), 'utf8')).split('\n').find((line) => line.startsWith('allowed-tools: '));
-      expect(allowed).toBe(
-        `allowed-tools: Bash(${cli} diff:*), Bash(${cli} import:*), Bash(mv .diffcity/fix-queue.json .diffcity/fix-queue.taking.json), Bash(rm .diffcity/fix-queue.taking.json), Read, Write(.diffcity/findings.json)`,
-      );
+      const lines = (await readFile(commandPath(), 'utf8')).split('\n');
+      const start = lines.indexOf('allowed-tools:');
+      expect(lines.slice(start, start + 7)).toEqual([
+        'allowed-tools:',
+        `  - Bash(${cli} diff:*)`,
+        `  - Bash(${cli} import:*)`,
+        '  - Bash(mv .diffcity/fix-queue.json .diffcity/fix-queue.taking.json)',
+        '  - Bash(rm .diffcity/fix-queue.taking.json)',
+        '  - Read',
+        '  - Write(.diffcity/findings.json)',
+      ]);
     }
   });
 

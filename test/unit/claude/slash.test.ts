@@ -28,24 +28,17 @@ async function spec71(): Promise<string> {
   return match[1];
 }
 
-/** The `allowed-tools` entries, split as Claude Code 2.1.288 splits them (commas and spaces outside parentheses). */
+/** The `allowed-tools` entries: the YAML list right under `allowed-tools:`, one entry per item. */
 function toolEntries(text: string): string[] {
-  const line = text.split('\n').find((candidate) => candidate.startsWith('allowed-tools: '));
-  if (line === undefined) throw new Error('no allowed-tools line');
+  const lines = text.split('\n');
+  const start = lines.indexOf('allowed-tools:');
+  if (start < 0) throw new Error('no allowed-tools key');
   const entries: string[] = [];
-  let current = '';
-  let inside = false;
-  for (const char of line.slice('allowed-tools: '.length)) {
-    if (char === '(') inside = true;
-    if (char === ')') inside = false;
-    if (!inside && (char === ',' || char === ' ')) {
-      if (current.trim() !== '') entries.push(current.trim());
-      current = '';
-      continue;
-    }
-    current += char;
+  for (const line of lines.slice(start + 1)) {
+    const item = /^ {2}- (.+)$/.exec(line);
+    if (item?.[1] === undefined) break;
+    entries.push(item[1]);
   }
-  if (current.trim() !== '') entries.push(current.trim());
   return entries;
 }
 
@@ -96,7 +89,7 @@ describe('slash: the /diffcity-review command file', () => {
         'Read',
         'Write(.diffcity/findings.json)',
       ]);
-      expect(entries.join(', ')).toBe(allowedTools(cli));
+      expect(entries).toEqual(allowedTools(cli));
       for (const command of bodyCommands(text)) expect(entries.some((rule) => bashAllows(rule, command))).toBe(true);
       // The rules are no wider than the body: another subcommand or another file is not allowed.
       expect(entries.some((rule) => bashAllows(rule, `${cli} track --agent`))).toBe(false);
@@ -110,11 +103,22 @@ describe('slash: the /diffcity-review command file', () => {
     expect(lines[lines.indexOf(COMMAND_MARKER) + 1]).toBe('All paths below are relative to the repository root: run every command from there.');
   });
 
+  it('slash/allowed-tools-yaml-list: allowed-tools is a YAML list, one rule per item, every item a plain YAML value', () => {
+    for (const cli of INVOCATIONS) {
+      const lines = commandFileText(cli).split('\n');
+      const start = lines.indexOf('allowed-tools:');
+      expect(lines.slice(start + 1, start + 7)).toEqual(allowedTools(cli).map((entry) => `  - ${entry}`));
+      expect(lines[start + 7]).toBe('---');
+      // Nothing in an item that YAML would read as a mapping or a comment.
+      for (const entry of allowedTools(cli)) expect(entry).not.toMatch(/: | #/);
+    }
+  });
+
   it('the marker is the line right after the frontmatter, and the frontmatter opens the file', () => {
     const lines = commandFileText('diffcity').split('\n');
     expect(lines[0]).toBe('---');
     const close = lines.indexOf('---', 1);
-    expect(lines.slice(1, close).map((line) => line.split(':')[0])).toEqual(['description', 'argument-hint', 'disable-model-invocation', 'allowed-tools']);
+    expect(lines.slice(1, close).filter((line) => !line.startsWith(' ')).map((line) => line.split(':')[0])).toEqual(['description', 'argument-hint', 'disable-model-invocation', 'allowed-tools']);
     expect(lines[close + 1]).toBe(COMMAND_MARKER);
   });
 
@@ -141,8 +145,10 @@ describe('slash: the /diffcity-review command file', () => {
     expect(isDiffcityCommandFile('')).toBe(false);
   });
 
-  it('recordedCli reads the invocation back from a diffcity file', () => {
+  it('recordedCli reads the invocation back from a diffcity file, in the list form and the first comma form', () => {
     for (const cli of INVOCATIONS) expect(recordedCli(commandFileText(cli))).toBe(cli);
+    const commaForm = `---\nallowed-tools: Bash(${ABSOLUTE} diff:*), Bash(${ABSOLUTE} import:*), Read\n---\n${COMMAND_MARKER}\n`;
+    expect(recordedCli(commaForm)).toBe(ABSOLUTE);
     expect(recordedCli('---\ndescription: x\n---\nhello\n')).toBeNull();
   });
 

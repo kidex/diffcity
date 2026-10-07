@@ -273,7 +273,13 @@ Send review to the agent (phase 4) is off by default and enabled per repo in the
 description: Review the current change with diffcity and put the findings on the city
 argument-hint: [what the task was]
 disable-model-invocation: true
-allowed-tools: Bash(diffcity diff:*), Bash(diffcity import:*), Bash(mv .diffcity/fix-queue.json .diffcity/fix-queue.taking.json), Bash(rm .diffcity/fix-queue.taking.json), Read, Write(.diffcity/findings.json)
+allowed-tools:
+  - Bash(diffcity diff:*)
+  - Bash(diffcity import:*)
+  - Bash(mv .diffcity/fix-queue.json .diffcity/fix-queue.taking.json)
+  - Bash(rm .diffcity/fix-queue.taking.json)
+  - Read
+  - Write(.diffcity/findings.json)
 ---
 <!-- diffcity: diffcity-review v1 -->
 All paths below are relative to the repository root: run every command from there.

@@ -44,9 +44,9 @@ The command is called `/diffcity-review`, not `/code-review`, so it never shadow
 
 The file starts with its frontmatter (`description`, `argument-hint`, `disable-model-invocation`, `allowed-tools`); the line right after the closing `---` is the marker `<!-- diffcity: diffcity-review v1 -->`. setup overwrites or removes the file only when that line is exactly the marker; any other `diffcity-review.md` is refused on install and kept on `--remove`.
 
-`allowed-tools` allows exactly what the command runs: `Bash(<cli> diff:*)` and `Bash(<cli> import:*)` with the hook command's invocation, the two fix-queue commands `mv .diffcity/fix-queue.json .diffcity/fix-queue.taking.json` and `rm .diffcity/fix-queue.taking.json`, `Read`, and `Write(.diffcity/findings.json)`. Fixing code from the fix queue goes through Claude Code's usual permission prompts.
+`allowed-tools` is a YAML list, one rule per item, and allows exactly what the command runs: `Bash(<cli> diff:*)` and `Bash(<cli> import:*)` with the hook command's invocation, the two fix-queue commands `mv .diffcity/fix-queue.json .diffcity/fix-queue.taking.json` and `rm .diffcity/fix-queue.taking.json`, `Read`, and `Write(.diffcity/findings.json)`. Fixing code from the fix queue goes through Claude Code's usual permission prompts.
 
-The command's paths (`.diffcity/...`) are relative to the repository root, and the body says so: its commands run from the root, so start the Claude Code session there, or let the agent move there first.
+The command's paths (`.diffcity/...`) are relative to the repository root, and the body says so: its commands run from the root, so start the Claude Code session there.
 
 The command:
 
