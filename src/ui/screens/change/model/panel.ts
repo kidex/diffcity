@@ -6,6 +6,7 @@
 // Report. Pure: no DOM, no three.js.
 
 import { VERDICT_LABEL } from '../../../shared/format.js';
+import { sourcesOf } from './findings.js';
 import type { File, Finding, Report, Status, Step, Symbol as ReportSymbol } from '../../../../core/report/types.js';
 
 export type TabId = 'order' | 'findings' | 'outside' | 'symbols';
@@ -25,7 +26,6 @@ export const EMPTY_OUTSIDE_NO_SPEC = 'This change has no spec to compare against
 export const EMPTY_OUTSIDE_ALL_IN = 'Every file is in the spec';
 export const EMPTY_SYMBOLS = 'No symbol was touched by this change';
 export const DIFF_IN_APP = 'Full diff is available in the app';
-export const LATER_VERSION = 'Arrives in a later version';
 
 /** A file of the Report with the path of its package. */
 export interface PlacedFile {
@@ -149,9 +149,9 @@ export function findingGroups(report: Report): FindingGroup[] {
   return groups;
 }
 
-/** The sources of the Report's findings, in order of first appearance: "Claude, semgrep, eslint" in the mockup's footer. */
+/** The sources of the Report's findings (every source of a merged entry), in order of first appearance: "Claude, semgrep, eslint" in the mockup's footer. */
 export function findingSources(report: Report): string[] {
-  return [...new Set(report.findings.map((finding) => finding.source))];
+  return [...new Set(report.findings.flatMap(sourcesOf))];
 }
 
 // ---------- outside the spec ----------

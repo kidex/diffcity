@@ -1,9 +1,11 @@
 // The reading panel (SPEC.md section 6, right panel; ADR-026): the header and
 // its four tabs with counters, the stop cards, the findings, the files outside
 // the spec and the touched symbols, and, once a building or a stop is
-// clicked, the file view in place of the tabs. Plain DOM; it renders a Report
-// and holds only what is on screen: the tab, the selection it was told about
-// and the open file. Selection is the city's: the panel asks `onSelect` and
+// clicked, the file view in place of the tabs. With finding actions (a
+// FindingsPort) every finding card gets its buttons, and a new Report puts the
+// focus back on the card it was in. Plain DOM; it renders a Report and holds
+// only what is on screen: the tab, the selection it was told about and the
+// open file. Selection is the city's: the panel asks `onSelect` and
 // hears back through select().
 
 import './panel.css';
@@ -24,6 +26,7 @@ import {
   touchedTargets,
 } from '../model/panel.js';
 import type { DiffPort } from '../ports.js';
+import type { FindingActions } from './finding-actions.js';
 import type { FileViewRender } from './file-view.js';
 import { DIFF_MOUNT, renderFileView } from './file-view.js';
 import type { DiffView, LineRange } from './fileview/view.js';
@@ -44,6 +47,8 @@ export interface PanelOptions {
   diffs?: DiffPort | undefined;
   /** With review marks: fills the file view header's slot with the mark buttons of the file (and of the focused floor, a symbol id). */
   review?: { fill(slot: HTMLElement, fileId: string, symbolId: string | null): void } | undefined;
+  /** With a FindingsPort: the action buttons of the finding cards. Without it the cards have none. */
+  findings?: FindingActions | undefined;
   reducedMotion: boolean;
 }
 
@@ -182,6 +187,7 @@ export function createPanel(options: PanelOptions, first: Report): Panel {
     scroll.replaceChildren(body.root);
     scroll.dataset['tab'] = tab;
     markCurrent();
+    fillActions();
   }
 
   /** Marks the stops and symbol rows of the selection; the file view's stops too. */
@@ -202,6 +208,19 @@ export function createPanel(options: PanelOptions, first: Report): Panel {
     }
     if (scrollTo) scheduleScroll();
   }
+
+  /** Draws the action buttons of every finding card on screen (the tab's and the file view's). */
+  function fillActions(): void {
+    const actions = options.findings;
+    if (actions === undefined) return;
+    const byId = new Map(report.findings.map((finding) => [finding.id, finding]));
+    for (const card of root.querySelectorAll<HTMLElement>('.pin[data-finding]')) {
+      const finding = byId.get(card.dataset['finding'] ?? '');
+      const slot = card.querySelector<HTMLElement>('.fix');
+      if (finding !== undefined && slot !== null) actions.fill(slot, finding);
+    }
+  }
+  const stopActions = options.findings?.onChange(fillActions);
 
   /**
    * Brings the current card into view in the tabs, on the next frame: a click
@@ -239,6 +258,7 @@ export function createPanel(options: PanelOptions, first: Report): Panel {
       diffView.show(mount, data.placed.file.id, selection?.fileId === fileId ? selection.symbolId : null, report.meta.generatedAt);
     }
     markCurrent();
+    fillActions();
   }
 
   function openFile(id: string, symbolId: string | null): void {
@@ -291,6 +311,29 @@ export function createPanel(options: PanelOptions, first: Report): Panel {
     if (returnTo !== null) restoreFocus(returnTo);
   }
 
+  /** The finding card the focus is in, and the action button it is on, if any. */
+  function focusedFinding(): { id: string; inFile: boolean; action: string | null } | null {
+    const active = document.activeElement;
+    if (!(active instanceof HTMLElement) || !root.contains(active)) return null;
+    const card = active.closest<HTMLElement>('.pin[data-finding]');
+    if (card === null) return null;
+    return { id: card.dataset['finding'] ?? '', inFile: fileRoot.contains(card), action: active.dataset['action'] ?? null };
+  }
+
+  /**
+   * A new Report redraws the cards: the focus goes back to the same finding's
+   * card, on the same action when it is still offered, else on its first
+   * button (Mark as intended becomes Undo), else on the list (or the file
+   * view's Back). The scroll stays.
+   */
+  function restoreFindingFocus(focus: { id: string; inFile: boolean; action: string | null }): void {
+    const area = focus.inFile ? fileRoot : scroll;
+    const card = [...area.querySelectorAll<HTMLElement>('.pin[data-finding]')].find((node) => node.dataset['finding'] === focus.id);
+    const buttons = [...(card?.querySelectorAll<HTMLElement>('button[data-action]') ?? [])];
+    const target = buttons.find((node) => node.dataset['action'] === focus.action) ?? buttons[0] ?? (focus.inFile ? fileRoot.querySelector<HTMLElement>('.fv-back') : scroll);
+    target?.focus({ preventScroll: true });
+  }
+
   const onKey = (event: KeyboardEvent): void => {
     if (event.defaultPrevented || event.metaKey || event.ctrlKey || event.altKey || isEditable(event.target)) return;
     if (event.key === 'Escape') {
@@ -316,8 +359,10 @@ export function createPanel(options: PanelOptions, first: Report): Panel {
     root,
     update(next) {
       report = next;
+      options.findings?.sync(next);
       if (fileId !== null) fileScroll = view?.scroll.scrollTop ?? 0;
       else tabScroll = scroll.scrollTop;
+      const focus = focusedFinding();
       renderChrome();
       renderBody();
       scroll.scrollTop = tabScroll;
@@ -325,6 +370,7 @@ export function createPanel(options: PanelOptions, first: Report): Panel {
         renderFile();
         if (view !== null) view.scroll.scrollTop = fileScroll;
       }
+      if (focus !== null) restoreFindingFocus(focus);
     },
     select(id, symbolId) {
       selection = id === null ? null : { fileId: id, symbolId };
@@ -352,6 +398,7 @@ export function createPanel(options: PanelOptions, first: Report): Panel {
     },
     open: openFile,
     dispose() {
+      stopActions?.();
       diffView?.dispose();
       document.removeEventListener('keydown', onKey);
       if (scrollFrame !== undefined) cancelAnimationFrame(scrollFrame);

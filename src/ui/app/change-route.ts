@@ -14,10 +14,11 @@ import type { Report } from '../../core/report/types.js';
 import { ApiRequestError } from '../data/api.js';
 import type { DataContext } from '../data/context.js';
 import { createDiffPort } from '../data/diff-port.js';
+import { createFindingsPort } from '../data/findings-port.js';
 import { createReviewPort } from '../data/review-port.js';
 import type * as ChangeScreenChunk from '../screens/change/index.js';
 import type { ChangeScreen } from '../screens/change/index.js';
-import type { DiffPort, ReviewPort } from '../screens/change/ports.js';
+import type { DiffPort, FindingsPort, ReviewPort } from '../screens/change/ports.js';
 import { h, replaceChildren } from '../shared/dom.js';
 import {
   aheadBehind,
@@ -73,6 +74,10 @@ export function mountChangeRoute(element: HTMLElement, context: DataContext, cha
   // The ports of this change: the full diff of a file, and the review marks (ADR-028), which also hear SSE `review`.
   const diffs: DiffPort = createDiffPort(api, changeId);
   const review: ReviewPort = createReviewPort(api, live, changeId);
+  // The finding actions (ADR-036): an accepted write refetches the Report at once, without waiting for SSE `findings`.
+  const findings: FindingsPort = createFindingsPort(api, changeId, () => {
+    reload();
+  });
   let disposed = false;
   let controller: AbortController | null = null;
   let screen: ChangeScreen | null = null;
@@ -100,7 +105,7 @@ export function mountChangeRoute(element: HTMLElement, context: DataContext, cha
         if (disposed || waiting === undefined) return;
         const { report: latest } = waiting;
         waiting = undefined;
-        screen = module.mountChange(body, { report: latest, diffs, review });
+        screen = module.mountChange(body, { report: latest, diffs, review, findings });
       },
       () => {
         if (disposed || waiting === undefined) return;
@@ -171,6 +176,10 @@ export function mountChangeRoute(element: HTMLElement, context: DataContext, cha
   const stops = [
     live.on('hello', reload),
     live.on('snapshot', (data) => {
+      if (data.changeId === changeId) reload();
+    }),
+    // A finding's state, an import or a queued fix: the served Report moved (ADR-036).
+    live.on('findings', (data) => {
       if (data.changeId === changeId) reload();
     }),
     live.on('changes', (data) => {
