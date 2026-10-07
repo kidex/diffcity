@@ -198,6 +198,9 @@ async function panelTabs(page: Page, report: Report): Promise<void> {
   await expect(page.getByTestId('tab-findings')).toHaveText(`Findings${String(report.findings.length)}`);
   await expect(page.getByTestId('tab-outside')).toContainText('Outside the spec');
   await expect(page.getByTestId('tab-symbols')).toHaveText(`Symbols${String(symbols)}`);
-  // A plain collection has no execution path yet: the panel says so.
-  await expect(panel.getByTestId('panel-summary')).toHaveText('No execution path for this change yet');
+  // The execution path is computed with the snapshot (ADR-034): the panel counts its stops.
+  const stops = report.steps.length;
+  await expect(panel.getByTestId('panel-summary')).toHaveText(
+    stops > 0 ? `${String(stops)} ${stops === 1 ? 'stop' : 'stops'}, in the order the code runs` : 'No execution path for this change yet',
+  );
 }
