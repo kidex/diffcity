@@ -24,10 +24,12 @@ export interface GraphFile {
 
 export interface CallGraphInput {
   /**
-   * The files of the change. Files with status `same` or `del`, without after
-   * content or in a language that is not code are ignored; every non-`del`
-   * symbol of the others is a node of the graph (the caller filters `same`
-   * symbols out beforehand when it does not want them as nodes).
+   * The files of the change. Files with status `same`, without after content
+   * (deleted from git, binary, too large) or in a language that is not code are
+   * ignored. A file whose status is `del` only because it lost a symbol still
+   * has after content and stays; every non-`del` symbol of the kept files is a
+   * node of the graph (the caller filters `same` symbols out beforehand when it
+   * does not want them as nodes).
    */
   files: readonly GraphFile[];
   /** Text of the root `tsconfig.json` as read through git, or `null`: only `paths` is used (ADR-031 rule). */
@@ -273,7 +275,9 @@ async function tsMorphCalls(
 export async function buildCallGraph(input: CallGraphInput): Promise<CallGraph> {
   const files = input.files
     .filter((file): file is GraphFile & { after: string } => {
-      return file.status !== 'same' && file.status !== 'del' && file.after !== null && treeSitterLanguage(file.path) !== null;
+      // A file's status is its heaviest symbol (SPEC §5), so `del` may mean "lost one symbol";
+      // only a file without after content is gone (ADR-034).
+      return file.status !== 'same' && file.after !== null && treeSitterLanguage(file.path) !== null;
     })
     .map((file) => ({ ...file, path: insideRepo(file.path) ?? '' }))
     .filter((file) => file.path !== '')
