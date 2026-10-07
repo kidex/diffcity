@@ -1,6 +1,6 @@
 // The diffcity database (SPEC.md section 4.2, ADR-018): openDb and the stores.
 // Opened only by the daemon's main thread, which is the single writer.
-// SQLite is Node's built-in node:sqlite, through driver.ts (ADR-025). The filter
+// SQLite is Node's built-in node:sqlite, through driver.ts (ADR-025). Schema v3 (ADR-036). The filter
 // for its ExperimentalWarning lives in warning.ts and is deliberately not
 // re-exported here: importing this module loads node:sqlite, which is too late.
 //
@@ -11,13 +11,15 @@
 import type { Connection } from './driver.js';
 import { createChangeStore, type ChangeStore } from './changes.js';
 import { createEventStore, type EventStore } from './events.js';
+import { createFindingsStore, type FindingsStore } from './findings.js';
 import { openConnection, readPragmas, type DbPragmas } from './open.js';
 import { createRepoStore, type RepoStore } from './repos.js';
 import { createReviewStore, type ReviewStore } from './review.js';
 import { createSnapshotStore, type SnapshotStore } from './snapshots.js';
 import { retentionCutoff } from './time.js';
 
-export type { AppliedPlan, ChangeArchive, ChangeFields, ChangePlan, ChangeStore, ChangeUpdate } from './changes.js';
+export type { FindingsImport, FindingsImportResult, FindingsStore } from './findings.js';
+export type { AppliedPlan, Approval, ChangeArchive, ChangeFields, ChangePlan, ChangeStore, ChangeUpdate } from './changes.js';
 export type { EventInput, EventStore } from './events.js';
 export type { MarkWrite, ReviewStore } from './review.js';
 export type { RepoInput, RepoRuntime, RepoRuntimeLookup, RepoStore } from './repos.js';
@@ -35,6 +37,8 @@ export interface Db {
   readonly snapshots: SnapshotStore;
   readonly events: EventStore;
   readonly review: ReviewStore;
+  /** Imported findings and rule-finding states (ADR-036). */
+  readonly findings: FindingsStore;
   /**
    * Runs `fn` in one IMMEDIATE transaction (a savepoint when nested, so
    * applyPlan and event writes can be grouped); rolls back when it throws.
@@ -73,7 +77,7 @@ function purge(db: Connection, now: string): Map<number, number> {
 
 /**
  * Opens the database at `path` (homePaths(home).db in the daemon), creating and
- * migrating it to schema v1 when needed. Throws for a database written by a
+ * migrating it to the current schema when needed. Throws for a database written by a
  * newer diffcity.
  */
 export function openDb(path: string, options: { warn?: (message: string) => void } = {}): Db {
@@ -85,6 +89,7 @@ export function openDb(path: string, options: { warn?: (message: string) => void
     snapshots: createSnapshotStore(db, options.warn),
     events: createEventStore(db),
     review: createReviewStore(db),
+    findings: createFindingsStore(db),
     transaction: (fn) => db.transaction(fn, { immediate: true }),
     purgeArchived: (now) => [...purge(db, now).values()].reduce((a, b) => a + b, 0),
     purgeArchivedByRepo: (now) => purge(db, now),

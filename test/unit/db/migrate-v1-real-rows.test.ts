@@ -1,10 +1,10 @@
-// A v1 database with several rows in every table survives the v2 migration,
+// A v1 database with several rows in every table survives the later migrations,
 // and the v1 SQL used to build it is the one main shipped (kept verbatim in
 // test/fixtures/db/migration-v1.sql, so the check needs no git history).
 
 import { readFileSync } from 'node:fs';
 import { afterEach, describe, expect, it } from 'vitest';
-import { MIGRATIONS, openDb } from '../../../src/core/db/index.js';
+import { MIGRATIONS, SCHEMA_VERSION, openDb } from '../../../src/core/db/index.js';
 import { T0, rawConnection, tempDbPath } from './db-helpers.js';
 
 const cleanups: (() => void)[] = [];
@@ -49,7 +49,7 @@ describe('db/migrate-v1-to-v2: rows', () => {
     const db = openDb(path);
     db.close();
     const after = rawConnection(path, { readOnly: true });
-    expect(after.pragma('user_version', { simple: true })).toBe(2);
+    expect(after.pragma('user_version', { simple: true })).toBe(SCHEMA_VERSION);
     expect(after.prepare<[], { n: number }>('SELECT count(*) AS n FROM repos').get()?.n).toBe(2);
     expect(after.prepare<[], { n: number }>('SELECT count(*) AS n FROM changes').get()?.n).toBe(3);
     const rows = after
