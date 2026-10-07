@@ -105,8 +105,16 @@ export function buildProgram(io: CliIo = defaultIo): Command {
     .argument('[dir]', 'repo directory (default: the current directory, or cwd from the hook input with --agent)')
     .option('--agent', 'mark the current change as "agent worked, not reviewed"; reads the Claude Code hook JSON from stdin')
     .action(async (dir: string | undefined, options: TrackCommandOptions) => {
-      const { runTrack } = await import('./track.js');
-      process.exitCode = await runTrack(dir, options, { io, env: io.env?.() ?? process.env, cwd: io.cwd?.() ?? process.cwd() });
+      try {
+        const { runTrack } = await import('./track.js');
+        process.exitCode = await runTrack(dir, options, { io, env: io.env?.() ?? process.env, cwd: io.cwd?.() ?? process.cwd() });
+      } catch (error) {
+        // runTrack reports its own failures; this catches the unexpected ones.
+        // As the Stop hook (--agent) it never blocks the agent (ADR-037).
+        const message = error instanceof Error ? error.message : String(error);
+        io.stderr(`diffcity track: ${message.replace(/\s*\n\s*/g, ' ').trim()}\n`);
+        process.exitCode = options.agent === true ? 0 : 1;
+      }
     });
 
   program

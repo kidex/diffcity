@@ -70,14 +70,18 @@ export function trackRequest(dir: string, agent: boolean, at: Date): Extract<Soc
   return { v: 1, type: 'track', dir, agent, at: at.toISOString() };
 }
 
-/** Runs the command; resolves with the process exit code (0 or 1). */
+/**
+ * Runs the command; resolves with the process exit code (0 or 1). With
+ * --agent it is the Claude Code Stop hook, which must never block the agent
+ * (ADR-037): every failure prints one line on stderr and exits 0.
+ */
 export async function runTrack(dirArg: string | undefined, options: TrackCommandOptions, deps: TrackDeps): Promise<number> {
   const { io } = deps;
-  const fail = (message: string): number => {
-    io.stderr(`diffcity track: ${message}\n`);
-    return 1;
-  };
   const agent = options.agent === true;
+  const fail = (message: string): number => {
+    io.stderr(`diffcity track: ${message.replace(/\s*\n\s*/g, ' ').trim()}\n`);
+    return agent ? 0 : 1;
+  };
   const cwd = deps.cwd ?? process.cwd();
 
   // The hook JSON carries the session (session_id, transcript_path) and the cwd
