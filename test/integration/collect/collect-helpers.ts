@@ -5,6 +5,7 @@
 import { PassThrough } from 'node:stream';
 import { afterEach } from 'vitest';
 import type { CommandRunner } from '../../../src/core/git/index.js';
+import type { Verdict } from '../../../src/core/report/types.js';
 import { sendRequest } from '../../../src/daemon/client.js';
 import { createApiPlugin } from '../../../src/daemon/api/plugin.js';
 import type { ServedCache } from '../../../src/daemon/api/served-cache.js';
@@ -93,6 +94,8 @@ export interface TestDaemonOptions {
   apiNow?: () => Date;
   /** The served Reports' cache of the API, to read its hit counters. */
   servedCache?: ServedCache;
+  /** The API's cache of served verdict counts (DC-106), to read its hit counters. */
+  servedSummaries?: ServedCache<Record<Verdict, number>>;
   /** Where the diff route computes: this thread (default, vitest cannot load a TypeScript worker) or the built worker. */
   diffRunner?: 'inline' | 'thread';
   /**
@@ -108,7 +111,7 @@ export async function startTestDaemon(options: CollectionPluginOptions = {}, ext
   const result = await startDaemon({
     env: home.env,
     port: 0,
-    plugins: [dbPlugin, collection.plugin, ...(extra.api === true ? [createApiPlugin({ ...(extra.apiNow === undefined ? {} : { now: extra.apiNow }), ...(extra.servedCache === undefined ? {} : { servedCache: extra.servedCache }), diffPool: { runner: extra.diffRunner ?? 'inline', size: 2 } })] : []), ...(extra.plugins?.(collection) ?? [])],
+    plugins: [dbPlugin, collection.plugin, ...(extra.api === true ? [createApiPlugin({ ...(extra.apiNow === undefined ? {} : { now: extra.apiNow }), ...(extra.servedCache === undefined ? {} : { servedCache: extra.servedCache }), ...(extra.servedSummaries === undefined ? {} : { servedSummaries: extra.servedSummaries }), diffPool: { runner: extra.diffRunner ?? 'inline', size: 2 } })] : []), ...(extra.plugins?.(collection) ?? [])],
     log: createStreamLogger(new PassThrough()),
   });
   if (result.status !== 'started') throw new Error(`daemon did not start: ${result.status}`);

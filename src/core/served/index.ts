@@ -1,6 +1,7 @@
-// The Report as the daemon serves it (ADR-036), and the finding a findings
-// action names. Pure: the daemon reads the stored Report, the stored findings
-// and the rule states, and caches the result per snapshot and findings version.
+// The Report as the daemon serves it (ADR-036), its verdict counts for the
+// change list (DC-106), and the finding a findings action names. Pure: the
+// daemon reads the stored Report, the stored findings and the rule states, and
+// caches the result per snapshot and findings version.
 
 import {
   dedup,
@@ -11,7 +12,8 @@ import {
   type FindingState,
   type StoredFinding,
 } from '../findings/index.js';
-import type { Finding, Report } from '../report/types.js';
+import type { ChangeStats } from '../model/types.js';
+import type { Finding, Report, Verdict } from '../report/types.js';
 
 export interface ServedFindings {
   /** The imported findings of the change, in import order (FindingsStore.list). */
@@ -20,17 +22,53 @@ export interface ServedFindings {
   ruleStates: Readonly<Record<string, FindingState>>;
 }
 
-/**
- * The served Report as JSON text. With no imported finding and no rule state
- * it is `reportJson` itself, unparsed; otherwise the stored Report with the
- * overlay applied (findings, `file.verdict`, `summary.byVerdict`).
- */
-export function serveReport(reportJson: string, findings: ServedFindings): string {
-  if (findings.stored.length === 0 && Object.keys(findings.ruleStates).length === 0) return reportJson;
-  const served = overlay(JSON.parse(reportJson) as Report, findings.stored, findings.ruleStates);
+/** Whether the served Report differs from the stored one: any imported finding or rule state. */
+export function hasOverlay(findings: ServedFindings): boolean {
+  return findings.stored.length > 0 || Object.keys(findings.ruleStates).length > 0;
+}
+
+/** The overlaid Report, or null when the stored Report is served as it is. */
+function overlaid(reportJson: string, findings: ServedFindings): Report | null {
+  if (!hasOverlay(findings)) return null;
   // The why overrides of imported findings (DC-97, `applyWhyOverrides` in
-  // src/core/path/) are applied here, to `served`, once they are on main.
-  return JSON.stringify(served);
+  // src/core/path/) are applied here, to the overlaid Report, once they are on main.
+  return overlay(JSON.parse(reportJson) as Report, findings.stored, findings.ruleStates);
+}
+
+/** The served Report as text, and the verdict counts it carries. */
+export interface ServedOverlay {
+  body: string;
+  /** Its `summary.byVerdict`; null when `body` is the stored string (the stored counts stand). */
+  byVerdict: Record<Verdict, number> | null;
+}
+
+/**
+ * The served Report and its counts in one overlay: with no imported finding
+ * and no rule state, `reportJson` itself, unparsed; otherwise the stored
+ * Report with the overlay applied (findings, `file.verdict`, `summary.byVerdict`).
+ */
+export function serveOverlay(reportJson: string, findings: ServedFindings): ServedOverlay {
+  const served = overlaid(reportJson, findings);
+  return served === null ? { body: reportJson, byVerdict: null } : { body: JSON.stringify(served), byVerdict: served.summary.byVerdict };
+}
+
+/** The served Report as JSON text (`serveOverlay(...).body`). */
+export function serveReport(reportJson: string, findings: ServedFindings): string {
+  return serveOverlay(reportJson, findings).body;
+}
+
+/**
+ * The served Report's `summary.byVerdict` without serialising it (the change
+ * list, DC-106); null when there is nothing to overlay, so the stored counts
+ * stand and `reportJson` is not parsed.
+ */
+export function servedByVerdict(reportJson: string, findings: ServedFindings): Record<Verdict, number> | null {
+  return overlaid(reportJson, findings)?.summary.byVerdict ?? null;
+}
+
+/** `stats` as listed for a served Report with counts `byVerdict` (DC-106): only `filesByVerdict` moves. */
+export function servedStats(stats: ChangeStats, byVerdict: Readonly<Record<Verdict, number>>): ChangeStats {
+  return { ...stats, filesByVerdict: { ...byVerdict } };
 }
 
 /** A part of a served finding: one stored imported finding and its state. */

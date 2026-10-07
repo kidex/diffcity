@@ -1,21 +1,25 @@
-// The cache of served Reports (ADR-036): one entry per change, keyed by its
+// The caches of the served Report (ADR-036): one entry per change, keyed by its
 // latest snapshot (id, computedAt, contentHash) and its findings version, so a
 // new snapshot or any findings write misses. Least recently used changes go
-// first once there are more than `max`; a served Report can be several MB.
+// first once there are more than `max`. Two of them: the served Report text
+// (several MB each, so few) and its `summary.byVerdict` for the change list
+// (a few bytes each, so one per change of any repo in practice; DC-106).
 
-export interface ServedCache {
-  /** The cached text for the change when its key is still `key`. */
-  get(changeId: number, key: string): string | undefined;
-  set(changeId: number, key: string, body: string): void;
+export interface ServedCache<T = string> {
+  /** The cached value for the change when its key is still `key`. */
+  get(changeId: number, key: string): T | undefined;
+  set(changeId: number, key: string, value: T): void;
   readonly size: number;
   /** Lookups answered from the cache, and lookups that missed (the Report was overlaid again). */
   readonly stats: { hits: number; misses: number };
 }
 
 export const SERVED_CACHE_MAX = 8;
+/** The overlay summaries kept: far more changes than a daemon tracks, at about 100 bytes each. */
+export const SERVED_SUMMARIES_MAX = 4096;
 
-export function createServedCache(max = SERVED_CACHE_MAX): ServedCache {
-  const entries = new Map<number, { key: string; body: string }>();
+export function createServedCache<T = string>(max = SERVED_CACHE_MAX): ServedCache<T> {
+  const entries = new Map<number, { key: string; value: T }>();
   const stats = { hits: 0, misses: 0 };
   return {
     get(changeId, key) {
@@ -28,11 +32,11 @@ export function createServedCache(max = SERVED_CACHE_MAX): ServedCache {
       // Most recently used last.
       entries.delete(changeId);
       entries.set(changeId, entry);
-      return entry.body;
+      return entry.value;
     },
-    set(changeId, key, body) {
+    set(changeId, key, value) {
       entries.delete(changeId);
-      entries.set(changeId, { key, body });
+      entries.set(changeId, { key, value });
       while (entries.size > max) {
         const oldest = entries.keys().next();
         if (oldest.done === true) break;
