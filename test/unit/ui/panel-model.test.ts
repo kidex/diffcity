@@ -2,20 +2,29 @@
 // Stops by order, findings by file with the change-level ones first and open
 // ones first, the files outside the spec (and why there may be none), the
 // touched symbols, the counters, the order J and K walk, and the file view's
-// header data.
+// header data. The sections of the execution path (DC-105): path, migrations,
+// unconnected, a missing section read as path, and the empty text.
 
+import { execFileSync } from 'node:child_process';
+import { mkdtempSync, readFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { File, Finding, Report, Step, Symbol as ReportSymbol } from '../../../src/core/report/types.js';
 import {
   counters,
+  EMPTY_STEPS,
+  emptyStepsText,
   fileViewData,
   findingGroups,
   findingSources,
   navTargets,
   outsideSpec,
+  sectionOf,
   sortFindings,
   stepTarget,
   stopIsCurrent,
+  stopSections,
   stopsOf,
   touchedSymbols,
 } from '../../../src/ui/screens/change/model/panel.js';
@@ -28,8 +37,10 @@ function file(id: string, symbols: ReportSymbol[], inSpec: boolean | null = null
   return { id, path: id, language: 'typescript', status: symbols.some((s) => s.status !== 'same') ? 'mod' : 'same', verdict: 'ok', inSpec, symbols };
 }
 
-function step(order: number, f: File, name: string): Step {
-  return { order, symbolId: `${f.id}#${name}`, fileId: f.id, why: `why ${String(order)}`, diff: [{ kind: 'add', text: 'x' }] };
+function step(order: number, f: File, name: string, section?: Step['section']): Step {
+  const made: Step = { order, symbolId: `${f.id}#${name}`, fileId: f.id, why: `why ${String(order)}`, diff: [{ kind: 'add', text: 'x' }] };
+  if (section !== undefined) made.section = section;
+  return made;
 }
 
 function finding(id: string, file: string, overrides: Partial<Finding> = {}): Finding {
@@ -164,5 +175,62 @@ describe('panel model', () => {
     expect(fileViewData(report(), 'src/missing.ts')).toBeNull();
     const bare = report({ packages: [{ id: 'src', path: 'src', tier1: false, files: [{ ...file('src/n.sql', []), status: 'add' }] }] });
     expect(fileViewData(bare, 'src/n.sql')?.counts.add).toBe(1);
+  });
+});
+
+const fixturesDir = join(import.meta.dirname, '../../fixtures/ui');
+const withSteps = (): Report => JSON.parse(readFileSync(join(fixturesDir, 'report-order-discounts-with-steps.json'), 'utf8')) as Report;
+
+describe('panel model: sections of the execution path', () => {
+  it('panel-model/stops-sections-order: Execution path, Migrations, Unconnected, each by order; J and K walk them in that order', () => {
+    // Out of order on purpose: an unconnected step first, a migration before a path step.
+    const steps = [step(5, b, 'only', 'unconnected'), step(4, a, 'late', 'migration'), step(2, a, 'early', 'path'), step(3, c, 'quiet', 'unconnected'), step(1, b, 'only', 'path')];
+    const sections = stopSections(report({ steps }));
+    expect(sections.map((section) => section.label)).toEqual(['Execution path', 'Migrations', 'Unconnected']);
+    expect(sections.map((section) => section.stops.map((stop) => stop.order))).toEqual([[1, 2], [4], [3, 5]]);
+    expect(stopsOf(report({ steps })).map((stop) => stop.order)).toEqual([1, 2, 4, 3, 5]);
+    expect(navTargets(report({ steps })).map((target) => target.symbolId)).toEqual(['src/b.ts#only', 'src/a.ts#early', 'src/a.ts#late', 'src/c.ts#quiet', 'src/b.ts#only']);
+    // A section with no stop has no heading.
+    expect(stopSections(report({ steps: [step(1, a, 'early', 'unconnected')] })).map((section) => section.id)).toEqual(['unconnected']);
+
+    // The fixture is the golden order-discounts Report, real steps included.
+    const golden = JSON.parse(readFileSync(join(import.meta.dirname, '../../fixtures/scenarios/order-discounts/expected.json'), 'utf8')) as Report;
+    const fixture = withSteps();
+    expect(fixture.steps).toEqual(golden.steps);
+    const real = stopSections(fixture);
+    expect(real.map((section) => section.id)).toEqual(['path', 'migration', 'unconnected']);
+    const orders = real.flatMap((section) => section.stops.map((stop) => stop.order));
+    expect(orders).toEqual(fixture.steps.map((one) => one.order).sort((x, y) => x - y));
+    // Each section's findings sit under the stop of their symbol.
+    expect(real.map((section) => section.stops.flatMap((stop) => stop.findings.map((found) => found.id)))).toEqual([['ws-place'], ['ws-alter'], ['ws-mark']]);
+  });
+
+  it('panel-model/section-default-path: a step without a section, or with one this UI does not know, is on the execution path', () => {
+    const plain = step(1, a, 'early');
+    expect(sectionOf(plain)).toBe('path');
+    expect(sectionOf({ ...plain, section: 'elsewhere' as NonNullable<Step['section']> })).toBe('path');
+    expect(sectionOf({ ...plain, section: 'toString' as NonNullable<Step['section']> })).toBe('path');
+    expect(sectionOf({ ...plain, section: 'migration' })).toBe('migration');
+    const sections = stopSections(report({ steps: [step(2, b, 'only'), step(1, a, 'early'), step(3, a, 'late', 'unconnected')] }));
+    expect(sections.map((section) => [section.id, section.stops.map((stop) => stop.order)])).toEqual([
+      ['path', [1, 2]],
+      ['unconnected', [3]],
+    ]);
+  });
+
+  it('panel-model/empty-steps-text: the empty text names the missing execution path, and only when the Report has no steps', () => {
+    expect(EMPTY_STEPS).toBe('No execution path: nothing in this change reaches an entry point');
+    expect(emptyStepsText(report({ steps: [] }))).toBe(EMPTY_STEPS);
+    // Steps only on files the Report does not have: nothing to list either.
+    expect(emptyStepsText(report({ steps: [step(1, { ...c, id: 'src/gone.ts' }, 'x')] }))).toBe(EMPTY_STEPS);
+    // Only unconnected steps: they are listed, under their heading, without the empty text.
+    expect(emptyStepsText(report({ steps: [step(1, a, 'early', 'unconnected')] }))).toBeNull();
+    expect(emptyStepsText(withSteps())).toBeNull();
+  });
+
+  it('panel-model/fixture-generated: report-order-discounts-with-steps.json is what its generator writes from the golden', () => {
+    const out = join(mkdtempSync(join(tmpdir(), 'diffcity-steps-')), 'report.json');
+    execFileSync(process.execPath, [join(fixturesDir, 'gen-report-with-steps.mjs'), '--out', out]);
+    expect(readFileSync(out, 'utf8')).toBe(readFileSync(join(fixturesDir, 'report-order-discounts-with-steps.json'), 'utf8'));
   });
 });
