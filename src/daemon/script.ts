@@ -42,8 +42,12 @@ function parsePort(value: string | undefined): number | undefined {
   return port;
 }
 
-/** Runs the daemon until it stops; resolves with the process exit code. */
-export async function runDaemonScript(reportStart: (outcome: StartReport) => void): Promise<number> {
+/**
+ * Runs the daemon until it stops; resolves with the process exit code.
+ * `onSignalsHandled` is called once the daemon handles SIGTERM and SIGINT
+ * (RunDaemonHooks.onSignalsHandled).
+ */
+export async function runDaemonScript(reportStart: (outcome: StartReport) => void, onSignalsHandled?: () => void): Promise<number> {
   let port: number | undefined;
   let foreground: boolean;
   try {
@@ -64,6 +68,7 @@ export async function runDaemonScript(reportStart: (outcome: StartReport) => voi
     { ...(port === undefined ? {} : { port }), ...(foreground ? { log: createStreamLogger(process.stderr) } : {}) },
     {
       err: (text) => process.stderr.write(text),
+      ...(onSignalsHandled === undefined ? {} : { onSignalsHandled }),
       ...(pauseAt === undefined ? {} : { onStage: pauseStage }),
       onReady: (info, alreadyRunning) => {
         if (!alreadyRunning) reportStart('ready');

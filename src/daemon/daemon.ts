@@ -105,6 +105,7 @@ export async function startDaemon(options: StartDaemonOptions = {}): Promise<Sta
   let lock = await acquireLock(paths, { pid });
   if (!lock.acquired) {
     const owner = lock.owner;
+    log.info(`lock held by pid ${String(owner)}; waiting for it to answer ping (pid ${String(pid)})`);
     const running = await waitForDaemon(paths, { timeoutMs: options.ownerWaitMs ?? OWNER_WAIT_MS, stop: aborted });
     if (running !== null) return fail({ status: 'already-running', info: running.info, version: running.version });
     if (options.signal?.aborted === true) return fail({ status: 'aborted' });

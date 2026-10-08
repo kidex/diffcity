@@ -165,7 +165,9 @@ describe('daemon process', () => {
     const infoText = await readFile(paths.daemonJson, 'utf8');
     await rm(paths.daemonJson);
     const second = daemons.spawnDaemon(temp.env);
-    await new Promise((resolve) => setTimeout(resolve, 2000));
+    // Signalled once it waits, not while it still loads (DC-119: loading takes seconds under load).
+    const waiting = `lock held by pid ${String(info.pid)}; waiting for it to answer ping (pid ${String(second.child.pid)})`;
+    await waitFor(async () => (await readFile(paths.log, 'utf8')).includes(waiting), 45_000, 'the second daemon to wait');
     expect(second.child.exitCode, 'the second daemon is still waiting').toBeNull();
     expect(second.stdout()).not.toContain('already running');
     const started = Date.now();
@@ -195,7 +197,14 @@ describe('daemon process', () => {
       const home = await tempHome();
       try {
         const spawned = daemons.spawnDaemon(home.env);
-        const info = await waitFor(() => readDaemonInfo(homePaths(home.home)).then((value) => value ?? undefined), 45_000, 'daemon.json');
+        const info = await waitFor(() => readDaemonInfo(homePaths(home.home)).then((value) => value ?? undefined), 45_000, 'daemon.json').catch(
+          async (error: unknown) => {
+            // A start timeout, not a signal failure: daemon.log tells whether the daemon ran at all.
+            const log = await readFile(homePaths(home.home).log, 'utf8').catch(() => '(no daemon.log)');
+            console.error(`run ${String(run)}: daemon.json never appeared; daemon.log:\n${log}`);
+            throw error;
+          },
+        );
         spawned.child.kill('SIGINT');
         expect(await spawned.exited, `run ${String(run)}`).toBe(0);
         for (const file of [homePaths(home.home).daemonJson, info.socket, homePaths(home.home).lock]) expect(await gone(file), `run ${String(run)}`).toBe(true);

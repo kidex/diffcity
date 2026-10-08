@@ -38,7 +38,19 @@ const version = readVersion();
 async function up(args: string[]): Promise<{ code: number | null; stdout: string; stderr: string }> {
   const run = daemons.cli(['up', ...args], temp.env, temp.userHome);
   const code = await run.exited;
+  await reportStartTimeout(run.stderr());
   return { code, stdout: run.stdout(), stderr: run.stderr() };
+}
+
+/**
+ * A start that timed out fails the test with `up`'s message alone; the daemon
+ * log tells whether the daemon ran at all (DC-119: a daemon started through
+ * LaunchServices can sit unscheduled for seconds), so it goes to the test output.
+ */
+async function reportStartTimeout(stderr: string): Promise<void> {
+  if (!stderr.includes('did not start within')) return;
+  const log = await readFile(paths.log, 'utf8').catch(() => '(no daemon.log)');
+  console.error(`up timed out starting the daemon; daemon.log:\n${log}`);
 }
 
 async function listening(): Promise<Server> {
@@ -196,6 +208,28 @@ describe('diffcity up', () => {
     expect(result.code).toBe(1);
     expect(result.stderr).toContain(`port ${String(port)} is in use; pass --port\n`);
   });
+
+  // Ctrl+C (or SIGTERM) while the foreground CLI still loads daemon/run.js:
+  // the CLI has no handler yet, so the signal gets its default action. Known
+  // bug DC-122 (DC-119 closed the same window in dist/daemon/main.js only);
+  // it.fails until the fix, then plain it.
+  it.fails.each(['SIGINT', 'SIGTERM'] as const)('up --foreground/signal-during-load: %s while the daemon modules load exits 0', async (signal) => {
+    const slowLoad = fileURLToPath(new URL('../../fixtures/daemon/slow-load.mjs', import.meta.url));
+    const held = join(temp.root, 'load-held');
+    const release = join(temp.root, 'load-release');
+    const env = { ...temp.env, DIFFCITY_TEST_LOAD_HELD: held, DIFFCITY_TEST_LOAD_RELEASE: release, DIFFCITY_TEST_LOAD_MODULE: 'daemon/run.js' };
+    const run = daemons.spawn(CLI_DIST, ['up', '--foreground', '--port', '0', '--no-open'], env, temp.userHome, ['--import', slowLoad]);
+    try {
+      await waitFor(() => missing(held).then((absent) => !absent), 45_000, 'the held load of daemon/run.js');
+      run.child.kill(signal);
+      // The load is still held: only an exit that does not wait for it ends the process.
+      expect(await run.exited).toBe(0);
+      expect(run.child.signalCode).toBeNull();
+      for (const file of [paths.daemonJson, paths.lock, paths.socket]) expect(await missing(file), file).toBe(true);
+    } finally {
+      await writeFile(release, '');
+    }
+  });
 });
 
 describe('up stays light', () => {
@@ -207,7 +241,9 @@ describe('up stays light', () => {
     const log = join(temp.root, 'imports.log');
     const env = { ...temp.env, DIFFCITY_TEST_IMPORT_LOG: log };
     const run = daemons.spawn(CLI_DIST, ['up', '--port', '0', '--no-open'], env, temp.userHome, ['--import', recorder]);
-    expect(await run.exited).toBe(0);
+    const code = await run.exited;
+    await reportStartTimeout(run.stderr());
+    expect(code, `stderr: ${run.stderr()}`).toBe(0);
     const urls = (await readFile(log, 'utf8')).split('\n').filter((line) => line !== '');
     expect(urls.some((url) => url.endsWith('/dist/cli/up.js'))).toBe(true);
     expect(urls.filter(loadsFastify)).toEqual([]);
