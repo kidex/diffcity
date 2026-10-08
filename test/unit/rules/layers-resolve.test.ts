@@ -2,7 +2,7 @@
 // matching and overlap, and the before file list. Invented paths.
 
 import { describe, expect, it } from 'vitest';
-import { beforeFilesOf, createResolver, layerModules, moduleOf, type LayerModule } from '../../../src/core/rules/index.js';
+import { beforeFilesOf, createResolver, layerModules, moduleOf, wildcardMatch, type LayerModule } from '../../../src/core/rules/index.js';
 
 function modules(layers: string[][]): LayerModule[] {
   const parsed = layerModules(layers);
@@ -60,6 +60,47 @@ describe('layers modules', () => {
     [['packages/billing'], ['packages/*/src'], true],
   ])('%j and %j: valid %s', (top, bottom, valid) => {
     expect(layerModules([top, bottom]).ok).toBe(valid);
+  });
+});
+
+describe('wildcardMatch', () => {
+  it.each([
+    ['*', '', true],
+    ['*', 'billing', true],
+    ['pay-*', 'pay-', true],
+    ['pay-*', 'pay-core', true],
+    ['pay-*', 'pa', false],
+    ['*-core', 'pay-core', true],
+    ['*-core', 'pay-cor', false],
+    ['a*b', 'ab', true],
+    ['a*b', 'axxb', true],
+    ['a*b', 'axxbc', false],
+    ['a**b', 'ab', true],
+    ['a***b', 'a-b', true],
+    ['**', 'anything', true],
+    ['a*b*c', 'abc', true],
+    ['a*b*c', 'a-c-b', false],
+    ['a*bc*bc', 'abcbc', true],
+    ['ab*ba', 'aba', false],
+    ['a*x*a', 'axa', true],
+    ['a*x*a', 'axxa', true],
+    ['a*xx*a', 'axa', false],
+    ['*a*', 'bab', true],
+    ['billing', 'billing', true],
+    ['billing', 'billings', false],
+    ['*', 'a/b', false],
+  ])('%s against %j: %s', (pattern, value, expected) => {
+    expect(wildcardMatch(pattern, value)).toBe(expected);
+  });
+
+  it('stays linear: a many-star segment against a 10 KB name', () => {
+    const pattern = `${'*a'.repeat(40)}*ab`;
+    const name = 'a'.repeat(10_240);
+    const started = performance.now();
+    expect(wildcardMatch(pattern, name)).toBe(false);
+    expect(moduleOf(modules([[`pkgs/${pattern}`]]), `pkgs/${name}/x.ts`)).toBeNull();
+    expect(layerModules([[`pkgs/${pattern}`], [`pkgs/${name}`]]).ok).toBe(true);
+    expect(performance.now() - started).toBeLessThan(50);
   });
 });
 
