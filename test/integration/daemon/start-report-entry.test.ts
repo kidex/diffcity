@@ -1,11 +1,14 @@
 // The daemon entry and its start report (DC-45): dist/daemon/main.js installs
 // the reporter before it loads the daemon, so a daemon that cannot load its
 // modules reports exit 1 at once instead of leaving a LaunchServices client to
-// its start timeout; and a starting daemon removes stale start reports.
+// its start timeout; a signal while it loads the daemon ends it with 0, not
+// the default action (DC-119); and a starting daemon removes stale start
+// reports.
 
-import { copyFile, mkdir, readdir, readFile, utimes, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir, readdir, readFile, stat, utimes, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:net';
 import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
 import { homePaths } from '../../../src/core/home.js';
 import { readDaemonInfo } from '../../../src/daemon/files.js';
@@ -71,5 +74,49 @@ describe('daemon entry start report', () => {
     } finally {
       await new Promise<void>((resolve) => blocker.close(() => { resolve(); }));
     }
+  });
+});
+
+describe('a signal while the entry loads the daemon (DC-119)', () => {
+  const slowLoad = fileURLToPath(new URL('../../fixtures/daemon/slow-load.mjs', import.meta.url));
+  const gone = (file: string): Promise<boolean> =>
+    stat(file).then(
+      () => false,
+      () => true,
+    );
+
+  /** The daemon entry with the load of the daemon body held until `release` exists. */
+  async function heldDaemon(): Promise<{ run: ReturnType<DaemonTracker['spawn']>; report: string; release: string; paths: ReturnType<typeof homePaths> }> {
+    home = await tempHome();
+    const paths = homePaths(home.home);
+    const held = join(home.root, 'load-held');
+    const release = join(home.root, 'load-release');
+    const report = join(home.root, 'start-1a.report');
+    const env = { ...home.env, [START_REPORT_ENV]: report, DIFFCITY_TEST_LOAD_HELD: held, DIFFCITY_TEST_LOAD_RELEASE: release };
+    const run = daemons.spawn(DAEMON_MAIN_DIST, ['--port', '0'], env, undefined, ['--import', slowLoad]);
+    await waitFor(() => gone(held).then((missing) => !missing), 45_000, 'the held load');
+    return { run, report, release, paths };
+  }
+
+  it.each(['SIGINT', 'SIGTERM'] as const)('daemon/signal-during-load: %s exits 0 at once, reports 0 and leaves no files', async (signal) => {
+    const { run, report, paths } = await heldDaemon();
+    run.child.kill(signal);
+    // The load is still held: only an exit that does not wait for it ends the process.
+    expect(await run.exited).toBe(0);
+    expect(run.child.signalCode).toBeNull();
+    expect(await readFile(report, 'utf8')).toBe('0\n');
+    for (const file of [paths.daemonJson, paths.lock, paths.socket]) expect(await gone(file), file).toBe(true);
+    expect(run.stdout()).not.toContain('listening on');
+  });
+
+  it('daemon/signal-after-load: once loaded, the daemon starts and a signal shuts it down gracefully', async () => {
+    const { run, report, release, paths } = await heldDaemon();
+    await writeFile(release, '');
+    const info = await waitFor(() => readDaemonInfo(paths).catch(() => null).then((value) => value ?? undefined), 45_000, 'daemon.json');
+    expect(info.pid).toBe(run.child.pid);
+    expect(await readFile(report, 'utf8')).toBe('ready\n');
+    run.child.kill('SIGINT');
+    expect(await run.exited).toBe(0);
+    for (const file of [paths.daemonJson, paths.lock, info.socket]) expect(await gone(file), file).toBe(true);
   });
 });

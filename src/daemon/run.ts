@@ -15,6 +15,11 @@ export interface RunDaemonHooks {
    * daemon already holds the home. A throw is logged; the daemon keeps running.
    */
   onReady: (info: DaemonInfo, alreadyRunning: boolean) => void | Promise<void>;
+  /**
+   * Called once runDaemon handles SIGTERM and SIGINT, before anything of the
+   * daemon exists: the daemon entry (main.ts) handles them until then.
+   */
+  onSignalsHandled?: () => void;
   /** Test seam: awaited after each startup stage; the signal aborts the startup (see StartDaemonOptions.onStage). */
   onStage?: (stage: StartupStage, signal: AbortSignal) => void | Promise<void>;
 }
@@ -53,6 +58,7 @@ export async function runDaemon(options: StartDaemonOptions, hooks: RunDaemonHoo
   };
   const signalNames = ['SIGTERM', 'SIGINT'] as const;
   for (const name of signalNames) process.on(name, onSignal);
+  hooks.onSignalsHandled?.();
   try {
     const stage = hooks.onStage;
     const starting = startDaemon({
