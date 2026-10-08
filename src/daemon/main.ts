@@ -8,6 +8,15 @@ import { isPort } from './files.js';
 import { createStreamLogger } from './log.js';
 import { STARTUP_STAGES, type StartupStage } from './daemon.js';
 import { daemonUrl, runDaemon } from './run.js';
+import { takeStartReporter } from './start-report.js';
+
+// A client that launched this daemon through LaunchServices learns from this
+// report whether it came up (DC-45): `ready`, or the exit code of a daemon that
+// exits before it is ready, crashes included.
+const reportStart = takeStartReporter(process.env);
+process.on('exit', (code) => {
+  reportStart(code);
+});
 
 /**
  * Test-only seam: with DIFFCITY_TEST=1 and DIFFCITY_TEST_PAUSE_AT=<stage>
@@ -59,6 +68,7 @@ async function main(): Promise<number> {
       err: (text) => process.stderr.write(text),
       ...(pauseAt === undefined ? {} : { onStage: pauseStage }),
       onReady: (info, alreadyRunning) => {
+        if (!alreadyRunning) reportStart('ready');
         const where = `${daemonUrl(info)} (pid ${String(info.pid)})`;
         process.stdout.write(alreadyRunning ? `daemon already running at ${where}\n` : `diffcity daemon listening on ${where}\n`);
       },
