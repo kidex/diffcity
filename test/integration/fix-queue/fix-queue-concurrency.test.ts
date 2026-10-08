@@ -7,7 +7,7 @@
 // duplicated, and no append refused. The mover renames to a new name each
 // time so every take is kept.
 
-import { spawn } from 'node:child_process';
+import { spawn, type ChildProcess } from 'node:child_process';
 import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -20,7 +20,11 @@ const ITEMS = 50;
 const ROUNDS = 100;
 
 const roots: string[] = [];
+/** Children still running: a test that fails or times out must not leave a mover spinning on a core. */
+const children = new Set<ChildProcess>();
 afterEach(async () => {
+  for (const child of children) child.kill('SIGKILL');
+  children.clear();
   for (const root of roots.splice(0)) await rm(root, { recursive: true, force: true });
 });
 
@@ -28,11 +32,13 @@ afterEach(async () => {
 function runNode(source: string, args: string[]): Promise<{ code: number | null; stdout: string; stderr: string }> {
   return new Promise((resolve) => {
     const child = spawn(process.execPath, ['--input-type=module', '-e', source, ...args], { stdio: ['ignore', 'pipe', 'pipe'] });
+    children.add(child);
     let stdout = '';
     let stderr = '';
     child.stdout.on('data', (chunk: Buffer) => (stdout += chunk.toString()));
     child.stderr.on('data', (chunk: Buffer) => (stderr += chunk.toString()));
     child.on('close', (code) => {
+      children.delete(child);
       resolve({ code, stdout, stderr });
     });
   });
@@ -54,14 +60,19 @@ for (let n = 0; n < Number(count); n++) {
 process.stdout.write(JSON.stringify(outcomes));
 `;
 
-/** Renames the queue directory away to taken-<n> in a tight loop until the stop file appears. */
+/**
+ * Renames the queue directory away to taken-<n> in a tight loop until the
+ * stop file appears. It also stops when its temporary root is gone or after
+ * 60 s, so a failed round never leaves it spinning.
+ */
 const MOVER = `
 import { existsSync, renameSync } from 'node:fs';
 import { join } from 'node:path';
 const [root] = process.argv.slice(1);
 const dir = join(root, '.diffcity');
+const deadline = Date.now() + 60000;
 let taken = 0;
-while (!existsSync(join(root, 'stop'))) {
+while (!existsSync(join(root, 'stop')) && existsSync(dir) && Date.now() < deadline) {
   try { renameSync(join(dir, 'fix-queue'), join(dir, 'taken-' + taken)); taken++; }
   catch (error) { if (error.code !== 'ENOENT') throw error; }
 }
@@ -86,8 +97,12 @@ async function race(): Promise<RaceOutcome> {
   roots.push(root);
   await mkdir(join(root, '.diffcity'));
   const mover = runNode(MOVER, [root]);
-  const appender = await runNode(APPENDER, [root, String(ITEMS)]);
-  await writeFile(join(root, 'stop'), '');
+  let appender;
+  try {
+    appender = await runNode(APPENDER, [root, String(ITEMS)]);
+  } finally {
+    await writeFile(join(root, 'stop'), '');
+  }
   const moved = await mover;
   expect(appender).toMatchObject({ code: 0, stderr: '' });
   expect(moved).toMatchObject({ code: 0, stderr: '' });
