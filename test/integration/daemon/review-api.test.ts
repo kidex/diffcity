@@ -69,7 +69,7 @@ describe('api/review-put-get-delete', () => {
       snapshotId,
       marks: [],
       note: null,
-      progress: { attention: { done: 0, total: 1 }, touched: { done: 0, total: 2 }, rewrite: 0, outdated: 0, allAttentionDone: false },
+      progress: { attention: { done: 0, total: 1 }, touched: { done: 0, total: 2 }, tier1: { done: 0, total: 0 }, rewrite: 0, outdated: 0, allAttentionDone: false },
     });
 
     const file = await call(port, 'PUT', reviewPath(changeId, '/marks'), {

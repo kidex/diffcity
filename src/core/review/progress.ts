@@ -1,28 +1,13 @@
 // Review progress (ADR-028), pure. An outdated mark counts as unchecked.
 
 import type { ReviewMark, ReviewProgress } from '../model/types.js';
-import type { File, Report } from '../report/types.js';
+import type { Report } from '../report/types.js';
+import { uncheckedTier1Files } from './approve.js';
+import { fileCheckedBy } from './checked.js';
 
 type Counter = { done: number; total: number };
 
-/**
- * Whether a file counts as checked: a current mark on the file, or a current
- * mark on every changed symbol of it (an outdated mark counts as unchecked).
- * The HUD's progress and the server's Approve gate (ADR-036) share it.
- */
-export function fileCheckedBy(marks: readonly ReviewMark[]): (file: File) => boolean {
-  const fileMarks = new Set<string>();
-  const symbolMarks = new Set<string>();
-  for (const mark of marks) {
-    if (mark.state === 'outdated') continue;
-    (mark.targetKind === 'file' ? fileMarks : symbolMarks).add(mark.targetId);
-  }
-  return (file) => {
-    if (fileMarks.has(file.id)) return true;
-    const changed = file.symbols.filter((symbol) => symbol.status !== 'same');
-    return changed.length > 0 && changed.every((symbol) => symbolMarks.has(symbol.id));
-  };
-}
+export { fileCheckedBy };
 
 export function computeProgress(report: Report, marks: readonly ReviewMark[]): ReviewProgress {
   let rewrite = 0;
@@ -47,5 +32,16 @@ export function computeProgress(report: Report, marks: readonly ReviewMark[]): R
       }
     }
   }
-  return { attention, touched, rewrite, outdated, allAttentionDone: attention.total > 0 && attention.done === attention.total };
+  // The same rule as the server's Approve gate, so `done === total` exactly
+  // when POST /approve would be accepted (zero tier 1 files included).
+  const tier1Total = report.summary.tier1Files.length;
+  const tier1: Counter = { done: tier1Total - uncheckedTier1Files(report, marks).length, total: tier1Total };
+  return {
+    attention,
+    touched,
+    tier1,
+    rewrite,
+    outdated,
+    allAttentionDone: attention.total > 0 && attention.done === attention.total,
+  };
 }

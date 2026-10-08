@@ -33,6 +33,18 @@
 .hud-bar .btn[aria-disabled="true"] { opacity: .55; cursor: not-allowed; }
 .hud-bar .btn[aria-disabled="true"]:hover { color: var(--ink-2); border-color: var(--line); }
 .hud-bar .btn.primary[aria-disabled="true"]:hover { color: var(--bg-deep); border-color: var(--ink); opacity: .55; }
+/* Approve (ADR-036): the gate, the inline confirm, the approved badge and a refusal's reason. */
+.hud-bar .approve { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 6px 8px; }
+.hud-bar .approve[hidden] { display: none; }
+.hud-bar .approve-confirm { display: inline-flex; align-items: center; gap: 8px; }
+.hud-bar .approve-prompt { font-size: 12.5px; color: var(--ink); font-weight: 500; }
+.hud-bar .approved-badge {
+  display: inline-flex; align-items: center; gap: 7px; padding: 5px 11px; border-radius: 999px; font-size: 12.5px; font-weight: 600;
+  color: var(--add-text); background: color-mix(in srgb, var(--add) 14%, transparent); border: 1px solid color-mix(in srgb, var(--add) 55%, transparent);
+}
+.hud-bar .approved-badge i { width: 7px; height: 7px; border-radius: 50%; background: var(--add); }
+.hud-bar .approved-badge code { font: 500 12px var(--mono); color: var(--ink); }
+.hud-bar .approve-error { flex: 1 1 100%; max-width: 42ch; font-size: 12px; color: var(--del-text); overflow-wrap: anywhere; }
 .change-level { display: flex; gap: 8px; }
 .level-pill {
   display: inline-flex; align-items: center; padding: 5px 11px; border-radius: 999px; font-size: 12.5px; font-weight: 500;

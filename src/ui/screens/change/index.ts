@@ -29,7 +29,9 @@ import type { Panel } from './panel/index.js';
 import { createPanel } from './panel/index.js';
 import type { FindingActions } from './panel/finding-actions.js';
 import { createFindingActions } from './panel/finding-actions.js';
-import type { DiffPort, FindingsPort, FleetPort, ReviewPort } from './ports.js';
+import type { ApproveControl } from './hud/approve.js';
+import { createApproveControl } from './hud/approve.js';
+import type { ApprovalPort, DiffPort, FindingsPort, FleetPort, ReviewPort } from './ports.js';
 import type { ReviewController } from './review/controller.js';
 import { createReviewController } from './review/controller.js';
 import type { ReviewUi } from './review/ui.js';
@@ -54,6 +56,8 @@ export interface ChangeScreenOptions {
   review?: ReviewPort;
   /** "Ask agent to fix" and "Mark as intended" on the finding cards (ADR-036); without it the cards have no buttons. */
   findings?: FindingsPort;
+  /** Approve and its undo in the top bar (ADR-036); without it there is no Approve button. */
+  approval?: ApprovalPort;
 }
 
 export interface ChangeScreen {
@@ -182,11 +186,14 @@ export function mountChange(element: HTMLElement, options: ChangeScreenOptions):
         });
   const stopReview = controller?.onChange(syncReview);
   const findingActions: FindingActions | null = options.findings === undefined ? null : createFindingActions(options.findings);
+  const approve: ApproveControl | null = options.approval === undefined ? null : createApproveControl(options.approval);
 
   /** Brings the city, the progress, the filters and every mark button in line with the review state. */
   function syncReview(): void {
     if (controller === null) return;
     const state = controller.state();
+    // The gate is the daemon's progress: without a review state Approve stays closed.
+    approve?.progress(state?.progress ?? null);
     // "Hide checked" goes with the marks: without a review state there is nothing to hide.
     if (state === null && filters.hideChecked === true) {
       filters = toggleHideChecked(filters);
@@ -224,6 +231,7 @@ export function mountChange(element: HTMLElement, options: ChangeScreenOptions):
                 reviewUi.openSummary(trigger);
               },
             },
+      approve: approve?.root,
       onFilters(next) {
         filters = next;
         if (latest !== null) hud?.update(latest, filters);
@@ -397,6 +405,7 @@ export function mountChange(element: HTMLElement, options: ChangeScreenOptions):
       reviewUi?.dispose();
       controller?.dispose();
       findingActions?.dispose();
+      approve?.dispose();
       dropView();
       element.classList.remove('has-city', 'has-list');
       element.replaceChildren();

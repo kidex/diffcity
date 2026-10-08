@@ -38,7 +38,9 @@
         "same": 1
       },
       "tier1Files": []
-    }
+    },
+    "approvedHead": "4d5e6f708192a3b4c5d6e7f8091a2b3c4d5e6f70",
+    "approvedAt": "2026-05-02T15:10:00.000Z"
   },
   {
     "id": 22,
@@ -79,7 +81,9 @@
         "same": 0
       },
       "tier1Files": []
-    }
+    },
+    "approvedHead": null,
+    "approvedAt": null
   },
   {
     "id": 23,
@@ -120,7 +124,9 @@
         "same": 0
       },
       "tier1Files": []
-    }
+    },
+    "approvedHead": null,
+    "approvedAt": null
   },
   {
     "id": 24,
@@ -161,6 +167,8 @@
         "same": 0
       },
       "tier1Files": []
-    }
+    },
+    "approvedHead": null,
+    "approvedAt": null
   }
 ]

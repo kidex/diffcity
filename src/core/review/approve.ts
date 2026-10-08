@@ -5,7 +5,7 @@
 
 import type { ReviewMark } from '../model/types.js';
 import type { Report } from '../report/types.js';
-import { fileCheckedBy } from './progress.js';
+import { fileCheckedBy } from './checked.js';
 
 /**
  * The touched tier 1 files of `report` (`summary.tier1Files`) that are not

@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import type { Page, Route } from '@playwright/test';
 import type { ApiError, ChangeSummary, FileDiff, RepoDetail, RepoSummary, SearchResult } from '../../../src/core/model/types.js';
 import type { Report } from '../../../src/core/report/types.js';
+import { uncheckedTier1Files } from '../../../src/core/review/index.js';
 import type { FindingsMock } from './findings-api.js';
 import { answerFindings, createFindingsMock } from './findings-api.js';
 import type { ReviewMock, ReviewSeed } from './review-api.js';
@@ -74,6 +75,16 @@ export interface ApiData {
   findingsMocks: Map<number, FindingsMock>;
 }
 
+/** The approve route of one change (ADR-036): writes made and hooks, as for the findings routes. */
+export interface ApprovalMock {
+  /** Every approve request the page made, in order. */
+  readonly writes: ('POST' | 'DELETE')[];
+  /** Answers the next request (once) with this status, code and message, whatever it is. */
+  failNext: { status: number; code: string; message: string } | null;
+  /** Holds every request until it settles (a slow daemon). */
+  hold: Promise<void> | null;
+}
+
 export interface MockedApi {
   /** Every mocked request, in order. */
   readonly requests: URL[];
@@ -82,6 +93,8 @@ export interface MockedApi {
   review(changeId: number): ReviewMock;
   /** The findings routes' state of a change (writes made, fix queue, hooks to fail, drop or hold a write), created on first use. */
   findings(changeId: number): FindingsMock;
+  /** The approve route's state of a change, created on first use. */
+  approval(changeId: number): ApprovalMock;
 }
 
 export function defaultApiData(): ApiData {
@@ -133,6 +146,17 @@ export async function mockApi(page: Page, overrides: Partial<ApiData> = {}): Pro
     return mock;
   };
 
+  const approvals = new Map<number, ApprovalMock>();
+  const approval = (changeId: number): ApprovalMock => {
+    let mock = approvals.get(changeId);
+    if (mock === undefined) {
+      mock = { writes: [], failNext: null, hold: null };
+      approvals.set(changeId, mock);
+    }
+    return mock;
+  };
+  const liveChange = (id: number): ChangeSummary | undefined => data.details.flatMap((detail) => detail.changes).find((candidate) => candidate.id === id);
+
   const answer = async (route: Route, body: unknown, status = 200): Promise<void> => {
     await route.fulfill({ status, json: body });
   };
@@ -177,6 +201,36 @@ export async function mockApi(page: Page, overrides: Partial<ApiData> = {}): Pro
         const id = Number(match[1]);
         return answerFindings(route, findings(id), data.reports[id], decodeURIComponent(match[2] ?? ''), match[3] ?? '');
       }
+      if ((match = /^\/api\/changes\/(\d+)\/approve$/.exec(path))) {
+        // Stands in for the daemon (DC-100): the gate from the latest Report and the stored marks, with core's own rule.
+        const id = Number(match[1]);
+        const method = route.request().method();
+        if (method !== 'POST' && method !== 'DELETE') return answer(route, notFound('no such approve route'), 404);
+        const mock = approval(id);
+        mock.writes.push(method);
+        if (mock.hold !== null) await mock.hold;
+        if (mock.failNext !== null) {
+          const { status, code, message } = mock.failNext;
+          mock.failNext = null;
+          return answer(route, { error: { code, message } }, status);
+        }
+        const change = liveChange(id);
+        if (change === undefined) return answer(route, notFound(`change ${String(id)} not found`), 404);
+        if (method === 'DELETE') {
+          if (change.reviewState !== 'approved') return answer(route, { error: { code: 'not-approved', message: `change ${String(id)} is not approved` } }, 409);
+          Object.assign(change, { reviewState: 'in-review', approvedHead: null, approvedAt: null });
+          return answer(route, { reviewState: 'in-review', approvedHead: null, approvedAt: null });
+        }
+        const report = data.reports[id];
+        if (report === undefined) return answer(route, { error: { code: 'no-snapshot', message: `change ${String(id)} has no snapshot yet` } }, 409);
+        const unchecked = uncheckedTier1Files(report, reviews.get(id)?.marks ?? []);
+        if (unchecked.length > 0) {
+          const message = `${String(unchecked.length)} touched tier 1 file(s) have no current review mark: ${unchecked.join(', ')}`;
+          return answer(route, { error: { code: 'tier1-unchecked', message } }, 409);
+        }
+        if (change.reviewState !== 'approved') Object.assign(change, { reviewState: 'approved', approvedHead: change.head, approvedAt: new Date().toISOString() });
+        return answer(route, { reviewState: 'approved', approvedHead: change.approvedHead, approvedAt: change.approvedAt });
+      }
       if ((match = /^\/api\/changes\/(\d+)\/diff$/.exec(path))) {
         const reply = await data.diff({ changeId: Number(match[1]), path: url.searchParams.get('path') ?? '', symbol: url.searchParams.get('symbol'), call: diffCalls++ });
         // A held request the page gave up on (an aborted fetch) cannot be answered any more.
@@ -198,5 +252,6 @@ export async function mockApi(page: Page, overrides: Partial<ApiData> = {}): Pro
     count: (pathname) => requests.filter((url) => url.pathname === pathname).length,
     review,
     findings,
+    approval,
   };
 }

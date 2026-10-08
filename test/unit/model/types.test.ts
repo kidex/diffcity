@@ -139,6 +139,8 @@ const changeSummary: ChangeSummary = {
   archivedAt: null,
   archiveReason: null,
   stats,
+  approvedHead: null,
+  approvedAt: null,
 };
 
 const searchResults: SearchResult[] = [

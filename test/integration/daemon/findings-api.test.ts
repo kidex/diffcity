@@ -8,7 +8,7 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { Db } from '../../../src/core/db/index.js';
 import { anchor, type FindingInput, type StoredFinding } from '../../../src/core/findings/index.js';
-import type { ApiError, ChangeRecord } from '../../../src/core/model/types.js';
+import type { ApiError, ChangeRecord, ChangeSummary } from '../../../src/core/model/types.js';
 import type { Finding, Report } from '../../../src/core/report/types.js';
 import { createServedCache, type ServedCache } from '../../../src/daemon/api/served-cache.js';
 import { storeFindingsImport } from '../../../src/daemon/findings.js';
@@ -388,6 +388,25 @@ describe('approve', () => {
     const twice = await call(s.port, 'DELETE', path(s, '/approve'));
     expect([twice.status, errorCode(twice)]).toEqual([409, 'not-approved']);
     await waitFor(() => s.test.events().some((e) => e.event === 'review' && e.data['changeId'] === s.change.id), 5000, 'the review signal');
+  });
+
+  it('approve/change-summary-carries-approval: the change and its list show approvedHead and approvedAt after POST, null after DELETE', async () => {
+    const s = await seeded();
+    const summary = async (): Promise<ChangeSummary> => (await call(s.port, 'GET', `/api/changes/${String(s.change.id)}`)).json() as ChangeSummary;
+    const listed = async (): Promise<ChangeSummary | undefined> =>
+      ((await call(s.port, 'GET', `/api/repos/${String(s.repoId)}/changes`)).json() as ChangeSummary[]).find((c) => c.id === s.change.id);
+    expect(await summary()).toMatchObject({ approvedHead: null, approvedAt: null });
+
+    const snapshotId = s.db.snapshots.latest(s.change.id)?.id;
+    await call(s.port, 'PUT', path(s, '/review/marks'), { body: { snapshotId, target: { kind: 'file', id: 'f-total' }, mark: 'checked' } });
+    const approved = (await call(s.port, 'POST', path(s, '/approve'))).json() as { approvedHead: string; approvedAt: string };
+    const expected = { reviewState: 'approved', approvedHead: s.change.head, approvedAt: approved.approvedAt };
+    expect(await summary()).toMatchObject(expected);
+    expect(await listed()).toMatchObject(expected);
+
+    await call(s.port, 'DELETE', path(s, '/approve'));
+    expect(await summary()).toMatchObject({ reviewState: 'in-review', approvedHead: null, approvedAt: null });
+    expect(await listed()).toMatchObject({ approvedHead: null, approvedAt: null });
   });
 
   it('approve/server-recheck-ignores-client: a body claiming the marks or forcing the approval changes nothing', async () => {

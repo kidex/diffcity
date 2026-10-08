@@ -102,3 +102,38 @@ export interface FindingsPort {
   /** Sets the state of finding `key`: `intended`, or back to `open` (the undo). */
   setState(key: string, state: 'open' | 'intended'): Promise<FindingAnswer<{ key: string; state: 'open' | 'intended'; keys: string[] }>>;
 }
+
+/** Where the change stands on Approve (ADR-036), as the daemon last said. */
+export interface ApprovalStatus {
+  reviewState: 'unreviewed' | 'in-review' | 'approved';
+  /** The change's head commit now. */
+  head: string;
+  /** The head that was approved; null unless approved. */
+  approvedHead: string | null;
+  /** When it was approved (ISO); null unless approved. */
+  approvedAt: string | null;
+}
+
+/** The daemon's answer to Approve and to its undo. */
+export interface ApprovalResult {
+  reviewState: 'approved' | 'in-review';
+  approvedHead: string | null;
+  approvedAt: string | null;
+}
+
+/**
+ * Approve and its undo (ADR-036). Structurally the port of
+ * src/ui/data/approval-port.ts. The daemon checks the gate; a refusal
+ * (`tier1-unchecked`, `snapshot-pending`, `archived`, ...) comes back as one.
+ * Only a request that got no answer rejects. Without it the top bar has no
+ * Approve button: the HTML export cannot approve.
+ */
+export interface ApprovalPort {
+  /** What the daemon last said about the change; null while it is not known or the change is archived (no button). */
+  status(): ApprovalStatus | null;
+  /** Calls `listener` when status() changed; returns the function that stops it. */
+  onChange(listener: () => void): () => void;
+  approve(): Promise<FindingAnswer<ApprovalResult>>;
+  /** Undo: back to `in-review`. */
+  unapprove(): Promise<FindingAnswer<ApprovalResult>>;
+}
