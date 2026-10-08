@@ -69,7 +69,8 @@ const TOOL_KIND: Readonly<Record<string, ActivityKind>> = {
   Task: 'subagents',
 };
 const RUN_STATUSES = new Set(['completed', 'failed', 'killed']);
-const REPORT_RANK: Readonly<Record<NonNullable<AgentRun['reportSource']>, number>> = { sidechain: 1, 'tool-result': 2, handback: 3 };
+const STATUS_RANK: Readonly<Record<NonNullable<AgentRun['statusSource']>, number>> = { handback: 1, 'tool-result': 2, notification: 3 };
+const REPORT_RANK:Readonly<Record<NonNullable<AgentRun['reportSource']>, number>> = { sidechain: 1, 'tool-result': 2, handback: 3 };
 /** User records that carry command or tool output, never a prompt. */
 const OUTPUT_TAG = /^\s*<(?:local-command-stdout|local-command-stderr|local-command-caveat|bash-stdout|bash-stderr|task-notification|system-reminder)>/;
 const TITLE_CHARS = 80;
@@ -110,7 +111,7 @@ export function emptyDigest(): SessionDigest {
     capped: false,
     badLines: 0,
     skippedLines: 0,
-    state: { main: { parsedBytes: 0, truncated: false }, sidechains: {}, outside: {}, aiTitle: null, firstPrompt: null },
+    state: { main: { parsedBytes: 0, truncated: false }, sidechains: {}, outside: {}, customTitle: null, aiTitle: null, firstPrompt: null },
   };
 }
 
@@ -210,6 +211,11 @@ function onMainRecord(digest: SessionDigest, record: RawRecord, c: Ctx): void {
   if (type === 'ai-title') {
     const title = str(record.aiTitle);
     if (title !== null && title.trim() !== '') digest.state.aiTitle = clipText(c, title.trim());
+    return;
+  }
+  if (type === 'custom-title') {
+    const title = str(record.customTitle);
+    if (title !== null && title.trim() !== '') digest.state.customTitle = clipText(c, title.trim());
     return;
   }
   if (type !== 'user' && type !== 'assistant' && type !== 'system' && type !== 'attachment') return;
@@ -319,10 +325,6 @@ function titleFrom(text: string): string {
 function onQuestions(digest: SessionDigest, toolUseId: string, input: Readonly<Record<string, unknown>>, at: string | null, c: Ctx): void {
   for (const item of arr(input.questions)) {
     if (!isObject(item)) continue;
-    if (digest.questions.length >= c.limits.questions) {
-      digest.questionsDropped++;
-      continue;
-    }
     const question = clip(c, str(item.question) ?? '', c.limits.promptBytes);
     const header = clip(c, str(item.header) ?? '', c.limits.promptBytes);
     const options = arr(item.options)
@@ -339,6 +341,12 @@ function onQuestions(digest: SessionDigest, toolUseId: string, input: Readonly<R
       answer: null,
       truncated: question.truncated || header.truncated,
     });
+  }
+  // The latest questions are kept, like prompts and runs.
+  const over = digest.questions.length - c.limits.questions;
+  if (over > 0) {
+    digest.questions.splice(0, over);
+    digest.questionsDropped += over;
   }
 }
 
@@ -427,7 +435,7 @@ function linkAgentId(digest: SessionDigest, run: AgentRun, agentId: string): voi
   run.startedAt ??= other.startedAt;
   run.sidechainFirstAt ??= other.sidechainFirstAt;
   run.sidechainLastAt = other.sidechainLastAt ?? run.sidechainLastAt;
-  if (run.statusSource === null && other.statusSource !== null) {
+  if (statusRank(other.statusSource) > statusRank(run.statusSource)) {
     run.status = other.status;
     run.statusSource = other.statusSource;
     run.durationMs = other.durationMs;
@@ -526,7 +534,17 @@ function onHandback(digest: SessionDigest, origin: Readonly<Record<string, unkno
   const body = str(origin.body);
   if (sender === null || body === null) return;
   const run = runByAgentId(digest, sender);
-  if (run !== null) setReport(run, body, 'handback', c);
+  if (run === null) return;
+  setReport(run, body, 'handback', c);
+  // A handback ends the run; a notification, earlier or later, still wins.
+  if (run.statusSource === null) {
+    run.status = 'completed';
+    run.statusSource = 'handback';
+  }
+}
+
+function statusRank(source: AgentRun['statusSource']): number {
+  return source === null ? 0 : STATUS_RANK[source];
 }
 
 function reportRank(source: AgentRun['reportSource']): number {
@@ -633,7 +651,8 @@ export function finalizeDigest(digest: SessionDigest, options: FinalizeOptions):
       }
     }
   });
-  digest.title = digest.state.aiTitle ?? digest.state.firstPrompt;
+  // Stored digests from before custom titles have no customTitle field.
+  digest.title = digest.state.customTitle ?? digest.state.aiTitle ?? digest.state.firstPrompt;
   capDigest(digest, limits.digestBytes);
   return digest;
 }
@@ -671,9 +690,9 @@ function capDigest(digest: SessionDigest, maxBytes: number): void {
     size -= bytesOf(digest.prompts.shift()) + 1;
     digest.promptsDropped++;
   }
-  // 3. The latest questions.
+  // 3. The oldest questions.
   while (size > maxBytes && digest.questions.length > 0) {
-    size -= bytesOf(digest.questions.pop()) + 1;
+    size -= bytesOf(digest.questions.shift()) + 1;
     digest.questionsDropped++;
   }
   // 4. The estimates above ignore counters that grew a digit: check the real size, dropping the oldest runs, then file lists.

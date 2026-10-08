@@ -57,7 +57,7 @@ describe('session read', () => {
     const second = await readSessionDigest({ transcriptPath: path, active: false, previous: stored, ...context });
     expect(second.prompts.map((prompt) => prompt.text)).toEqual(['Ship the cart badge', 'Now the checkout']);
     expect(second.runs.map((run) => [run.agentId, run.report, run.status])).toEqual([
-      ['lead1', 'Lead report', 'unknown'],
+      ['lead1', 'Lead report', 'completed'],
       ['dev1', 'Badge done', 'unknown'],
     ]);
     expect(second.files).toEqual(['src/badge.ts']);

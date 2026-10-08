@@ -68,7 +68,7 @@ export interface AgentRun {
   startedAt: string | null;
   status: RunStatus;
   /** Where `status` came from; null when it is the running/unknown fallback. */
-  statusSource: 'notification' | 'tool-result' | null;
+  statusSource: 'notification' | 'tool-result' | 'handback' | null;
   durationMs: number | null;
   /** The duration is the span of the sidechain's timestamps, not a measured one. */
   durationApproximate: boolean;
@@ -96,6 +96,8 @@ export interface DigestState {
   sidechains: Record<string, FileCursor>;
   /** Hashed keys of the outside-repo files counted per scope (`session`, `main`, or an agentId): never the paths. */
   outside: Record<string, string[]>;
+  /** The last `custom-title`, set by the user; optional in digests stored before it existed. */
+  customTitle?: string | null;
   /** The last `ai-title`. */
   aiTitle: string | null;
   /** The first prompt's first 80 characters. */
@@ -109,7 +111,7 @@ export interface SessionDigest {
   sessionId: string | null;
   /** The last Claude Code `version` seen. */
   version: string | null;
-  /** The last `ai-title`, else the first prompt's first 80 characters. */
+  /** The last `custom-title`, else the last `ai-title`, else the first prompt's first 80 characters. */
   title: string | null;
   firstAt: string | null;
   lastAt: string | null;

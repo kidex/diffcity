@@ -181,6 +181,26 @@ describe('session', () => {
     expect(digest.runs[0]).toMatchObject({ report: 'Final report: 3 files changed, tests green.', reportSource: 'handback' });
   });
 
+  it('session/agents-handback-completes-notification-wins', () => {
+    const main = transcript();
+    main.agent({ agentId: 'e2' });
+    main.handback('e2', 'Report of e2');
+    // A notification before the handback, and one after it: either way it sets the status.
+    const killed = main.agent({ agentId: 'e3' });
+    main.notification({ agentId: 'e3', toolUseId: killed, status: 'killed', durationMs: 7000, toolUses: 3 });
+    main.handback('e3', 'Partial report of e3');
+    main.agent({ agentId: 'e4' });
+    main.handback('e4', 'Report of e4');
+    main.notification({ agentId: 'e4', status: 'failed', durationMs: 9000, toolUses: 5 });
+
+    const runs = digestOf({ main, active: true }).runs;
+    expect(runs.map((run) => [run.agentId, run.status, run.statusSource, run.durationMs, run.toolUses, run.reportSource])).toEqual([
+      ['e2', 'completed', 'handback', null, null, 'handback'],
+      ['e3', 'killed', 'notification', 7000, 3, 'handback'],
+      ['e4', 'failed', 'notification', 9000, 5, 'handback'],
+    ]);
+  });
+
   it('session/agents-report-from-last-assistant-text', () => {
     const main = transcript();
     main.agent({ agentId: 'f1' });
@@ -363,7 +383,7 @@ describe('session', () => {
     expect(promptTexts(stored)).toEqual(['One', 'Two', 'Three']);
     expect(stored.state.main.parsedBytes).toBe(full.length);
     expect(stored.runs).toHaveLength(1);
-    expect(stored.runs[0]).toMatchObject({ report: 'Report of r1', status: 'unknown' });
+    expect(stored.runs[0]).toMatchObject({ report: 'Report of r1', status: 'completed', statusSource: 'handback' });
 
     // A chunk that does not start at the cursor is refused.
     expect(() => applyMainChunk(stored, chunkOf(main.jsonl()), CONTEXT)).toThrow(/cursor/);
@@ -443,5 +463,32 @@ describe('session', () => {
       firstAt: '2026-09-01T09:00:00.000Z',
       lastAt: '2026-09-01T09:00:00.000Z',
     });
+  });
+
+  it('session/title-custom-beats-ai-title-then-first-prompt', () => {
+    const main = transcript().prompt('First prompt of the session');
+    expect(digestOf({ main }).title).toBe('First prompt of the session');
+    main.aiTitle('Cart badge');
+    expect(digestOf({ main }).title).toBe('Cart badge');
+    main.customTitle('Checkout rework').aiTitle('A later ai title');
+    expect(digestOf({ main }).title).toBe('Checkout rework');
+  });
+
+  it('session/limits-questions-100-latest', () => {
+    const main = transcript();
+    const ids: string[] = [];
+    for (let i = 1; i <= 52; i++) {
+      // Two questions per call: 104 in all.
+      ids.push(main.ask([0, 1].map((k) => ({ question: `Question ${String(i * 2 - 1 + k)}?`, header: 'Q', options: ['Yes', 'No'] }))));
+    }
+    // The latest call is answered after the limit applied.
+    const last = [103, 104].map((n) => ({ question: `Question ${String(n)}?`, header: 'Q', options: ['Yes', 'No'] }));
+    main.answer(ids.at(-1) ?? '', last, { 'Question 104?': 'Yes' });
+
+    const digest = digestOf({ main });
+    expect(digest.questions).toHaveLength(SESSION_LIMITS.questions);
+    expect(digest.questionsDropped).toBe(4);
+    expect(digest.questions[0]?.question).toBe('Question 5?');
+    expect(digest.questions.at(-1)).toMatchObject({ question: 'Question 104?', answer: 'Yes' });
   });
 });

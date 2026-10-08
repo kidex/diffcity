@@ -13,7 +13,7 @@ export interface SessionLimits {
   reportBytes: number;
   /** Prompts per session; the latest are kept. */
   prompts: number;
-  /** Questions per session; the first are kept. */
+  /** Questions per session; the latest are kept. */
   questions: number;
   /** Agent runs per session; the latest are kept. */
   runs: number;

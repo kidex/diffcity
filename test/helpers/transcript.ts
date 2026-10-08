@@ -223,6 +223,12 @@ export class TranscriptBuilder {
     return this;
   }
 
+  /** A title the user set with /rename. */
+  customTitle(title: string): this {
+    this.records.push({ type: 'custom-title', customTitle: title, sessionId: this.options.sessionId ?? 'session-0001' });
+    return this;
+  }
+
   jsonl(): string {
     return this.records.map((record) => JSON.stringify(record)).join('\n') + '\n';
   }
