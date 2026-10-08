@@ -102,6 +102,17 @@ test('Enter opens the selected result and closes the palette', async ({ page }) 
   await expect(page).toHaveURL(/#\/repo\/1$/);
 });
 
+test('results for a longer query keep the selection the user moved to, so Enter opens it', async ({ page }) => {
+  await openHome(page);
+  await searchFor(page, 'o', 4);
+  await page.keyboard.press('ArrowDown');
+  await expect(selected(page)).toContainText('feature/order-discounts');
+  // The answer for "or" lists the same results; it must not move the selection back to the first.
+  await input(page).press('r');
+  await page.keyboard.press('Enter');
+  await expect(page).toHaveURL(/#\/change\/11$/);
+});
+
 test('a file result opens the change that touched it', async ({ page }) => {
   await openHome(page);
   await searchFor(page, 'order', 4);
