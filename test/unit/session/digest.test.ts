@@ -45,9 +45,14 @@ describe('session', () => {
       .user('Monitor event', { origin: { kind: 'task-notification', producer: 'monitor' } })
       .user('This session is being continued from a previous conversation: summary', { isCompactSummary: true, isVisibleInTranscriptOnly: true })
       .user('<local-command-stdout>output of a local command</local-command-stdout>')
-      .prompt('Plain prompt from an older version');
+      .prompt('Plain prompt from an older version')
+      .prompt('Why does the parser skip <task-notification> records?');
 
-    expect(promptTexts(digestOf({ main }))).toEqual(['Typed by the user', 'Plain prompt from an older version']);
+    expect(promptTexts(digestOf({ main }))).toEqual([
+      'Typed by the user',
+      'Plain prompt from an older version',
+      'Why does the parser skip <task-notification> records?',
+    ]);
   });
 
   it('session/slash-command-kept-as-command-line', () => {
@@ -55,13 +60,15 @@ describe('session', () => {
       .prompt('<command-message>review</command-message>\n<command-name>/review</command-name>\n<command-args>src/cart.ts --strict</command-args>')
       .user([{ type: 'text', text: 'EXPANDED COMMAND BODY' }], { isMeta: true })
       .prompt('<command-name>/clear</command-name>\n<command-message>clear</command-message>\n<command-args></command-args>')
-      .prompt('<command-name>compact</command-name>');
+      .prompt('<command-name>compact</command-name>')
+      .prompt('Explain the <command-name> tag');
 
     const digest = digestOf({ main });
     expect(digest.prompts.map((prompt) => [prompt.text, prompt.command])).toEqual([
       ['/review src/cart.ts --strict', true],
       ['/clear', true],
       ['/compact', true],
+      ['Explain the <command-name> tag', false],
     ]);
   });
 

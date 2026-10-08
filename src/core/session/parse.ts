@@ -31,11 +31,17 @@ const NEWLINE = 0x0a;
 const CARRIAGE_RETURN = 0x0d;
 const decoder = new TextDecoder('utf-8');
 
-/** The complete lines of `chunk` that lie within the read limit. */
-export function sliceLines(chunk: TranscriptChunk, limits: Pick<SessionLimits, 'transcriptBytes' | 'lineBytes'>): LineSlice {
+/**
+ * Calls `onLine` with each complete line of `chunk` within the limits, one at
+ * a time, so a 64 MB read never holds all its lines at once.
+ */
+export function forEachLine(
+  chunk: TranscriptChunk,
+  limits: Pick<SessionLimits, 'transcriptBytes' | 'lineBytes'>,
+  onLine: (line: string) => void,
+): Omit<LineSlice, 'lines'> {
   const { bytes, offset, fileSize } = chunk;
   const readable = Math.max(0, Math.min(bytes.length, limits.transcriptBytes - offset));
-  const lines: string[] = [];
   let skippedLines = 0;
   let pos = 0;
   while (pos < readable) {
@@ -44,10 +50,17 @@ export function sliceLines(chunk: TranscriptChunk, limits: Pick<SessionLimits, '
     let end = nl;
     if (end > pos && bytes[end - 1] === CARRIAGE_RETURN) end--;
     if (end - pos > limits.lineBytes) skippedLines++;
-    else if (end > pos) lines.push(decoder.decode(bytes.subarray(pos, end)));
+    else if (end > pos) onLine(decoder.decode(bytes.subarray(pos, end)));
     pos = nl + 1;
   }
-  return { lines, parsedBytes: offset + pos, skippedLines, truncated: fileSize > limits.transcriptBytes };
+  return { parsedBytes: offset + pos, skippedLines, truncated: fileSize > limits.transcriptBytes };
+}
+
+/** The complete lines of `chunk` that lie within the read limit. */
+export function sliceLines(chunk: TranscriptChunk, limits: Pick<SessionLimits, 'transcriptBytes' | 'lineBytes'>): LineSlice {
+  const lines: string[] = [];
+  const rest = forEachLine(chunk, limits, (line) => lines.push(line));
+  return { lines, ...rest };
 }
 
 /** A decoded transcript record: a JSON object, its fields unchecked. */

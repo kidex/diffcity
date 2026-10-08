@@ -12,7 +12,7 @@
 import { createHash } from 'node:crypto';
 import { isAbsolute, relative, resolve, sep } from 'node:path';
 import { SESSION_LIMITS, truncateUtf8, type SessionLimits } from './limits.js';
-import { arr, decodeRecord, isObject, messageContent, num, sliceLines, str, type RawRecord, type TranscriptChunk } from './parse.js';
+import { arr, decodeRecord, forEachLine, isObject, messageContent, num, str, type RawRecord, type TranscriptChunk } from './parse.js';
 import { createRedactor, type Redactor } from './redact.js';
 import {
   ACTIVITY_KINDS,
@@ -134,13 +134,12 @@ function applyLines(digest: SessionDigest, cursor: FileCursor, chunk: Transcript
   if (chunk.offset !== cursor.parsedBytes) {
     throw new Error(`transcript chunk starts at ${String(chunk.offset)}, the cursor is at ${String(cursor.parsedBytes)}`);
   }
-  const slice = sliceLines(chunk, c.limits);
-  digest.skippedLines += slice.skippedLines;
-  for (const line of slice.lines) {
+  const slice = forEachLine(chunk, c.limits, (line) => {
     const record = decodeRecord(line);
     if (record === null) digest.badLines++;
     else onRecord(record);
-  }
+  });
+  digest.skippedLines += slice.skippedLines;
   cursor.parsedBytes = slice.parsedBytes;
   cursor.truncated = slice.truncated;
   if (slice.truncated) digest.truncated = true;
@@ -254,11 +253,12 @@ function onAssistant(digest: SessionDigest, record: RawRecord, c: Ctx, run: Agen
 function onUser(digest: SessionDigest, record: RawRecord, c: Ctx, run: AgentRun | null): void {
   const content = messageContent(record);
   const origin = isObject(record.origin) ? record.origin : null;
-  if (typeof content === 'string' && content.includes('<task-notification>')) {
-    onNotification(digest, content);
+  // Notifications carry `origin.kind: 'task-notification'`; older versions only the leading tag.
+  // A prompt that merely mentions the tag is still a prompt.
+  if (origin?.kind === 'task-notification' || (typeof content === 'string' && content.trimStart().startsWith('<task-notification>'))) {
+    if (typeof content === 'string') onNotification(digest, content);
     return;
   }
-  if (origin?.kind === 'task-notification') return;
   if (origin?.kind === 'peer') {
     if (origin.handback === true) onHandback(digest, origin, c);
     return;
@@ -290,7 +290,8 @@ function onPrompt(
   } else return;
   if (OUTPUT_TAG.test(text)) return;
   let command = false;
-  const commandName = /<command-name>([\s\S]*?)<\/command-name>/.exec(text);
+  // A slash command expansion starts with its tags; a prompt that mentions them is not one.
+  const commandName = /^\s*<command-(?:name|message)>/.test(text) ? /<command-name>([\s\S]*?)<\/command-name>/.exec(text) : null;
   if (commandName !== null) {
     const name = (commandName[1] ?? '').trim();
     const args = (/<command-args>([\s\S]*?)<\/command-args>/.exec(text)?.[1] ?? '').trim();
