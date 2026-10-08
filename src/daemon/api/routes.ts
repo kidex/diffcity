@@ -16,6 +16,7 @@ import { registerDiffRoute } from './diff.js';
 import { registerFindingsRoutes } from './findings.js';
 import { isSameOrigin } from './origin.js';
 import { registerReviewRoutes } from './review.js';
+import { registerSessionsRoute } from './sessions.js';
 import type { ServedCache } from './served-cache.js';
 import { createServedReports } from './served.js';
 import { parseArchived, parseId, parseLimit, parseSearchQuery, type Query } from './params.js';
@@ -122,6 +123,7 @@ export function registerApiRoutes(http: FastifyInstance, deps: ApiDeps): void {
   });
 
   if (deps.diff !== undefined) registerDiffRoute(http, { db, port: deps.port, ...deps.diff });
+  registerSessionsRoute(http, { db, port: deps.port });
 
   const writes = { db, broadcast: deps.broadcast ?? (() => undefined), now: deps.now ?? (() => new Date()) };
   registerReviewRoutes(http, writes);
