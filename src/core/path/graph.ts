@@ -81,6 +81,13 @@ export function loadTsMorph(): Promise<TsMorph> {
   return tsMorph;
 }
 
+/** Whether a tsconfig's text parses (as JSONC) to an object. Data only: nothing is executed, `extends` is not read. */
+export function tsconfigParses(text: string, ts: TsMorph['ts']): boolean {
+  const parsed = ts.parseConfigFileTextToJson('tsconfig.json', text);
+  const config: unknown = parsed.config;
+  return parsed.error === undefined && typeof config === 'object' && config !== null && !Array.isArray(config);
+}
+
 /**
  * `compilerOptions.paths` of a tsconfig as data: patterns with at most one
  * `*`, targets that stay inside the repo, `extends` ignored. The base is the

@@ -5,6 +5,7 @@
 // the file did not have. Pure: imports, file lists and tsconfig paths come in.
 
 import type { ImportRef } from '../parse/imports.js';
+import { languageForPath } from '../parse/language.js';
 import type { Status } from '../report/types.js';
 import type { LayersRule, Severity } from './config.js';
 import type { RuleFile, RuleViolation } from './engine.js';
@@ -21,12 +22,21 @@ export interface LayersContext {
   beforeFiles: ReadonlySet<string>;
   /** Read only for a rule with `useTsconfigPaths`; null when there is none or it has no usable paths. */
   tsconfigPaths: TsconfigPaths | null;
+  /** Why a rule with `useTsconfigPaths` has no tsconfig to read; absent when it was read (or not needed). */
+  tsconfigProblem?: TsconfigProblem | null | undefined;
 }
+
+/** A root tsconfig.json that a rule with `useTsconfigPaths` could not use. */
+export type TsconfigProblem = 'not found' | 'could not be parsed';
 
 export interface LayersResult {
   violations: RuleViolation[];
   /** Imports of checked files that could not be resolved. */
   unresolved: number;
+  /** Checked code files whose after version was not parsed (over the parse limit, binary): their imports are unknown. */
+  unparsed: number;
+  /** Set when the rule reads tsconfig paths and there were none to read. */
+  tsconfigProblem: TsconfigProblem | null;
 }
 
 /** Statuses whose files are checked: a file whose only change is its imports has its git status, `mod` (ADR-008). */
@@ -58,16 +68,30 @@ function plural(count: number, noun: string): string {
   return `${String(count)} ${noun}${count === 1 ? '' : 's'}`;
 }
 
-/** The reason of a layers check: the unresolved imports, when there are some. */
-export function layersReason(unresolved: number): string | undefined {
-  return unresolved > 0 ? `${plural(unresolved, 'import')} could not be resolved` : undefined;
+/**
+ * The reason of a layers check: everything the rule could not look at, so
+ * missing evidence never reads as a pass (ADR-030, ADR-031). Undefined when
+ * the rule saw everything.
+ */
+export function layersReason(result: Pick<LayersResult, 'unresolved' | 'unparsed' | 'tsconfigProblem'>): string | undefined {
+  const parts: string[] = [];
+  if (result.unresolved > 0) parts.push(`${plural(result.unresolved, 'import')} could not be resolved`);
+  if (result.unparsed > 0) parts.push(`${plural(result.unparsed, 'file')} could not be parsed`);
+  if (result.tsconfigProblem !== null) parts.push(`tsconfig.json ${result.tsconfigProblem}`);
+  return parts.length === 0 ? undefined : parts.join('; ');
+}
+
+/** A file the parser extracts imports from (SQL has none). */
+function hasImports(path: string): boolean {
+  const language = languageForPath(path);
+  return language !== null && language !== 'sql';
 }
 
 /** The violations of one layers rule over the touched files. The rule is valid (its modules were checked by validateRule). */
 export function checkLayers(rule: LayersRule, files: readonly RuleFile[], context: LayersContext): LayersResult {
   const parsed = layerModules(rule.layers);
   // validateRule refuses such a rule; nothing to check if one gets here anyway.
-  if (!parsed.ok) return { violations: [], unresolved: 0 };
+  if (!parsed.ok) return { violations: [], unresolved: 0, unparsed: 0, tsconfigProblem: null };
   const modules: readonly LayerModule[] = parsed.modules;
   const options = { aliases: rule.aliases, tsconfigPaths: rule.useTsconfigPaths === true ? context.tsconfigPaths : null };
   const resolveAfter = createResolver(context.afterFiles, options);
@@ -75,12 +99,17 @@ export function checkLayers(rule: LayersRule, files: readonly RuleFile[], contex
   const keep = counted(rule);
   const violations: RuleViolation[] = [];
   let unresolved = 0;
+  let unparsed = 0;
 
   for (const file of files) {
-    const after = file.imports?.after;
-    if (!CHECKED.has(file.status) || after === null || after === undefined) continue;
+    if (!CHECKED.has(file.status)) continue;
     const from = moduleOf(modules, file.path);
     if (from === null) continue;
+    const after = file.imports?.after;
+    if (after === null || after === undefined) {
+      if (hasImports(file.path)) unparsed += 1;
+      continue;
+    }
     const oldPath = file.oldPath ?? file.path;
     let earlier: Set<string> | null = null;
     // The target modules the before version imported, resolved against the before list (computed once, when needed).
@@ -112,5 +141,6 @@ export function checkLayers(rule: LayersRule, files: readonly RuleFile[], contex
       });
     }
   }
-  return { violations, unresolved };
+  const tsconfigProblem = rule.useTsconfigPaths === true ? (context.tsconfigProblem ?? null) : null;
+  return { violations, unresolved, unparsed, tsconfigProblem };
 }

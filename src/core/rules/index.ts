@@ -14,7 +14,7 @@ export type {
 export { isRuleTarget, measureNeeds, ruleFindingId, rulesNeedImports, rulesNeedTsconfigPaths, runRules } from './engine.js';
 export type { RuleContext, RuleFile, RuleRun, RuleViolation } from './engine.js';
 export { LAYERS_DEFAULT_SEVERITY, beforeFilesOf, checkLayers, layersReason } from './layers.js';
-export type { LayersContext, LayersResult, ListedChange } from './layers.js';
+export type { LayersContext, LayersResult, ListedChange, TsconfigProblem } from './layers.js';
 export { layerModules, moduleOf } from './modules.js';
 export type { LayerModule, LayerModules, ModuleOf } from './modules.js';
 export { EXTENSIONS, createResolver } from './resolve.js';

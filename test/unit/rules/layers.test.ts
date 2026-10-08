@@ -4,7 +4,7 @@
 
 import { describe, expect, it } from 'vitest';
 import type { RuleCheck } from '../../../src/core/report/types.js';
-import { ruleFindingId } from '../../../src/core/rules/index.js';
+import { mergeRules, ruleFindingId, runRules, type RuleFile } from '../../../src/core/rules/index.js';
 import { CASE_TIME, findingRows, runLayersCase } from '../../helpers/layers-case.js';
 
 const UPWARD_DAEMON = 'Upward import: src/core → src/daemon';
@@ -206,5 +206,50 @@ describe('layers: check', () => {
     expect(findingRows(run.findings)).toEqual([['src/core/ledger.ts', 1, UPWARD_DAEMON]]);
     // ./gone.js, @lost/thing and require(name); scripts/seed.ts is in no module.
     expect(run.checks).toEqual([check('violations', 1, '3 imports could not be resolved')]);
+  });
+});
+
+describe('layers: missing evidence is in the reason', () => {
+  const LAYERS = [['src/cli', 'src/ui'], ['src/daemon'], ['src/core']];
+
+  function file(path: string, imports: RuleFile['imports'], status: RuleFile['status'] = 'mod'): RuleFile {
+    return { path, status, symbols: [], after: null, ...(imports === undefined ? {} : { imports }) };
+  }
+
+  it('layers/unparsed-file-noted: a checked code file that was not parsed is counted; the state follows the edges found', () => {
+    const unparsed = { before: null, after: null };
+    const files = [
+      file('src/core/post.ts', { before: [], after: [{ specifier: '../daemon/server.js', line: 1, typeOnly: false }, { specifier: './gone.js', line: 2, typeOnly: false }] }),
+      // Over 2 MB or binary: no imports for either version.
+      file('src/core/huge.ts', unparsed),
+      file('src/daemon/blob.js', unparsed, 'add'),
+      // Not counted: not code, outside every module, deleted, untouched.
+      file('src/core/logo.png', unparsed),
+      file('src/core/schema.sql', unparsed),
+      file('scripts/huge.ts', unparsed),
+      file('src/core/gone.ts', unparsed, 'del'),
+      file('src/core/same.ts', unparsed, 'same'),
+    ];
+    const context = { afterFiles: new Set(['src/core/post.ts', 'src/daemon/server.ts']), beforeFiles: new Set<string>(), tsconfigPaths: null };
+    const run = (layers: unknown, extra: Record<string, unknown> = {}): RuleCheck | undefined =>
+      runRules(mergeRules({ settings: [{ id: 'layers', kind: 'layers', layers, ...extra }] }), files, CASE_TIME, context).checks[0];
+    expect(run(LAYERS)).toEqual(check('violations', 1, '1 import could not be resolved; 2 files could not be parsed'));
+    expect(run([['src/core'], ['src/daemon']])).toEqual(check('passed', 0, '1 import could not be resolved; 2 files could not be parsed'));
+    const missing = { ...context, tsconfigProblem: 'not found' as const };
+    const withTsconfig = runRules(mergeRules({ settings: [{ id: 'layers', kind: 'layers', layers: LAYERS, useTsconfigPaths: true }] }), files.slice(1, 2), CASE_TIME, missing);
+    expect(withTsconfig.checks).toEqual([check('passed', 0, '1 file could not be parsed; tsconfig.json not found')]);
+  });
+
+  it('layers/tsconfig-missing-noted: useTsconfigPaths without a root tsconfig.json says so', async () => {
+    const run = await runLayersCase('upward-violation', { useTsconfigPaths: true });
+    expect(run.checks).toEqual([check('violations', 1, 'tsconfig.json not found')]);
+    // Without useTsconfigPaths the file is not needed.
+    expect((await runLayersCase('upward-violation')).checks).toEqual([check('violations', 1)]);
+  });
+
+  it('layers/tsconfig-unparsable-noted: a tsconfig.json that cannot be parsed says so, and maps nothing', async () => {
+    const run = await runLayersCase('tsconfig-unparsable-noted');
+    expect(findingRows(run.findings)).toEqual([['src/core/ledger.ts', 1, UPWARD_DAEMON]]);
+    expect(run.checks).toEqual([check('violations', 1, 'tsconfig.json could not be parsed')]);
   });
 });

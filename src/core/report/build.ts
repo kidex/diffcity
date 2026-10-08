@@ -31,7 +31,7 @@ import type { FileFingerprint, Fingerprints } from '../model/types.js';
 import { MAX_PARSE_BYTES } from '../parse/file.js';
 import { languageForPath } from '../parse/language.js';
 import { buildExecutionPath } from '../path/order.js';
-import { loadTsMorph, readTsconfigPaths } from '../path/graph.js';
+import { loadTsMorph, readTsconfigPaths, tsconfigParses } from '../path/graph.js';
 import {
   beforeFilesOf,
   measureNeeds,
@@ -388,12 +388,14 @@ async function ruleContextOf(
   readTsconfig: () => Promise<string | null>,
 ): Promise<RuleContext> {
   if (!rulesNeedImports(rules)) return { afterFiles: new Set(), beforeFiles: new Set(), tsconfigPaths: null };
-  const tsconfig = rulesNeedTsconfigPaths(rules) ? await readTsconfig() : null;
-  return {
-    afterFiles: new Set(headFiles),
-    beforeFiles: new Set(beforeFilesOf(headFiles, changed)),
-    tsconfigPaths: tsconfig === null ? null : readTsconfigPaths(tsconfig, (await loadTsMorph()).ts),
-  };
+  const context: RuleContext = { afterFiles: new Set(headFiles), beforeFiles: new Set(beforeFilesOf(headFiles, changed)), tsconfigPaths: null };
+  if (!rulesNeedTsconfigPaths(rules)) return context;
+  // Missing (or above MAX_PATH_CONFIG_BYTES, which readRootConfig does not read) is "not found".
+  const tsconfig = await readTsconfig();
+  if (tsconfig === null) return { ...context, tsconfigProblem: 'not found' };
+  const { ts } = await loadTsMorph();
+  if (!tsconfigParses(tsconfig, ts)) return { ...context, tsconfigProblem: 'could not be parsed' };
+  return { ...context, tsconfigPaths: readTsconfigPaths(tsconfig, ts) };
 }
 
 /**

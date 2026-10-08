@@ -88,6 +88,17 @@ describe('the layers rule in the Report', () => {
     ]);
   });
 
+  it('says in the reason what it could not check: a binary code file, a missing or broken tsconfig.json', async () => {
+    const repo = await fixture('upward-violation');
+    // NUL bytes: git and the report treat it as binary, so it is never parsed.
+    await repo.repo.commit('binary', { 'src/core/blob.ts': `export const blob = 1;\n${'\0'.repeat(16)}\n` });
+    const report = await build(repo, [layersRule('upward-violation', { useTsconfigPaths: true })]);
+    expect(report.checks?.map((check) => [check.state, check.reason])).toEqual([['violations', '1 file could not be parsed; tsconfig.json not found']]);
+    const broken = await fixture('tsconfig-unparsable-noted');
+    const brokenReport = await build(broken, [layersRule('tsconfig-unparsable-noted')]);
+    expect(brokenReport.checks?.map((check) => [check.state, check.reason])).toEqual([['violations', 'tsconfig.json could not be parsed']]);
+  });
+
   it('is deterministic, keeps the time out of the content hash, and leaves a Report without the rule as it was', async () => {
     const repo = await fixture('js-to-ts-sibling');
     const rules = [layersRule('js-to-ts-sibling')];

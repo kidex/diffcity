@@ -154,10 +154,10 @@ export function runRules(rules: readonly MergedRule[], files: readonly RuleFile[
         break;
       }
       case 'layers': {
-        const { violations, unresolved } = checkLayers(rule, targets, context);
-        const count = report(rule.id, rule.severity ?? LAYERS_DEFAULT_SEVERITY, 'architecture', violations);
-        const reason = layersReason(unresolved);
-        // Unresolved imports are never passing evidence: the reason says how many there were.
+        const result = checkLayers(rule, targets, context);
+        const count = report(rule.id, rule.severity ?? LAYERS_DEFAULT_SEVERITY, 'architecture', result.violations);
+        const reason = layersReason(result);
+        // Missing evidence (unresolved imports, unparsed files, no tsconfig) never reads as a pass: the reason always says so.
         checks.push({ ruleId: rule.id, kind: rule.kind, state: count > 0 ? 'violations' : 'passed', ...(reason === undefined ? {} : { reason }), findings: count, checkedAt });
         break;
       }

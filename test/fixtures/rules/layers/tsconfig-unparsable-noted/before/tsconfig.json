@@ -1,0 +1,4 @@
+{
+  "compilerOptions": {
+    "paths": {
+      "#daemon/*": ["src/daemon/*"

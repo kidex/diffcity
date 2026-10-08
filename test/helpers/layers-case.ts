@@ -7,9 +7,9 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { compareFileWithFingerprints, type GitChange } from '../../src/core/diff/status.js';
-import { loadTsMorph, readTsconfigPaths } from '../../src/core/path/graph.js';
+import { loadTsMorph, readTsconfigPaths, tsconfigParses } from '../../src/core/path/graph.js';
 import type { Report } from '../../src/core/report/types.js';
-import { beforeFilesOf, mergeRules, rulesNeedTsconfigPaths, runRules, type RuleFile, type RuleRun } from '../../src/core/rules/index.js';
+import { beforeFilesOf, mergeRules, rulesNeedTsconfigPaths, runRules, type RuleContext, type RuleFile, type RuleRun } from '../../src/core/rules/index.js';
 import { stageTree } from './fixture-repo.js';
 
 export const LAYERS_CASES = 'rules/layers';
@@ -80,13 +80,16 @@ export async function runLayersCase(name: string, extra: Record<string, unknown>
 
   const rules = mergeRules({ settings: [layersRule(name, extra)] });
   const afterFiles = Object.keys(after).sort();
+  const context: RuleContext = { afterFiles: new Set(afterFiles), beforeFiles: new Set(beforeFilesOf(afterFiles, changed)), tsconfigPaths: null };
+  // As buildReport reads it: only for a rule that asks, from the after state.
   const tsconfig = after['tsconfig.json'];
-  const tsconfigPaths = rulesNeedTsconfigPaths(rules) && tsconfig !== undefined ? readTsconfigPaths(tsconfig, (await loadTsMorph()).ts) : null;
-  const run = runRules(rules, files, CASE_TIME, {
-    afterFiles: new Set(afterFiles),
-    beforeFiles: new Set(beforeFilesOf(afterFiles, changed)),
-    tsconfigPaths,
-  });
+  if (rulesNeedTsconfigPaths(rules)) {
+    const { ts } = await loadTsMorph();
+    if (tsconfig === undefined) context.tsconfigProblem = 'not found';
+    else if (!tsconfigParses(tsconfig, ts)) context.tsconfigProblem = 'could not be parsed';
+    else context.tsconfigPaths = readTsconfigPaths(tsconfig, ts);
+  }
+  const run = runRules(rules, files, CASE_TIME, context);
   return { ...run, files };
 }
 
