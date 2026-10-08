@@ -101,6 +101,15 @@ describe('slash: the /diffcity-review command file', () => {
     }
   });
 
+  it('slash/glob-limit: past the Glob limit the items are read one hex prefix at a time, before the taken directory is removed', () => {
+    const text = commandFileText('diffcity');
+    const prefixRead = text.indexOf('one hex prefix at a time');
+    expect(prefixRead).toBeGreaterThan(-1);
+    expect(text).toContain('.diffcity/fix-queue.taking/**/0*.json');
+    expect(text).toContain('.diffcity/fix-queue.taking/**/f*.json');
+    expect(prefixRead).toBeLessThan(text.indexOf('Then run `rm -r .diffcity/fix-queue.taking`'));
+  });
+
   it('slash/paths-from-repo-root: the body says its paths are relative to the repository root, right after the marker', () => {
     const lines = commandFileText('diffcity').split('\n');
     expect(lines[lines.indexOf(COMMAND_MARKER) + 1]).toBe('All paths below are relative to the repository root: run every command from there.');

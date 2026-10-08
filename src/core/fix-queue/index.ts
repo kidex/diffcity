@@ -31,7 +31,11 @@ import { join } from 'node:path';
 import type { Finding, Report } from '../report/types.js';
 
 export const FIX_QUEUE_VERSION = 1;
-export const FIX_QUEUE_MAX_ITEMS = 200;
+/**
+ * At most this many items. Claude Code 2.1.288's Glob lists at most 100 files,
+ * and /diffcity-review lists the taken items with Glob before it removes them.
+ */
+export const FIX_QUEUE_MAX_ITEMS = 100;
 export const FIX_QUEUE_MAX_BYTES = 1024 * 1024;
 /** The markdown of a `review-summary` item is capped by its writer (ADR-029) at this many bytes. */
 export const FIX_QUEUE_SUMMARY_MAX_BYTES = 64 * 1024;
@@ -213,7 +217,7 @@ function renameInto(temp: string, path: string): 'ok' | 'gone' | FixQueueResult 
  * change has none). Idempotent per key while the item is queued. Refusals:
  * `no-working-tree` (no root, or it is not a directory), `fix-queue-unsafe`
  * (`.diffcity`, the queue directory or the item's file is a link or not what
- * it should be), `fix-queue-full` (over 200 items or 1 MiB), `fix-queue-busy`
+ * it should be), `fix-queue-full` (over 100 items or 1 MiB), `fix-queue-busy`
  * (the queue was taken under each of FIX_QUEUE_ATTEMPTS renames).
  *
  * The temporary file is written once, in `.diffcity` next to the queue

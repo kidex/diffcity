@@ -50,7 +50,7 @@ The command's paths (`.diffcity/...`) are relative to the repository root, and t
 
 The command:
 
-1. takes the fix queue by renaming the directory `.diffcity/fix-queue` to `.diffcity/fix-queue.taking`, reads every item file in it (one version 1 item per `.json` file), applies the items and removes the taken directory, so an item diffcity queues meanwhile lands in a new queue and is neither lost nor applied twice; a taking directory left by an interrupted run is applied and removed first;
+1. takes the fix queue by renaming the directory `.diffcity/fix-queue` to `.diffcity/fix-queue.taking`, reads every item file in it (one version 1 item per `.json` file), applies the items and removes the taken directory, so an item diffcity queues meanwhile lands in a new queue and is neither lost nor applied twice; a taking directory left by an interrupted run is applied and removed first. Claude Code's Glob lists at most 100 files, so the queue holds at most 100 items; if Glob still reports files it did not list, the command reads the items one hex prefix at a time (`0*.json` through `f*.json`) and removes the taken directory only after every item has been read;
 2. reads `diffcity diff --json --compact`, the Report without untouched files;
 3. writes the findings to `.diffcity/findings.json` in the format of [findings.md](findings.md), only for files of the change and lines of their current version;
 4. runs `diffcity import .diffcity/findings.json --open`, which opens the change in the browser.

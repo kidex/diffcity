@@ -72,6 +72,8 @@ export function commandFileText(cli: string): string {
     'stopped halfway: apply it and remove it as below before anything else.',
     `Run \`${run.take}\`; when \`${FIX_QUEUE_PATH}\` does not exist, nothing is queued.`,
     `Otherwise find every \`${FIX_QUEUE_TAKING_PATH}/**/*.json\` with Glob and read each one: a file is one item.`,
+    `If Glob says more files were not listed, read the items one hex prefix at a time, \`${FIX_QUEUE_TAKING_PATH}/**/0*.json\``,
+    `through \`${FIX_QUEUE_TAKING_PATH}/**/f*.json\`, and run the \`rm -r\` below only after every item has been read.`,
     'An item with `file`, `line`, `title`, `message` and `fix` is a finding to fix; an item with',
     '`kind: "review-summary"` is the reviewer\'s summary, in `message`. Apply every item.',
     `Then run \`${run.drop}\`.`,

@@ -1,6 +1,6 @@
 // The fix-queue writer (ADR-036, DC-112) on real temporary directories and
 // real symbolic links: `<working tree>/.diffcity/fix-queue/<id>.json`, one
-// version 1 item per file, idempotent per key, at most 200 items and 1 MiB,
+// version 1 item per file, idempotent per key, at most 100 items and 1 MiB,
 // refused through symlinks.
 
 import { lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
@@ -174,15 +174,21 @@ describe('fix queue writer', () => {
     expect(appendToFixQueue(root, item(1))).toMatchObject({ ok: false, code: 'no-working-tree' });
   });
 
-  it('fix-queue/cap-200: the 201st item is refused, a repeated key is still fine', () => {
+  it('fix-queue/cap-fits-glob: at most 100 items, the most Claude Code 2.1.288 Glob lists at once', () => {
+    // /diffcity-review lists the taken items with Glob, which shows at most 100 files,
+    // and then removes the taken directory: a larger queue could lose items unapplied.
+    expect(FIX_QUEUE_MAX_ITEMS).toBeLessThanOrEqual(100);
+  });
+
+  it('fix-queue/cap-100: the 101st item is refused, a repeated key is still fine', () => {
     const root = tree();
     for (let n = 1; n <= FIX_QUEUE_MAX_ITEMS; n += 1) {
       expect(appendToFixQueue(root, item(n))).toMatchObject({ ok: true, queued: true });
     }
-    expect(FIX_QUEUE_MAX_ITEMS).toBe(200);
-    expect(appendToFixQueue(root, item(201))).toMatchObject({ ok: false, code: 'fix-queue-full' });
-    expect(appendToFixQueue(root, item(7))).toEqual({ ok: true, queued: false, count: 200 });
-    expect(readQueue(root)).toHaveLength(200);
+    expect(FIX_QUEUE_MAX_ITEMS).toBe(100);
+    expect(appendToFixQueue(root, item(101))).toMatchObject({ ok: false, code: 'fix-queue-full' });
+    expect(appendToFixQueue(root, item(7))).toEqual({ ok: true, queued: false, count: 100 });
+    expect(readQueue(root)).toHaveLength(100);
   });
 
   it('fix-queue/cap-1mib: a queue that would pass 1 MiB is refused', () => {
