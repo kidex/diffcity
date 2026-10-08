@@ -7,7 +7,7 @@ import type { ReviewMark, ReviewProgress } from '../../../src/core/model/types.j
 import { createReviewController, SNAPSHOT_MOVED } from '../../../src/ui/screens/change/review/controller.js';
 import type { MarkRequest, ReviewPort, ReviewState } from '../../../src/ui/screens/change/ports.js';
 
-const progress = (done: number): ReviewProgress => ({ attention: { done, total: 2 }, touched: { done, total: 4 }, rewrite: 0, outdated: 0, allAttentionDone: false });
+const progress = (done: number): ReviewProgress => ({ attention: { done, total: 2 }, touched: { done, total: 4 }, tier1: { done: 0, total: 0 }, rewrite: 0, outdated: 0, allAttentionDone: false });
 const saved = (request: MarkRequest): ReviewMark => ({
   targetKind: request.target.kind,
   targetId: request.target.id,

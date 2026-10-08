@@ -36,7 +36,7 @@ const mark = (over: Partial<ReviewMark>): ReviewMark => ({
   ...over,
 });
 
-const progress = { attention: { done: 1, total: 3 }, touched: { done: 2, total: 5 }, rewrite: 1, outdated: 0, allAttentionDone: false };
+const progress = { attention: { done: 1, total: 3 }, touched: { done: 2, total: 5 }, tier1: { done: 0, total: 0 }, rewrite: 1, outdated: 0, allAttentionDone: false };
 const state = (marks: ReviewMark[]): ReviewState => ({ snapshotId: 4, marks, note: null, progress });
 
 const report = {

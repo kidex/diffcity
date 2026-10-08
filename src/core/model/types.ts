@@ -216,6 +216,12 @@ export interface ReviewMark {
 export interface ReviewProgress {
   attention: { done: number; total: number };
   touched: { done: number; total: number };
+  /**
+   * Touched tier 1 files (`summary.tier1Files`) with a current mark, out of all
+   * of them; `done === total` exactly when the Approve gate (ADR-036) passes,
+   * including when there are none.
+   */
+  tier1: { done: number; total: number };
   rewrite: number;
   outdated: number;
   allAttentionDone: boolean;
@@ -292,6 +298,10 @@ export interface ChangeSummary {
   archiveReason: ArchiveReason | null;
   /** Null while there is no snapshot ("computing"). */
   stats: ChangeStats | null;
+  /** The head the change was approved at; null when not approved (ADR-036). */
+  approvedHead: string | null;
+  /** When the change was approved (ISO 8601); null when not approved. */
+  approvedAt: string | null;
 }
 
 /** `GET /api/repos/:id`: the repo and its live changes, ordered by `lastEvent.at` desc. */
