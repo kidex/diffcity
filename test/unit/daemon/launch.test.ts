@@ -65,6 +65,12 @@ describe('daemon launcher', () => {
     expect(calls[0]).toEqual(['/usr/bin/xattr', ['-p', 'com.apple.provenance', '/opt/sample tool/cli.js']]);
   });
 
+  it('launch/xattr-timeout-or-error-counts-as-tagged', () => {
+    // Under the load that makes a tainted daemon slow, xattr itself may time out.
+    expect(hasProvenance('/opt/sample/cli.js', () => ({ status: null }))).toBe(true);
+    expect(hasProvenance('/opt/sample/cli.js', () => ({ status: null, error: new Error('spawnSync /usr/bin/xattr ETIMEDOUT') }))).toBe(true);
+  });
+
   it('launch/open-args-carry-env-log-and-daemon-argv', () => {
     const args = launchServicesArgs({
       execPath: '/opt/node/bin/node',

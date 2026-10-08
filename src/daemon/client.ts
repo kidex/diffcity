@@ -122,13 +122,20 @@ const XATTR = '/usr/bin/xattr';
 const PROVENANCE = 'com.apple.provenance';
 
 /** Runs a program without a shell; the subset of spawnSync these helpers use. */
-export type RunSync = (file: string, args: string[]) => { status: number | null };
+export type RunSync = (file: string, args: string[]) => { status: number | null; error?: Error | undefined };
 
 const runSync: RunSync = (file, args) => spawnSync(file, args, { stdio: 'ignore', timeout: 5000 });
 
-/** True when `file` carries the com.apple.provenance extended attribute (macOS). */
+/**
+ * True when `file` carries the com.apple.provenance extended attribute
+ * (macOS), and when xattr could not tell (timed out or failed to run): that
+ * happens under exactly the load that makes a tainted daemon slow, and the
+ * LaunchServices start falls back to a child anyway.
+ */
 export function hasProvenance(file: string, run: RunSync = runSync): boolean {
-  return run(XATTR, ['-p', PROVENANCE, file]).status === 0;
+  const result = run(XATTR, ['-p', PROVENANCE, file]);
+  if (result.error !== undefined || result.status === null) return true;
+  return result.status === 0;
 }
 
 /**
