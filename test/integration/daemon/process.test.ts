@@ -165,7 +165,9 @@ describe('daemon process', () => {
     const infoText = await readFile(paths.daemonJson, 'utf8');
     await rm(paths.daemonJson);
     const second = daemons.spawnDaemon(temp.env);
-    await new Promise((resolve) => setTimeout(resolve, 2000));
+    // Signalled once it waits, not while it still loads (DC-119: loading takes seconds under load).
+    const waiting = `lock held by pid ${String(info.pid)}; waiting for it to answer ping (pid ${String(second.child.pid)})`;
+    await waitFor(async () => (await readFile(paths.log, 'utf8')).includes(waiting), 45_000, 'the second daemon to wait');
     expect(second.child.exitCode, 'the second daemon is still waiting').toBeNull();
     expect(second.stdout()).not.toContain('already running');
     const started = Date.now();
