@@ -19,6 +19,18 @@ const KIND_LABEL: Record<SearchResult['kind'], string> = { repo: 'Repo', change:
 const SEARCH_DELAY_MS = 80;
 const LIMIT = 20;
 
+/** What a result opens: the same key in two answers is the same result. */
+function searchResultKey(result: SearchResult): string {
+  switch (result.kind) {
+    case 'repo':
+      return `repo:${String(result.repoId)}`;
+    case 'change':
+      return `change:${String(result.changeId)}`;
+    case 'file':
+      return `file:${String(result.changeId)}:${result.path}`;
+  }
+}
+
 /** Cmd+K on macOS, Ctrl+K elsewhere; both are accepted everywhere. */
 export function isPaletteShortcut(event: KeyboardEvent): boolean {
   return (event.metaKey || event.ctrlKey) && !event.altKey && !event.shiftKey && event.key.toLowerCase() === 'k';
@@ -63,6 +75,12 @@ export function mountPalette(api: Api, go: (route: Route) => void, doc: Document
 
   let results: SearchResult[] = [];
   let active = -1;
+  /**
+   * The result the user moved the selection to (arrows or pointer), if any.
+   * Results for a newer query keep it selected while they still list it, so an
+   * answer that lands after the user moved never sends Enter somewhere else.
+   */
+  let picked: SearchResult | null = null;
   let returnFocus: Element | null = null;
   let timer: ReturnType<typeof setTimeout> | null = null;
   let inflight: AbortController | null = null;
@@ -112,6 +130,7 @@ export function mountPalette(api: Api, go: (route: Route) => void, doc: Document
 
   function setActive(index: number): void {
     active = index;
+    picked = results[index] ?? null;
     for (const [i, option] of Array.from(list.children).entries()) {
       option.setAttribute('aria-selected', i === active ? 'true' : 'false');
     }
@@ -131,6 +150,7 @@ export function mountPalette(api: Api, go: (route: Route) => void, doc: Document
     const id = ++sequence;
     if (query === '') {
       inflight = null;
+      picked = null;
       results = [];
       active = -1;
       render();
@@ -143,7 +163,10 @@ export function mountPalette(api: Api, go: (route: Route) => void, doc: Document
       const found = await api.search(query, { limit: LIMIT, signal: controller.signal });
       if (id !== sequence) return;
       results = found;
-      active = found.length > 0 ? 0 : -1;
+      const pickedKey = picked === null ? null : searchResultKey(picked);
+      const kept = pickedKey === null ? -1 : found.findIndex((result) => searchResultKey(result) === pickedKey);
+      if (kept < 0) picked = null;
+      active = kept >= 0 ? kept : found.length > 0 ? 0 : -1;
       render();
       setEmpty(found.length > 0 ? '' : 'No matches.');
     } catch {
@@ -200,6 +223,7 @@ export function mountPalette(api: Api, go: (route: Route) => void, doc: Document
     inflight?.abort();
     sequence++;
     session++;
+    picked = null;
     if (returnFocus instanceof HTMLElement && returnFocus.isConnected) returnFocus.focus();
     returnFocus = null;
   }
