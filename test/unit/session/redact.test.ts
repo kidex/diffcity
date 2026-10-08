@@ -95,6 +95,54 @@ describe('redact', () => {
     expect(r(`token ${hex.slice(0, 39)}`)).toBe(`token ${hex.slice(0, 39)}`);
   });
 
+  it('redact/basic-auth: header values at a line start and inside a curl -H, the scheme with them', () => {
+    const credentials = Buffer.from(`robin:${run(ALNUM, 12)}`).toString('base64');
+    expect(r(`Authorization: Basic ${credentials}`)).toBe('Authorization: Basic [redacted:basic-auth]');
+    expect(r(`curl -H "Authorization: Basic ${credentials}" https://api.shopfront.test`)).toBe(
+      'curl -H "Authorization: Basic [redacted:basic-auth]" https://api.shopfront.test',
+    );
+    // A value that does not look like base64 still goes, scheme and all, after Authorization.
+    expect(r('Authorization: Token abcdefgh')).toBe(`Authorization: ${M}`);
+    expect(r('Read the Basic overview first.')).toBe('Read the Basic overview first.');
+  });
+
+  it('redact/pem-pgp-block: a PGP private key block', () => {
+    const begin = join('-----BEGIN PGP ', 'PRIVATE', ' KEY BLOCK-----');
+    const end = join('-----END PGP ', 'PRIVATE', ' KEY BLOCK-----');
+    expect(r(`${begin}\n${run(ALNUM, 64)}\n${end}`)).toBe('[redacted:private-key]');
+  });
+
+  it('redact/slack-token-forms: any xox letter and xapp', () => {
+    expect(r(`${join('xo', 'xe-')}1-${run(ALNUM, 40)}`)).toBe('[redacted:slack-token]');
+    expect(r(`${join('xa', 'pp-')}1-${run(ALNUM, 30)}`)).toBe('[redacted:slack-token]');
+  });
+
+  it('redact/linear-on-adversarial-lines: 1 MB lines each under 200 ms', () => {
+    const MB = 1024 * 1024;
+    const base64url = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
+    let seed = 7;
+    const random = Array.from({ length: MB }, () => {
+      seed = (seed * 1103515245 + 12345) % 2 ** 31;
+      return base64url[seed % 64] ?? 'A';
+    }).join('');
+    const inputs: Record<string, string> = {
+      'key-': 'key-'.repeat(MB / 4),
+      'random base64url': random,
+      'a.': 'a.'.repeat(MB / 2),
+      'dotted ids': 'com.shopfront.cart.badge.v2.'.repeat(MB / 28),
+      'key=': 'key='.repeat(MB / 4),
+      'token "': 'token: "'.repeat(MB / 8),
+      'Basic ': 'Basic '.repeat(MB / 6),
+      'eyJ': 'eyJaaaaa.'.repeat(MB / 9),
+      'scheme://': 'a+b.c-'.repeat(MB / 6),
+    };
+    for (const [name, text] of Object.entries(inputs)) {
+      const start = performance.now();
+      r(text);
+      expect(performance.now() - start, name).toBeLessThan(200);
+    }
+  });
+
   it('redact/plain-text-untouched: prose, code and paths without secrets', () => {
     const texts = [
       'Add a keyboard shortcut to the shopfront cart and refactor the token parser.',
