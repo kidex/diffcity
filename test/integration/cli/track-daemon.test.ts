@@ -95,7 +95,8 @@ describe('track, scan and shell-init with the built CLI and a real daemon', () =
       JSON.stringify({ session_id: 'session-0001', transcript_path: '/work/transcripts/session-0001.jsonl', cwd, hook_event_name: 'Stop' });
 
     const outside = await cliWithStdin(['track', '--agent'], hook(temp.root));
-    expect(outside).toEqual({ code: 1, stdout: '', stderr: `diffcity track: not a git repository: ${temp.root}\n` });
+    // The Stop hook never blocks the agent (ADR-037): one line on stderr, exit 0.
+    expect(outside).toEqual({ code: 0, stdout: '', stderr: `diffcity track: not a git repository: ${temp.root}\n` });
 
     expectHandled(await cliWithStdin(['track', '--agent'], hook(join(repo.dir, 'src'))), 'track', 'tracked sample-shop\n');
   });

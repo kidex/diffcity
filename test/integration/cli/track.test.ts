@@ -186,9 +186,9 @@ describe('diffcity track --agent with the Claude Code Stop hook on stdin', () =>
     expect(fake.requests).toEqual([trackRequest(repo.dir, true)]);
   });
 
-  it('a hook cwd outside a repo: the not-a-repo error, exit 1', async () => {
+  it('a hook cwd outside a repo: the not-a-repo error on one line, exit 0 so the agent is never blocked (ADR-037)', async () => {
     const result = await track(undefined, { agent: true }, { stdin: pipe(hookJson(temp.root)) });
-    expect(result.code).toBe(1);
+    expect(result.code).toBe(0);
     expect(result.stderr).toBe(`diffcity track: not a git repository: ${temp.root}\n`);
   });
 

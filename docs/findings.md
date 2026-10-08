@@ -24,7 +24,7 @@ interface FindingInput {
 
 `why` is a one-line reading hint for the execution path (for example "new route, called without an order"); it is optional and not part of the finding itself. Newlines and runs of whitespace in it are collapsed to single spaces. While the finding is `open` or `intended`, its hint replaces the `why` of the step of the symbol it is anchored to (after re-anchoring on the latest snapshot) in the Report diffcity serves; the stored Report is not changed. An `intended` finding keeps its hint because the reviewer accepted the code and the hint still explains the step; a `fixed` finding does not, because the code it described has changed. When several such findings with a hint are on one symbol, the first in import order wins. A `fixed` finding, or one with no symbol, changes no step. `category: 'architecture'` is for findings about layering and structure.
 
-Example, as written by the `/code-review` slash command to `.diffcity/findings.json`:
+Example, as written by the `/diffcity-review` slash command to `.diffcity/findings.json`:
 
 ```json
 [
@@ -188,4 +188,4 @@ warning: runs[0].results[4]: skipped: no physical location
 
 Exit status: `0` when the findings are stored; `1` for a file that cannot be read, is over 8 MiB, is not valid JSON or is rejected by the parser (with one line per problem), a payload over 4 MiB, a directory outside a git repository, or a refusal by the daemon (with its reason). A daemon older than the CLI, which does not know the `import` request, gets: ``the running daemon is older than this CLI; run `diffcity stop` then try again``.
 
-Findings files written next to the code, `.diffcity/findings.json`, and the fix queue, `.diffcity/fix-queue.json`, are never part of a change: they are not touched files, they do not make a working tree dirty (so they create no Draft), and the watcher ignores them. Every other file under `.diffcity/`, such as `.diffcity/spec.md`, is a normal file.
+Findings files written next to the code, `.diffcity/findings.json`, and the fix queue, the directory `.diffcity/fix-queue/` with one file per item (and `.diffcity/fix-queue.taking/` while `/diffcity-review` applies it, see [claude-code.md](claude-code.md)), are never part of a change: they are not touched files, they do not make a working tree dirty (so they create no Draft), and the watcher ignores them. Every other file under `.diffcity/`, such as `.diffcity/spec.md`, is a normal file.

@@ -2,7 +2,7 @@
 // against an in-process daemon with the API plugin, a temporary DIFFCITY_HOME
 // and a database seeded with an invented change (no repository needed).
 
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -13,6 +13,7 @@ import type { Finding, Report } from '../../../src/core/report/types.js';
 import { createServedCache, type ServedCache } from '../../../src/daemon/api/served-cache.js';
 import { storeFindingsImport } from '../../../src/daemon/findings.js';
 import { waitFor } from '../../helpers/daemon.js';
+import { hasFixQueue, readFixQueue } from '../../helpers/fix-queue.js';
 import { call } from '../../helpers/review-api.js';
 import { addRepo, branchFields, sha, snapshotInput, T0 } from '../../unit/db/db-helpers.js';
 import { sampleFingerprints, sampleReport } from '../../unit/review/review-helpers.js';
@@ -286,7 +287,7 @@ describe('findings-api', () => {
     }
     expect(s.db.findings.hasAny(s.change.id)).toBe(false);
     expect(s.db.changes.get(s.change.id)?.reviewState).toBe('unreviewed');
-    expect(() => readFileSync(join(s.change.worktreePath ?? '', '.diffcity', 'fix-queue.json'))).toThrow();
+    expect(hasFixQueue(s.change.worktreePath ?? '')).toBe(false);
   });
 
   it('findings-api/archived-409: an archived change takes no state, no fix and no approval', async () => {
@@ -314,23 +315,20 @@ describe('fix-queue route', () => {
     expect(first.json()).toEqual({ key: finding.key, queued: true, count: 1 });
     const again = await call(s.port, 'POST', path(s, `/findings/${finding.key}/fix`));
     expect(again.json()).toEqual({ key: finding.key, queued: false, count: 1 });
-    const queue = JSON.parse(readFileSync(join(s.change.worktreePath ?? '', '.diffcity', 'fix-queue.json'), 'utf8')) as unknown;
-    expect(queue).toEqual({
-      version: 1,
-      items: [
-        {
-          key: finding.key,
-          file: TAX,
-          line: 3,
-          symbol: 'taxRate',
-          severity: 'high',
-          title: 'Rate read before it is set',
-          message: 'taxRate reads the rate before the config loads.',
-          fix: 'Load the config first.',
-          queuedAt: expect.any(String) as string,
-        },
-      ],
-    });
+    // One file per item, holding the version 1 item itself.
+    expect(readFixQueue(s.change.worktreePath ?? '')).toEqual([
+      {
+        key: finding.key,
+        file: TAX,
+        line: 3,
+        symbol: 'taxRate',
+        severity: 'high',
+        title: 'Rate read before it is set',
+        message: 'taxRate reads the rate before the config loads.',
+        fix: 'Load the config first.',
+        queuedAt: expect.any(String) as string,
+      },
+    ]);
     await waitFor(() => s.test.events().some((e) => e.event === 'findings'), 5000, 'the findings signal');
   });
 
@@ -348,6 +346,18 @@ describe('fix-queue route', () => {
     symlinkSync(elsewhere, join(s.change.worktreePath ?? '', '.diffcity'), 'dir');
     const answer = await call(s.port, 'POST', path(s, `/findings/${RULE.id}/fix`));
     expect([answer.status, errorCode(answer)]).toEqual([409, 'fix-queue-unsafe']);
+  });
+
+  it('fix-queue/symlink-queue-dir-refused over HTTP: .diffcity/fix-queue as a link is fix-queue-unsafe, nothing written through it', async () => {
+    const s = await seeded({ rule: true, worktree: true });
+    const elsewhere = mkdtempSync(join(tmpdir(), 'dc-else-'));
+    dirs.push(elsewhere);
+    const { mkdirSync, readdirSync, symlinkSync } = await import('node:fs');
+    mkdirSync(join(s.change.worktreePath ?? '', '.diffcity'));
+    symlinkSync(elsewhere, join(s.change.worktreePath ?? '', '.diffcity', 'fix-queue'), 'dir');
+    const answer = await call(s.port, 'POST', path(s, `/findings/${RULE.id}/fix`));
+    expect([answer.status, errorCode(answer)]).toEqual([409, 'fix-queue-unsafe']);
+    expect(readdirSync(elsewhere)).toEqual([]);
   });
 });
 

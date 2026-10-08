@@ -5,6 +5,7 @@
 import { Command } from 'commander';
 import type { DiffCommandOptions } from './diff.js';
 import type { ImportCommandOptions } from './import.js';
+import type { SetupClaudeOptions } from './setup-claude.js';
 import type { StartCommandOptions } from './start.js';
 import type { TrackCommandOptions } from './track.js';
 import type { TrustCommandOptions } from './trust.js';
@@ -105,8 +106,16 @@ export function buildProgram(io: CliIo = defaultIo): Command {
     .argument('[dir]', 'repo directory (default: the current directory, or cwd from the hook input with --agent)')
     .option('--agent', 'mark the current change as "agent worked, not reviewed"; reads the Claude Code hook JSON from stdin')
     .action(async (dir: string | undefined, options: TrackCommandOptions) => {
-      const { runTrack } = await import('./track.js');
-      process.exitCode = await runTrack(dir, options, { io, env: io.env?.() ?? process.env, cwd: io.cwd?.() ?? process.cwd() });
+      try {
+        const { runTrack } = await import('./track.js');
+        process.exitCode = await runTrack(dir, options, { io, env: io.env?.() ?? process.env, cwd: io.cwd?.() ?? process.cwd() });
+      } catch (error) {
+        // runTrack reports its own failures; this catches the unexpected ones.
+        // As the Stop hook (--agent) it never blocks the agent (ADR-037).
+        const message = error instanceof Error ? error.message : String(error);
+        io.stderr(`diffcity track: ${message.replace(/\s*\n\s*/g, ' ').trim()}\n`);
+        process.exitCode = options.agent === true ? 0 : 1;
+      }
     });
 
   program
@@ -122,6 +131,7 @@ export function buildProgram(io: CliIo = defaultIo): Command {
     .command('diff')
     .description('semantic diff of the current change')
     .option('--json', 'print the report as JSON')
+    .option('--compact', 'with --json: leave out untouched files and the packages left without files')
     .option('--base <ref>', 'base ref')
     .option('--head <ref>', 'head ref')
     .action(async (options: DiffCommandOptions) => {
@@ -139,6 +149,17 @@ export function buildProgram(io: CliIo = defaultIo): Command {
     .action(async (file: string, options: ImportCommandOptions) => {
       const { runImport } = await import('./import.js');
       process.exitCode = await runImport(file, options, { io, env: io.env?.() ?? process.env, cwd: io.cwd?.() ?? process.cwd() });
+    });
+
+  program
+    .command('setup-claude')
+    .description('install the /diffcity-review command and the Stop hook for Claude Code')
+    .option('--repo [dir]', "write to the repo's .claude/ instead of the user's Claude Code configuration")
+    .option('--dry-run', 'print what would change, write nothing')
+    .option('--remove', 'remove only what diffcity wrote')
+    .action(async (options: SetupClaudeOptions) => {
+      const { runSetupClaude } = await import('./setup-claude.js');
+      process.exitCode = await runSetupClaude(options, { io, env: io.env?.() ?? process.env, cwd: io.cwd?.() ?? process.cwd() });
     });
 
   program

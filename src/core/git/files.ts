@@ -261,8 +261,8 @@ async function withOthers(root: string, files: ChangedFile[], others: string[]):
  * Renames are detected with `-M` (50% similarity), including between a deleted
  * tracked file and an untracked one. In the working tree case, non-ignored
  * untracked files are reported as `add`. diffcity's own files at the root
- * (`.diffcity/findings.json`, `.diffcity/fix-queue.json`) are never listed,
- * committed or not.
+ * (`.diffcity/findings.json`, the fix queue directories; own-files.ts) are
+ * never listed, committed or not.
  */
 export async function changedFiles(change: ResolvedChange): Promise<ChangedFile[]> {
   const files = change.worktree

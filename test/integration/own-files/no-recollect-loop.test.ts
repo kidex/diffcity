@@ -1,12 +1,11 @@
 // own-files/no-recollect-loop (SPEC.md section 3a, ADR-036 Q6), end to end:
 // the real collector and working tree watcher, a branch checked out with no
 // uncommitted change, an import over the socket, a fix queued through the
-// DC-100 route (which writes .diffcity/fix-queue.json) and a
-// .diffcity/findings.json written as /code-review would. None of it reaches
+// DC-100 route (which writes an item into .diffcity/fix-queue/) and a
+// .diffcity/findings.json written as /diffcity-review would. None of it reaches
 // the watcher, no snapshot is computed and the change stays clean. Then
 // .diffcity/spec.md, a normal file, does reach it.
 
-import { existsSync } from 'node:fs';
 import { realpath } from 'node:fs/promises';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -14,6 +13,7 @@ import { sendRequest } from '../../../src/daemon/client.js';
 import { createWatch, type Watch } from '../../../src/daemon/watcher/plugin.js';
 import type { WatchEvent } from '../../../src/daemon/watcher/watchers.js';
 import { waitFor } from '../../helpers/daemon.js';
+import { hasFixQueue } from '../../helpers/fix-queue.js';
 import { isolateGitConfig } from '../../helpers/git-env.js';
 import { call } from '../../helpers/review-api.js';
 import { cleanupAfterEach, ghNotInstalled, sampleRepo, startTestDaemon } from '../collect/collect-helpers.js';
@@ -78,7 +78,7 @@ describe('own files and the watcher (ADR-036 Q6)', () => {
     if (stored === undefined) throw new Error('finding not stored');
     const queued = await call(test.daemon.info.port, 'POST', `/api/changes/${String(change.id)}/findings/${stored.key}/fix`);
     expect(queued.status).toBe(200);
-    expect(existsSync(join(repo.dir, '.diffcity', 'fix-queue.json'))).toBe(true);
+    expect(hasFixQueue(repo.dir)).toBe(true);
     await repo.write({ '.diffcity/findings.json': '[]\n' });
 
     await new Promise((resolve) => setTimeout(resolve, QUIET_MS));

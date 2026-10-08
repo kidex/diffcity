@@ -1,26 +1,52 @@
-// The fix queue (ADR-036): `<working tree>/.diffcity/fix-queue.json`, format
-// version 1, which the /code-review slash command (ADR-037) reads and empties.
+// The fix queue (ADR-036, redesigned by DC-112): a directory
+// `<working tree>/.diffcity/fix-queue/` with one file per item, `<id>.json`,
+// holding the version 1 item object itself (no envelope). `<id>` is the first
+// 32 hex digits of the SHA-256 of the item key: file-name safe, and the same
+// key always names the same file, so a key already queued is not queued again.
 //
-// The daemon writes only that file, only inside the change's working tree:
-// `.diffcity` and the file are checked with lstat and refused when they are a
-// symbolic link or not a directory / regular file; the directory is created
-// (mode 0755) only when it is absent; the file is read without following a
-// link and written through a temporary file in the same directory and a
-// rename. At most FIX_QUEUE_MAX_ITEMS items and FIX_QUEUE_MAX_BYTES bytes.
-// Synchronous on purpose: one append runs to its end before another starts.
+// The /diffcity-review slash command (ADR-037) takes the whole queue at once
+// by renaming the directory to `.diffcity/fix-queue.taking/`, reads every
+// `*.json` in it and removes it. The daemon never rewrites an existing item:
+// it writes a temporary file `.diffcity/.fix-queue.<id>.<pid>.<12 hex>.tmp`
+// once, next to the queue directory, and renames it to `fix-queue/<id>.json`.
+// Both renames are atomic, so the item lands either in the directory before it
+// is taken (and is taken with it) or, when the take came first, the rename
+// fails with ENOENT, the temporary file is still in `.diffcity`, and the
+// daemon creates a fresh queue directory and renames again. No item is lost or
+// applied twice, and POSIX needs no compare-and-swap for it. The temporary
+// file stays outside the queue directory so a take never carries it away: a
+// retry is only `mkdir` and `rename`. After FIX_QUEUE_ATTEMPTS takes in a row
+// the append gives up with `fix-queue-busy`.
+//
+// The daemon writes only inside the change's working tree: `.diffcity` and
+// `.diffcity/fix-queue` are checked with lstat and refused when they are a
+// symbolic link or not a directory; each is created (mode 0755) only when it
+// is absent. At most FIX_QUEUE_MAX_ITEMS items and FIX_QUEUE_MAX_BYTES bytes,
+// counted over the directory's item files before the write. Synchronous on
+// purpose: one append runs to its end before another starts.
 
-import { randomBytes } from 'node:crypto';
-import { closeSync, constants, fchmodSync, fstatSync, lstatSync, mkdirSync, openSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync, type Stats } from 'node:fs';
+import { createHash, randomBytes } from 'node:crypto';
+import { closeSync, constants, fchmodSync, fstatSync, lstatSync, mkdirSync, openSync, readdirSync, renameSync, statSync, unlinkSync, writeFileSync, type Stats } from 'node:fs';
 import { join } from 'node:path';
 import type { Finding, Report } from '../report/types.js';
 
 export const FIX_QUEUE_VERSION = 1;
-export const FIX_QUEUE_MAX_ITEMS = 200;
+/**
+ * At most this many items. Claude Code 2.1.288's Glob lists at most 100 files,
+ * and /diffcity-review lists the taken items with Glob before it removes them.
+ */
+export const FIX_QUEUE_MAX_ITEMS = 100;
 export const FIX_QUEUE_MAX_BYTES = 1024 * 1024;
 /** The markdown of a `review-summary` item is capped by its writer (ADR-029) at this many bytes. */
 export const FIX_QUEUE_SUMMARY_MAX_BYTES = 64 * 1024;
+/** The directory of diffcity's own files, at the working tree root. */
 export const FIX_QUEUE_DIR = '.diffcity';
-export const FIX_QUEUE_FILE = 'fix-queue.json';
+/** The queue directory inside FIX_QUEUE_DIR. */
+export const FIX_QUEUE_NAME = 'fix-queue';
+/** The name the slash command renames the queue directory to while it applies it. */
+export const FIX_QUEUE_TAKING_NAME = 'fix-queue.taking';
+/** Writes before an append gives up with `fix-queue-busy`, when the queue is taken under each one. */
+export const FIX_QUEUE_ATTEMPTS = 3;
 
 /** A finding to fix. */
 export interface FindingQueueItem {
@@ -46,15 +72,10 @@ export interface SummaryQueueItem {
 
 export type FixQueueItem = FindingQueueItem | SummaryQueueItem;
 
-export interface FixQueue {
-  version: typeof FIX_QUEUE_VERSION;
-  items: FixQueueItem[];
-}
-
-export type FixQueueRefusal = 'no-working-tree' | 'fix-queue-unsafe' | 'fix-queue-full' | 'fix-queue-invalid';
+export type FixQueueRefusal = 'no-working-tree' | 'fix-queue-unsafe' | 'fix-queue-full' | 'fix-queue-busy';
 
 export type FixQueueResult =
-  /** `queued` is false when an item with the same key was already in the queue (nothing written). */
+  /** `queued` is false when an item with the same key is already in the queue (nothing written); `count` is the items in the queue. */
   | { ok: true; queued: boolean; count: number }
   | { ok: false; code: FixQueueRefusal; message: string };
 
@@ -93,56 +114,126 @@ export function fixQueueRoot(change: { worktreePath: string | null }): string | 
   return change.worktreePath;
 }
 
+/** The file name of an item in the queue directory: 32 hex digits of the SHA-256 of its key, then `.json`. */
+export function fixQueueItemName(key: string): string {
+  return `${createHash('sha256').update(key).digest('hex').slice(0, 32)}.json`;
+}
+
 const refuse = (code: FixQueueRefusal, message: string): FixQueueResult => ({ ok: false, code, message });
+
+const QUEUE_LABEL = `${FIX_QUEUE_DIR}/${FIX_QUEUE_NAME}`;
+
+/** An item file of the queue directory: `<32 hex>.json`; temporary files start with a dot. */
+const ITEM_NAME = /^[0-9a-f]{32}\.json$/;
+
+const errorCode = (error: unknown): string | undefined => (error as NodeJS.ErrnoException).code;
 
 function lstatOrNull(path: string): Stats | null {
   try {
     return lstatSync(path);
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
+    if (errorCode(error) === 'ENOENT') return null;
     throw error;
   }
 }
 
-const sameFile = (a: Stats, b: Stats): boolean => a.dev === b.dev && a.ino === b.ino;
-
-function isQueue(value: unknown): value is FixQueue {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
-  const { version, items } = value as Record<string, unknown>;
-  return version === FIX_QUEUE_VERSION && Array.isArray(items) && items.every((item) => typeof item === 'object' && item !== null && typeof (item as Record<string, unknown>)['key'] === 'string');
-}
-
-/** Reads the queue through a descriptor opened without following a link, checked to be the file lstat saw. */
-function readQueue(path: string, seen: Stats): FixQueue | FixQueueResult {
+/**
+ * Sets mode 0755 on a directory diffcity created (mkdir's mode is reduced by
+ * the umask), through a descriptor that refuses a link. A directory taken or
+ * swapped meanwhile is left alone.
+ */
+function fixMode(path: string): void {
   let fd: number;
   try {
-    fd = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW);
+    fd = openSync(path, constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW);
   } catch {
-    return refuse('fix-queue-unsafe', `${FIX_QUEUE_DIR}/${FIX_QUEUE_FILE} changed while it was read`);
+    return;
   }
   try {
-    const stats = fstatSync(fd);
-    if (!stats.isFile() || !sameFile(stats, seen)) return refuse('fix-queue-unsafe', `${FIX_QUEUE_DIR}/${FIX_QUEUE_FILE} changed while it was read`);
-    if (stats.size > FIX_QUEUE_MAX_BYTES) return refuse('fix-queue-full', `the fix queue is over ${String(FIX_QUEUE_MAX_BYTES)} bytes`);
-    const text = readFileSync(fd, 'utf8');
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(text);
-    } catch {
-      return refuse('fix-queue-invalid', `${FIX_QUEUE_DIR}/${FIX_QUEUE_FILE} is not valid JSON`);
-    }
-    return isQueue(parsed) ? parsed : refuse('fix-queue-invalid', `${FIX_QUEUE_DIR}/${FIX_QUEUE_FILE} is not a version ${String(FIX_QUEUE_VERSION)} fix queue`);
+    if (fstatSync(fd).isDirectory()) fchmodSync(fd, 0o755);
   } finally {
     closeSync(fd);
   }
 }
 
+/** `.diffcity`, created with mode 0755 when absent; a symbolic link or anything but a directory is refused. */
+function ensureOwnDir(path: string): Stats | FixQueueResult {
+  let stats = lstatOrNull(path);
+  if (stats === null) {
+    try {
+      mkdirSync(path, { mode: 0o755 });
+      fixMode(path);
+    } catch (error) {
+      // Created meanwhile, or swapped for a link or a file: the lstat below decides.
+      const code = errorCode(error);
+      if (code !== 'EEXIST' && code !== 'ELOOP' && code !== 'ENOTDIR') throw error;
+    }
+    stats = lstatOrNull(path);
+  }
+  if (stats === null || stats.isSymbolicLink() || !stats.isDirectory()) {
+    return refuse('fix-queue-unsafe', `${FIX_QUEUE_DIR} is not a plain directory (a symbolic link or a file)`);
+  }
+  return stats;
+}
+
+const sameFile = (a: Stats, b: Stats): boolean => a.dev === b.dev && a.ino === b.ino;
+
+/** True while `.diffcity` at `path` is still the directory checked at the start (`seen`), not gone and not a link. */
+function ownDirUnchanged(path: string, seen: Stats): boolean {
+  const now = lstatOrNull(path);
+  return now !== null && !now.isSymbolicLink() && sameFile(now, seen);
+}
+
+const ownDirChanged = (): FixQueueResult => refuse('fix-queue-unsafe', `${FIX_QUEUE_DIR} changed while the fix was queued (gone, or swapped for a link)`);
+
+const unsafeQueueDir = (): FixQueueResult => refuse('fix-queue-unsafe', `${QUEUE_LABEL} is not a plain directory (a symbolic link or a file)`);
+
+/** The item files of the queue directory and their total size; none when the directory was taken while it was listed. */
+function queueContents(dir: string): { count: number; bytes: number } {
+  let names: string[];
+  try {
+    names = readdirSync(dir);
+  } catch (error) {
+    if (errorCode(error) === 'ENOENT') return { count: 0, bytes: 0 };
+    throw error;
+  }
+  let count = 0;
+  let bytes = 0;
+  for (const name of names) {
+    if (!ITEM_NAME.test(name)) continue;
+    const stats = lstatOrNull(join(dir, name));
+    if (stats === null || !stats.isFile()) continue;
+    count++;
+    bytes += stats.size;
+  }
+  return { count, bytes };
+}
+
+/** Renames `temp` to `path`: 'ok', or 'gone' when the queue directory (or the temporary file) is not there. */
+function renameInto(temp: string, path: string): 'ok' | 'gone' | FixQueueResult {
+  try {
+    renameSync(temp, path);
+    return 'ok';
+  } catch (error) {
+    const code = errorCode(error);
+    if (code === 'ENOENT') return 'gone';
+    if (code === 'ENOTDIR' || code === 'EISDIR' || code === 'ELOOP') return unsafeQueueDir();
+    throw error;
+  }
+}
+
 /**
  * Appends `item` to the fix queue of the working tree at `root` (null: the
- * change has none). Idempotent per key. Refusals: `no-working-tree` (no root,
- * or it is not a directory), `fix-queue-unsafe` (a link or a non-regular
- * entry), `fix-queue-full` (over 200 items or 1 MiB), `fix-queue-invalid` (an
- * existing file that is not a version 1 queue, left as it is).
+ * change has none). Idempotent per key while the item is queued. Refusals:
+ * `no-working-tree` (no root, or it is not a directory), `fix-queue-unsafe`
+ * (`.diffcity`, the queue directory or the item's file is a link or not what
+ * it should be), `fix-queue-full` (over 100 items or 1 MiB), `fix-queue-busy`
+ * (the queue was taken under each of FIX_QUEUE_ATTEMPTS renames).
+ *
+ * The temporary file is written once, in `.diffcity` next to the queue
+ * directory, so a take never carries it away: each attempt is only the rename
+ * into `fix-queue/` (and its `mkdir` when the directory is gone), which keeps
+ * the window a take can hit as small as two system calls.
  */
 export function appendToFixQueue(root: string | null, item: FixQueueItem): FixQueueResult {
   if (root === null) return refuse('no-working-tree', 'the change has no working tree to queue a fix in');
@@ -152,59 +243,68 @@ export function appendToFixQueue(root: string | null, item: FixQueueItem): FixQu
     return refuse('no-working-tree', 'the working tree of the change does not exist');
   }
 
-  const dir = join(root, FIX_QUEUE_DIR);
-  let dirStats = lstatOrNull(dir);
-  if (dirStats === null) {
-    try {
-      mkdirSync(dir, { mode: 0o755 });
-      // The mode asked of mkdir is reduced by the umask; the ADR fixes it at 0755.
-      // Set through a descriptor that refuses a link, so a swapped entry is never followed.
-      const fd = openSync(dir, constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW);
-      try {
-        if (fstatSync(fd).isDirectory()) fchmodSync(fd, 0o755);
-      } finally {
-        closeSync(fd);
-      }
-    } catch (error) {
-      // Created meanwhile, or swapped for a link or a file: the lstat below decides.
-      const code = (error as NodeJS.ErrnoException).code;
-      if (code !== 'EEXIST' && code !== 'ELOOP' && code !== 'ENOTDIR') throw error;
-    }
-    dirStats = lstatOrNull(dir);
-  }
-  if (dirStats === null || dirStats.isSymbolicLink() || !dirStats.isDirectory()) {
-    return refuse('fix-queue-unsafe', `${FIX_QUEUE_DIR} is not a plain directory (a symbolic link or a file)`);
-  }
+  const text = `${JSON.stringify(item, null, 2)}\n`;
+  const size = Buffer.byteLength(text, 'utf8');
+  if (size > FIX_QUEUE_MAX_BYTES) return refuse('fix-queue-full', `the fix would make the queue over ${String(FIX_QUEUE_MAX_BYTES)} bytes`);
 
-  const path = join(dir, FIX_QUEUE_FILE);
-  const fileStats = lstatOrNull(path);
-  let queue: FixQueue = { version: FIX_QUEUE_VERSION, items: [] };
-  if (fileStats !== null) {
-    if (fileStats.isSymbolicLink() || !fileStats.isFile()) {
-      return refuse('fix-queue-unsafe', `${FIX_QUEUE_DIR}/${FIX_QUEUE_FILE} is not a regular file (a symbolic link or a directory)`);
-    }
-    const read = readQueue(path, fileStats);
-    if ('ok' in read) return read;
-    queue = read;
-  }
-
-  if (queue.items.some((existing) => existing.key === item.key)) return { ok: true, queued: false, count: queue.items.length };
-  if (queue.items.length >= FIX_QUEUE_MAX_ITEMS) return refuse('fix-queue-full', `the fix queue already holds ${String(FIX_QUEUE_MAX_ITEMS)} items`);
-  const next: FixQueue = { version: FIX_QUEUE_VERSION, items: [...queue.items, item] };
-  const text = `${JSON.stringify(next, null, 2)}\n`;
-  if (Buffer.byteLength(text, 'utf8') > FIX_QUEUE_MAX_BYTES) return refuse('fix-queue-full', `the fix queue would be over ${String(FIX_QUEUE_MAX_BYTES)} bytes`);
-
-  const temp = join(dir, `.${FIX_QUEUE_FILE}.${String(process.pid)}.${randomBytes(6).toString('hex')}.tmp`);
-  // `wx` is O_CREAT | O_EXCL: it never follows or reuses an existing entry.
-  writeFileSync(temp, text, { flag: 'wx', mode: 0o644 });
+  const own = join(root, FIX_QUEUE_DIR);
+  const ownStats = ensureOwnDir(own);
+  if ('ok' in ownStats) return ownStats;
+  const dir = join(own, FIX_QUEUE_NAME);
+  const name = fixQueueItemName(item.key);
+  const path = join(dir, name);
+  const temp = join(own, `.${FIX_QUEUE_NAME}.${name.slice(0, -'.json'.length)}.${String(process.pid)}.${randomBytes(6).toString('hex')}.tmp`);
+  let written = false;
   try {
-    // The directory must still be the one checked: it was not swapped for a link while writing.
-    const now = lstatOrNull(dir);
-    if (now === null || now.isSymbolicLink() || !sameFile(now, dirStats)) {
-      return refuse('fix-queue-unsafe', `${FIX_QUEUE_DIR} changed while the fix queue was written`);
+    for (let attempt = 0; attempt < FIX_QUEUE_ATTEMPTS; attempt++) {
+      let contents = { count: 0, bytes: 0 };
+      const queueStats = lstatOrNull(dir);
+      if (queueStats !== null) {
+        if (queueStats.isSymbolicLink() || !queueStats.isDirectory()) return unsafeQueueDir();
+        const existing = lstatOrNull(path);
+        if (existing !== null) {
+          if (existing.isSymbolicLink() || !existing.isFile()) return refuse('fix-queue-unsafe', `${QUEUE_LABEL}/${name} is not a regular file (a symbolic link or a directory)`);
+          return { ok: true, queued: false, count: queueContents(dir).count };
+        }
+        contents = queueContents(dir);
+        if (contents.count >= FIX_QUEUE_MAX_ITEMS) return refuse('fix-queue-full', `the fix queue already holds ${String(FIX_QUEUE_MAX_ITEMS)} items`);
+        if (contents.bytes + size > FIX_QUEUE_MAX_BYTES) return refuse('fix-queue-full', `the fix queue would be over ${String(FIX_QUEUE_MAX_BYTES)} bytes`);
+      }
+      // Every write goes through `.diffcity`: it must still be the directory checked, never a link put in its place.
+      if (!ownDirUnchanged(own, ownStats)) return ownDirChanged();
+      if (!written || lstatOrNull(temp) === null) {
+        // `wx` is O_CREAT | O_EXCL: it never follows or reuses an existing entry.
+        writeFileSync(temp, text, { flag: 'wx', mode: 0o644 });
+        written = true;
+      }
+
+      // The queue directory must still be the one checked: not swapped for a link meanwhile.
+      const now = lstatOrNull(dir);
+      if (now !== null && (now.isSymbolicLink() || !now.isDirectory())) return unsafeQueueDir();
+      let created = false;
+      if (!ownDirUnchanged(own, ownStats)) return ownDirChanged();
+      let moved = now === null ? 'gone' : renameInto(temp, path);
+      if (moved === 'gone') {
+        // No queue directory (it was taken): create one and move the item in at once.
+        if (!ownDirUnchanged(own, ownStats)) return ownDirChanged();
+        try {
+          mkdirSync(dir, { mode: 0o755 });
+          created = true;
+        } catch (error) {
+          const code = errorCode(error);
+          // `.diffcity` went away right after the check: the next attempt refuses.
+          if (code === 'ENOENT') continue;
+          if (code !== 'EEXIST') throw error;
+        }
+        if (!ownDirUnchanged(own, ownStats)) return ownDirChanged();
+        moved = renameInto(temp, path);
+      }
+      if (moved === 'gone') continue;
+      if (moved !== 'ok') return moved;
+      if (created) fixMode(dir);
+      return { ok: true, queued: true, count: contents.count + 1 };
     }
-    renameSync(temp, path);
-    return { ok: true, queued: true, count: next.items.length };
+    return refuse('fix-queue-busy', `${QUEUE_LABEL} was taken while the fix was queued, ${String(FIX_QUEUE_ATTEMPTS)} times; try again`);
   } finally {
     try {
       unlinkSync(temp);

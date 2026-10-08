@@ -2,11 +2,13 @@
 // (ADR-016): program.ts loads each command module lazily and the track module
 // never pulls in the parser (web-tree-sitter) or src/core/report. `import`
 // (ADR-036) loads the findings parsers (pure JSON code) but neither
-// web-tree-sitter, ts-morph, src/core/report nor src/core/parse. Runs the
-// built CLI with a module recorder preloaded and inspects what Node loaded.
+// web-tree-sitter, ts-morph, src/core/report nor src/core/parse; neither does
+// `setup-claude` (ADR-037), which loads only src/core/claude and the git root
+// probe. Runs the built CLI with a module recorder preloaded and inspects what
+// Node loaded.
 
 import { execFile } from 'node:child_process';
-import { readFile, writeFile } from 'node:fs/promises';
+import { readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -99,10 +101,47 @@ describe('lazy command modules', () => {
     }
   });
 
+  it('cli/setup-claude-lazy-imports: setup-claude (user and --repo) loads src/core/claude but neither the code parser, ts-morph, src/core/report nor src/core/parse', async () => {
+    const repo = await createRepo({ name: 'sample-shop', files: { 'src/cart/total.ts': 'export const total = 1;\n' } });
+    try {
+      const claudeDir = join(temp.root, 'claude-config');
+      const runs: [string[], string][] = [
+        [['setup-claude'], temp.userHome],
+        [['setup-claude', '--repo'], repo.dir],
+      ];
+      for (const [args, cwd] of runs) {
+        const log = join(temp.root, 'imports.log');
+        await rm(log, { force: true });
+        const stdout = await new Promise<string>((resolve) => {
+          execFile(
+            process.execPath,
+            ['--import', recorder, cliEntry, ...args],
+            { cwd, env: { ...temp.env, CLAUDE_CONFIG_DIR: claudeDir, DIFFCITY_TEST_IMPORT_LOG: log } },
+            (_error, out) => {
+              resolve(out);
+            },
+          );
+        });
+        // A real run: it wrote the files.
+        expect(stdout).toMatch(/^created .*diffcity-review\.md$/m);
+        const urls = (await readFile(log, 'utf8')).split('\n').filter((line) => line !== '');
+        expect(urls.some((url) => url.endsWith('/dist/cli/setup-claude.js'))).toBe(true);
+        expect(urls.some((url) => url.endsWith('/dist/core/claude/setup.js'))).toBe(true);
+        expect(urls.filter(loadsParser)).toEqual([]);
+        expect(urls.filter(loadsTsMorph)).toEqual([]);
+        expect(urls.filter(loadsReport)).toEqual([]);
+        expect(urls.filter((url) => url.includes('/dist/core/parse/'))).toEqual([]);
+        expect(urls.filter((url) => /\/dist\/cli\/(?:diff|track|import|open)\.js$/.test(url))).toEqual([]);
+      }
+    } finally {
+      await repo.cleanup();
+    }
+  });
+
   it('--help loads no command module', async () => {
     const urls = await loadedModules(['--help']);
     expect(urls.some((url) => url.endsWith('/dist/cli/program.js'))).toBe(true);
-    expect(urls.filter((url) => /\/dist\/cli\/(?:track|diff|import)\.js$/.test(url))).toEqual([]);
+    expect(urls.filter((url) => /\/dist\/cli\/(?:track|diff|import|setup-claude)\.js$/.test(url))).toEqual([]);
     expect(urls.filter(loadsParser)).toEqual([]);
   });
 
