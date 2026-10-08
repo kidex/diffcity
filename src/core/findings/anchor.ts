@@ -25,7 +25,7 @@ export function findFile(report: Report, path: string): File | undefined {
  * one when ranges nest (a method inside its class). A `del` symbol is never
  * matched, a finding line is an after line.
  */
-export function symbolAtLine(file: File, line: number): Symbol | undefined {
+export function symbolAtLine(file: Pick<File, 'symbols'>, line: number): Symbol | undefined {
   let best: Symbol | undefined;
   for (const symbol of file.symbols) {
     if (symbol.status === 'del') continue;
