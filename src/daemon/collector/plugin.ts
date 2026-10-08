@@ -26,7 +26,7 @@
 
 import { availableParallelism } from 'node:os';
 import { identifyRepo, type RepoIdentity, type WorktreeInfo } from '../../core/changes/index.js';
-import { createTrustCheck } from '../../core/settings/index.js';
+import { createRuleSettingsReader, createTrustCheck } from '../../core/settings/index.js';
 import type { Db } from '../../core/db/index.js';
 import type { CommandRunner } from '../../core/git/index.js';
 import type { RepoRecord, SocketSuccessResponses } from '../../core/model/types.js';
@@ -242,6 +242,8 @@ export function createCollection(options: CollectionPluginOptions = {}): Collect
             context.log.warn(`settings: ${message}`);
           },
         }),
+        // Read with the trust, on every collection: a rules edit needs no restart either.
+        ruleSettings: createRuleSettingsReader(context.paths.settings),
         onListed: (repoId, worktrees) => {
           listed.emit(repoId, worktrees);
         },
