@@ -135,10 +135,10 @@ export function buildProgram(io: CliIo = defaultIo): Command {
     .option('--base <ref>', 'base ref')
     .option('--head <ref>', 'head ref')
     .action(async (options: DiffCommandOptions) => {
-      const { NOW_ENV, runDiff } = await import('./diff.js');
+      const { NOW_ENV, runDiff, userRulesFor } = await import('./diff.js');
       const cwd = io.cwd?.() ?? process.cwd();
       const env = io.env?.() ?? process.env;
-      process.exitCode = await runDiff(options, { cwd, io, now: env[NOW_ENV] });
+      process.exitCode = await runDiff(options, { cwd, io, now: env[NOW_ENV], userRules: (warn) => userRulesFor(cwd, env, warn) });
     });
 
   program
