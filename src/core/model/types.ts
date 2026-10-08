@@ -8,6 +8,7 @@
 
 import type { Report, Status, Verdict } from '../report/types.js';
 import type { FindingInput, ParseWarning } from '../findings/types.js';
+import type { AgentRun, SessionDigest } from '../session/types.js';
 
 // ---------------------------------------------------------------------------
 // Enumerations (ADR-018 CHECK constraints, ADR-017, ADR-020)
@@ -330,6 +331,48 @@ export interface HealthResponse {
   collecting: number;
 }
 
+/** A run of a session as the sessions route serves it: `here` when it worked in the change's working tree. */
+export interface SessionRunView extends AgentRun {
+  here: boolean;
+}
+
+/**
+ * A session digest as served: without its parse state (cursors, hashes, the
+ * runs' working directories), with the runs that worked in another working
+ * tree of the repo left out and counted.
+ */
+export type SessionDigestView = Omit<SessionDigest, 'state' | 'runs'> & {
+  runs: SessionRunView[];
+  /** Runs left out because they worked in another working tree of the repo. */
+  runsElsewhere: number;
+};
+
+/**
+ * A Claude Code session linked to a change (ADR-038), served by
+ * `GET /api/changes/:id/sessions` outside the Report (ADR-002).
+ */
+export interface SessionView {
+  sessionId: string;
+  title: string | null;
+  firstAt: string | null;
+  lastAt: string | null;
+  /** The session ran in the change's working tree. */
+  here: boolean;
+  /** The last read failed: shown as "Session data could not be read", without content. */
+  unreadable: boolean;
+  /** The change's head when the session was first and last linked to it. */
+  firstHead: string | null;
+  lastHead: string | null;
+  linkedAt: string;
+  /** Null until the transcript was read. */
+  digest: SessionDigestView | null;
+}
+
+/** `GET /api/changes/:id/sessions`: at most 20, newest first. */
+export interface SessionsResponse {
+  sessions: SessionView[];
+}
+
 /** Body of every API error response. */
 export interface ApiError {
   error: { code: string; message: string };
@@ -370,8 +413,13 @@ export type SocketProtocolVersion = 1;
 
 export type SocketRequest =
   | { v: SocketProtocolVersion; type: 'ping' }
-  /** `dir` is absolute; `at` is the ISO time of the request. */
-  | { v: SocketProtocolVersion; type: 'track'; dir: string; agent: boolean; at: string }
+  /**
+   * `dir` is absolute; `at` is the ISO time of the request. `session` comes
+   * with `agent` when the Claude Code hook JSON was valid (ADR-038); daemons
+   * that predate it ignore the field, and the daemon validates every value
+   * before it touches a file.
+   */
+  | { v: SocketProtocolVersion; type: 'track'; dir: string; agent: boolean; at: string; session?: TrackSession }
   /** `dirs` are absolute repo roots (from `scan`). */
   | { v: SocketProtocolVersion; type: 'register'; dirs: string[] }
   /**
@@ -389,7 +437,21 @@ export type SocketRequest =
       sources?: string[];
       at: string;
     }
+  /**
+   * `diff --with-sessions` (ADR-038): the sessions of the change checked out
+   * in `dir` (absolute), as GET /api/changes/:id/sessions serves them.
+   */
+  | { v: SocketProtocolVersion; type: 'sessions'; dir: string }
   | { v: SocketProtocolVersion; type: 'shutdown' };
+
+/** The session fields of a `track` request (ADR-038), forwarded from the hook JSON as they came. */
+export interface TrackSession {
+  sessionId: string;
+  transcriptPath: string;
+  cwd: string;
+  /** `hook_event_name`; `Stop` when the hook gave none. */
+  event: string;
+}
 
 export type SocketRequestType = SocketRequest['type'];
 
@@ -426,6 +488,8 @@ export interface SocketSuccessResponses {
     warnings: ParseWarning[];
     anchoredAgainst: ImportAnchor;
   };
+  /** `sessions` (ADR-038): the change checked out in the directory and its sessions. */
+  sessions: { ok: true; change: { id: number; repoId: number; ref: string }; sessions: SessionView[] };
   shutdown: { ok: true };
 }
 

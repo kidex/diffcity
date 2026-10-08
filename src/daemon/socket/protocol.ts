@@ -7,10 +7,14 @@
 // for a line that starts as an import request: `{"v":1,"type":"import",` (the
 // order JSON.stringify gives the CLI's request; whitespace allowed), and
 // refuses a parsed request of another type over 64 KiB.
+//
+// `track` may carry `session` (ADR-038): kept when it is an object of four
+// strings, dropped otherwise, without failing the track itself. Its values are
+// only shaped here; the daemon validates them before it touches a file.
 
 import { isAbsolute } from 'node:path';
 import { checkImportPayload } from '../../core/findings/import.js';
-import type { SocketRequest, SocketRequestType } from '../../core/model/types.js';
+import type { SocketRequest, SocketRequestType, TrackSession } from '../../core/model/types.js';
 
 /** Longest request line, in bytes, without the newline. */
 export const MAX_REQUEST_BYTES = 64 * 1024;
@@ -26,7 +30,7 @@ export const IMPORT_REQUEST_TIMEOUT_MS = 30_000;
 
 export const PROTOCOL_VERSION = 1;
 
-const REQUEST_TYPES: ReadonlySet<string> = new Set<SocketRequestType>(['ping', 'track', 'register', 'import', 'shutdown']);
+const REQUEST_TYPES: ReadonlySet<string> = new Set<SocketRequestType>(['ping', 'track', 'register', 'import', 'sessions', 'shutdown']);
 
 /** The start of a line that may grow to MAX_IMPORT_REQUEST_BYTES. */
 const IMPORT_START = /^\s*\{\s*"v"\s*:\s*1\s*,\s*"type"\s*:\s*"import"\s*,/;
@@ -52,6 +56,14 @@ const fail = (error: string): ParseResult => ({ ok: false, error });
 const show = (value: unknown): string => (value === undefined ? 'missing' : JSON.stringify(value));
 
 const isAbsolutePath = (value: unknown): value is string => typeof value === 'string' && isAbsolute(value);
+
+/** The `session` of a track request when it has the four string fields; extra fields are dropped. */
+function trackSession(value: unknown): TrackSession | null {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return null;
+  const { sessionId, transcriptPath, cwd, event } = value as Record<string, unknown>;
+  if (typeof sessionId !== 'string' || typeof transcriptPath !== 'string' || typeof cwd !== 'string' || typeof event !== 'string') return null;
+  return { sessionId, transcriptPath, cwd, event };
+}
 
 /** Parses and validates one request line. Unknown extra fields are ignored. */
 export function parseRequest(line: string): ParseResult {
@@ -80,7 +92,8 @@ export function parseRequest(line: string): ParseResult {
       if (!isAbsolutePath(dir)) return fail('invalid track request: dir must be an absolute path');
       if (typeof agent !== 'boolean') return fail('invalid track request: agent must be a boolean');
       if (typeof at !== 'string') return fail('invalid track request: at must be a string');
-      return { ok: true, request: { v: 1, type: 'track', dir, agent, at } };
+      const session = trackSession(fields.session);
+      return { ok: true, request: { v: 1, type: 'track', dir, agent, at, ...(session === null ? {} : { session }) } };
     }
     case 'register': {
       const { dirs } = fields;
@@ -88,6 +101,11 @@ export function parseRequest(line: string): ParseResult {
         return fail('invalid register request: dirs must be absolute paths');
       }
       return { ok: true, request: { v: 1, type: 'register', dirs } };
+    }
+    case 'sessions': {
+      const { dir } = fields;
+      if (!isAbsolutePath(dir)) return fail('invalid sessions request: dir must be an absolute path');
+      return { ok: true, request: { v: 1, type: 'sessions', dir } };
     }
     case 'import': {
       const { dir, at } = fields;

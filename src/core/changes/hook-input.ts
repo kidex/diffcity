@@ -1,7 +1,9 @@
 // The Claude Code Stop hook JSON that `track --agent` reads from stdin when
 // stdin is not a TTY (SPEC.md section 3, ADR-001). It carries the session
-// (`session_id`, `transcript_path`) and the `cwd` that replaces the default
-// directory; it is at most 64 KB. Other fields of the hook payload are ignored.
+// (`session_id`, `transcript_path`), the `cwd` that replaces the default
+// directory and `hook_event_name`; it is at most 64 KB. Other fields of the
+// hook payload are ignored. `track` forwards these four to the daemon, which
+// validates them again before it reads anything (ADR-038).
 
 import { isAbsolute } from 'node:path';
 
@@ -14,7 +16,15 @@ export interface AgentHookInput {
   transcriptPath: string;
   /** Absolute directory the agent worked in. */
   cwd: string;
+  /** `hook_event_name`; DEFAULT_HOOK_EVENT when absent or not a plain name. */
+  event: string;
 }
+
+/** The event of a hook input that names none. */
+export const DEFAULT_HOOK_EVENT = 'Stop';
+
+/** A hook event name as Claude Code writes them (`Stop`, `SubagentStop`, `SessionEnd`). */
+const HOOK_EVENT = /^[A-Za-z]{1,64}$/;
 
 /** `input` is null when stdin carried nothing but whitespace. */
 export type AgentHookInputResult = { ok: true; input: AgentHookInput | null } | { ok: false; error: string };
@@ -35,11 +45,12 @@ export function parseAgentHookInput(text: string): AgentHookInputResult {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return fail('hook input must be a JSON object');
   const fields = value as Record<string, unknown>;
 
-  const { session_id: sessionId, transcript_path: transcriptPath, cwd } = fields;
+  const { session_id: sessionId, transcript_path: transcriptPath, cwd, hook_event_name: eventName } = fields;
   if (typeof sessionId !== 'string' || sessionId === '') return fail('hook input: session_id must be a non-empty string');
   if (typeof transcriptPath !== 'string' || !isAbsolute(transcriptPath)) {
     return fail('hook input: transcript_path must be an absolute path');
   }
   if (typeof cwd !== 'string' || !isAbsolute(cwd)) return fail('hook input: cwd must be an absolute path');
-  return { ok: true, input: { sessionId, transcriptPath, cwd } };
+  const event = typeof eventName === 'string' && HOOK_EVENT.test(eventName) ? eventName : DEFAULT_HOOK_EVENT;
+  return { ok: true, input: { sessionId, transcriptPath, cwd, event } };
 }

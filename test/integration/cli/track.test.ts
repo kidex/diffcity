@@ -68,7 +68,14 @@ async function running(handlers?: Parameters<typeof startFakeDaemon>[1]): Promis
   return fake;
 }
 
-const trackRequest = (dir: string, agent = false): SocketRequest => ({ v: 1, type: 'track', dir, agent, at: AT.toISOString() });
+const trackRequest = (dir: string, agent = false, session?: Record<string, string>): SocketRequest => ({
+  v: 1,
+  type: 'track',
+  dir,
+  agent,
+  at: AT.toISOString(),
+  ...(session === undefined ? {} : { session: { sessionId: session.sessionId ?? '', transcriptPath: session.transcriptPath ?? '', cwd: session.cwd ?? '', event: session.event ?? '' } }),
+});
 
 describe('diffcity track', () => {
   it('cli/track-registers-repo: sends track for the directory and exits 0 on { ok, repo }', async () => {
@@ -156,6 +163,12 @@ describe('diffcity track --agent with the Claude Code Stop hook on stdin', () =>
       cwd,
       hook_event_name: 'Stop',
     });
+  const sessionOf = (cwd: string): Record<string, string> => ({
+    sessionId: 'session-0001',
+    transcriptPath: '/work/transcripts/session-0001.jsonl',
+    cwd,
+    event: 'Stop',
+  });
   const pipe = (text: string): TrackStdin => ({ isTTY: false, read: () => Promise.resolve(text) });
 
   it('cwd from the hook replaces the default directory', async () => {
@@ -163,13 +176,23 @@ describe('diffcity track --agent with the Claude Code Stop hook on stdin', () =>
     const sub = join(repo.dir, 'src');
     const result = await track(undefined, { agent: true }, { cwd: await realpath(temp.root), stdin: pipe(hookJson(sub)) });
     expect(result).toEqual({ code: 0, stdout: 'tracked sample-shop\n', stderr: '' });
-    expect(fake.requests).toEqual([trackRequest(sub, true)]);
+    expect(fake.requests).toEqual([trackRequest(sub, true, sessionOf(sub))]);
+  });
+
+  it('track/forwards-session-field: the four hook fields go to the daemon as they came, nothing else', async () => {
+    const fake = await running();
+    const sub = join(repo.dir, 'src');
+    const hook = { session_id: 'deadbeef-0001', transcript_path: '/claude/projects/p/deadbeef-0001.jsonl', cwd: sub, hook_event_name: 'SubagentStop', stop_hook_active: true, extra: { path: '/elsewhere' } };
+    expect((await track(undefined, { agent: true }, { stdin: pipe(JSON.stringify(hook)) })).code).toBe(0);
+    expect(fake.requests).toEqual([
+      trackRequest(sub, true, { sessionId: 'deadbeef-0001', transcriptPath: '/claude/projects/p/deadbeef-0001.jsonl', cwd: sub, event: 'SubagentStop' }),
+    ]);
   });
 
   it('an explicit <dir> wins over the hook cwd', async () => {
     const fake = await running();
     expect((await track(repo.dir, { agent: true }, { cwd: temp.root, stdin: pipe(hookJson('/elsewhere')) })).code).toBe(0);
-    expect(fake.requests).toEqual([trackRequest(repo.dir, true)]);
+    expect(fake.requests).toEqual([trackRequest(repo.dir, true, sessionOf('/elsewhere'))]);
   });
 
   it('empty stdin (as from /dev/null) is no hook input and no warning', async () => {
@@ -178,7 +201,7 @@ describe('diffcity track --agent with the Claude Code Stop hook on stdin', () =>
     expect(fake.requests).toEqual([trackRequest(repo.dir, true)]);
   });
 
-  it('invalid hook input is reported and ignored: the command still tracks the default directory', async () => {
+  it('track/invalid-hook-json-agent-mark-still-happens: invalid hook input is reported and ignored; the agent track still goes out, without a session', async () => {
     const fake = await running();
     const result = await track(undefined, { agent: true }, { stdin: pipe('{"session_id": 1}') });
     expect(result.code).toBe(0);

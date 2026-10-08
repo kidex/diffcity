@@ -102,6 +102,12 @@ export interface DigestState {
   aiTitle: string | null;
   /** The first prompt's first 80 characters. */
   firstPrompt: string | null;
+  /**
+   * The last working directory of each run's sidechain, by agentId: absolute
+   * and unredacted, so the daemon can tell which working tree a run worked in.
+   * Never served; optional in digests stored before it existed.
+   */
+  cwds?: Record<string, string>;
 }
 
 export const DIGEST_FORMAT = 1;

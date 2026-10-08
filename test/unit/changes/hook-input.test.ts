@@ -1,8 +1,9 @@
 // The Claude Code Stop hook JSON that `track --agent` reads from stdin
-// (SPEC.md section 3, ADR-001): session_id, transcript_path and cwd, at most 64 KB.
+// (SPEC.md section 3, ADR-001, ADR-038): session_id, transcript_path, cwd and
+// hook_event_name, at most 64 KB.
 
 import { describe, expect, it } from 'vitest';
-import { MAX_HOOK_INPUT_BYTES, parseAgentHookInput } from '../../../src/core/changes/hook-input.js';
+import { DEFAULT_HOOK_EVENT, MAX_HOOK_INPUT_BYTES, parseAgentHookInput } from '../../../src/core/changes/hook-input.js';
 
 const valid = {
   session_id: 'session-0001',
@@ -13,15 +14,29 @@ const valid = {
 };
 
 describe('parseAgentHookInput', () => {
-  it('reads session_id, transcript_path and cwd and ignores the other fields', () => {
+  it('reads session_id, transcript_path, cwd and hook_event_name and ignores the other fields', () => {
     expect(parseAgentHookInput(JSON.stringify(valid))).toEqual({
       ok: true,
       input: {
         sessionId: 'session-0001',
         transcriptPath: '/work/sample-shop/.transcripts/session-0001.jsonl',
         cwd: '/work/sample-shop/src',
+        event: 'Stop',
       },
     });
+  });
+
+  it('the event defaults to Stop when hook_event_name is absent or not a plain name', () => {
+    expect(DEFAULT_HOOK_EVENT).toBe('Stop');
+    const eventOf = (value: unknown): string | undefined => {
+      const result = parseAgentHookInput(JSON.stringify({ ...valid, hook_event_name: value }));
+      return result.ok ? result.input?.event : undefined;
+    };
+    expect(eventOf(undefined)).toBe('Stop');
+    expect(eventOf('SessionEnd')).toBe('SessionEnd');
+    expect(eventOf(42)).toBe('Stop');
+    expect(eventOf('Stop; echo')).toBe('Stop');
+    expect(eventOf('x'.repeat(65))).toBe('Stop');
   });
 
   it('treats empty or blank input as no hook input', () => {
