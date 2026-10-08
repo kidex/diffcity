@@ -123,7 +123,26 @@ test('approve/gate/server-refusal-shown', async ({ page }) => {
   await expect(page.getByTestId('approved-badge')).toHaveText('Approved 3f2a9c4');
 });
 
-standaloneTest('approve/gate/hidden-without-port', async ({ page, standalone }) => {
+test('approve/gate/open-when-no-tier1-file-touched', async ({ page }) => {
+  // A change that touches no tier 1 file: progress.tier1 is 0 of 0, nothing stands in the way.
+  const report = panelReport();
+  report.summary.tier1Files = [];
+  for (const pkg of report.packages) pkg.tier1 = false;
+  const { api } = await openReview(page, { report });
+  const approve = page.getByTestId('approve');
+  await expect(approve).toHaveText('Approve');
+  await expect(approve).not.toHaveAttribute('aria-disabled');
+  await expect(approve).toHaveAttribute('title', 'No tier 1 file is touched in this change');
+  // Keyboard only: focus, Enter opens the confirm, Enter confirms.
+  await approve.focus();
+  await page.keyboard.press('Enter');
+  await expect(page.getByTestId('approve-confirm')).toBeFocused();
+  await page.keyboard.press('Enter');
+  await expect(page.getByTestId('approved-badge')).toHaveText('Approved 3f2a9c4');
+  expect(api.approval(11).writes).toEqual(['POST']);
+});
+
+standaloneTest('approve/gate/hidden-without-port',async ({ page, standalone }) => {
   await standalone.open(panelReport());
   await expect(page.getByTestId('hud-bar')).toBeVisible();
   await expect(page.getByTestId('export-plantuml')).toBeVisible();
