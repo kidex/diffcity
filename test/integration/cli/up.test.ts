@@ -38,7 +38,19 @@ const version = readVersion();
 async function up(args: string[]): Promise<{ code: number | null; stdout: string; stderr: string }> {
   const run = daemons.cli(['up', ...args], temp.env, temp.userHome);
   const code = await run.exited;
+  await reportStartTimeout(run.stderr());
   return { code, stdout: run.stdout(), stderr: run.stderr() };
+}
+
+/**
+ * A start that timed out fails the test with `up`'s message alone; the daemon
+ * log tells whether the daemon ran at all (DC-119: a daemon started through
+ * LaunchServices can sit unscheduled for seconds), so it goes to the test output.
+ */
+async function reportStartTimeout(stderr: string): Promise<void> {
+  if (!stderr.includes('did not start within')) return;
+  const log = await readFile(paths.log, 'utf8').catch(() => '(no daemon.log)');
+  console.error(`up timed out starting the daemon; daemon.log:\n${log}`);
 }
 
 async function listening(): Promise<Server> {
@@ -207,7 +219,9 @@ describe('up stays light', () => {
     const log = join(temp.root, 'imports.log');
     const env = { ...temp.env, DIFFCITY_TEST_IMPORT_LOG: log };
     const run = daemons.spawn(CLI_DIST, ['up', '--port', '0', '--no-open'], env, temp.userHome, ['--import', recorder]);
-    expect(await run.exited).toBe(0);
+    const code = await run.exited;
+    await reportStartTimeout(run.stderr());
+    expect(code, `stderr: ${run.stderr()}`).toBe(0);
     const urls = (await readFile(log, 'utf8')).split('\n').filter((line) => line !== '');
     expect(urls.some((url) => url.endsWith('/dist/cli/up.js'))).toBe(true);
     expect(urls.filter(loadsFastify)).toEqual([]);
