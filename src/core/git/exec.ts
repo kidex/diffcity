@@ -62,7 +62,7 @@ export const defaultRunner: CommandRunner = (file, args, options) =>
  * diff.external, diff.<driver>.command and diff.<driver>.textconv are turned
  * off by the diff flags (--no-ext-diff, --no-textconv).
  */
-const STATIC_OVERRIDES: readonly [string, string][] = [
+export const STATIC_OVERRIDES: readonly [string, string][] = [
   ['core.fsmonitor', 'false'],
   ['core.hooksPath', devNull],
 ];
