@@ -62,7 +62,9 @@
         "tier1Files": [
           "src/payments/charge.ts"
         ]
-      }
+      },
+      "approvedHead": null,
+      "approvedAt": null
     },
     {
       "id": 101,
@@ -103,7 +105,9 @@
           "same": 3
         },
         "tier1Files": []
-      }
+      },
+      "approvedHead": null,
+      "approvedAt": null
     },
     {
       "id": 102,
@@ -144,7 +148,9 @@
           "same": 3
         },
         "tier1Files": []
-      }
+      },
+      "approvedHead": null,
+      "approvedAt": null
     },
     {
       "id": 103,
@@ -168,7 +174,9 @@
       "updatedAt": "2026-05-04T10:09:05.000Z",
       "archivedAt": null,
       "archiveReason": null,
-      "stats": null
+      "stats": null,
+      "approvedHead": null,
+      "approvedAt": null
     },
     {
       "id": 104,
@@ -209,7 +217,9 @@
           "same": 3
         },
         "tier1Files": []
-      }
+      },
+      "approvedHead": null,
+      "approvedAt": null
     },
     {
       "id": 105,
@@ -250,7 +260,9 @@
           "same": 3
         },
         "tier1Files": []
-      }
+      },
+      "approvedHead": null,
+      "approvedAt": null
     },
     {
       "id": 106,
@@ -293,7 +305,9 @@
         "tier1Files": [
           "src/payments/charge.ts"
         ]
-      }
+      },
+      "approvedHead": "6aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "approvedAt": "2026-05-04T08:18:05.000Z"
     },
     {
       "id": 107,
@@ -334,7 +348,9 @@
           "same": 3
         },
         "tier1Files": []
-      }
+      },
+      "approvedHead": "6baaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "approvedAt": "2026-05-04T07:41:05.000Z"
     },
     {
       "id": 108,
@@ -375,7 +391,9 @@
           "same": 3
         },
         "tier1Files": []
-      }
+      },
+      "approvedHead": "6caaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "approvedAt": "2026-05-04T07:04:05.000Z"
     },
     {
       "id": 109,
@@ -418,7 +436,9 @@
         "tier1Files": [
           "src/payments/charge.ts"
         ]
-      }
+      },
+      "approvedHead": null,
+      "approvedAt": null
     },
     {
       "id": 110,
@@ -442,7 +462,9 @@
       "updatedAt": "2026-05-04T05:50:05.000Z",
       "archivedAt": null,
       "archiveReason": null,
-      "stats": null
+      "stats": null,
+      "approvedHead": null,
+      "approvedAt": null
     },
     {
       "id": 111,
@@ -483,7 +505,9 @@
           "same": 3
         },
         "tier1Files": []
-      }
+      },
+      "approvedHead": null,
+      "approvedAt": null
     },
     {
       "id": 112,
@@ -526,7 +550,9 @@
         "tier1Files": [
           "src/payments/charge.ts"
         ]
-      }
+      },
+      "approvedHead": null,
+      "approvedAt": null
     },
     {
       "id": 113,
@@ -567,7 +593,9 @@
           "same": 3
         },
         "tier1Files": []
-      }
+      },
+      "approvedHead": null,
+      "approvedAt": null
     },
     {
       "id": 114,
@@ -608,7 +636,9 @@
           "same": 3
         },
         "tier1Files": []
-      }
+      },
+      "approvedHead": null,
+      "approvedAt": null
     },
     {
       "id": 115,
@@ -651,7 +681,9 @@
         "tier1Files": [
           "src/payments/charge.ts"
         ]
-      }
+      },
+      "approvedHead": "73aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "approvedAt": "2026-05-04T02:45:05.000Z"
     },
     {
       "id": 116,
@@ -692,7 +724,9 @@
           "same": 3
         },
         "tier1Files": []
-      }
+      },
+      "approvedHead": "74aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "approvedAt": "2026-05-04T02:08:05.000Z"
     },
     {
       "id": 117,
@@ -716,7 +750,9 @@
       "updatedAt": "2026-05-04T01:31:05.000Z",
       "archivedAt": null,
       "archiveReason": null,
-      "stats": null
+      "stats": null,
+      "approvedHead": "75aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "approvedAt": "2026-05-04T01:31:05.000Z"
     },
     {
       "id": 118,
@@ -759,7 +795,9 @@
         "tier1Files": [
           "src/payments/charge.ts"
         ]
-      }
+      },
+      "approvedHead": null,
+      "approvedAt": null
     },
     {
       "id": 119,
@@ -800,7 +838,9 @@
           "same": 3
         },
         "tier1Files": []
-      }
+      },
+      "approvedHead": null,
+      "approvedAt": null
     },
     {
       "id": 120,
@@ -841,7 +881,9 @@
           "same": 3
         },
         "tier1Files": []
-      }
+      },
+      "approvedHead": null,
+      "approvedAt": null
     },
     {
       "id": 121,
@@ -884,7 +926,9 @@
         "tier1Files": [
           "src/payments/charge.ts"
         ]
-      }
+      },
+      "approvedHead": null,
+      "approvedAt": null
     },
     {
       "id": 122,
@@ -925,7 +969,9 @@
           "same": 3
         },
         "tier1Files": []
-      }
+      },
+      "approvedHead": null,
+      "approvedAt": null
     },
     {
       "id": 123,
@@ -966,7 +1012,9 @@
           "same": 3
         },
         "tier1Files": []
-      }
+      },
+      "approvedHead": null,
+      "approvedAt": null
     },
     {
       "id": 124,
@@ -990,7 +1038,9 @@
       "updatedAt": "2026-05-03T21:12:05.000Z",
       "archivedAt": null,
       "archiveReason": null,
-      "stats": null
+      "stats": null,
+      "approvedHead": "7caaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "approvedAt": "2026-05-03T21:12:05.000Z"
     },
     {
       "id": 125,
@@ -1031,7 +1081,9 @@
           "same": 3
         },
         "tier1Files": []
-      }
+      },
+      "approvedHead": "7daaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "approvedAt": "2026-05-03T20:35:05.000Z"
     },
     {
       "id": 126,
@@ -1072,7 +1124,9 @@
           "same": 3
         },
         "tier1Files": []
-      }
+      },
+      "approvedHead": "7eaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "approvedAt": "2026-05-03T19:58:05.000Z"
     },
     {
       "id": 127,
@@ -1115,7 +1169,9 @@
         "tier1Files": [
           "src/payments/charge.ts"
         ]
-      }
+      },
+      "approvedHead": null,
+      "approvedAt": null
     },
     {
       "id": 128,
@@ -1156,7 +1212,9 @@
           "same": 3
         },
         "tier1Files": []
-      }
+      },
+      "approvedHead": null,
+      "approvedAt": null
     },
     {
       "id": 129,
@@ -1197,7 +1255,9 @@
           "same": 3
         },
         "tier1Files": []
-      }
+      },
+      "approvedHead": null,
+      "approvedAt": null
     },
     {
       "id": 130,
@@ -1240,7 +1300,9 @@
         "tier1Files": [
           "src/payments/charge.ts"
         ]
-      }
+      },
+      "approvedHead": null,
+      "approvedAt": null
     },
     {
       "id": 131,
@@ -1264,7 +1326,9 @@
       "updatedAt": "2026-05-03T16:53:05.000Z",
       "archivedAt": null,
       "archiveReason": null,
-      "stats": null
+      "stats": null,
+      "approvedHead": null,
+      "approvedAt": null
     },
     {
       "id": 132,
@@ -1305,7 +1369,9 @@
           "same": 3
         },
         "tier1Files": []
-      }
+      },
+      "approvedHead": null,
+      "approvedAt": null
     },
     {
       "id": 133,
@@ -1348,7 +1414,9 @@
         "tier1Files": [
           "src/payments/charge.ts"
         ]
-      }
+      },
+      "approvedHead": "85aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "approvedAt": "2026-05-03T15:39:05.000Z"
     },
     {
       "id": 134,
@@ -1389,7 +1457,9 @@
           "same": 3
         },
         "tier1Files": []
-      }
+      },
+      "approvedHead": "86aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "approvedAt": "2026-05-03T15:02:05.000Z"
     },
     {
       "id": 135,
@@ -1430,7 +1500,9 @@
           "same": 3
         },
         "tier1Files": []
-      }
+      },
+      "approvedHead": "87aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "approvedAt": "2026-05-03T14:25:05.000Z"
     },
     {
       "id": 136,
@@ -1473,7 +1545,9 @@
         "tier1Files": [
           "src/payments/charge.ts"
         ]
-      }
+      },
+      "approvedHead": null,
+      "approvedAt": null
     },
     {
       "id": 137,
@@ -1514,7 +1588,9 @@
           "same": 3
         },
         "tier1Files": []
-      }
+      },
+      "approvedHead": null,
+      "approvedAt": null
     },
     {
       "id": 138,
@@ -1538,7 +1614,9 @@
       "updatedAt": "2026-05-03T12:34:05.000Z",
       "archivedAt": null,
       "archiveReason": null,
-      "stats": null
+      "stats": null,
+      "approvedHead": null,
+      "approvedAt": null
     },
     {
       "id": 139,
@@ -1581,7 +1659,9 @@
         "tier1Files": [
           "src/payments/charge.ts"
         ]
-      }
+      },
+      "approvedHead": null,
+      "approvedAt": null
     },
     {
       "id": 140,
@@ -1622,7 +1702,9 @@
           "same": 3
         },
         "tier1Files": []
-      }
+      },
+      "approvedHead": null,
+      "approvedAt": null
     },
     {
       "id": 141,
@@ -1663,7 +1745,9 @@
           "same": 3
         },
         "tier1Files": []
-      }
+      },
+      "approvedHead": null,
+      "approvedAt": null
     },
     {
       "id": 142,
@@ -1706,7 +1790,9 @@
         "tier1Files": [
           "src/payments/charge.ts"
         ]
-      }
+      },
+      "approvedHead": "8eaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "approvedAt": "2026-05-03T10:06:05.000Z"
     },
     {
       "id": 143,
@@ -1747,7 +1833,9 @@
           "same": 3
         },
         "tier1Files": []
-      }
+      },
+      "approvedHead": "8faaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "approvedAt": "2026-05-03T09:29:05.000Z"
     }
   ]
 }

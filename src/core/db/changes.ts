@@ -41,6 +41,8 @@ interface ChangeRow {
 
 interface ChangeSummaryRow extends ChangeRow {
   snapshotSummary: string | null;
+  approvedHead: string | null;
+  approvedAt: string | null;
 }
 
 // The plan types are canonical in src/core/changes (DC-26); re-exported for the db API.
@@ -145,6 +147,8 @@ function toSummary(row: ChangeSummaryRow): ChangeSummary {
     archivedAt: change.archivedAt,
     archiveReason: change.archiveReason,
     stats: toStats(row.snapshotSummary),
+    approvedHead: row.approvedHead,
+    approvedAt: row.approvedAt,
   };
 }
 

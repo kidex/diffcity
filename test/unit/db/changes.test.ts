@@ -281,7 +281,11 @@ describe('lists and summaries', () => {
         filesByVerdict: { eyes: 1, risky: 0, spec: 0, ok: 1, same: 2 },
         tier1Files: ['src/auth/session.ts'],
       },
+      approvedHead: null,
+      approvedAt: null,
     });
+    db.changes.setApproval(change.id, { approvedHead: change.head, approvedAt: T0 });
+    expect(db.changes.getSummary(change.id)).toMatchObject({ approvedHead: change.head, approvedAt: T0 });
   });
 
   it('agentUnreviewed needs both an agent last event and the unreviewed state', () => {
