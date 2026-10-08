@@ -505,20 +505,52 @@ export function countLines(bytes: Uint8Array): number {
   return bytes.length > 0 && bytes[bytes.length - 1] !== 0x0a ? count + 1 : count;
 }
 
-/** Size and line count of a version, gathered while it streams. */
-class Measure {
+/**
+ * Size and line count of a version, gathered while it streams. The first
+ * BINARY_SNIFF_BYTES decide binary content (git's heuristic) before any line
+ * is counted: `add` answers `binary` as soon as they show a NUL byte, and the
+ * caller stops reading, so a large binary is never streamed in full.
+ */
+export class LineMeasure {
   bytes = 0;
   private feeds = 0;
   private last = -1;
   private head: Buffer[] = [];
   private headSize = 0;
+  /** null while the head is still being read. */
+  private binary: boolean | null = null;
 
-  add(chunk: Buffer): void {
+  /** Takes the next chunk; `binary` means stop: the content is binary and lines() is null. */
+  add(chunk: Buffer): 'binary' | 'text' {
     this.bytes += chunk.length;
-    if (this.headSize < BINARY_SNIFF_BYTES) {
+    if (this.binary === null) {
       this.head.push(chunk);
       this.headSize += chunk.length;
+      if (this.headSize < BINARY_SNIFF_BYTES) return 'text';
+      // decide() counts the head's lines when it is text.
+      return this.decide() ? 'binary' : 'text';
     }
+    this.count(chunk);
+    return 'text';
+  }
+
+  /** The line count; null for binary content, as no line count means anything there. */
+  lines(): number | null {
+    if (this.binary ?? this.decide()) return null;
+    return this.bytes > 0 && this.last !== 0x0a ? this.feeds + 1 : this.feeds;
+  }
+
+  /** Decides binary from the head read so far; true when binary. */
+  private decide(): boolean {
+    const head = Buffer.concat(this.head);
+    this.head = [];
+    const binary = looksBinary(head);
+    this.binary = binary;
+    if (!binary) this.count(head);
+    return binary;
+  }
+
+  private count(chunk: Buffer): void {
     let at = chunk.indexOf(0x0a);
     while (at !== -1) {
       this.feeds += 1;
@@ -526,26 +558,32 @@ class Measure {
     }
     if (chunk.length > 0) this.last = chunk[chunk.length - 1] ?? -1;
   }
-
-  /** null for binary content (git's heuristic), as no line count means anything there. */
-  lines(): number | null {
-    if (looksBinary(Buffer.concat(this.head))) return null;
-    return this.bytes > 0 && this.last !== 0x0a ? this.feeds + 1 : this.feeds;
-  }
 }
+
+/** Thrown from a stream callback to stop reading a binary blob. */
+class BinaryStop extends Error {}
 
 /**
  * Size in bytes and line count of `path` in the after state, streamed (never
  * buffered), or null when it does not exist there. Lines are null for binary
- * content. Same bytes as readAfterBytes: a symlink measures its target text.
+ * content, whose reading stops after its first BINARY_SNIFF_BYTES: the size
+ * then comes from the object header or lstat. Same bytes as readAfterBytes: a
+ * symlink measures its target text.
  */
 export async function measureAfter(change: ResolvedChange, path: string): Promise<{ bytes: number; lines: number | null } | null> {
-  const measure = new Measure();
+  const measure = new LineMeasure();
   if (!change.worktree) {
     const repoPath = checkRepoPath(path);
-    const result = await gitStream(change.root, ['cat-file', 'blob', `${change.headCommit}:${repoPath}`], (chunk) => {
-      measure.add(chunk);
-    });
+    let result;
+    try {
+      result = await gitStream(change.root, ['cat-file', 'blob', `${change.headCommit}:${repoPath}`], (chunk) => {
+        if (measure.add(chunk) === 'binary') throw new BinaryStop();
+      });
+    } catch (error) {
+      if (!(error instanceof BinaryStop)) throw error;
+      const bytes = await blobSize(change.root, change.headCommit, path);
+      return bytes === null ? null : { bytes, lines: null };
+    }
     if (result.exitCode !== 0) {
       await assertBlobAbsent(change.root, change.headCommit, repoPath);
       return null;
@@ -558,7 +596,12 @@ export async function measureAfter(change: ResolvedChange, path: string): Promis
     const stats = await lstat(absPath);
     if (stats.isSymbolicLink()) measure.add(await readlink(absPath, { encoding: 'buffer' }));
     else if (!stats.isFile()) return null;
-    else for await (const chunk of createReadStream(absPath)) measure.add(chunk as Buffer);
+    else {
+      for await (const chunk of createReadStream(absPath)) {
+        // Leaving the loop closes the stream.
+        if (measure.add(chunk as Buffer) === 'binary') return { bytes: stats.size, lines: null };
+      }
+    }
     return { bytes: measure.bytes, lines: measure.lines() };
   } catch (error) {
     const code = (error as NodeJS.ErrnoException).code;
