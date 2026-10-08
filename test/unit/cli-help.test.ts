@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { buildProgram } from '../../src/cli/program.js';
 
-const SPEC_COMMANDS = ['start', 'stop', 'up', 'trust', 'shell-init', 'track', 'scan', 'diff', 'import', 'export', 'status', 'audit'];
+const SPEC_COMMANDS = ['start', 'stop', 'up', 'trust', 'shell-init', 'track', 'scan', 'diff', 'import', 'setup-claude', 'export', 'status', 'audit'];
 
 function helpText(): string {
   let out = '';

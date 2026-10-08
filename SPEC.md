@@ -31,7 +31,7 @@ Division of labour: the AI writes the line-by-line comments (imported as finding
 | Filters by verdict and by change type | |
 | Reading in execution order | Hover with full call graph |
 | Findings import (own JSON + SARIF) | Direct Claude API integration |
-| `/code-review` slash command + Stop hook for Claude Code | GitHub Action, hosted dashboard, GitHub App |
+| `/diffcity-review` slash command + Stop hook for Claude Code | GitHub Action, hosted dashboard, GitHub App |
 | Automatic collection when entering a repo (shell hook) and on every Claude Code session | PUML class diagram |
 | Project registry with `status` and `audit` | |
 | PlantUML sequence export of the execution path | |
@@ -53,8 +53,9 @@ diffcity shell-init [zsh|bash|fish]                    # print the shell hook; a
 diffcity track [<dir>] [--agent]                       # register the current repo and ask the daemon to collect; --agent marks the change as "agent worked, not reviewed" and links the Claude Code session from the hook JSON on stdin
 diffcity trust [<dir>] [--list] [--remove]             # let the daemon load this repo's diffcity.config.js; --list shows trusted repos, --remove withdraws trust
 diffcity scan <dir>                                    # discover repos (folders with .git) under a folder and register them
-diffcity diff --json [--base] [--head]                 # semantic diff of the current change, for AI and other tools
+diffcity diff --json [--compact] [--base] [--head]     # semantic diff of the current change, for AI and other tools; --compact leaves out untouched files
 diffcity import <findings.json|*.sarif.json> [--open]  # anchor findings to symbols and attach them to the current change; --open opens the change in the UI
+diffcity setup-claude [--repo [<dir>]] [--dry-run] [--remove]  # install the /diffcity-review command and the Stop hook for Claude Code (section 7)
 diffcity export html|puml [--out]                      # self-contained export of the current change (phase 5)
 diffcity status                                        # repos ordered by urgency (unreviewed changes, stale audit)
 diffcity audit [--stale] [<repo>]                      # full audit (deps, semgrep, gitleaks, AI on tier 1)
@@ -75,13 +76,13 @@ Integrate (phase 5) has no CLI command: merge, push and PR run only from the cha
 | You `cd` into a folder with `.git` (`chpwd`/`PROMPT_COMMAND` hook) | `diffcity track` registers the repo if missing and asks the daemon to collect; costs under 50 ms, the rest is asynchronous |
 | The daemon is running | watches `.git/refs`, `.git/HEAD` and the working tree of active repos (chokidar, or recursive `fs.watch` for working trees on macOS; ADR-020); on change it recomputes only the affected change, with a 2 s debounce |
 | Claude Code finishes a task (Stop hook) | `diffcity track --agent` marks the change as "agent worked, not reviewed" |
-| `/code-review` from the editor | findings land on the current change and update its verdicts |
+| `/diffcity-review` from the editor | findings land on the current change and update its verdicts |
 | Every 15 min, per active repo | `gh pr list --json` (if `gh` is installed and authenticated) refreshes open PRs |
 
 - The shell hook calls `track` in the background only when you enter a repo (its root or any subfolder) or move to another repo; moving between folders of the same repo does nothing (ADR-016).
 - A repo is active (watched and polled for PRs) if you entered it, an agent worked in it, or you opened it in the UI in the last 7 days. Repos found by `scan` are registered inactive and collected once (ADR-020).
 - The 2 s debounce has a 10 s maximum wait, so the UI updates at least every 10 s while an agent keeps writing (ADR-020).
-- diffcity's own files `.diffcity/findings.json` and `.diffcity/fix-queue.json` are never part of a change: they are left out of the touched files and ignored by the watcher, so an import or a queued fix creates no Draft and no recollect (ADR-036). Every other file under `.diffcity/` is a normal file.
+- diffcity's own files `.diffcity/findings.json`, the fix queue directory `.diffcity/fix-queue/` and `.diffcity/fix-queue.taking/` (the queue while `/diffcity-review` applies it, ADR-037), with everything inside them, and the queue's temporary files `.diffcity/.fix-queue.*.tmp`, all at the repo root, are never part of a change: they are left out of the touched files and ignored by the watcher, so an import or a queued fix creates no Draft and no recollect (ADR-036). Every other file under `.diffcity/` is a normal file.
 
 ### Change list per repo
 
@@ -253,7 +254,7 @@ A Node daemon (Fastify) serves the UI on `localhost:4321` plus a JSON API and SS
 | Fleet (card) | bottom-right card with the last audit of the other repos, red above 30 days or with new CVEs; click goes to the fleet screen |
 | Theme | dark by default, light under prefers-color-scheme: light; colours as tokens on :root |
 
-"Ask agent to fix" writes the finding to `.diffcity/fix-queue.json` in the repo; the slash command picks it up. "Mark as intended" sets `state: 'intended'` in the DB and removes it from the verdict computation. "Approve" sets `reviewState: 'approved'` on the change, records the approved head, and unlocks only after every touched tier 1 file has a current review mark.
+"Ask agent to fix" writes the finding as one file, `.diffcity/fix-queue/<id>.json`, in the change's working tree; the slash command picks it up. The file holds the version 1 item itself, with no envelope: `{ "key", "file", "line", "symbol"?, "severity", "title", "message", "fix"?, "queuedAt" }`, or `{ "kind": "review-summary", "key", "message", "queuedAt" }` for a review summary (ADR-029). `<id>` is the first 32 hex digits of the SHA-256 of the key, so a finding still in the queue is not queued twice. The daemon writes the item to a temporary file in `.diffcity/` and renames it into the queue directory, never rewriting an item; at most 100 items (the most Claude Code's Glob lists at once) and 1 MiB are queued. The slash command takes the whole queue by renaming the directory, so every item is applied exactly once; when the queue is taken under three writes in a row the request is refused as `fix-queue-busy` (ADR-036, DC-112). "Mark as intended" sets `state: 'intended'` in the DB and removes it from the verdict computation. "Approve" sets `reviewState: 'approved'` on the change, records the approved head, and unlocks only after every touched tier 1 file has a current review mark.
 
 Integrate (phase 5) is off by default and enabled per repo in the user's diffcity settings, never by the repo. Each action opens a confirmation that shows the exact command, and runs only after it is confirmed. The daemon refuses when the change is not approved, when its head has moved since approval, when it has uncommitted changes, or when it is a Draft. It never force-pushes, rebases or squashes. Commands run without a shell, and their output is shown in the dialog.
 
@@ -263,27 +264,62 @@ Send review to the agent (phase 4) is off by default and enabled per repo in the
 
 ## 7. Claude Code integration
 
-### 7.1 `.claude/commands/code-review.md`
+### 7.1 `.claude/commands/diffcity-review.md`
+
+`diffcity setup-claude` writes this file to `commands/diffcity-review.md` in the user's Claude Code configuration (`$CLAUDE_CONFIG_DIR` or `~/.claude`), or to `.claude/commands/diffcity-review.md` of a repo with `--repo [<dir>]`, and merges the Stop hook of 7.2 into the `settings.json` next to it. `--dry-run` prints what would change; `--remove` removes only what diffcity wrote. When the `diffcity` on the `PATH` is not the CLI running setup from a global install (a `node_modules/.bin` copy, as under `npx` or `npm exec`, does not count), every `diffcity` below (and in the hook) is `"<absolute node>" "<absolute dist/cli/index.js>"`, so the `allowed-tools` entries match the commands the body runs (ADR-037). The command is `/diffcity-review`, so it never shadows Claude Code's bundled `code-review` skill, and `disable-model-invocation: true` lets only the user start it (ADR-001: the browser opens only when the user asked). The line after the frontmatter is the version marker: setup overwrites or removes the file only when that line is exactly `<!-- diffcity: diffcity-review v1 -->`, and refuses otherwise. `--remove` also deletes a leftover `commands/code-review.md`, the command's first name, but only when it carries the old marker `<!-- diffcity: code-review v1 -->`.
 
 ```
-Run `npx diffcity diff --json` and read the result: it is the semantic diff of the current change
-(touched symbols, changed signatures with call sites, the execution path, tier 1 zones).
+---
+description: Review the current change with diffcity and put the findings on the city
+argument-hint: [what the task was]
+disable-model-invocation: true
+allowed-tools:
+  - Bash(diffcity diff:*)
+  - Bash(diffcity import:*)
+  - Bash(mv .diffcity/fix-queue .diffcity/fix-queue.taking)
+  - Bash(rm -r .diffcity/fix-queue.taking)
+  - Read
+  - Glob
+  - Write(.diffcity/findings.json)
+---
+<!-- diffcity: diffcity-review v1 -->
+All paths below are relative to the repository root: run every command from there.
+First take the fixes queued from diffcity. If `.diffcity/fix-queue.taking` exists, an earlier run
+stopped halfway: apply it and remove it as below before anything else.
+Run `mv .diffcity/fix-queue .diffcity/fix-queue.taking`; when `.diffcity/fix-queue` does not exist, nothing is queued.
+Otherwise find every `.diffcity/fix-queue.taking/**/*.json` with Glob and read each one: a file is one item.
+If Glob says more files were not listed, read the items one hex prefix at a time, `.diffcity/fix-queue.taking/**/0*.json`
+through `.diffcity/fix-queue.taking/**/f*.json`, and run the `rm -r` below only after every item has been read.
+An item with `file`, `line`, `title`, `message` and `fix` is a finding to fix; an item with
+`kind: "review-summary"` is the reviewer's summary, in `message`. Apply every item.
+Then run `rm -r .diffcity/fix-queue.taking`.
+
+Run `diffcity diff --json --compact` and read the result: it is the semantic diff of the current change
+(touched files and symbols, changed signatures with call sites, the execution path, tier 1 zones).
 Review this change with a focus on: security (auth/authz, input validation, secrets),
 correctness (unhandled errors, edge cases, money arithmetic), scope creep relative to $ARGUMENTS,
 tests that actually assert something, architecture violations.
-Write the findings to `.diffcity/findings.json` in the format from docs/findings.md,
-with `source: "claude"`, `file`, `line`, `severity`, `category`, `title`, `message`, `fix`.
-Then run `npx diffcity import .diffcity/findings.json --open`.
-If `.diffcity/fix-queue.json` exists, apply its fixes before the review and empty the file.
+Write the findings to `.diffcity/findings.json` as a JSON array, one object per finding, with
+`source: "claude"`, `file`, `line`, `severity` (`high`, `med` or `low`), `category` (`security`,
+`correctness`, `scope`, `style`, `tests` or `architecture`), `title` (one line), `message` (what is
+wrong and when it breaks) and `fix` (the change to make). `file` is the repo-relative path of a file
+in the diff and `line` a line of its current version: never invent a file or a line.
+Set `why`, a one-line hint on why the code is there, only on a `scope` finding.
+Write `[]` when you find nothing.
+Then run `diffcity import .diffcity/findings.json --open`.
 ```
+
+The fix queue directory is renamed to `.diffcity/fix-queue.taking` before it is applied, so an item the daemon queues meanwhile lands in a new `.diffcity/fix-queue` and is neither lost nor applied twice; `.diffcity/fix-queue.taking` is an own directory like the queue (3a). The queue was a single file `.diffcity/fix-queue.json` before DC-112; nothing shipped with it, so neither the daemon nor the command reads a leftover one, and it is a normal file now. `diff --json --compact` is the Report without untouched files and without the packages left with none; `meta`, `steps`, `findings`, `checks` and `summary` are unchanged, and without `--json` the flag has no effect. `--open` opens the change after the import because the user asked for the review (ADR-001).
 
 ### 7.2 Stop hook (`.claude/settings.json`)
 
 ```json
-{ "hooks": { "Stop": [ { "matcher": "", "hooks": [ { "type": "command", "command": "npx diffcity track --agent" } ] } ] } }
+{ "hooks": { "Stop": [ { "matcher": "", "hooks": [ { "type": "command", "command": "diffcity track --agent" } ] } ] } }
 ```
 
-The hook does not open the browser; the UI updates live over SSE.
+`diffcity setup-claude` adds this entry under `hooks.Stop` unless a hook with the identical command is there, keeps every other key and hook, refuses a `settings.json` it cannot parse, writes through a temporary file and a rename, and keeps a one-time backup `settings.json.diffcity-backup`. The command is `diffcity track --agent` for a global install, otherwise `"<absolute node>" "<absolute dist/cli/index.js>" track --agent`; setup prints the one it chose.
+
+The hook does not open the browser; the UI updates live over SSE. It never blocks the agent: on any failure (no daemon can start, a directory outside a repo, a refusal) it prints one line on stderr and exits 0.
 
 Claude Code passes the hook JSON (`session_id`, `transcript_path`, `cwd`, `hook_event_name`) on stdin, and `track --agent` forwards it to the daemon, so the command stays the same. The daemon reads the transcript only if it lies under the Claude Code projects directory and is named after `session_id`. It stores only a redacted, size-capped digest, never the transcript.
 
@@ -314,7 +350,7 @@ A repo is "stale" when: 30 days have passed since the last audit, `npm audit` re
 | 1 | TS/JS semantic diff: git diff → before/after symbols → status, verdict, tier 1 | `diff --json` correct on 3 real changes, with fixture tests (add, mod, sig, del, new file, deleted file) |
 | 2 | Daemon + DB + collection: `up`, `shell-init`, `track`, `scan`, watcher, dynamic change list (draft/branch/PR), Fleet and Repo screens, SSE | you `cd` into any of your repos and within 5 seconds it appears in the UI with all its changes (kind, title, ahead/behind; status and verdict counters on the test repo), with no manual command (ADR-023) |
 | 3 | Change screen: 3D city in the Night data city style, hover, select, verdict, type and rule filters, file view with the diff, review marks and summary, pulsing critical floors, live update | the screen has the mockup's layout, information and behaviour on the 3 changes; it updates on its own when the agent writes code; it renders from a Report alone; review marks survive a reload and become outdated when their code changes; it holds 60 fps at a pixel ratio of 2 on a 3200×2000 canvas on the reference city |
-| 4 | Execution path, reading panel, findings + SARIF import, slash command, Stop hook with session context (Session tab: prompts, agent questions and answers, agents that ran, activity summary), Ask agent to fix / Mark as intended / Approve, send review to the agent, review rules (file size, layering) | `/code-review` from the editor puts the pins on the city with no manual steps; after a Claude Code session in a repo, its change shows that session and the agents that ran in the Session tab with no manual steps, with secrets redacted, and the HTML export and `diff --json` contain no session data |
+| 4 | Execution path, reading panel, findings + SARIF import, slash command, Stop hook with session context (Session tab: prompts, agent questions and answers, agents that ran, activity summary), Ask agent to fix / Mark as intended / Approve, send review to the agent, review rules (file size, layering) | `/diffcity-review` from the editor puts the pins on the city with no manual steps; after a Claude Code session in a repo, its change shows that session and the agents that ran in the Session tab with no manual steps, with secrets redacted, and the HTML export and `diff --json` contain no session data |
 | 5 | `audit`, `status`, fleet map with audit age, self-contained HTML and PlantUML export, light theme, approve → integrate (merge into base, push branch, open/update PR via `gh`), README with GIF, review rules for CI pipeline and CVEs | a 3-minute demo run end to end in front of the team, including an approved change merged or opened as a PR from the change screen after confirmation; integrate is refused for a change that is not approved or whose head moved, and no force path exists |
 
 Each phase closes with a `v0.<phase>.0` tag and a CHANGELOG entry.

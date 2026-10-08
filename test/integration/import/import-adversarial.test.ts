@@ -6,8 +6,7 @@
 // macOS /var spelling of the root, a subfolder, a linked worktree, the 4 MiB
 // boundary, a `.diffcity` symlink and a nested `.diffcity/findings.json`.
 
-import { existsSync } from 'node:fs';
-import { mkdtemp, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises';
+import { mkdtemp, readdir, realpath, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -18,6 +17,7 @@ import type { SocketRequest } from '../../../src/core/model/types.js';
 import type { Report } from '../../../src/core/report/types.js';
 import { sendRequest } from '../../../src/daemon/client.js';
 import { MAX_IMPORT_REQUEST_BYTES } from '../../../src/daemon/socket/protocol.js';
+import { hasFixQueue } from '../../helpers/fix-queue.js';
 import { isolateGitConfig } from '../../helpers/git-env.js';
 import type { TempRepo } from '../../helpers/repo.js';
 import { call } from '../../helpers/review-api.js';
@@ -171,7 +171,7 @@ describe('diffcity import, the full loop (ADR-036)', () => {
       const settled = db.snapshots.latest(change.id);
       const queued = await call(test.daemon.info.port, 'POST', `/api/changes/${String(change.id)}/findings/${semgrepFinding.id}/fix`);
       expect(queued.status).toBe(200);
-      expect(existsSync(join(repo.dir, '.diffcity', 'fix-queue.json'))).toBe(true);
+      expect(hasFixQueue(repo.dir)).toBe(true);
       // Anything that asks for a collection now would find the queue file on disk.
       await test.track(repo.dir);
       await test.idle();
@@ -360,7 +360,7 @@ describe('diffcity import, adversarial cases', () => {
     const outside = await mkdtemp(join(tmpdir(), 'dc-outside-'));
     try {
       await writeFile(join(outside, 'findings.json'), '[]\n');
-      await writeFile(join(outside, 'fix-queue.json'), '{"version":1,"items":[]}\n');
+      await writeFile(join(outside, 'notes.md'), '# Outside\n');
       await symlink(outside, join(repo.dir, '.diffcity'));
       const change = await resolveChange(repo.dir, { base: 'main' });
       expect((await changedFiles(change)).map((file) => file.path)).toEqual(['.diffcity', 'src/ledger/audit.ts', 'src/ledger/balance.ts']);
@@ -377,7 +377,7 @@ describe('diffcity import, adversarial cases', () => {
       const queued = await call(test.daemon.info.port, 'POST', `/api/changes/${String(live.id)}/findings/${stored.key}/fix`);
       expect(queued.status).toBe(409);
       expect(queued.json()).toMatchObject({ error: { code: 'fix-queue-unsafe' } });
-      expect(await readFile(join(outside, 'fix-queue.json'), 'utf8')).toBe('{"version":1,"items":[]}\n');
+      expect((await readdir(outside)).sort()).toEqual(['findings.json', 'notes.md', 'review.json']);
       await test.idle();
     } finally {
       await rm(outside, { recursive: true, force: true });

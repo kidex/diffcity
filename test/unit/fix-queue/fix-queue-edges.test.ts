@@ -1,12 +1,12 @@
-// Edges of the fix-queue writer (ADR-036) on real temporary directories: a
-// queue already over 1 MiB on disk, the byte cap counted in UTF-8 bytes, a
-// valid queue of another version, and `.diffcity` as a regular file.
+// Edges of the fix-queue writer (ADR-036, DC-112) on real temporary
+// directories: item files already over 1 MiB on disk, the byte cap counted in
+// UTF-8 bytes, a single item over the cap, and `.diffcity` as a regular file.
 
 import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { appendToFixQueue, FIX_QUEUE_MAX_BYTES, type FindingQueueItem } from '../../../src/core/fix-queue/index.js';
+import { appendToFixQueue, FIX_QUEUE_MAX_BYTES, fixQueueItemName, type FindingQueueItem } from '../../../src/core/fix-queue/index.js';
 
 const dirs: string[] = [];
 afterEach(() => {
@@ -31,21 +31,21 @@ function item(n: number, message = 'The stock count can go negative.'): FindingQ
   };
 }
 
-const queuePath = (root: string): string => join(root, '.diffcity', 'fix-queue.json');
+const queueDir = (root: string): string => join(root, '.diffcity', 'fix-queue');
+const totalBytes = (root: string): number => readdirSync(queueDir(root)).reduce((sum, name) => sum + statSync(join(queueDir(root), name)).size, 0);
 
 describe('fix queue writer edges', () => {
-  it('a version 1 queue already over 1 MiB on disk is fix-queue-full and left byte for byte', () => {
+  it('item files already over 1 MiB on disk: fix-queue-full and left byte for byte; a key already queued is still not queued again', () => {
     const root = tree();
-    mkdirSync(join(root, '.diffcity'));
-    const content = JSON.stringify({ version: 1, items: [item(1, 'x'.repeat(FIX_QUEUE_MAX_BYTES + 10))] });
-    writeFileSync(queuePath(root), content);
+    mkdirSync(queueDir(root), { recursive: true });
+    const content = JSON.stringify(item(1, 'x'.repeat(FIX_QUEUE_MAX_BYTES + 10)));
+    writeFileSync(join(queueDir(root), fixQueueItemName(item(1).key)), content);
     expect(appendToFixQueue(root, item(2))).toMatchObject({ ok: false, code: 'fix-queue-full' });
-    expect(readFileSync(queuePath(root), 'utf8')).toBe(content);
-    // Even a key already in it: the oversized file is not read.
-    expect(appendToFixQueue(root, item(1))).toMatchObject({ ok: false, code: 'fix-queue-full' });
+    expect(readFileSync(join(queueDir(root), fixQueueItemName(item(1).key)), 'utf8')).toBe(content);
+    expect(appendToFixQueue(root, item(1))).toEqual({ ok: true, queued: false, count: 1 });
   });
 
-  it('the 1 MiB cap counts UTF-8 bytes: multibyte messages never push the file past it', () => {
+  it('the 1 MiB cap counts UTF-8 bytes: multibyte messages never push the queue past it', () => {
     const root = tree();
     // 4-byte characters: 60,000 of them are 240,000 bytes but only 120,000 UTF-16 units.
     const wide = '\u{1F4E6}'.repeat(60_000);
@@ -55,27 +55,21 @@ describe('fix queue writer edges', () => {
       expect.objectContaining({ ok: false, code: 'fix-queue-full' }),
       expect.objectContaining({ ok: false, code: 'fix-queue-full' }),
     ]);
-    expect(statSync(queuePath(root)).size).toBeLessThanOrEqual(FIX_QUEUE_MAX_BYTES);
-    const queue = JSON.parse(readFileSync(queuePath(root), 'utf8')) as { items: FindingQueueItem[] };
-    expect(queue.items.map((i) => i.message)).toEqual([wide, wide, wide, wide]);
+    expect(totalBytes(root)).toBeLessThanOrEqual(FIX_QUEUE_MAX_BYTES);
   });
 
-  it('a valid queue of version 2 with items is fix-queue-invalid; no temporary file is left behind', () => {
+  it('a single item over 1 MiB is refused before anything is created', () => {
     const root = tree();
-    mkdirSync(join(root, '.diffcity'));
-    const content = `${JSON.stringify({ version: 2, items: [item(7)] }, null, 2)}\n`;
-    writeFileSync(queuePath(root), content);
-    expect(appendToFixQueue(root, item(8))).toMatchObject({ ok: false, code: 'fix-queue-invalid' });
-    expect(readFileSync(queuePath(root), 'utf8')).toBe(content);
-    expect(readdirSync(join(root, '.diffcity'))).toEqual(['fix-queue.json']);
+    expect(appendToFixQueue(root, item(1, 'z'.repeat(FIX_QUEUE_MAX_BYTES)))).toMatchObject({ ok: false, code: 'fix-queue-full' });
+    expect(readdirSync(root)).toEqual([]);
   });
 
-  it('a refusal over the cap leaves no temporary file in .diffcity', () => {
+  it('a refusal over the cap leaves no temporary file in the queue directory', () => {
     const root = tree();
     const big = 'y'.repeat(600 * 1024);
     expect(appendToFixQueue(root, item(1, big))).toMatchObject({ ok: true, queued: true });
     expect(appendToFixQueue(root, item(2, big))).toMatchObject({ ok: false, code: 'fix-queue-full' });
-    expect(readdirSync(join(root, '.diffcity'))).toEqual(['fix-queue.json']);
+    expect(readdirSync(queueDir(root))).toEqual([fixQueueItemName(item(1).key)]);
   });
 
   it('.diffcity as an empty regular file is fix-queue-unsafe and stays a file', () => {
@@ -83,5 +77,13 @@ describe('fix queue writer edges', () => {
     writeFileSync(join(root, '.diffcity'), '');
     expect(appendToFixQueue(root, item(1))).toMatchObject({ ok: false, code: 'fix-queue-unsafe' });
     expect(statSync(join(root, '.diffcity')).isFile()).toBe(true);
+  });
+
+  it('a leftover single-file queue of the first design is a plain file the writer ignores', () => {
+    const root = tree();
+    mkdirSync(join(root, '.diffcity'));
+    writeFileSync(join(root, '.diffcity', 'fix-queue.json'), '{"version":1,"items":[]}\n');
+    expect(appendToFixQueue(root, item(1))).toEqual({ ok: true, queued: true, count: 1 });
+    expect(readFileSync(join(root, '.diffcity', 'fix-queue.json'), 'utf8')).toBe('{"version":1,"items":[]}\n');
   });
 });

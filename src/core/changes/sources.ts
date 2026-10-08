@@ -109,7 +109,7 @@ export function porcelainPaths(output: string): string[] {
 /**
  * Uncommitted changes, untracked files included, apart from diffcity's own
  * files (SPEC.md section 3a): a working tree whose only change is
- * `.diffcity/fix-queue.json` is clean. git lists an untracked `.diffcity/` as
+ * an item in `.diffcity/fix-queue/` is clean. git lists an untracked `.diffcity/` as
  * one entry; it then counts only when it holds a file that is not an own one.
  */
 async function isDirty(path: string): Promise<boolean> {

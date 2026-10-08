@@ -4,12 +4,15 @@ import { defineConfig } from 'vitest/config';
 // 200 ms warm served Report (ADR-036) and the 100 ms warm change list
 // (DC-106). Run beside other files they measure the machine, not the code, so
 // they get their own project, one file at a time
-// (`npm test` runs it after `main`).
+// (`npm test` runs it after `main`). The fix-queue concurrency races (DC-112)
+// run there too: two processes spinning against each other need free cores,
+// not a machine already busy with the main project.
 const TIMING = [
   'test/integration/collect/track-to-api-under-5s.test.ts',
   'test/integration/collect/track-to-api-under-5s-gh-latency.test.ts',
   'test/integration/report-route/overlay-bench.test.ts',
   'test/integration/report-route/list-stats-bench.test.ts',
+  'test/integration/fix-queue/fix-queue-concurrency.test.ts',
 ];
 
 export default defineConfig({

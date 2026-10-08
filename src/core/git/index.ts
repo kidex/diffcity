@@ -22,4 +22,4 @@ export {
 } from './files.js';
 export type { ChangeType, ChangedFile } from './files.js';
 export { computeMeta, countCommits } from './meta.js';
-export { OWN_DIR, OWN_FILES, isOwnFile } from './own-files.js';
+export { OWN_DIR, OWN_DIRS, OWN_FILES, isOwnFile } from './own-files.js';
