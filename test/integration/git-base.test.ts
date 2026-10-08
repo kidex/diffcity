@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { GitError, NO_BASE_MESSAGE, defaultRunner, resolveBase } from '../../src/core/git/index.js';
+import { GitError, NO_BASE_MESSAGE, resolveBase } from '../../src/core/git/index.js';
 import { fakeRunner, ghForbidden, ghMissing, isolateGitConfig } from '../helpers/git-env.js';
 import { createRepo, type CreateRepoOptions, type TempRepo } from '../helpers/repo.js';
 
@@ -162,27 +162,5 @@ describe('resolveBase (ADR-012)', { timeout: 60_000 }, () => {
       expect((error as GitError).code).toBe('no-base');
       expect((error as GitError).message).toBe(NO_BASE_MESSAGE);
     });
-  });
-});
-
-describe('defaultRunner', () => {
-  it('kills a command that exceeds its timeout', async () => {
-    const started = Date.now();
-    await expect(
-      defaultRunner(process.execPath, ['-e', 'setTimeout(() => {}, 5000)'], { cwd: process.cwd(), timeoutMs: 100 }),
-    ).rejects.toThrow();
-    expect(Date.now() - started).toBeLessThan(3000);
-  });
-
-  it('returns stdout of a successful command', async () => {
-    expect(
-      await defaultRunner(process.execPath, ['-e', 'process.stdout.write("ok")'], { cwd: process.cwd(), timeoutMs: 30_000 }),
-    ).toBe('ok');
-  });
-
-  it('rejects when the command is not installed', async () => {
-    await expect(
-      defaultRunner('diffcity-no-such-command', [], { cwd: process.cwd(), timeoutMs: 1000 }),
-    ).rejects.toMatchObject({ code: 'ENOENT' });
   });
 });

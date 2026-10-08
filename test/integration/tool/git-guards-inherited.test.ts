@@ -1,5 +1,5 @@
 // gh runs `git` inside the collected repo with whatever environment it was given.
-// The runner used for gh must hand it the ADR-024 guards, so a hostile repo config
+// The runner used for gh (the hardened tool runner) must hand it the ADR-024 guards, so a hostile repo config
 // cannot run code through gh (ADR-032).
 
 import { execFile } from 'node:child_process';
@@ -7,6 +7,7 @@ import { chmod, mkdir, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises'
 import { devNull, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { GH_REPO_VIEW_ARGV } from '../../../src/core/exec/index.js';
 import { defaultRunner } from '../../../src/core/git/index.js';
 import { createRepo, type TempRepo } from '../../helpers/repo.js';
 
@@ -49,7 +50,8 @@ beforeAll(async () => {
   for (const name of ['post-index-change', 'pre-auto-gc', 'post-checkout']) await script(join(hooksDir, name), `exec "${hook}"`);
   // The stand-in for gh, the one file the test execs directly through defaultRunner: it does what gh does
   // inside a repo, reading it through git. The body is a plain file run by /bin/sh, not a second fresh exec.
-  await writeFile(join(scratch, 'gh-body.sh'), 'git status >/dev/null 2>&1\ngit config --get-regexp . >/dev/null 2>&1\nexit 0\n', 'utf8');
+  // It answers JSON, as the runner accepts nothing else.
+  await writeFile(join(scratch, 'gh-body.sh'), 'git status >/dev/null 2>&1\ngit config --get-regexp . >/dev/null 2>&1\necho "{}"\nexit 0\n', 'utf8');
   await script(join(scratch, 'bin', 'gh'), `exec /bin/sh "${join(scratch, 'gh-body.sh')}"`);
   // Warm every fresh executable once, then forget the marker the warming left.
   await run(hook);
@@ -97,7 +99,7 @@ const markersSeen = async (): Promise<string[]> => (await readdir(markers)).sort
 describe('tool/git-guards-inherited', () => {
   it('fires no repo-configured command when the stub gh runs git through the gh runner', { timeout: 60_000 }, async () => {
     const hostile = await hostileRepo();
-    await defaultRunner('gh', ['repo', 'view'], { cwd: hostile.dir, timeoutMs: 50_000 });
+    await defaultRunner('gh', GH_REPO_VIEW_ARGV, { cwd: hostile.dir, timeoutMs: 30_000 });
     expect(await markersSeen()).toEqual([]);
   });
 

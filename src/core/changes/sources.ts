@@ -1,6 +1,6 @@
 // The three sources of the change list (SPEC.md section 3a, ADR-019), read
 // through the git layer (execFile, GIT_OPTIONAL_LOCKS=0) and an injected
-// CommandRunner for gh. Nothing here writes to the repo: no fetch, no lock.
+// CommandRunner for gh (the hardened tool runner, ADR-032). Nothing here writes to the repo: no fetch, no lock.
 //
 // - working trees: `git worktree list` + `git status --porcelain` (L1);
 // - local branches: `git for-each-ref --no-merged=<base>` + ahead/behind (L2);
@@ -9,7 +9,9 @@
 
 import { realpath } from 'node:fs/promises';
 import { resolveBase, type ResolvedBase } from '../git/base.js';
-import { defaultRunner, git, gitRaw, splitNul, type CommandRunner } from '../git/exec.js';
+import { defaultRunner } from '../exec/gh.js';
+import { GH_PR_LIST_ARGV, ghPrView } from '../exec/profiles.js';
+import { git, gitRaw, splitNul, type CommandRunner } from '../git/exec.js';
 import { OWN_DIR, isOwnFile } from '../git/own-files.js';
 import { listWorktreeEntries } from './identity.js';
 import type { BranchInfo, Discovered, PrInfo, PrSource, PrState, RepoIdentity, WorktreeInfo } from './types.js';
@@ -17,16 +19,7 @@ import type { BranchInfo, Discovered, PrInfo, PrSource, PrState, RepoIdentity, W
 /** `gh pr list` and `gh pr view` timeout (ADR-020). */
 export const GH_PR_TIMEOUT_MS = 10_000;
 
-export const GH_PR_LIST_ARGS = [
-  'pr',
-  'list',
-  '--state',
-  'open',
-  '--limit',
-  '100',
-  '--json',
-  'number,title,headRefName,headRefOid,baseRefName,isCrossRepository',
-] as const;
+export const GH_PR_LIST_ARGS = GH_PR_LIST_ARGV;
 
 /** At most this many git processes at once per collection. */
 const GIT_CONCURRENCY = 8;
@@ -262,7 +255,7 @@ export async function listOpenPrs(root: string, runner: CommandRunner = defaultR
 export async function prState(root: string, number: number, runner: CommandRunner = defaultRunner): Promise<PrState | null> {
   let stdout: string;
   try {
-    stdout = await runner('gh', ['pr', 'view', String(number), '--json', 'state'], { cwd: root, timeoutMs: GH_PR_TIMEOUT_MS });
+    stdout = await runner('gh', ghPrView(number).argv, { cwd: root, timeoutMs: GH_PR_TIMEOUT_MS });
     const parsed: unknown = JSON.parse(stdout);
     if (typeof parsed !== 'object' || parsed === null || !('state' in parsed)) return null;
     const state = parsed.state;

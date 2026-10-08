@@ -88,7 +88,7 @@ export interface CollectorOptions {
   snapshots: SnapshotPool;
   broadcast: (event: SseEvent) => void;
   log: Logger;
-  /** Runs gh (and nothing else); defaults to execFile. Tests inject a stub. */
+  /** Runs gh (and nothing else); defaults to the hardened tool runner without a daemon context (ADR-032). Tests inject a stub. */
   gh?: CommandRunner;
   now?: () => Date;
   /**

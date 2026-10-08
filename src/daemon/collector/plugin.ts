@@ -26,7 +26,8 @@
 
 import { availableParallelism } from 'node:os';
 import { identifyRepo, type RepoIdentity, type WorktreeInfo } from '../../core/changes/index.js';
-import { createRuleSettingsReader, createTrustCheck } from '../../core/settings/index.js';
+import { createGhRunner } from '../../core/exec/index.js';
+import { createRuleSettingsReader, createTrustCheck, readToolSetting } from '../../core/settings/index.js';
 import type { Db } from '../../core/db/index.js';
 import type { CommandRunner } from '../../core/git/index.js';
 import type { RepoRecord, SocketSuccessResponses } from '../../core/model/types.js';
@@ -53,7 +54,7 @@ export interface CollectionPluginOptions {
   poolSize?: number;
   /** Snapshot job timeout; defaults to 120 s. */
   jobTimeoutMs?: number;
-  /** Runs gh; defaults to execFile. Tests inject a stub. */
+  /** Runs gh; defaults to the hardened tool runner (ADR-032) with this daemon's settings, repos and log. Tests inject a stub. */
   gh?: CommandRunner;
   now?: () => Date;
   /** How long `import` waits for a snapshot at the current content; defaults to IMPORT_SNAPSHOT_WAIT_MS (tests shorten it). */
@@ -235,7 +236,16 @@ export function createCollection(options: CollectionPluginOptions = {}): Collect
         },
         log: context.log,
         now,
-        ...(options.gh === undefined ? {} : { gh: options.gh }),
+        // gh runs through the hardened runner (ADR-032): settings.tools read on every call, no binary
+        // inside a registered repo, every call in daemon.log with its stderr redacted.
+        gh:
+          options.gh ??
+          createGhRunner({
+            env: context.env,
+            toolSetting: (name) => readToolSetting(context.paths.settings, name),
+            repoRoots: () => opened.repos.list().map((repo) => repo.path),
+            log: context.log,
+          }),
         // settings.json is read on every collection, so `diffcity trust` needs no restart (ADR-030).
         isTrusted: createTrustCheck(context.paths.settings, {
           onInvalid: (message) => {

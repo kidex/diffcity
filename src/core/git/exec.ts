@@ -25,30 +25,11 @@ export interface RunOptions {
 
 /**
  * Runs an external command and resolves with its stdout; rejects when the
- * command is missing (`code: 'ENOENT'`), exits non-zero or exceeds the timeout.
- * Injected wherever an optional tool such as `gh` is called, so tests can stub it.
+ * command is missing (`code: 'ENOENT'`), fails or exceeds the timeout
+ * (`killed: true`). Injected wherever gh is called, so tests can stub it;
+ * the real one is the hardened tool runner's gh adapter (src/core/exec/gh.ts, ADR-032).
  */
 export type CommandRunner = (file: string, args: readonly string[], options: RunOptions) => Promise<string>;
-
-export const defaultRunner: CommandRunner = (file, args, options) =>
-  new Promise((resolve, reject) => {
-    execFile(
-      file,
-      [...args],
-      {
-        cwd: options.cwd,
-        env: ghEnv(),
-        timeout: options.timeoutMs,
-        encoding: 'utf8',
-        windowsHide: true,
-        maxBuffer: 16 * 1024 * 1024,
-      },
-      (error, stdout) => {
-        if (error === null) resolve(stdout);
-        else reject(error instanceof Error ? error : new Error(`${file} failed`, { cause: error }));
-      },
-    );
-  });
 
 /**
  * Prepended to every git call. A collected repo's own .git/config can name
@@ -102,28 +83,6 @@ export function gitEnv(): NodeJS.ProcessEnv {
   env.GIT_NO_LAZY_FETCH = '1';
   env.GIT_ALLOW_PROTOCOL = '';
   return env;
-}
-
-/**
- * Environment for `gh`. gh runs `git` inside the collected repo itself, without
- * the flags every diffcity git call carries, so the same guards (ADR-024) go in
- * through the environment (ADR-032): the static config overrides appended after
- * any GIT_CONFIG_COUNT entries already set, no transport, no lazy fetch, and no
- * prompt or update notice from git or gh. The user's own variables (including
- * gh's token) pass through unchanged. Repo-defined filter drivers are not
- * covered: they need per-repo names, and the gh commands diffcity runs (pr list,
- * pr view, repo view) never run clean or smudge.
- */
-export function ghEnv(base: Readonly<Record<string, string | undefined>> = process.env): NodeJS.ProcessEnv {
-  return {
-    ...base,
-    ...configEnv(STATIC_OVERRIDES, base),
-    GIT_ALLOW_PROTOCOL: '',
-    GIT_NO_LAZY_FETCH: '1',
-    GIT_TERMINAL_PROMPT: '0',
-    GH_PROMPT_DISABLED: '1',
-    GH_NO_UPDATE_NOTIFIER: '1',
-  };
 }
 
 export interface GitResult {
