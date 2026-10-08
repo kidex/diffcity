@@ -42,13 +42,25 @@ function sampleReport(generatedAt: string): Report {
 }
 
 describe('snapshot/summary-and-touched', () => {
-  it('summary is Report.summary plus touchedFiles; touched lists the files that are not `same`', () => {
+  it('summary is Report.summary plus touchedFiles and openHigh; touched lists the files that are not `same`', () => {
     const report = sampleReport('2026-03-04T05:06:07.000Z');
     const snapshot = snapshotFromReport(report, 'a'.repeat(40), 'b'.repeat(40), NO_FINGERPRINTS);
-    expect(snapshot.summary).toEqual({ ...report.summary, touchedFiles: 2 });
+    expect(snapshot.summary).toEqual({ ...report.summary, touchedFiles: 2, openHigh: 0 });
     expect(snapshot.touched).toEqual(['src/cart/total.ts', 'src/session/token.ts']);
     expect(snapshot.headCommit).toBe('a'.repeat(40));
     expect(JSON.parse(snapshot.reportJson)).toEqual(report);
+  });
+});
+
+describe('snapshot/open-high-in-summary', () => {
+  it('openHigh counts the open high findings of the stored Report (DC-120)', () => {
+    const base = sampleReport('2026-03-04T05:06:07.000Z');
+    const finding = { id: 'rule:size:1', source: 'rule:size', severity: 'high', category: 'style', file: 'src/cart/total.ts', line: 0, title: 'File over 5 lines', message: 'm', state: 'open' } as const;
+    const report: Report = {
+      ...base,
+      findings: [finding, { ...finding, id: 'rule:size:2', severity: 'med' }, { ...finding, id: 'rule:size:3', state: 'intended' }, { ...finding, id: 'rule:size:4', file: 'src/session/token.ts' }],
+    };
+    expect(snapshotFromReport(report, 'x', 'y', NO_FINGERPRINTS).summary.openHigh).toBe(2);
   });
 });
 

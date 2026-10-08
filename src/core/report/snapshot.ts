@@ -63,9 +63,10 @@ export function snapshotFromReport(
   fingerprints: Fingerprints,
 ): ComputedSnapshot {
   const touched = report.packages.flatMap((pkg) => pkg.files.filter((file) => file.status !== 'same').map((file) => file.path));
+  const openHigh = report.findings.filter((finding) => finding.state === 'open' && finding.severity === 'high').length;
   return {
     reportJson: JSON.stringify(report),
-    summary: { ...report.summary, touchedFiles: touched.length },
+    summary: { ...report.summary, touchedFiles: touched.length, openHigh },
     touched,
     contentHash: contentHashOf(report),
     headCommit,

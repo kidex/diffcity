@@ -168,6 +168,31 @@ describe('repo summaries', () => {
     expect(db.repos.getSummary(repo.id)?.highFindings).toBe(0);
   });
 
+  it('db/stored-high-findings: the stored part sums openHigh of the latest snapshots of live changes without findings rows (DC-120)', () => {
+    const repo = addRepo(db);
+    const { created } = db.changes.applyPlan(
+      repo.id,
+      { create: [branchFields('ledger-post'), branchFields('ledger-overlaid'), branchFields('ledger-old'), branchFields('ledger-gone')], update: [], archive: [] },
+      T0,
+    );
+    const [plain, overlaid, old, gone] = created;
+    if (plain === undefined || overlaid === undefined || old === undefined || gone === undefined) throw new Error('not created');
+    const withHigh = (openHigh: number): ReturnType<typeof snapshotInput>['summary'] => ({ ...snapshotInput(0, '').summary, openHigh });
+    // Only the latest snapshot of a change counts.
+    db.snapshots.put(snapshotInput(plain.id, sha(), { computedAt: T0, summary: withHigh(5), contentHash: 'h0' }));
+    db.snapshots.put(snapshotInput(plain.id, plain.head, { computedAt: daysAfter(T0, 1), summary: withHigh(2) }));
+    // A change with a rule state is counted on its served Report by the daemon, not here.
+    db.snapshots.put(snapshotInput(overlaid.id, overlaid.head, { summary: withHigh(1) }));
+    db.findings.setRuleState(overlaid.id, 'rule:size:abc', overlaid.head, 'intended', T0);
+    // A snapshot stored before openHigh existed reads as 0.
+    db.snapshots.put(snapshotInput(old.id, old.head));
+    db.snapshots.put(snapshotInput(gone.id, gone.head, { summary: withHigh(4) }));
+    db.changes.applyPlan(repo.id, { create: [], update: [], archive: [{ id: gone.id, reason: 'deleted' }] }, T0);
+
+    expect(db.repos.getSummary(repo.id)?.highFindings).toBe(2);
+    expect(db.repos.listSummaries().find((entry) => entry.id === repo.id)?.highFindings).toBe(2);
+  });
+
   it('lastEventAt covers repo-level events and live changes, not archived ones', () => {
     const repo = addRepo(db);
     const { created } = db.changes.applyPlan(
