@@ -1,84 +1,28 @@
 // The daemon script (ADR-015): `node dist/daemon/main.js [--port <n>] [--foreground]`.
-// It is not a CLI command, so `diffcity --help` keeps exactly the commands of
-// SPEC.md section 3. `up` and `track` start it detached; the log goes to
-// daemon.log, or to stderr with --foreground.
+// This entry imports node builtins and the start reporter only. It installs
+// the reporter first (DC-45), then loads the daemon itself: a daemon that
+// cannot load its modules (a partial dist/, a node without node:sqlite) still
+// tells a client that launched it through LaunchServices that it exited with 1,
+// instead of leaving it to wait for its start timeout.
 
-import { parseArgs } from 'node:util';
-import { isPort } from './files.js';
-import { createStreamLogger } from './log.js';
-import { STARTUP_STAGES, type StartupStage } from './daemon.js';
-import { daemonUrl, runDaemon } from './run.js';
 import { takeStartReporter } from './start-report.js';
 
-// A client that launched this daemon through LaunchServices learns from this
-// report whether it came up (DC-45): `ready`, or the exit code of a daemon that
-// exits before it is ready, crashes included.
 const reportStart = takeStartReporter(process.env);
 process.on('exit', (code) => {
   reportStart(code);
 });
 
-/**
- * Test-only seam: with DIFFCITY_TEST=1 and DIFFCITY_TEST_PAUSE_AT=<stage>
- * the startup prints `paused <stage>` on stdout and waits there until
- * SIGINT/SIGTERM aborts it, so a test can deliver a signal at a chosen
- * startup stage. Without DIFFCITY_TEST=1 the pause variable is ignored.
- */
-const PAUSE_ENV = 'DIFFCITY_TEST_PAUSE_AT';
-const pauseAt =
-  process.env['DIFFCITY_TEST'] === '1' ? STARTUP_STAGES.find((stage) => stage === process.env[PAUSE_ENV]) : undefined;
-
-async function pauseStage(stage: StartupStage, signal: AbortSignal): Promise<void> {
-  if (stage !== pauseAt || signal.aborted) return;
-  const aborted = new Promise<void>((resolve) => {
-    signal.addEventListener('abort', () => { resolve(); }, { once: true });
-  });
-  // Nothing else may be open yet, and a pending promise does not keep the process alive.
-  const keepAlive = setInterval(() => undefined, 1000);
-  process.stdout.write(`paused ${stage}\n`);
-  await aborted;
-  clearInterval(keepAlive);
-}
-
-function parsePort(value: string | undefined): number | undefined {
-  if (value === undefined) return undefined;
-  const port = /^\d+$/.test(value) ? Number(value) : Number.NaN;
-  if (!isPort(port)) throw new Error(`invalid --port: ${value}`);
-  return port;
-}
-
-async function main(): Promise<number> {
-  let port: number | undefined;
-  let foreground: boolean;
-  try {
-    const { values } = parseArgs({
-      args: process.argv.slice(2),
-      options: { port: { type: 'string' }, foreground: { type: 'boolean', default: false } },
-      strict: true,
-    });
-    port = parsePort(values.port);
-    foreground = values.foreground;
-  } catch (error) {
-    process.stderr.write(`diffcity daemon: ${error instanceof Error ? error.message : String(error)}\n`);
-    return 1;
-  }
-  return runDaemon(
-    { ...(port === undefined ? {} : { port }), ...(foreground ? { log: createStreamLogger(process.stderr) } : {}) },
-    {
-      err: (text) => process.stderr.write(text),
-      ...(pauseAt === undefined ? {} : { onStage: pauseStage }),
-      onReady: (info, alreadyRunning) => {
-        if (!alreadyRunning) reportStart('ready');
-        const where = `${daemonUrl(info)} (pid ${String(info.pid)})`;
-        process.stdout.write(alreadyRunning ? `daemon already running at ${where}\n` : `diffcity daemon listening on ${where}\n`);
-      },
-    },
-  );
+let exitCode: number;
+try {
+  const { runDaemonScript } = await import('./script.js');
+  exitCode = await runDaemonScript(reportStart);
+} catch (error) {
+  process.stderr.write(`diffcity daemon: ${error instanceof Error ? (error.stack ?? error.message) : String(error)}\n`);
+  exitCode = 1;
 }
 
 // Exit explicitly, once stdout and stderr are flushed: a plugin that leaves a
 // handle open must not keep a stopped daemon alive.
-const exitCode = await main();
 process.stdout.write('', () => {
   process.stderr.write('', () => process.exit(exitCode));
 });
