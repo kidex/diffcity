@@ -46,7 +46,7 @@ export const FIX_QUEUE_NAME = 'fix-queue';
 /** The name the slash command renames the queue directory to while it applies it. */
 export const FIX_QUEUE_TAKING_NAME = 'fix-queue.taking';
 /** Writes before an append gives up with `fix-queue-busy`, when the queue is taken under each one. */
-export const FIX_QUEUE_ATTEMPTS = 3;
+export const FIX_QUEUE_ATTEMPTS = 10;
 
 /** A finding to fix. */
 export interface FindingQueueItem {

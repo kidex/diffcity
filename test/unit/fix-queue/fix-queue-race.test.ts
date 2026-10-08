@@ -148,7 +148,7 @@ describe('fix queue against /diffcity-review taking it (DC-112)', () => {
     expect(appendToFixQueue(root, item(2))).toEqual({
       ok: false,
       code: 'fix-queue-busy',
-      message: '.diffcity/fix-queue was taken while the fix was queued, 3 times; try again',
+      message: `.diffcity/fix-queue was taken while the fix was queued, ${String(FIX_QUEUE_ATTEMPTS)} times; try again`,
     });
     // The first attempt renames into the queue it saw, then into the one it made;
     // the next ones find no queue and rename once, into the one they make.
