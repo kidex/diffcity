@@ -4,6 +4,7 @@
 // its start timeout; and a starting daemon removes stale start reports.
 
 import { copyFile, mkdir, readdir, readFile, utimes, writeFile } from 'node:fs/promises';
+import { createServer } from 'node:net';
 import { dirname, join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { homePaths } from '../../../src/core/home.js';
@@ -52,5 +53,23 @@ describe('daemon entry start report', () => {
     await waitFor(() => readFile(report, 'utf8').catch(() => undefined), 5000, 'the ready report');
     expect(await readFile(report, 'utf8')).toBe('ready\n');
     expect((await readdir(paths.home)).filter((name) => name.endsWith('.report'))).toEqual(['start-0c0d.report']);
+  });
+
+  it('start-report/port-in-use-reports-exit-3', async () => {
+    home = await tempHome();
+    // The port is taken between the client's own check and the daemon's bind.
+    const blocker = createServer();
+    await new Promise<void>((resolve) => blocker.listen(0, '127.0.0.1', resolve));
+    const address = blocker.address();
+    if (address === null || typeof address === 'string') throw new Error('no port');
+    const report = join(home.root, 'start-3e.report');
+    try {
+      const run = daemons.spawnDaemon({ ...home.env, [START_REPORT_ENV]: report }, ['--port', String(address.port)]);
+      expect(await run.exited).toBe(3);
+      expect(await readFile(report, 'utf8')).toBe('3\n');
+      expect(run.stderr()).toContain(`port ${String(address.port)} is in use`);
+    } finally {
+      await new Promise<void>((resolve) => blocker.close(() => { resolve(); }));
+    }
   });
 });
