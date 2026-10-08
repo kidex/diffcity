@@ -58,6 +58,10 @@ export interface SceneStats {
   builds: number;
   /** Times the city was built (ground, lots, markers, path): at mount, for a Report with another layout and on a theme change; never for one that only repaints. */
   layouts: number;
+  /** Shader programs the renderer holds now. */
+  programs: number;
+  /** The id of the newest shader program a frame has drawn with; ids only grow, so an unchanged id means no frame compiled one. */
+  lastProgram: number;
 }
 
 /** What the night effects drew, for the debug hook (read-only). */
@@ -222,6 +226,8 @@ export function createCityView(host: HTMLElement, report: Report, options: CityV
   let towerBuilds = 0;
   /** Times build() ran, for the stats. */
   let layouts = 0;
+  /** The newest program id seen after a frame, for the stats. */
+  let lastProgram = -1;
   /** The paint of the shown city for the filters alone: hover and selection are laid over it. */
   let baseline: CityPaint | null = null;
   const hooks = options.hooks;
@@ -282,6 +288,7 @@ export function createCityView(host: HTMLElement, report: Report, options: CityV
       },
       afterFrame: () => {
         labels.render(stage.camera);
+        for (const program of renderer.info.programs ?? []) lastProgram = Math.max(lastProgram, program.id);
         release();
         if (!settled && content !== null && !orbit.introRunning) {
           // Only when the camera rests, never on every drag frame.
@@ -452,7 +459,13 @@ export function createCityView(host: HTMLElement, report: Report, options: CityV
     const shown = tween === null ? city : tweenCity(tween.from, city, 0);
     let towers = reusable;
     if (towers === null || !towers.update(shown)) {
-      towers?.dispose();
+      // Freed after the next frame, as the rest of the old content: the new towers take their programs over.
+      const old = towers;
+      if (old !== null) {
+        retire(() => {
+          old.dispose();
+        });
+      }
       towers = createTowers(shown, motion);
       towerBuilds += 1;
     }
@@ -706,6 +719,8 @@ export function createCityView(host: HTMLElement, report: Report, options: CityV
         textures: renderer.info.memory.textures,
         builds: towerBuilds,
         layouts,
+        programs: renderer.info.programs?.length ?? 0,
+        lastProgram,
       };
     },
     quality: () => stage.quality,
