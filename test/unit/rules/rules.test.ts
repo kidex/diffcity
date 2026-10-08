@@ -114,26 +114,49 @@ describe('rules/merge-order', () => {
 });
 
 describe('the user-only kinds', () => {
-  it('rules/repo-cannot-enable-cve: a cve rule from the repo config is a config error, also over a user cve rule', () => {
-    expect(mergeRules({ repoConfig: [{ id: 'deps', kind: 'cve' }] })).toEqual([
-      { ok: false, ruleId: 'deps', kind: 'cve', origin: 'repo-config', reason: 'config-error: diffcity.config.js rules: rule "deps": kind "cve" is allowed in the user settings only' },
-    ]);
-    const overridden = mergeRules({ settings: [{ id: 'deps', kind: 'cve' }], repoConfig: [{ id: 'deps', kind: 'file-size', maxLines: 1 }] });
-    expect(overridden).toEqual([
-      { ok: false, ruleId: 'deps', kind: 'cve', origin: 'repo-config', reason: "config-error: diffcity.config.js rules: rule \"deps\" cannot override the user's cve rule" },
-    ]);
+  const repoError = (index: number, kind: 'pipeline' | 'cve'): MergedRule => ({
+    ok: false,
+    ruleId: `repo-config:rules[${String(index)}]`,
+    kind,
+    origin: 'repo-config',
+    reason: 'config-error: repo config cannot set pipeline or cve rules',
+  });
+
+  it('rules/repo-cannot-enable-cve: a cve rule from the repo config is only an error check, never a rule', () => {
+    expect(mergeRules({ repoConfig: [{ id: 'size', kind: 'file-size', maxLines: 1 }, { id: 'deps', kind: 'cve' }] }).filter((entry) => !entry.ok)).toEqual([repoError(1, 'cve')]);
+    expect(ok(mergeRules({ repoConfig: [{ id: 'deps', kind: 'cve' }] }))).toEqual(['ERR repo-config:rules[0]']);
     // In the user's own lists it is a rule like any other.
     expect(ok(mergeRules({ settingsRepo: [{ id: 'deps', kind: 'cve' }] }))).toEqual(['deps:cve:settings-repo']);
   });
 
-  it('rules/repo-cannot-enable-pipeline: a pipeline rule from the repo config is a config error, also over a user pipeline rule', () => {
-    expect(mergeRules({ repoConfig: [{ id: 'ci', kind: 'pipeline', severity: 'low' }] })).toEqual([
-      { ok: false, ruleId: 'ci', kind: 'pipeline', origin: 'repo-config', reason: 'config-error: diffcity.config.js rules: rule "ci": kind "pipeline" is allowed in the user settings only' },
-    ]);
-    const overridden = mergeRules({ settings: [{ id: 'ci', kind: 'pipeline' }], repoConfig: [{ id: 'ci', kind: 'pipeline', ignoreChecks: ['e2e'] }] });
-    expect(overridden.map((entry) => (entry.ok ? 'ok' : entry.reason))).toEqual([
-      'config-error: diffcity.config.js rules: rule "ci": kind "pipeline" is allowed in the user settings only',
-    ]);
+  it('rules/repo-cannot-enable-pipeline: a pipeline rule from the repo config is only an error check, never a rule', () => {
+    expect(mergeRules({ repoConfig: [{ id: 'ci', kind: 'pipeline', severity: 'low' }] })).toEqual([repoError(0, 'pipeline')]);
+  });
+
+  it('rules/repo-cannot-override-user-cve-keeps-user-rule: the user cve rule stays as configured, the repo entry is a separate error', () => {
+    const user = { id: 'deps', kind: 'cve', minSeverity: 'high' };
+    for (const repoEntry of [{ id: 'deps', kind: 'cve', minSeverity: 'critical' }, { id: 'deps', kind: 'file-size', maxLines: 1 }, { id: 'deps', kind: 'file-size' }]) {
+      const merged = mergeRules({ settings: [user], repoConfig: [{ id: 'size', kind: 'file-size', maxLines: 9 }, repoEntry] });
+      expect(merged).toEqual([
+        { ok: true, rule: user, origin: 'settings' },
+        repoError(1, 'cve'),
+        { ok: true, rule: { id: 'size', kind: 'file-size', maxLines: 9 }, origin: 'repo-config' },
+      ]);
+      const { checks } = runRules(merged, [file('src/cart/total.ts')], AT);
+      expect(checks.map((check) => [check.ruleId, check.kind, check.state])).toEqual([
+        ['deps', 'cve', 'not-checked'],
+        ['repo-config:rules[1]', 'cve', 'error'],
+        ['size', 'file-size', 'violations'],
+      ]);
+    }
+  });
+
+  it('rules/repo-cannot-override-user-pipeline-keeps-user-rule: the user pipeline rule stays as configured, the repo entry is a separate error', () => {
+    const user = { id: 'ci', kind: 'pipeline', severity: 'high', ignoreChecks: ['lint'] };
+    const merged = mergeRules({ settingsRepo: [user], repoConfig: [{ id: 'ci', kind: 'pipeline', ignoreChecks: ['tests', 'lint'] }] });
+    expect(merged).toEqual([{ ok: true, rule: user, origin: 'settings-repo' }, repoError(0, 'pipeline')]);
+    const overridden = mergeRules({ settings: [user], repoConfig: [{ id: 'ci', kind: 'layers', layers: [['src']] }] });
+    expect(overridden).toEqual([{ ok: true, rule: user, origin: 'settings' }, repoError(0, 'pipeline')]);
   });
 });
 
@@ -192,8 +215,8 @@ describe('checks', () => {
     const { checks, findings } = runRules(merged, [file('src/cart/total.ts', { after: { bytes: 1, lines: 9999 } })], AT);
     expect(findings).toEqual([]);
     expect(checks).toEqual([
-      { ruleId: 'ci', kind: 'pipeline', state: 'error', reason: 'config-error: diffcity.config.js rules: rule "ci": kind "pipeline" is allowed in the user settings only', findings: 0, checkedAt: AT },
       { ruleId: 'odd', kind: 'file-size', state: 'error', reason: 'config-error: settings.json rules: rule "odd": field "kind" must be one of file-size, layers, pipeline, cve', findings: 0, checkedAt: AT },
+      { ruleId: 'repo-config:rules[0]', kind: 'pipeline', state: 'error', reason: 'config-error: repo config cannot set pipeline or cve rules', findings: 0, checkedAt: AT },
       { ruleId: 'settings:rules[2]', kind: 'file-size', state: 'error', reason: 'config-error: settings.json rules: rules[2] must be an object', findings: 0, checkedAt: AT },
       { ruleId: 'size', kind: 'file-size', state: 'error', reason: 'config-error: settings.json rules: rule "size": needs at least one of maxLines, maxBytes, maxSymbolLines', findings: 0, checkedAt: AT },
     ]);

@@ -125,7 +125,7 @@ describe('rules in the Report', () => {
     const repo = await repoWith('shopfront', { 'diffcity.config.js': config, 'src/a.ts': 'export const a = 1;\n' }, { 'src/a.ts': 'export const a = 2;\n' });
     const report = await build(repo);
     expect(report.checks?.map((check) => [check.ruleId, check.state, check.reason])).toEqual([
-      ['ci', 'error', 'config-error: diffcity.config.js rules: rule "ci": kind "pipeline" is allowed in the user settings only'],
+      ['repo-config:rules[0]', 'error', 'config-error: repo config cannot set pipeline or cve rules'],
       ['size', 'error', 'config-error: diffcity.config.js rules: rule "size": field "maxLines" must be a positive integer'],
     ]);
   });

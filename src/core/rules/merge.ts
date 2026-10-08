@@ -2,7 +2,8 @@
 // `rules`, then the repo config's `rules` (only when the repo is trusted; the
 // caller passes undefined otherwise). A later entry with the same id replaces
 // the earlier one, except that a repo config can never introduce or override a
-// `pipeline` or `cve` rule: such an entry is a config error. Pure.
+// `pipeline` or `cve` rule: such an entry is a separate config error check
+// (`repo-config:rules[<n>]`), and the user's rule stays as configured. Pure.
 
 import { ORIGIN_LABEL, RULE_ID_PATTERN, validateRules, type RuleConfig, type RuleKind, type RuleOrigin } from './config.js';
 
@@ -26,6 +27,9 @@ export const UNKNOWN_KIND_FALLBACK: RuleKind = 'file-size';
 
 const USER_ONLY: ReadonlySet<RuleKind> = new Set<RuleKind>(['pipeline', 'cve']);
 
+/** The reason of a repo config entry that introduces or overrides a pipeline or cve rule. */
+export const REPO_USER_ONLY_REASON = 'config-error: repo config cannot set pipeline or cve rules';
+
 function configError(ruleId: string, kind: RuleKind | null, origin: RuleOrigin, message: string): MergedRule {
   return { ok: false, ruleId, kind, origin, reason: `config-error: ${ORIGIN_LABEL[origin]}: ${message}` };
 }
@@ -38,11 +42,17 @@ function idOf(entry: MergedRule): string {
   return entry.ok ? entry.rule.id : entry.ruleId;
 }
 
+/** One merged entry and the place of its (first) definition in its list. */
+interface Placed {
+  entry: MergedRule;
+  index: number;
+}
+
 /** The entries of one origin, with an id used twice in the same list turned into one error. */
-function entriesOf(origin: RuleOrigin, value: unknown): MergedRule[] {
-  const byId = new Map<string, MergedRule>();
+function entriesOf(origin: RuleOrigin, value: unknown): Placed[] {
+  const byId = new Map<string, Placed>();
   const duplicated = new Set<string>();
-  for (const validated of validateRules(value)) {
+  for (const [index, validated] of validateRules(value).entries()) {
     // An entry without a valid id is named by its place, qualified by its origin so two lists never collide.
     const errorId = (ruleId: string): string => (RULE_ID_PATTERN.test(ruleId) ? ruleId : `${origin}:${ruleId}`);
     const entry: MergedRule = validated.ok
@@ -50,11 +60,11 @@ function entriesOf(origin: RuleOrigin, value: unknown): MergedRule[] {
       : configError(errorId(validated.error.ruleId), validated.error.kind, origin, validated.error.message);
     const id = idOf(entry);
     if (byId.has(id)) duplicated.add(id);
-    else byId.set(id, entry);
+    else byId.set(id, { entry, index });
   }
-  return [...byId.values()].map((entry) => {
+  return [...byId.values()].map(({ entry, index }) => {
     const id = idOf(entry);
-    return duplicated.has(id) ? configError(id, kindOf(entry), origin, `rule "${id}" is defined more than once`) : entry;
+    return { entry: duplicated.has(id) ? configError(id, kindOf(entry), origin, `rule "${id}" is defined more than once`) : entry, index };
   });
 }
 
@@ -64,18 +74,19 @@ function entriesOf(origin: RuleOrigin, value: unknown): MergedRule[] {
  */
 export function mergeRules(sources: RuleSources): MergedRule[] {
   const merged = new Map<string, MergedRule>();
-  for (const entry of [...entriesOf('settings', sources.settings), ...entriesOf('settings-repo', sources.settingsRepo)]) {
+  for (const { entry } of [...entriesOf('settings', sources.settings), ...entriesOf('settings-repo', sources.settingsRepo)]) {
     merged.set(idOf(entry), entry);
   }
-  for (const entry of entriesOf('repo-config', sources.repoConfig)) {
+  for (const { entry, index } of entriesOf('repo-config', sources.repoConfig)) {
     const id = idOf(entry);
     const kind = kindOf(entry);
     const earlier = merged.get(id);
     const earlierKind = earlier === undefined ? null : kindOf(earlier);
-    if (kind !== null && USER_ONLY.has(kind)) {
-      merged.set(id, configError(id, kind, 'repo-config', `rule "${id}": kind "${kind}" is allowed in the user settings only`));
-    } else if (earlierKind !== null && USER_ONLY.has(earlierKind)) {
-      merged.set(id, configError(id, earlierKind, 'repo-config', `rule "${id}" cannot override the user's ${earlierKind} rule`));
+    const userOnly = (kind !== null && USER_ONLY.has(kind)) || (earlierKind !== null && USER_ONLY.has(earlierKind));
+    if (userOnly) {
+      // Never replaces the user's rule: a trusted repo must not switch off the user's CI or CVE check.
+      const placeId = `repo-config:rules[${String(index)}]`;
+      merged.set(placeId, { ok: false, ruleId: placeId, kind: kind !== null && USER_ONLY.has(kind) ? kind : earlierKind, origin: 'repo-config', reason: REPO_USER_ONLY_REASON });
     } else {
       merged.set(id, entry);
     }

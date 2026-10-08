@@ -14,5 +14,5 @@ export type {
 export { isRuleTarget, measureNeeds, ruleFindingId, runRules } from './engine.js';
 export type { RuleFile, RuleRun, RuleViolation } from './engine.js';
 export { FILE_SIZE_DEFAULT_SEVERITY, checkFileSize, fileSizeNeeds } from './file-size.js';
-export { UNKNOWN_KIND_FALLBACK, mergeRules } from './merge.js';
+export { REPO_USER_ONLY_REASON, UNKNOWN_KIND_FALLBACK, mergeRules } from './merge.js';
 export type { MergedRule, RuleSources } from './merge.js';
