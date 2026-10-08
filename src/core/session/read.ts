@@ -5,9 +5,9 @@
 // never more. Sidechains live next to the transcript:
 // `<dir>/<session>/subagents/agent-<agentId>.jsonl` and `.meta.json`.
 
-import { open, readFile, stat } from 'node:fs/promises';
+import { open, stat } from 'node:fs/promises';
 import { basename, dirname, join } from 'node:path';
-import { applyAgentMeta, applyMainChunk, applySidechainChunk, emptyDigest, finalizeDigest, type DigestContext } from './digest.js';
+import { applyAgentMeta, applyMainChunk, applySidechainChunk, emptyDigest, finalizeDigest, safeId, type DigestContext } from './digest.js';
 import { SESSION_LIMITS, type SessionLimits } from './limits.js';
 import type { TranscriptChunk } from './parse.js';
 import type { SessionDigest } from './types.js';
@@ -50,9 +50,14 @@ export interface ReadSessionInput extends DigestContext {
   active: boolean;
 }
 
+/** Largest meta file read; Claude Code's are a few hundred bytes. */
+export const MAX_META_BYTES = 64 * 1024;
+
 async function readJson(path: string): Promise<unknown> {
   try {
-    return JSON.parse(await readFile(path, 'utf8')) as unknown;
+    const chunk = await readTranscriptChunk(path, 0, { transcriptBytes: MAX_META_BYTES });
+    if (chunk === null || chunk.fileSize > MAX_META_BYTES) return null;
+    return JSON.parse(Buffer.from(chunk.bytes).toString('utf8')) as unknown;
   } catch {
     return null;
   }
@@ -82,13 +87,13 @@ export async function readSessionDigest(input: ReadSessionInput): Promise<Sessio
     for (const agentId of pending) {
       done.add(agentId);
       // Not a path component from the transcript: an agentId is checked before it becomes a file name.
-      if (!/^[A-Za-z0-9_-]+$/.test(agentId)) continue;
+      if (safeId(agentId) === null) continue;
       const run = digest.runs.find((candidate) => candidate.agentId === agentId);
       // The meta file is written at launch: read once, until it gave a spawn depth.
       if (run?.spawnDepth === null) {
         applyAgentMeta(digest, agentId, await readJson(join(dir, `agent-${agentId}.meta.json`)), context);
       }
-      const cursor = digest.state.sidechains[agentId]?.parsedBytes ?? 0;
+      const cursor = Object.hasOwn(digest.state.sidechains, agentId) ? (digest.state.sidechains[agentId]?.parsedBytes ?? 0) : 0;
       const side = await readTranscriptChunk(join(dir, `agent-${agentId}.jsonl`), cursor, limits);
       if (side !== null && side.fileSize >= cursor) applySidechainChunk(digest, agentId, side, context);
     }

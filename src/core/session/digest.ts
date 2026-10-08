@@ -11,7 +11,7 @@
 
 import { createHash } from 'node:crypto';
 import { isAbsolute, relative, resolve, sep } from 'node:path';
-import { SESSION_LIMITS, truncateUtf8, type SessionLimits } from './limits.js';
+import { SESSION_LIMITS, TRUNCATED_MARKER, truncateUtf8, type SessionLimits } from './limits.js';
 import { arr, decodeRecord, forEachLine, isObject, messageContent, num, str, type RawRecord, type TranscriptChunk } from './parse.js';
 import { createRedactor, type Redactor } from './redact.js';
 import {
@@ -71,8 +71,18 @@ const TOOL_KIND: Readonly<Record<string, ActivityKind>> = {
 const RUN_STATUSES = new Set(['completed', 'failed', 'killed']);
 const STATUS_RANK: Readonly<Record<NonNullable<AgentRun['statusSource']>, number>> = { handback: 1, 'tool-result': 2, notification: 3 };
 const REPORT_RANK:Readonly<Record<NonNullable<AgentRun['reportSource']>, number>> = { sidechain: 1, 'tool-result': 2, handback: 3 };
-/** User records that carry command or tool output, never a prompt. */
-const OUTPUT_TAG = /^\s*<(?:local-command-stdout|local-command-stderr|local-command-caveat|bash-stdout|bash-stderr|task-notification|system-reminder)>/;
+/** Text that carries command or tool output, or context the harness injected (IDE selection, open file, reminders): never a prompt. */
+const INJECTED_TAG =
+  /^\s*<(?:local-command-stdout|local-command-stderr|local-command-caveat|bash-stdout|bash-stderr|task-notification|system-reminder|ide_selection|ide_opened_file|ide_diagnostics)>/;
+/**
+ * Text beyond the limit kept for redaction: longer than any secret the
+ * redactor knows except a PEM block, which it redacts to the end of the text.
+ */
+const REDACT_MARGIN = 8 * 1024;
+/** Bytes dropped from the end of text cut before redaction: a secret cut in half there is not recognized. */
+const CUT_TAIL = 1024;
+/** Longest agentId, toolUseId or parent id kept; Claude Code's are well under it. */
+const MAX_ID = 128;
 const TITLE_CHARS = 80;
 
 function context(input: DigestContext): Ctx {
@@ -117,7 +127,25 @@ export function emptyDigest(): SessionDigest {
 
 /** Redacted, then cut to `maxBytes`. */
 function clip(c: Ctx, text: string, maxBytes: number): { text: string; truncated: boolean } {
-  return truncateUtf8(c.redact(text), maxBytes);
+  // Cut before redacting, so the redactor never sees a 1 MB string for a 4 KB field.
+  const pre = truncateUtf8(text, maxBytes + REDACT_MARGIN, '');
+  if (!pre.truncated) return truncateUtf8(c.redact(text), maxBytes);
+  const redacted = c.redact(pre.text);
+  const kept = truncateUtf8(redacted, Math.max(0, Buffer.byteLength(redacted, 'utf8') - CUT_TAIL), '').text;
+  const body = truncateUtf8(kept, Math.max(0, maxBytes - Buffer.byteLength(TRUNCATED_MARKER, 'utf8')), '').text;
+  return { text: body + TRUNCATED_MARKER, truncated: true };
+}
+
+/** An id from a transcript, a meta file or a caller: short, of id characters, never an Object.prototype key. */
+export function safeId(value: unknown): string | null {
+  if (typeof value !== 'string' || value.length === 0 || value.length > MAX_ID) return null;
+  if (!/^[A-Za-z0-9_-]+$/.test(value) || value in Object.prototype) return null;
+  return value;
+}
+
+/** An own entry of a record keyed by id; inherited keys never count. */
+function own<T>(record: Record<string, T>, key: string): T | undefined {
+  return Object.hasOwn(record, key) ? record[key] : undefined;
 }
 
 function clipText(c: Ctx, text: string): string {
@@ -157,8 +185,13 @@ export function applyMainChunk(digest: SessionDigest, chunk: TranscriptChunk, in
 
 /** Applies the bytes of `agent-<agentId>.jsonl` from `chunk.offset`, which must be that file's cursor (0 when new). */
 export function applySidechainChunk(digest: SessionDigest, agentId: string, chunk: TranscriptChunk, input: DigestContext): SessionDigest {
+  if (safeId(agentId) === null) return digest;
   const c = context(input);
-  const cursor = (digest.state.sidechains[agentId] ??= { parsedBytes: 0, truncated: false });
+  let cursor = own(digest.state.sidechains, agentId);
+  if (cursor === undefined) {
+    cursor = { parsedBytes: 0, truncated: false };
+    digest.state.sidechains[agentId] = cursor;
+  }
   const run = runByAgentId(digest, agentId) ?? addRun(digest, newRun({ agentId }));
   const last: { text: string | null } = { text: null };
   applyLines(digest, cursor, chunk, c, (record) => {
@@ -182,9 +215,9 @@ export function applySidechainChunk(digest: SessionDigest, agentId: string, chun
 
 /** Applies `agent-<agentId>.meta.json`: the run's type, description, spawn depth and parent. */
 export function applyAgentMeta(digest: SessionDigest, agentId: string, meta: unknown, input: DigestContext): SessionDigest {
-  if (!isObject(meta)) return digest;
+  if (!isObject(meta) || safeId(agentId) === null) return digest;
   const c = context(input);
-  const toolUseId = str(meta.toolUseId);
+  const toolUseId = safeId(meta.toolUseId);
   let run = runByAgentId(digest, agentId);
   if (run === null && toolUseId !== null) {
     run = runByToolUseId(digest, toolUseId);
@@ -197,7 +230,7 @@ export function applyAgentMeta(digest: SessionDigest, agentId: string, meta: unk
   if (description !== null) run.description = clipText(c, description);
   const depth = num(meta.spawnDepth);
   if (depth !== null) run.spawnDepth = depth;
-  const parent = str(meta.parentAgentId);
+  const parent = safeId(meta.parentAgentId);
   if (parent !== null) run.parentAgentId = parent;
   return digest;
 }
@@ -243,7 +276,7 @@ function onAssistant(digest: SessionDigest, record: RawRecord, c: Ctx, run: Agen
   for (const block of content) {
     if (!isObject(block) || block.type !== 'tool_use') continue;
     const name = str(block.name);
-    const id = str(block.id);
+    const id = safeId(block.id);
     const input = isObject(block.input) ? block.input : {};
     if (name === null) continue;
     countTool(run === null ? digest.main : run.activity, name, c);
@@ -290,11 +323,14 @@ function onPrompt(
   let text: string;
   if (typeof content === 'string') text = content;
   else if (Array.isArray(content)) {
+    // Block by block: the harness adds IDE context and reminders as blocks of their own.
     const texts: string[] = [];
-    for (const block of content) if (isObject(block) && block.type === 'text' && typeof block.text === 'string') texts.push(block.text);
+    for (const block of content) {
+      if (isObject(block) && block.type === 'text' && typeof block.text === 'string' && !INJECTED_TAG.test(block.text)) texts.push(block.text);
+    }
     text = texts.join('\n');
   } else return;
-  if (OUTPUT_TAG.test(text)) return;
+  if (INJECTED_TAG.test(text)) return;
   let command = false;
   // A slash command expansion starts with its tags; a prompt that mentions them is not one.
   const commandName = /^\s*<command-(?:name|message)>/.test(text) ? /<command-name>([\s\S]*?)<\/command-name>/.exec(text) : null;
@@ -470,7 +506,7 @@ function textOf(content: unknown): string | null {
 }
 
 function onToolResult(digest: SessionDigest, block: Readonly<Record<string, unknown>>, toolUseResult: unknown, c: Ctx): void {
-  const toolUseId = str(block.tool_use_id);
+  const toolUseId = safeId(block.tool_use_id);
   if (toolUseId === null) return;
   const questions = digest.questions.filter((question) => question.toolUseId === toolUseId);
   if (questions.length > 0) {
@@ -487,7 +523,7 @@ function onToolResult(digest: SessionDigest, block: Readonly<Record<string, unkn
     }
     return;
   }
-  const agentId = str(toolUseResult.agentId);
+  const agentId = safeId(toolUseResult.agentId);
   if (agentId !== null) linkAgentId(digest, run, agentId);
   const agentType = str(toolUseResult.agentType);
   if (agentType !== null) run.type ??= clipText(c, agentType);
@@ -511,8 +547,8 @@ function tag(text: string, name: string): string | null {
 }
 
 function onNotification(digest: SessionDigest, text: string): void {
-  const taskId = tag(text, 'task-id');
-  const toolUseId = tag(text, 'tool-use-id');
+  const taskId = safeId(tag(text, 'task-id'));
+  const toolUseId = safeId(tag(text, 'tool-use-id'));
   const run = (taskId !== null ? runByAgentId(digest, taskId) : null) ?? (toolUseId !== null ? runByToolUseId(digest, toolUseId) : null);
   if (run === null) return;
   const status = tag(text, 'status');
@@ -530,7 +566,7 @@ function onNotification(digest: SessionDigest, text: string): void {
 }
 
 function onHandback(digest: SessionDigest, origin: Readonly<Record<string, unknown>>, c: Ctx): void {
-  const sender = str(origin.senderTaskId);
+  const sender = safeId(origin.senderTaskId);
   const body = str(origin.body);
   if (sender === null || body === null) return;
   const run = runByAgentId(digest, sender);
@@ -593,7 +629,11 @@ function listFile(tally: FileTally, file: string, limit: number): void {
 }
 
 function countOutside(digest: SessionDigest, scope: string, tally: FileTally, key: string, limit: number): void {
-  const keys = (digest.state.outside[scope] ??= []);
+  let keys = own(digest.state.outside, scope);
+  if (keys === undefined) {
+    keys = [];
+    digest.state.outside[scope] = keys;
+  }
   if (keys.includes(key)) return;
   if (keys.length < limit) keys.push(key);
   tally.outsideFiles++;
@@ -605,7 +645,7 @@ function recordEdit(digest: SessionDigest, run: AgentRun | null, target: string,
   const scope = run === null ? 'main' : (run.agentId ?? run.toolUseId ?? 'run');
   const tally = run === null ? digest.main : run.activity;
   if (rel !== null && rel !== '' && !rel.startsWith('..') && !isAbsolute(rel)) {
-    const file = c.redact(rel.split(sep).join('/'));
+    const file = clipText(c, rel.split(sep).join('/'));
     listFile(tally, file, c.limits.files);
     listFile(digest, file, c.limits.files);
     return;

@@ -55,6 +55,80 @@ describe('session', () => {
     ]);
   });
 
+  it('session/prompts-exclude-injected-blocks', () => {
+    const main = transcript()
+      .user([
+        { type: 'text', text: '<ide_opened_file>The user opened the file /work/shopfront/src/cart.ts in the IDE.</ide_opened_file>' },
+        { type: 'text', text: 'Make the badge red' },
+        { type: 'text', text: '<ide_selection>const SELECTED_CODE = 1;</ide_selection>' },
+        { type: 'text', text: '<system-reminder>INJECTED REMINDER</system-reminder>' },
+      ])
+      .user([
+        { type: 'text', text: '<ide_selection>ONLY A SELECTION</ide_selection>' },
+        { type: 'text', text: '<local-command-stdout>OUTPUT</local-command-stdout>' },
+      ]);
+
+    const digest = digestOf({ main });
+    expect(promptTexts(digest)).toEqual(['Make the badge red']);
+    expect(JSON.stringify(digest)).not.toMatch(/SELECTED_CODE|INJECTED|ONLY A SELECTION|OUTPUT|opened the file/);
+  });
+
+  it('session/long-prompt-cut-before-redaction', () => {
+    const token = ['gh', 'p_', 'aB3dE5fG7hJ9kL2mN4pQ6rS8tV0wX1yZaB3d'].join('');
+    const main = transcript()
+      .prompt(`${token} ` + 'key-'.repeat(200_000))
+      .prompt('é'.repeat(5000));
+    const start = performance.now();
+    const digest = digestOf({ main });
+    expect(performance.now() - start).toBeLessThan(500);
+    const [long, accented] = digest.prompts;
+    expect(long?.text.startsWith('[redacted:github-token] key-key-')).toBe(true);
+    expect(long?.truncated).toBe(true);
+    expect(Buffer.byteLength(long?.text ?? '', 'utf8')).toBeLessThanOrEqual(SESSION_LIMITS.promptBytes);
+    // Cut on a character boundary: no replacement character.
+    expect(accented?.truncated).toBe(true);
+    expect(accented?.text).not.toContain('�');
+  });
+
+  it('session/ids-validated-no-prototype-keys', () => {
+    const main = transcript();
+    main.agent({ agentId: '__proto__' });
+    main.agent({ agentId: 'x'.repeat(200) });
+    main.handback('constructor', 'Not a run');
+    const digest = digestOf({
+      main,
+      sidechains: { ['__proto__']: transcript({ agentId: '__proto__' }).text('pwned') },
+      metas: { constructor: agentMeta({ agentType: 'evil', parentAgentId: '__proto__' }) },
+    });
+    expect(digest.runs.map((run) => run.agentId)).toEqual([null, null]);
+    expect(Object.keys(digest.state.sidechains)).toEqual([]);
+    expect(({} as Record<string, unknown>).parsedBytes).toBeUndefined();
+    expect(({} as Record<string, unknown>).truncated).toBeUndefined();
+  });
+
+  it('session/utf8-split-at-cursor-and-at-the-read-limit', () => {
+    const main = transcript().prompt('Café').prompt('日本語のカート ✓');
+    const full = Buffer.from(main.jsonl(), 'utf8');
+    // Inside the three bytes of 日.
+    const split = full.indexOf(Buffer.from('日', 'utf8')) + 1;
+
+    const digest = emptyDigest();
+    applyMainChunk(digest, { bytes: full.subarray(0, split), offset: 0, fileSize: split }, CONTEXT);
+    expect(promptTexts(digest)).toEqual(['Café']);
+    const offset = digest.state.main.parsedBytes;
+    applyMainChunk(digest, { bytes: full.subarray(offset), offset, fileSize: full.length }, CONTEXT);
+    expect(promptTexts(digest)).toEqual(['Café', '日本語のカート ✓']);
+
+    // A read limit that falls inside 日: the line is not read, nothing is half decoded.
+    const limits: SessionLimits = { ...SESSION_LIMITS, transcriptBytes: split };
+    const cut = emptyDigest();
+    applyMainChunk(cut, { bytes: full, offset: 0, fileSize: full.length }, { ...CONTEXT, limits });
+    finalizeDigest(cut, { active: false, limits });
+    expect(promptTexts(cut)).toEqual(['Café']);
+    expect(cut.truncated).toBe(true);
+    expect(JSON.stringify(cut)).not.toContain('�');
+  });
+
   it('session/slash-command-kept-as-command-line', () => {
     const main = transcript()
       .prompt('<command-message>review</command-message>\n<command-name>/review</command-name>\n<command-args>src/cart.ts --strict</command-args>')

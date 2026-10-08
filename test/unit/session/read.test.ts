@@ -6,7 +6,7 @@ import { appendFile, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { readSessionDigest, readTranscriptChunk, subagentsDir, type SessionDigest } from '../../../src/core/session/index.js';
+import { MAX_META_BYTES, readSessionDigest, readTranscriptChunk, subagentsDir, type SessionDigest } from '../../../src/core/session/index.js';
 import { agentMeta, transcript } from '../../helpers/transcript.js';
 
 let dir: string;
@@ -61,6 +61,19 @@ describe('session read', () => {
       ['dev1', 'Badge done', 'unknown'],
     ]);
     expect(second.files).toEqual(['src/badge.ts']);
+  });
+
+  it('session/read-meta-over-64kb-ignored', async () => {
+    const path = join(dir, 'session-0002.jsonl');
+    const subagents = subagentsDir(path);
+    await mkdir(subagents, { recursive: true });
+    const main = transcript();
+    main.agent({ agentId: 'big1', type: 'dev' });
+    await writeFile(path, main.jsonl());
+    await writeFile(join(subagents, 'agent-big1.meta.json'), JSON.stringify({ ...agentMeta({ agentType: 'reviewer' }), pad: 'p'.repeat(MAX_META_BYTES) }));
+
+    const digest = await readSessionDigest({ transcriptPath: path, active: false, repoRoot: '/work/shopfront', home: '/Users/robin' });
+    expect(digest.runs[0]).toMatchObject({ agentId: 'big1', type: 'dev', spawnDepth: null });
   });
 
   it('session/read-chunk-stops-at-the-limit', async () => {

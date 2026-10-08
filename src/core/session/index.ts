@@ -10,12 +10,13 @@ export {
   emptyActivity,
   emptyDigest,
   finalizeDigest,
+  safeId,
   type DigestContext,
   type FinalizeOptions,
 } from './digest.js';
 export { SESSION_LIMITS, TRUNCATED_MARKER, truncateUtf8, type SessionLimits } from './limits.js';
 export { decodeRecord, forEachLine, sliceLines, type LineSlice, type TranscriptChunk } from './parse.js';
-export { readSessionDigest, readTranscriptChunk, subagentsDir, transcriptGrew, type ReadSessionInput } from './read.js';
+export { MAX_META_BYTES, readSessionDigest, readTranscriptChunk, subagentsDir, transcriptGrew, type ReadSessionInput } from './read.js';
 export { createRedactor, redact, type RedactOptions, type RedactionKind, type Redactor } from './redact.js';
 export {
   ACTIVITY_KINDS,
