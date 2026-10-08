@@ -80,7 +80,7 @@ async function topBar(page: Page, tracked: TrackedChange, report: Report): Promi
   await expect(page.getByTestId('eyes-badge')).toHaveText(`${String(stats.filesByVerdict.eyes)} files need your eyes before merge`);
   await expect(page.getByTestId('progress-attention')).toHaveText(`0 of ${String(stats.filesByVerdict.eyes)} files that need your eyes checked`);
   await expect(page.getByTestId('progress-touched')).toHaveText(`0 of ${String(stats.touchedFiles)} touched files checked`);
-  // The review controls are present with a daemon; export and approve are disabled placeholders.
+  // The review controls are present with a daemon; export is a disabled placeholder, Approve stays closed until tier 1 is marked.
   await expect(page.getByRole('button', { name: 'Review summary' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Export PlantUML' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Approve when tier 1 is read' })).toBeVisible();

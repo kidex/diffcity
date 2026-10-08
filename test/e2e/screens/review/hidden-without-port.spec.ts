@@ -39,7 +39,7 @@ standaloneTest('review/hidden-without-port: the standalone page has none of it',
   await page.keyboard.press('g');
   await expect(page.getByTestId('rewrite-dialog')).toHaveCount(0);
   await expect(page.getByTestId('filter-hide-checked')).toHaveCount(0);
-  // The filter rows are still there, and the Approve placeholder stays disabled.
+  // The filter rows are still there; without an ApprovalPort there is no Approve (DC-116).
   await expect(page.getByTestId('filter-clear')).toBeVisible();
-  await expect(page.getByTestId('approve')).toHaveAttribute('aria-disabled', 'true');
+  await expect(page.getByTestId('approve')).toHaveCount(0);
 });
