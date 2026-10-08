@@ -59,6 +59,13 @@ export interface FixAnswer {
   count: number;
 }
 
+/** `POST` and `DELETE /api/changes/:id/approve` (ADR-036). */
+export interface ApprovalAnswer {
+  reviewState: 'approved' | 'in-review';
+  approvedHead: string | null;
+  approvedAt: string | null;
+}
+
 export interface Api {
   health(signal?: AbortSignal): Promise<HealthResponse>;
   repos(signal?: AbortSignal): Promise<RepoSummary[]>;
@@ -94,6 +101,13 @@ export interface Api {
    * `fix-queue-busy` or `archived`, 404 `finding-not-found` or `not-found`, 403.
    */
   fixFinding(changeId: number, key: string): Promise<FixAnswer>;
+  /**
+   * Approve: the daemon checks the gate itself. Rejects with ApiRequestError: 409 `tier1-unchecked`,
+   * `snapshot-pending`, `no-snapshot` or `archived`, 404 `not-found`, 403.
+   */
+  approve(changeId: number): Promise<ApprovalAnswer>;
+  /** Undoes Approve. Rejects with ApiRequestError: 409 `not-approved` or `archived`, 404 `not-found`, 403. */
+  unapprove(changeId: number): Promise<ApprovalAnswer>;
 }
 
 function isApiError(body: unknown): body is ApiError {
@@ -192,6 +206,12 @@ export function createApi(base = '', fetchImpl: typeof fetch = (...args) => fetc
     },
     async fixFinding(changeId, key) {
       return (await (await write('POST', `${findingPath(changeId, key)}/fix`)).json()) as FixAnswer;
+    },
+    async approve(changeId) {
+      return (await (await write('POST', `/changes/${String(changeId)}/approve`)).json()) as ApprovalAnswer;
+    },
+    async unapprove(changeId) {
+      return (await (await write('DELETE', `/changes/${String(changeId)}/approve`)).json()) as ApprovalAnswer;
     },
   };
 }

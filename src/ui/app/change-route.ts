@@ -13,6 +13,7 @@ import type { ChangeSummary } from '../../core/model/types.js';
 import type { Report } from '../../core/report/types.js';
 import { ApiRequestError } from '../data/api.js';
 import type { DataContext } from '../data/context.js';
+import { createApprovalPort } from '../data/approval-port.js';
 import { createDiffPort } from '../data/diff-port.js';
 import { createFindingsPort } from '../data/findings-port.js';
 import { createReviewPort } from '../data/review-port.js';
@@ -78,6 +79,10 @@ export function mountChangeRoute(element: HTMLElement, context: DataContext, cha
   const findings: FindingsPort = createFindingsPort(api, changeId, () => {
     reload();
   });
+  // Approve and its undo (ADR-036): fed each change summary; an accepted write refetches the change at once.
+  const approval = createApprovalPort(api, changeId, () => {
+    reload();
+  });
   let disposed = false;
   /** Loads in flight, oldest first: at most two, the oldest and the newest. */
   const controllers = new Set<AbortController>();
@@ -108,7 +113,7 @@ export function mountChangeRoute(element: HTMLElement, context: DataContext, cha
         if (disposed || waiting === undefined) return;
         const { report: latest } = waiting;
         waiting = undefined;
-        screen = module.mountChange(body, { report: latest, diffs, review, findings });
+        screen = module.mountChange(body, { report: latest, diffs, review, findings, approval });
       },
       () => {
         if (disposed || waiting === undefined) return;
@@ -136,6 +141,7 @@ export function mountChangeRoute(element: HTMLElement, context: DataContext, cha
     }
     stage.dataset['state'] = 'ready';
     repoId = loaded.change.repoId;
+    approval.show(loaded.change, startedAt);
     const nextHead = header(loaded.change);
     if (head !== null && head.parentElement === stage && body.parentElement === stage) head.replaceWith(nextHead);
     else replaceChildren(stage, nextHead, body);

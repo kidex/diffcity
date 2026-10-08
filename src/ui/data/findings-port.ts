@@ -31,7 +31,8 @@ export interface FindingsPort {
   setState(key: string, state: 'open' | 'intended'): Promise<FindingAnswer<FindingStateAnswer>>;
 }
 
-async function answer<T>(request: Promise<T>): Promise<FindingAnswer<T>> {
+/** Settles a write: the daemon's answer with when it arrived, or its refusal; rejects only without an answer. */
+export async function answer<T>(request: Promise<T>): Promise<FindingAnswer<T>> {
   try {
     const value = await request;
     return { ok: true, value, at: performance.now() };

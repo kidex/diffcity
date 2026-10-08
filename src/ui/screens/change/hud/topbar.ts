@@ -1,7 +1,8 @@
 // The change screen's top bar (mockup .top, minus the brand and search that
 // the SPA shell owns): counters of files and symbols by status, the "need
-// your eyes" badge, the rule-check chips, change-level findings, and the
-// Export PlantUML and Approve buttons, which arrive in a later version.
+// your eyes" badge, the rule-check chips, change-level findings, the Export
+// PlantUML button, which arrives in a later version, and, with an
+// ApprovalPort, Approve (hud/approve.ts).
 // With `crumb` the bar also carries the mockup's breadcrumb (repo, branch
 // against base, commits and time) for a screen mounted without the SPA shell;
 // inside the SPA the shell already shows it and `crumb` is off.
@@ -54,10 +55,11 @@ function disabledButton(label: string, primary: boolean, testId: string): HTMLEl
   );
 }
 
-/** Nodes the review adds to the bar when the screen has a ReviewPort: the progress, and the summary button. */
+/** Nodes the ports add to the bar: with a ReviewPort the progress and the summary button, with an ApprovalPort Approve. */
 export interface BarExtras {
   progress?: HTMLElement | undefined;
   summary?: HTMLElement | undefined;
+  approve?: HTMLElement | undefined;
 }
 
 export function renderTopBar(bar: HTMLElement, report: Report, withCrumb: boolean, extras: BarExtras = {}): void {
@@ -65,6 +67,9 @@ export function renderTopBar(bar: HTMLElement, report: Report, withCrumb: boolea
   const eyes = counters.eyes;
   const level = changeLevel(report);
   const checks = checkChips(report);
+  // The persistent nodes (Approve, the summary button) are moved back in: a focus inside them is kept.
+  const active = document.activeElement;
+  const focused = active instanceof HTMLElement && bar.contains(active) ? active : null;
   replaceChildren(
     bar,
     withCrumb ? crumb(report) : null,
@@ -114,7 +119,8 @@ export function renderTopBar(bar: HTMLElement, report: Report, withCrumb: boolea
       { class: 'actions' },
       extras.summary,
       disabledButton('Export PlantUML', false, 'export-plantuml'),
-      disabledButton('Approve when tier 1 is read', true, 'approve'),
+      extras.approve,
     ),
   );
+  if (focused !== null && bar.contains(focused)) focused.focus({ preventScroll: true });
 }

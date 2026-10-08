@@ -17,6 +17,7 @@ import { createFleetCard } from './fleet.js';
 import { createLegend } from './legend.js';
 import { createTooltip } from './tooltip.js';
 import { renderProgress } from './progress.js';
+import type { BarExtras } from './topbar.js';
 import { renderTopBar } from './topbar.js';
 
 export const TITLE = 'What the agent built';
@@ -33,6 +34,8 @@ export interface HudOptions {
   fleet?: FleetPort | undefined;
   /** The screen has a ReviewPort: the summary button is drawn and `onSummary` opens the dialog. */
   review?: { onSummary(trigger: HTMLElement): void } | undefined;
+  /** The screen has an ApprovalPort: Approve's element, drawn among the bar's actions. */
+  approve?: HTMLElement | undefined;
   onFilters(filters: Filters): void;
 }
 
@@ -97,7 +100,10 @@ export function createHud(options: HudOptions): Hud {
   );
 
   /** Only with a review state: before it, and without a port, the bar has none of these nodes. */
-  const extras = (): { progress?: HTMLElement; summary?: HTMLElement } => (options.review !== undefined && reviewReady ? { progress, summary: summaryButton } : {});
+  const extras = (): BarExtras => ({
+    ...(options.review !== undefined && reviewReady ? { progress, summary: summaryButton } : {}),
+    approve: options.approve,
+  });
 
   return {
     bar,
