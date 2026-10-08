@@ -86,13 +86,14 @@ describe('layers: statements', () => {
     expect(findingRows(run.findings)).toEqual([['src/core/ledger.ts', 1, UPWARD_DAEMON]]);
   });
 
-  it('layers/type-only-allowed-opt-in: allowTypeImports skips import type, all-type named imports and export type', async () => {
+  it('layers/type-only-allowed-opt-in: allowTypeImports skips import type, export type, and all-type named imports and re-exports', async () => {
     expect((await runLayersCase('type-only-allowed-opt-in')).checks).toEqual([check('passed', 0)]);
     const counted = await runLayersCase('type-only-allowed-opt-in', { allowTypeImports: false });
     expect(findingRows(counted.findings)).toEqual([
       ['src/core/ledger.ts', 1, UPWARD_DAEMON],
       ['src/core/ledger.ts', 2, UPWARD_DAEMON],
       ['src/core/ledger.ts', 3, UPWARD_DAEMON],
+      ['src/core/ledger.ts', 4, UPWARD_DAEMON],
     ]);
   });
 

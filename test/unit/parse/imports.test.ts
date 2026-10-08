@@ -37,7 +37,7 @@ describe('import extraction', () => {
     ]);
   });
 
-  it('flags type-only imports: import type, export type, and named imports that are all types', async () => {
+  it('flags type-only imports: import type, export type, and named imports or re-exports that are all types', async () => {
     const source = [
       "import type { Entry } from './a.js';",
       "export type { Account } from './b.js';",
@@ -45,6 +45,8 @@ describe('import extraction', () => {
       "import { type Ledger2, post } from './d.js';",
       "import Book, { type Page } from './e.js';",
       "import type Legacy = require('./f');",
+      "export { type Entry, type Account } from './g.js';",
+      "export { type Entry as E2, balance } from './h.js';",
       '',
     ].join('\n');
     expect((await importsOf(source)).map((ref) => [ref.specifier, ref.typeOnly])).toEqual([
@@ -54,6 +56,8 @@ describe('import extraction', () => {
       ['./d.js', false],
       ['./e.js', false],
       ['./f', true],
+      ['./g.js', true],
+      ['./h.js', false],
     ]);
   });
 

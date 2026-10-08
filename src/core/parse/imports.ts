@@ -13,7 +13,7 @@ export interface ImportRef {
   specifier: string | null;
   /** 1-based line the statement (or the call) starts on. */
   line: number;
-  /** `import type`, `export type … from`, or named imports that are all `type`: no runtime dependency. */
+  /** `import type`, `export type … from`, or named imports or re-exports that are all `type`: no runtime dependency. */
   typeOnly: boolean;
 }
 
@@ -52,9 +52,18 @@ function hasTypeKeyword(node: Node): boolean {
   return node.children.some((child) => child.type === 'type');
 }
 
-/** `import type …`, `export type … from`, `import type x = require()`, or `import { type A, type B }` with nothing else imported. */
+/**
+ * `import type …`, `export type … from`, `import type x = require()`, or
+ * `import { type A, type B }` / `export { type A, type B } from` with nothing
+ * but types in the braces.
+ */
 function isTypeOnly(statement: Node): boolean {
   if (hasTypeKeyword(statement)) return true;
+  if (statement.type === 'export_statement') {
+    const clause = statement.namedChildren.find((child) => child.type === 'export_clause');
+    const specifiers = clause?.namedChildren.filter((child) => child.type === 'export_specifier') ?? [];
+    return specifiers.length > 0 && specifiers.every(hasTypeKeyword);
+  }
   if (statement.type !== 'import_statement') return false;
   const clause = statement.namedChildren.find((child) => child.type === 'import_clause');
   if (clause === undefined) return false;
