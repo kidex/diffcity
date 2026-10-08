@@ -8,9 +8,11 @@ import { compareFileWithFingerprints, unchangedSymbolsWithFingerprints, type Fil
 import {
   changedFiles,
   computeMeta,
+  countLines,
   findRepoRoot,
   listHeadFiles,
   looksBinary,
+  measureAfter,
   readAfter,
   readAfterBatch,
   hashAfter,
@@ -29,10 +31,12 @@ import type { FileFingerprint, Fingerprints } from '../model/types.js';
 import { MAX_PARSE_BYTES } from '../parse/file.js';
 import { languageForPath } from '../parse/language.js';
 import { buildExecutionPath } from '../path/order.js';
+import { measureNeeds, mergeRules, runRules, type MergedRule, type RuleFile, type RuleRun } from '../rules/index.js';
+import type { UserRuleSettings } from '../settings/settings.js';
 import { preparePathFile, prepareUntouchedFile, type PathFile } from '../path/prepare.js';
 import { fileVerdict, tier1Matcher, touchedTier1Files } from '../verdict/index.js';
 import { mapLimit } from './limit.js';
-import type { File, Package, Report, Status, Step, Symbol, Verdict } from './types.js';
+import type { File, Finding, Package, Report, Status, Step, Symbol, Verdict } from './types.js';
 
 export interface BuildReportOptions {
   /** Any directory inside the repo's working tree. */
@@ -53,6 +57,12 @@ export interface BuildReportOptions {
   trustConfig: boolean;
   /** Receives the one-line notes meant for daemon.log (the call graph's fallback to name matching). */
   log?: ((message: string) => void) | undefined;
+  /**
+   * The user's rule lists for this repo from settings.json (ADR-030), merged
+   * before the repo config's `rules` (read only when `trustConfig`). Absent:
+   * no user rules.
+   */
+  userRules?: UserRuleSettings | undefined;
 }
 
 /** A file ready to be placed in the report, before verdict and grouping. */
@@ -114,7 +124,16 @@ export function assembleReport(
   inputs: readonly ReportFileInput[],
   isTier1: (path: string) => boolean,
   path: ReportPath = { steps: [], callsites: new Map() },
+  rules: RuleRun | null = null,
 ): Report {
+  // Rule findings are part of the Report and count for the verdict like any open finding (SPEC.md 5.2, ADR-030).
+  const findingsOf = new Map<string, Finding[]>();
+  for (const finding of rules?.findings ?? []) {
+    const list = findingsOf.get(finding.file);
+    if (list === undefined) findingsOf.set(finding.file, [finding]);
+    else list.push(finding);
+  }
+
   const byPackage = new Map<string, File[]>();
   const byStatus: Record<Status, number> = { add: 0, mod: 0, sig: 0, del: 0, same: 0 };
   const byVerdict: Record<Verdict, number> = { eyes: 0, risky: 0, spec: 0, ok: 0, same: 0 };
@@ -124,8 +143,8 @@ export function assembleReport(
       status: input.status,
       symbolStatuses: input.symbols.map((symbol) => symbol.status),
       tier1: isTier1(input.path),
-      // Findings are imported in phase 4.
-      findings: [],
+      // Imported findings join on each served Report (the findings overlay, ADR-036).
+      findings: findingsOf.get(input.path) ?? [],
       // No spec scope before phase 4 (ADR-010).
       inSpec: null,
     });
@@ -158,7 +177,9 @@ export function assembleReport(
     meta,
     packages,
     steps: path.steps,
-    findings: [],
+    findings: rules?.findings ?? [],
+    // Present only with a configured rule, so a Report without rules is unchanged.
+    ...(rules === null || rules.checks.length === 0 ? {} : { checks: rules.checks }),
     summary: {
       files: files.length,
       byStatus,
@@ -175,13 +196,21 @@ interface Described {
   symbolFingerprints: Record<string, string>;
   /** What the execution path needs from the file; absent for a file that plays no part in it. */
   path?: PathFile | undefined;
+  /** Size and lines of the after version, when a rule asked and the content was in memory; null for a deleted file. */
+  after?: RuleFile['after'] | undefined;
 }
 
 function sha256(bytes: Uint8Array | null): string | null {
   return bytes === null ? null : createHash('sha256').update(bytes).digest('hex');
 }
 
-async function describeChanged(change: ResolvedChange, file: ChangedFile): Promise<Described> {
+/**
+ * What the rules need about a file: `lines` asks for the line count as well as
+ * the size. Null when no rule looks at the file.
+ */
+type MeasureNeeds = (path: string) => { lines: boolean } | null;
+
+async function describeChanged(change: ResolvedChange, file: ChangedFile, needs: MeasureNeeds): Promise<Described> {
   const oldPath = file.oldPath ?? file.path;
   // Only code files are read into memory and parsed: the status of anything else comes from git (ADR-008).
   // The others are hashed from a stream, so a large asset never sits in the worker's memory.
@@ -218,6 +247,11 @@ async function describeChanged(change: ResolvedChange, file: ChangedFile): Promi
   const fingerprint: FileFingerprint = { before: beforeHash, after: afterHash };
   if (oldPath !== file.path) fingerprint.oldPath = oldPath;
   const described: Described = { input: { path: file.path, language: languageOf(file.path), status, symbols }, fingerprint, symbolFingerprints };
+  const wanted = file.type === 'del' ? null : needs(file.path);
+  // Measured now while the bytes are in memory; anything else is streamed later (measureTouched).
+  if (wanted !== null && afterBytes !== null) {
+    described.after = { bytes: afterBytes.length, lines: wanted.lines && !looksBinary(afterBytes) ? countLines(afterBytes) : null };
+  }
   // A touched code file that was parsed: its steps' diffs and entry facts are taken now, while both versions are in memory.
   if (status !== 'same' && !input.binary) {
     described.path = await preparePathFile({ path: file.path, oldPath, status, before, after, symbols, ranges });
@@ -276,6 +310,39 @@ async function executionPathOf(
   return { steps, callsites };
 }
 
+/** The rules of a build: the user's lists, then the repo config's (loaded only for a trusted repo). */
+function rulesOf(options: BuildReportOptions, config: DiffcityConfig): MergedRule[] {
+  return mergeRules({
+    ...(options.userRules?.settings === undefined ? {} : { settings: options.userRules.settings }),
+    ...(options.userRules?.settingsRepo === undefined ? {} : { settingsRepo: options.userRules.settingsRepo }),
+    ...(config.rules === undefined ? {} : { repoConfig: config.rules }),
+  });
+}
+
+/**
+ * Runs the rules over the touched files: the ones whose after version was not
+ * in memory (non-code, binary, large) are measured from a stream, and only
+ * when a rule looks at them.
+ */
+async function ruleRunOf(change: ResolvedChange, rules: readonly MergedRule[], described: readonly Described[], checkedAt: string): Promise<RuleRun | null> {
+  if (rules.length === 0) return null;
+  const files = await mapLimit(
+    described.filter((entry) => entry.input.status !== 'same'),
+    PARSE_CONCURRENCY,
+    async (entry): Promise<RuleFile> => {
+      const { path, status, symbols } = entry.input;
+      let after = entry.after ?? null;
+      const wanted = status === 'del' ? null : measureNeeds(rules, path);
+      if (entry.after === undefined && wanted !== null) {
+        const measured = wanted.lines ? await measureAfter(change, path) : await sizeAfter(change, path).then((bytes) => (bytes === null ? null : { bytes, lines: null }));
+        after = measured;
+      }
+      return { path, status, symbols, after };
+    },
+  );
+  return runRules(rules, files, checkedAt);
+}
+
 /**
  * Builds the Report of the change in `repoDir`: every file touched between
  * before (merge-base) and after, plus the untouched files of the after state
@@ -312,7 +379,9 @@ export async function buildReportWithHead(
   const touched = new Set(changed.map((file) => file.path));
   const untouched = headFiles.filter((path) => !touched.has(path) && languageForPath(path) !== null);
 
-  const touchedInputs = await mapLimit(changed, PARSE_CONCURRENCY, (file) => describeChanged(change, file));
+  const rules = rulesOf(options, config);
+  const needs: MeasureNeeds = (path) => measureNeeds(rules, path);
+  const touchedInputs = await mapLimit(changed, PARSE_CONCURRENCY, (file) => describeChanged(change, file, needs));
   const untouchedInputs: (Described | null)[] = [];
   for (let i = 0; i < untouched.length; i += READ_BATCH_SIZE) {
     const paths = untouched.slice(i, i + READ_BATCH_SIZE);
@@ -334,6 +403,8 @@ export async function buildReportWithHead(
     described.map((entry) => entry.input),
     isTier1,
     await executionPathOf(change, described, options.log),
+    // checkedAt is the Report's own time: the content hash leaves both out (contentHashOf).
+    await ruleRunOf(change, rules, touchedInputs, meta.generatedAt),
   );
   const fingerprints: Fingerprints = { files: {}, symbols: {} };
   for (const entry of described) {

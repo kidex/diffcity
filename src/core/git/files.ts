@@ -494,6 +494,79 @@ export async function hashAfter(change: ResolvedChange, path: string): Promise<s
   }
 }
 
+/** Lines of a text: its line feeds, plus one for a last line without one. Zero for empty content. */
+export function countLines(bytes: Uint8Array): number {
+  let count = 0;
+  let at = bytes.indexOf(0x0a);
+  while (at !== -1) {
+    count += 1;
+    at = bytes.indexOf(0x0a, at + 1);
+  }
+  return bytes.length > 0 && bytes[bytes.length - 1] !== 0x0a ? count + 1 : count;
+}
+
+/** Size and line count of a version, gathered while it streams. */
+class Measure {
+  bytes = 0;
+  private feeds = 0;
+  private last = -1;
+  private head: Buffer[] = [];
+  private headSize = 0;
+
+  add(chunk: Buffer): void {
+    this.bytes += chunk.length;
+    if (this.headSize < BINARY_SNIFF_BYTES) {
+      this.head.push(chunk);
+      this.headSize += chunk.length;
+    }
+    let at = chunk.indexOf(0x0a);
+    while (at !== -1) {
+      this.feeds += 1;
+      at = chunk.indexOf(0x0a, at + 1);
+    }
+    if (chunk.length > 0) this.last = chunk[chunk.length - 1] ?? -1;
+  }
+
+  /** null for binary content (git's heuristic), as no line count means anything there. */
+  lines(): number | null {
+    if (looksBinary(Buffer.concat(this.head))) return null;
+    return this.bytes > 0 && this.last !== 0x0a ? this.feeds + 1 : this.feeds;
+  }
+}
+
+/**
+ * Size in bytes and line count of `path` in the after state, streamed (never
+ * buffered), or null when it does not exist there. Lines are null for binary
+ * content. Same bytes as readAfterBytes: a symlink measures its target text.
+ */
+export async function measureAfter(change: ResolvedChange, path: string): Promise<{ bytes: number; lines: number | null } | null> {
+  const measure = new Measure();
+  if (!change.worktree) {
+    const repoPath = checkRepoPath(path);
+    const result = await gitStream(change.root, ['cat-file', 'blob', `${change.headCommit}:${repoPath}`], (chunk) => {
+      measure.add(chunk);
+    });
+    if (result.exitCode !== 0) {
+      await assertBlobAbsent(change.root, change.headCommit, repoPath);
+      return null;
+    }
+    return { bytes: measure.bytes, lines: measure.lines() };
+  }
+  const absPath = await confinedWorktreePath(change.root, path);
+  if (absPath === null) return null;
+  try {
+    const stats = await lstat(absPath);
+    if (stats.isSymbolicLink()) measure.add(await readlink(absPath, { encoding: 'buffer' }));
+    else if (!stats.isFile()) return null;
+    else for await (const chunk of createReadStream(absPath)) measure.add(chunk as Buffer);
+    return { bytes: measure.bytes, lines: measure.lines() };
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === 'ENOENT' || code === 'ENOTDIR') return null;
+    throw error;
+  }
+}
+
 /** Working tree files read at the same time by readAfterBatch. */
 const WORKTREE_READ_CONCURRENCY = 8;
 
