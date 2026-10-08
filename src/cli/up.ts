@@ -84,17 +84,36 @@ async function runForeground(
   io: UpDeps['io'],
   report: (info: DaemonInfo, startedByUs: boolean) => Promise<number>,
 ): Promise<number> {
-  const [{ runDaemon }, { createStreamLogger }] = await Promise.all([import('../daemon/run.js'), import('../daemon/log.js')]);
+  // Ctrl+C while the daemon modules load (seconds on a busy machine): nothing
+  // of the daemon exists yet, so the CLI exits 0 at once instead of meeting the
+  // default action of the signal (DC-122, as main.ts does for DC-119). runDaemon
+  // takes the signals over once loaded; the handler then does nothing but stays
+  // installed, and the CLI exits explicitly once the daemon has stopped.
+  let loading = true;
+  const onSignal = (): void => {
+    if (loading) process.exit(0);
+  };
+  for (const name of ['SIGTERM', 'SIGINT'] as const) process.on(name, onSignal);
+  const handOverSignals = (): void => {
+    loading = false;
+  };
+  let exitCode: number;
   let reported = 0;
-  const exitCode = await runDaemon(
-    { env, port, log: createStreamLogger(process.stderr) },
-    {
-      err: io.stderr,
-      onReady: async (info, alreadyRunning) => {
-        reported = await report(info, !alreadyRunning);
+  try {
+    const [{ runDaemon }, { createStreamLogger }] = await Promise.all([import('../daemon/run.js'), import('../daemon/log.js')]);
+    exitCode = await runDaemon(
+      { env, port, log: createStreamLogger(process.stderr) },
+      {
+        err: io.stderr,
+        onSignalsHandled: handOverSignals,
+        onReady: async (info, alreadyRunning) => {
+          reported = await report(info, !alreadyRunning);
+        },
       },
-    },
-  );
+    );
+  } finally {
+    handOverSignals();
+  }
   if (exitCode === EXIT_PORT_IN_USE) return 1;
   return exitCode === 0 ? reported : exitCode;
 }

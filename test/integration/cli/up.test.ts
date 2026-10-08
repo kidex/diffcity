@@ -209,11 +209,9 @@ describe('diffcity up', () => {
     expect(result.stderr).toContain(`port ${String(port)} is in use; pass --port\n`);
   });
 
-  // Ctrl+C (or SIGTERM) while the foreground CLI still loads daemon/run.js:
-  // the CLI has no handler yet, so the signal gets its default action. Known
-  // bug DC-122 (DC-119 closed the same window in dist/daemon/main.js only);
-  // it.fails until the fix, then plain it.
-  it.fails.each(['SIGINT', 'SIGTERM'] as const)('up --foreground/signal-during-load: %s while the daemon modules load exits 0', async (signal) => {
+  // Ctrl+C (or SIGTERM) while the foreground CLI still loads daemon/run.js
+  // ends the CLI with 0 instead of the default action of the signal (DC-122).
+  it.each(['SIGINT', 'SIGTERM'] as const)('up --foreground/signal-during-load: %s while the daemon modules load exits 0', async (signal) => {
     const slowLoad = fileURLToPath(new URL('../../fixtures/daemon/slow-load.mjs', import.meta.url));
     const held = join(temp.root, 'load-held');
     const release = join(temp.root, 'load-release');
