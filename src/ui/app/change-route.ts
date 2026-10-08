@@ -79,9 +79,9 @@ export function mountChangeRoute(element: HTMLElement, context: DataContext, cha
     reload();
   });
   let disposed = false;
-  /** Loads in flight; a later one never aborts an earlier one. */
+  /** Loads in flight, oldest first: at most two, the oldest and the newest. */
   const controllers = new Set<AbortController>();
-  /** When the load on show began: an older one that answers later is dropped. */
+  /** When the Report on show was fetched: an older one that answers later is dropped. */
   let shownStart = Number.NEGATIVE_INFINITY;
   let screen: ChangeScreen | null = null;
   /** The Report to mount once the screen chunk arrives; undefined when nothing waits. */
@@ -154,14 +154,22 @@ export function mountChangeRoute(element: HTMLElement, context: DataContext, cha
   }
 
   /**
-   * Fetches the change and its Report and shows them. A load does not abort
-   * the one in flight: after a finding write the immediate refetch is often
-   * followed by SSE `findings` for the same write, and aborting would push the
-   * visible update out to the second fetch (DC-110). Each answer is shown
-   * unless a load that began later is on screen already.
+   * Fetches the change and its Report and shows them. A new load aborts the
+   * loads in flight except the oldest: after a finding write the immediate
+   * refetch is often followed by SSE `findings` for the same write, and
+   * aborting it would push the visible update out to the second fetch
+   * (DC-110), while a burst of events never runs more than two fetches. Each
+   * answer is shown unless a Report fetched later is on screen already; a
+   * failure never hides an older answer that arrives after it.
    */
   async function load(): Promise<void> {
     if (disposed) return;
+    let oldest = true;
+    for (const inFlight of controllers) {
+      if (!oldest) inFlight.abort();
+      oldest = false;
+    }
+    for (const inFlight of [...controllers]) if (inFlight.signal.aborted) controllers.delete(inFlight);
     const current = new AbortController();
     controllers.add(current);
     const { signal } = current;
@@ -180,7 +188,8 @@ export function mountChangeRoute(element: HTMLElement, context: DataContext, cha
       controllers.delete(current);
     }
     if (signal.aborted || startedAt < shownStart) return;
-    shownStart = startedAt;
+    // Only a Report sets the bar: an error shown while nothing else is (repoId null) gives way to any answer after it.
+    if (!('error' in loaded)) shownStart = startedAt;
     show(loaded, startedAt);
   }
 
