@@ -15,6 +15,7 @@ isolateGitConfig();
 cleanupAfterEach();
 
 const JOURNAL = 'src/ledger/journal.ts';
+const POSTINGS = 'src/ledger/postings.ts';
 
 function body(count: number): string {
   return ['export function post(entries: number[]): number {', ...Array.from({ length: count }, (_, i) => `  entries.push(${String(i)});`), '  return entries.length;', '}', ''].join('\n');
@@ -41,5 +42,37 @@ describe('rules in the Fleet summary', () => {
 
     const repos = (await (await call(port, 'GET', '/api/repos')).json()) as { id: number; highFindings: number }[];
     expect(repos.find((entry) => entry.id === repoId)?.highFindings).toBe(1);
+  });
+  it('rules/high-mixed-overlay: with one of two high rule findings intended, the other is still counted, then none', async () => {
+    const test = await startTestDaemon({ gh: ghNotInstalled() }, { api: true });
+    const repo = await sampleRepo({ name: 'ledger', files: { [JOURNAL]: body(1), [POSTINGS]: body(1), 'README.md': '# ledger\n' } });
+    await repo.branch('agent/journal');
+    await repo.commit('grow journal and postings', { [JOURNAL]: body(10), [POSTINGS]: body(10) });
+    await writeFile(join(test.home.home, 'settings.json'), JSON.stringify({ v: 1, trustedRepos: [], rules: [{ id: 'big-files', kind: 'file-size', severity: 'high', maxLines: 5 }] }));
+
+    const tracked = await test.track(repo.dir);
+    if (!tracked.ok) throw new Error(tracked.error);
+    await test.idle();
+    const repoId = tracked.repo.id;
+    const change = test.collection.db().changes.listLive(repoId).find((candidate) => candidate.ref.endsWith('agent/journal'));
+    if (change === undefined) throw new Error('the branch change was not collected');
+
+    const port = test.daemon.info.port;
+    const report = (await (await call(port, 'GET', `/api/changes/${String(change.id)}/report`)).json()) as Report;
+    const high = report.findings.filter((finding) => finding.state === 'open' && finding.severity === 'high');
+    expect(high).toHaveLength(2);
+    const [first, second] = high as [Report['findings'][number], Report['findings'][number]];
+
+    const highFindings = async (): Promise<number | undefined> =>
+      ((await (await call(port, 'GET', '/api/repos')).json()) as { id: number; highFindings: number }[]).find((entry) => entry.id === repoId)?.highFindings;
+    expect(await highFindings()).toBe(2);
+
+    const markA = await call(port, 'PUT', `/api/changes/${String(change.id)}/findings/${encodeURIComponent(first.id)}/state`, { body: { state: 'intended' } });
+    expect(markA.status).toBe(200);
+    expect(await highFindings()).toBe(1);
+
+    const markB = await call(port, 'PUT', `/api/changes/${String(change.id)}/findings/${encodeURIComponent(second.id)}/state`, { body: { state: 'intended' } });
+    expect(markB.status).toBe(200);
+    expect(await highFindings()).toBe(0);
   });
 });
