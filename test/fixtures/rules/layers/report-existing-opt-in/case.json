@@ -1,0 +1,17 @@
+{
+  "rule": {
+    "layers": [
+      [
+        "src/cli",
+        "src/ui"
+      ],
+      [
+        "src/daemon"
+      ],
+      [
+        "src/core"
+      ]
+    ],
+    "reportExisting": true
+  }
+}

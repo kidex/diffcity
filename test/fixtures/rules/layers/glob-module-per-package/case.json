@@ -1,0 +1,12 @@
+{
+  "rule": {
+    "layers": [
+      [
+        "apps/*"
+      ],
+      [
+        "packages/*/src"
+      ]
+    ]
+  }
+}

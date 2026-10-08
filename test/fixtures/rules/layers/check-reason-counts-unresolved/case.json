@@ -1,0 +1,19 @@
+{
+  "rule": {
+    "layers": [
+      [
+        "src/cli",
+        "src/ui"
+      ],
+      [
+        "src/daemon"
+      ],
+      [
+        "src/core"
+      ]
+    ],
+    "aliases": {
+      "@lost/": "src/missing/"
+    }
+  }
+}

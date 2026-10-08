@@ -1,0 +1,11 @@
+{
+  // shared settings live elsewhere
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "strict": true,
+    "paths": {
+      "#daemon/*": ["src/daemon/*"],
+      "#a/*/b/*": ["src/ui/*"],
+    },
+  },
+}

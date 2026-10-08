@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { parseFile } from '../parse/file.js';
 import type { ParsedFile } from '../parse/file.js';
+import type { ImportRef } from '../parse/imports.js';
 import { languageForPath } from '../parse/language.js';
 import type { ParsedSymbol } from '../parse/types.js';
 import type { Status, Symbol } from '../report/types.js';
@@ -41,6 +42,13 @@ export interface FileStatusWithFingerprints extends FileStatus {
   symbolFingerprints: Record<string, string>;
   /** Symbol id to its before and after ranges (the step diff slices them, ADR-034). */
   ranges: Record<string, SymbolRanges>;
+  /** The imports of each parsed version, when asked for (ADR-031); a side that was not parsed is null. */
+  imports?: { before: ImportRef[] | null; after: ImportRef[] | null };
+}
+
+export interface CompareOptions {
+  /** Also extract the imports of both versions, from the trees the symbols come from. */
+  imports?: boolean;
 }
 
 /** Lines `range.start`..`range.end` (1-based, inclusive) of `source`, joined with `\n`; empty for no source. */
@@ -77,17 +85,19 @@ export async function compareFile(file: FileChange): Promise<FileStatus> {
   return { status, symbols };
 }
 
-/** compareFile, plus the fingerprint of every symbol. */
-export async function compareFileWithFingerprints(file: FileChange): Promise<FileStatusWithFingerprints> {
-  if (file.binary) return { status: gitStatus(file.change), symbols: [], symbolFingerprints: {}, ranges: {} };
+/** compareFile, plus the fingerprint of every symbol (and, with `options.imports`, the imports of both versions). */
+export async function compareFileWithFingerprints(file: FileChange, options: CompareOptions = {}): Promise<FileStatusWithFingerprints> {
+  const noImports = options.imports === true ? { imports: { before: null, after: null } } : {};
+  if (file.binary) return { status: gitStatus(file.change), symbols: [], symbolFingerprints: {}, ranges: {}, ...noImports };
 
   const beforeLanguage = languageForPath(file.oldPath ?? file.path);
   const afterLanguage = languageForPath(file.path);
-  if (beforeLanguage === null && afterLanguage === null) return { status: gitStatus(file.change), symbols: [], symbolFingerprints: {}, ranges: {} };
+  if (beforeLanguage === null && afterLanguage === null) return { status: gitStatus(file.change), symbols: [], symbolFingerprints: {}, ranges: {}, ...noImports };
 
+  const parseOptions = { imports: options.imports === true };
   const [before, after] = await Promise.all([
-    file.before === null || beforeLanguage === null ? null : parseFile(file.before, beforeLanguage),
-    file.after === null || afterLanguage === null ? null : parseFile(file.after, afterLanguage),
+    file.before === null || beforeLanguage === null ? null : parseFile(file.before, beforeLanguage, parseOptions),
+    file.after === null || afterLanguage === null ? null : parseFile(file.after, afterLanguage, parseOptions),
   ]);
   const detailed = compareSymbols(file.path, before?.symbols ?? [], after?.symbols ?? []);
   const symbols = detailed.map((entry) => entry.symbol);
@@ -100,7 +110,9 @@ export async function compareFileWithFingerprints(file: FileChange): Promise<Fil
     if (entry.afterRange !== undefined) sides.after = entry.afterRange;
     ranges[entry.symbol.id] = sides;
   }
-  return { status: fileStatus(file, before, after, symbols), symbols, symbolFingerprints, ranges };
+  const result: FileStatusWithFingerprints = { status: fileStatus(file, before, after, symbols), symbols, symbolFingerprints, ranges };
+  if (options.imports === true) result.imports = { before: before?.imports ?? null, after: after?.imports ?? null };
+  return result;
 }
 
 /**
