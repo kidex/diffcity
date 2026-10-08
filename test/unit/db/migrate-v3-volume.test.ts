@@ -4,7 +4,7 @@
 // stores wrote (imported findings, rule states, approvals).
 
 import { afterEach, describe, expect, it } from 'vitest';
-import { MIGRATIONS, openDb } from '../../../src/core/db/index.js';
+import { MIGRATIONS, SCHEMA_VERSION, openDb } from '../../../src/core/db/index.js';
 import type { StoredFinding } from '../../../src/core/findings/types.js';
 import { T0, rawConnection, tempDbPath } from './db-helpers.js';
 
@@ -82,7 +82,7 @@ describe('schema v3 on a large v2 database', () => {
     db.close();
 
     const raw = rawConnection(path, { readOnly: true });
-    expect(raw.pragma('user_version', { simple: true })).toBe(3);
+    expect(raw.pragma('user_version', { simple: true })).toBe(SCHEMA_VERSION);
     expect(raw.prepare('SELECT count(*) AS n FROM changes').get()).toEqual({ n: CHANGES });
     expect(raw.prepare('SELECT count(*) AS n FROM snapshots').get()).toEqual({ n: CHANGES });
     expect(raw.prepare('SELECT count(*) AS n FROM findings WHERE key IS NULL').get()).toEqual({ n: CHANGES * LEGACY_PER_CHANGE });

@@ -1,6 +1,6 @@
 // The diffcity database (SPEC.md section 4.2, ADR-018): openDb and the stores.
 // Opened only by the daemon's main thread, which is the single writer.
-// SQLite is Node's built-in node:sqlite, through driver.ts (ADR-025). Schema v3 (ADR-036). The filter
+// SQLite is Node's built-in node:sqlite, through driver.ts (ADR-025). Schema v4 (ADR-038). The filter
 // for its ExperimentalWarning lives in warning.ts and is deliberately not
 // re-exported here: importing this module loads node:sqlite, which is too late.
 //
@@ -15,6 +15,7 @@ import { createFindingsStore, type FindingsStore } from './findings.js';
 import { openConnection, readPragmas, type DbPragmas } from './open.js';
 import { createRepoStore, type RepoStore } from './repos.js';
 import { createReviewStore, type ReviewStore } from './review.js';
+import { createSessionStore, type SessionStore } from './sessions.js';
 import { createSnapshotStore, type SnapshotStore } from './snapshots.js';
 import { retentionCutoff } from './time.js';
 
@@ -22,6 +23,7 @@ export type { FindingsImport, FindingsImportResult, FindingsStore } from './find
 export type { AppliedPlan, Approval, ChangeArchive, ChangeFields, ChangePlan, ChangeStore, ChangeUpdate } from './changes.js';
 export type { EventInput, EventStore } from './events.js';
 export type { MarkWrite, ReviewStore } from './review.js';
+export type { SessionDigestWrite, SessionLink, SessionRecord, SessionSighting, SessionStore } from './sessions.js';
 export type { RepoInput, RepoRuntime, RepoRuntimeLookup, RepoStore } from './repos.js';
 export type { LiveTouched, SnapshotInput, SnapshotKey, SnapshotMeta, SnapshotPutResult, SnapshotStore } from './snapshots.js';
 export type { DbPragmas } from './open.js';
@@ -39,6 +41,8 @@ export interface Db {
   readonly review: ReviewStore;
   /** Imported findings and rule-finding states (ADR-036). */
   readonly findings: FindingsStore;
+  /** Claude Code sessions and their links to changes (ADR-038). */
+  readonly sessions: SessionStore;
   /**
    * Runs `fn` in one IMMEDIATE transaction (a savepoint when nested, so
    * applyPlan and event writes can be grouped); rolls back when it throws.
@@ -46,7 +50,9 @@ export interface Db {
   transaction<T>(fn: () => T): T;
   /**
    * Deletes the changes archived more than RETENTION_DAYS before `now`; their
-   * snapshots, findings and events go with them by cascade. Returns how many
+   * snapshots, findings, events and session links go with them by cascade, and
+   * the sessions left linked to no change whose last activity is older than
+   * the retention go in the same transaction (ADR-038). Returns how many
    * changes were deleted.
    */
   purgeArchived(now: string): number;
@@ -69,6 +75,10 @@ function purge(db: Connection, now: string): Map<number, number> {
         .all(cutoff);
       for (const row of rows) perRepo.set(row.repoId, row.n);
       db.prepare<[string]>('DELETE FROM changes WHERE archivedAt IS NOT NULL AND archivedAt < ?').run(cutoff);
+      // Orphans: linked to no change (any more), and quiet for the retention period.
+      db.prepare<[string]>(
+        'DELETE FROM sessions WHERE NOT EXISTS (SELECT 1 FROM change_sessions WHERE sessionRowId = sessions.id) AND (lastAt IS NULL OR lastAt < ?)',
+      ).run(cutoff);
       return perRepo;
     },
     { immediate: true },
@@ -90,6 +100,7 @@ export function openDb(path: string, options: { warn?: (message: string) => void
     events: createEventStore(db),
     review: createReviewStore(db),
     findings: createFindingsStore(db),
+    sessions: createSessionStore(db),
     transaction: (fn) => db.transaction(fn, { immediate: true }),
     purgeArchived: (now) => [...purge(db, now).values()].reduce((a, b) => a + b, 0),
     purgeArchivedByRepo: (now) => purge(db, now),

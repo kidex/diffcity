@@ -21,6 +21,12 @@ export type ReviewState = 'unreviewed' | 'in-review' | 'approved';
 /** Type of a recorded event; `review` and `import` arrive in phase 4, `audit` in phase 5. */
 export type EventType = 'collect' | 'agent' | 'commit' | 'review' | 'import' | 'audit';
 
+/**
+ * Type of a row of `events`: every EventType, and `agent-run` (schema v4,
+ * ADR-029, ADR-038), which is never a change's last event.
+ */
+export type EventLogType = EventType | 'agent-run';
+
 /** Why a change left the live list (ADR-019, SPEC.md section 3a L7). */
 export type ArchiveReason = 'merged' | 'deleted' | 'closed' | 'clean';
 
@@ -131,7 +137,7 @@ export interface EventRecord {
   id: number;
   repoId: number;
   changeId: number | null;
-  type: EventType;
+  type: EventLogType;
   at: string;
   /** Parsed JSON payload; null when the event has none. */
   payload: unknown;

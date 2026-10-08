@@ -1,6 +1,6 @@
 // Schema v2 (ADR-018 migrations, ADR-027, ADR-028): a v1 database migrates in
 // place and a second open changes nothing. The newer-version refusal is in
-// migrate-v3.test.ts (db/v4-refused).
+// migrate-v4.test.ts (db/v5-refused).
 
 import { afterEach, describe, expect, it } from 'vitest';
 import { MIGRATIONS, SCHEMA_VERSION, openDb } from '../../../src/core/db/index.js';

@@ -59,15 +59,17 @@ describe('migrations', () => {
     db.close();
     const schema = readSchema(path);
 
-    expect(SCHEMA_VERSION).toBe(3);
-    expect(schema.version).toBe(3);
+    expect(SCHEMA_VERSION).toBe(4);
+    expect(schema.version).toBe(4);
     expect(schema.master.filter((row) => row.type === 'table').map((row) => row.name)).toEqual([
+      'change_sessions',
       'changes',
       'events',
       'findings',
       'repos',
       'review_marks',
       'review_notes',
+      'sessions',
       'snapshots',
     ]);
     expect(schema.columns).toEqual({
@@ -164,12 +166,27 @@ describe('migrations', () => {
         'at TEXT NOT NULL',
         'payload TEXT',
       ],
+      sessions: [
+        'id INTEGER PK',
+        'repoId INTEGER NOT NULL',
+        'sessionId TEXT NOT NULL',
+        'transcriptPath TEXT NOT NULL',
+        'cwd TEXT NOT NULL',
+        'title TEXT',
+        'firstAt TEXT',
+        'lastAt TEXT',
+        'digest TEXT',
+        'parsedBytes INTEGER NOT NULL = 0',
+        'parseError TEXT',
+      ],
+      change_sessions: ['changeId INTEGER NOT NULL', 'sessionRowId INTEGER NOT NULL', 'firstHead TEXT', 'lastHead TEXT', 'linkedAt TEXT NOT NULL'],
     });
 
     const indexes = Object.fromEntries(
       schema.master.filter((row) => row.type === 'index').map((row) => [row.name, row.sql]),
     );
     expect(indexes).toEqual({
+      change_sessions_session: 'CREATE INDEX change_sessions_session ON change_sessions(sessionRowId)',
       changes_live_ref: 'CREATE UNIQUE INDEX changes_live_ref ON changes(repoId, ref) WHERE archivedAt IS NULL',
       changes_repo_event: 'CREATE INDEX changes_repo_event ON changes(repoId, archivedAt, lastEventAt)',
       events_repo_at: 'CREATE INDEX events_repo_at ON events(repoId, at)',
@@ -197,7 +214,12 @@ describe('migrations', () => {
     expect(sql('findings')).toContain('REFERENCES changes(id) ON DELETE CASCADE');
     expect(sql('events')).toContain('REFERENCES repos(id) ON DELETE CASCADE');
     expect(sql('events')).toContain('REFERENCES changes(id) ON DELETE CASCADE');
-    expect(sql('events')).toContain("CHECK (type IN ('collect','agent','commit','review','import','audit'))");
+    expect(sql('events')).toContain("CHECK (type IN ('collect','agent','commit','review','import','audit','agent-run'))");
+    expect(sql('sessions')).toContain('REFERENCES repos(id) ON DELETE CASCADE');
+    expect(sql('sessions')).toContain('UNIQUE (repoId, sessionId)');
+    expect(sql('change_sessions')).toContain('REFERENCES changes(id) ON DELETE CASCADE');
+    expect(sql('change_sessions')).toContain('REFERENCES sessions(id) ON DELETE CASCADE');
+    expect(sql('change_sessions')).toContain('UNIQUE (changeId, sessionRowId)');
   });
 
   it('db/migrate-idempotent: a second open changes neither the schema nor the data', () => {
