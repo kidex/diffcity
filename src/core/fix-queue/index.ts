@@ -176,6 +176,16 @@ function ensureOwnDir(path: string): Stats | FixQueueResult {
   return stats;
 }
 
+const sameFile = (a: Stats, b: Stats): boolean => a.dev === b.dev && a.ino === b.ino;
+
+/** True while `.diffcity` at `path` is still the directory checked at the start (`seen`), not gone and not a link. */
+function ownDirUnchanged(path: string, seen: Stats): boolean {
+  const now = lstatOrNull(path);
+  return now !== null && !now.isSymbolicLink() && sameFile(now, seen);
+}
+
+const ownDirChanged = (): FixQueueResult => refuse('fix-queue-unsafe', `${FIX_QUEUE_DIR} changed while the fix was queued (gone, or swapped for a link)`);
+
 const unsafeQueueDir = (): FixQueueResult => refuse('fix-queue-unsafe', `${QUEUE_LABEL} is not a plain directory (a symbolic link or a file)`);
 
 /** The item files of the queue directory and their total size; none when the directory was taken while it was listed. */
@@ -260,6 +270,8 @@ export function appendToFixQueue(root: string | null, item: FixQueueItem): FixQu
         if (contents.count >= FIX_QUEUE_MAX_ITEMS) return refuse('fix-queue-full', `the fix queue already holds ${String(FIX_QUEUE_MAX_ITEMS)} items`);
         if (contents.bytes + size > FIX_QUEUE_MAX_BYTES) return refuse('fix-queue-full', `the fix queue would be over ${String(FIX_QUEUE_MAX_BYTES)} bytes`);
       }
+      // Every write goes through `.diffcity`: it must still be the directory checked, never a link put in its place.
+      if (!ownDirUnchanged(own, ownStats)) return ownDirChanged();
       if (!written || lstatOrNull(temp) === null) {
         // `wx` is O_CREAT | O_EXCL: it never follows or reuses an existing entry.
         writeFileSync(temp, text, { flag: 'wx', mode: 0o644 });
@@ -270,22 +282,21 @@ export function appendToFixQueue(root: string | null, item: FixQueueItem): FixQu
       const now = lstatOrNull(dir);
       if (now !== null && (now.isSymbolicLink() || !now.isDirectory())) return unsafeQueueDir();
       let created = false;
+      if (!ownDirUnchanged(own, ownStats)) return ownDirChanged();
       let moved = now === null ? 'gone' : renameInto(temp, path);
       if (moved === 'gone') {
         // No queue directory (it was taken): create one and move the item in at once.
+        if (!ownDirUnchanged(own, ownStats)) return ownDirChanged();
         try {
           mkdirSync(dir, { mode: 0o755 });
           created = true;
         } catch (error) {
           const code = errorCode(error);
-          if (code === 'ENOENT') {
-            // `.diffcity` itself went away: make it again (or refuse what took its place).
-            const again = ensureOwnDir(own);
-            if ('ok' in again) return again;
-            continue;
-          }
+          // `.diffcity` went away right after the check: the next attempt refuses.
+          if (code === 'ENOENT') continue;
           if (code !== 'EEXIST') throw error;
         }
+        if (!ownDirUnchanged(own, ownStats)) return ownDirChanged();
         moved = renameInto(temp, path);
       }
       if (moved === 'gone') continue;

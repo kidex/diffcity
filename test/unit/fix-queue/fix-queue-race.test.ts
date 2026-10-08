@@ -159,6 +159,40 @@ describe('fix queue against /diffcity-review taking it (DC-112)', () => {
     expect(fs.readdirSync(join(root, '.diffcity')).filter((name) => name.endsWith('.tmp'))).toEqual([]);
   });
 
+  it('fix-queue/own-dir-swapped: .diffcity swapped for a link after the temporary write is refused; nothing is written outside the working tree', () => {
+    const root = tree();
+    const elsewhere = tree();
+    fs.mkdirSync(join(elsewhere, 'fix-queue'));
+    expect(appendToFixQueue(root, item(3))).toMatchObject({ ok: true });
+    hooks.afterTempWrite = (count) => {
+      if (count === 1) {
+        fs.renameSync(join(root, '.diffcity'), join(root, 'moved-diffcity'));
+        fs.symlinkSync(elsewhere, join(root, '.diffcity'), 'dir');
+      }
+    };
+    expect(appendToFixQueue(root, item(4))).toEqual({
+      ok: false,
+      code: 'fix-queue-unsafe',
+      message: '.diffcity changed while the fix was queued (gone, or swapped for a link)',
+    });
+    // Nothing reached the link's target, and the item is in no queue.
+    expect(fs.readdirSync(elsewhere)).toEqual(['fix-queue']);
+    expect(fs.readdirSync(join(elsewhere, 'fix-queue'))).toEqual([]);
+    expect(keysIn(join(root, 'moved-diffcity', 'fix-queue'))).toEqual([item(3).key]);
+  });
+
+  it('fix-queue/own-dir-replaced: .diffcity replaced by another directory after the temporary write is refused too', () => {
+    const root = tree();
+    hooks.afterTempWrite = (count) => {
+      if (count === 1) {
+        fs.renameSync(join(root, '.diffcity'), join(root, 'moved-diffcity'));
+        fs.mkdirSync(join(root, '.diffcity'));
+      }
+    };
+    expect(appendToFixQueue(root, item(1))).toMatchObject({ ok: false, code: 'fix-queue-unsafe' });
+    expect(fs.readdirSync(join(root, '.diffcity'))).toEqual([]);
+  });
+
   it('the queue directory swapped for a link after the temporary write is refused, nothing written through it', () => {
     const root = tree();
     expect(appendToFixQueue(root, item(3))).toMatchObject({ ok: true });
