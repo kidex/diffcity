@@ -27,6 +27,10 @@ export interface UserSettings {
   v: typeof SETTINGS_VERSION;
   /** Absolute realpaths of the trusted repo roots. */
   trustedRepos: string[];
+  /** The user's rules for every repo (ADR-030); validated rule by rule by src/core/rules. */
+  rules?: unknown;
+  /** Per repo root (absolute realpath): `{ rules }`, merged after the user's `rules` (ADR-030). */
+  repos?: unknown;
   /** Fields written by another diffcity version, kept as they are. */
   [field: string]: unknown;
 }
@@ -65,6 +69,38 @@ export function parseSettings(text: string): ParsedSettings {
     return { ok: false, error: 'field "trustedRepos" must be an array of absolute paths' };
   }
   return { ok: true, settings: { ...fields, v: SETTINGS_VERSION, trustedRepos: [...entries] } };
+}
+
+/** The user's rule lists for one repo, as read: validated by src/core/rules (mergeRules). Plain data. */
+export interface UserRuleSettings {
+  /** `rules`. */
+  settings?: unknown;
+  /** `repos.<repoRoot>.rules`. */
+  settingsRepo?: unknown;
+}
+
+function isObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+/**
+ * The rule lists of settings.json that apply to `repoRoot` (ADR-030). They
+ * are not checked here: a bad rule must not untrust every repo, it becomes an
+ * `error` check on the Reports instead (src/core/rules). A `repos` that is not
+ * an object, or a repo entry that is not one, gives a `settingsRepo` of null,
+ * which the rules report as a config error rather than dropping it.
+ */
+export function ruleSettingsFor(settings: UserSettings, repoRoot: string): UserRuleSettings {
+  const result: UserRuleSettings = {};
+  if (settings.rules !== undefined) result.settings = settings.rules;
+  const { repos } = settings;
+  if (repos === undefined) return result;
+  if (!isObject(repos)) return { ...result, settingsRepo: null };
+  if (!Object.prototype.hasOwnProperty.call(repos, repoRoot)) return result;
+  const entry = repos[repoRoot];
+  if (!isObject(entry)) return { ...result, settingsRepo: null };
+  if (entry.rules !== undefined) result.settingsRepo = entry.rules;
+  return result;
 }
 
 /** Reads settings.json; a missing file gives empty settings. Errors name the file. */
@@ -141,6 +177,21 @@ export interface TrustCheckOptions {
 
 /** Whether a repo root (its realpath) is trusted. */
 export type TrustCheck = (repoRoot: string) => Promise<boolean>;
+
+/** The user rule lists of a repo root (its realpath). */
+export type RuleSettingsReader = (repoRoot: string) => Promise<UserRuleSettings>;
+
+/**
+ * Reads the rule lists from settings.json on every call, like the trust
+ * check, so a settings edit takes effect on the next collection. An invalid or
+ * unreadable file gives no rules; createTrustCheck reports it.
+ */
+export function createRuleSettingsReader(path: string): RuleSettingsReader {
+  return async (repoRoot) => {
+    const read = await readSettings(path);
+    return read.ok ? ruleSettingsFor(read.settings, repoRoot) : {};
+  };
+}
 
 /**
  * A trust check that reads settings.json on every call, so `diffcity trust`

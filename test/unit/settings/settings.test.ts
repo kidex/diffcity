@@ -9,12 +9,15 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   SettingsError,
   addTrustedRepo,
+  createRuleSettingsReader,
   createTrustCheck,
   parseSettings,
   readSettings,
   removeTrustedRepo,
+  ruleSettingsFor,
   writeSettings,
 } from '../../../src/core/settings/index.js';
+import { mergeRules } from '../../../src/core/rules/index.js';
 
 let dir: string;
 let file: string;
@@ -165,5 +168,57 @@ describe('createTrustCheck', () => {
     const check = createTrustCheck(file, { onInvalid: (message) => invalid.push(message) });
     expect(await check('/work/sample-shop')).toBe(false);
     expect(invalid).toHaveLength(1);
+  });
+});
+
+describe('rules in the settings (ADR-030)', () => {
+  const SHOP = '/work/shopfront';
+  const LEDGER = '/work/ledger';
+
+  it('settings/rules-key-validated: rules and repos.<root>.rules are read for their repo and validated rule by rule; a bad rule untrusts nothing', async () => {
+    const settings = {
+      v: 1,
+      trustedRepos: [SHOP],
+      rules: [{ id: 'size', kind: 'file-size', maxLines: 400 }, { id: 'Bad Id', kind: 'file-size', maxLines: 1 }],
+      repos: { [SHOP]: { rules: [{ id: 'size', kind: 'file-size', maxLines: 800 }] }, [LEDGER]: { rules: 'none' } },
+    };
+    await writeFile(file, JSON.stringify(settings));
+    const parsed = await readSettings(file);
+    expect(parsed).toEqual({ ok: true, settings });
+    expect(await createTrustCheck(file, { onInvalid: () => undefined })(SHOP)).toBe(true);
+
+    const reader = createRuleSettingsReader(file);
+    expect(await reader(SHOP)).toEqual({ settings: settings.rules, settingsRepo: settings.repos[SHOP].rules });
+    expect(await reader('/work/acme-cli')).toEqual({ settings: settings.rules });
+
+    const shop = mergeRules(await reader(SHOP));
+    expect(shop.map((entry) => (entry.ok ? `${entry.rule.id}:${entry.origin}` : entry.reason))).toEqual([
+      'config-error: settings.json rules: rules[1]: field "id" must match ^[a-z0-9][a-z0-9-]{0,39}$',
+      'size:settings-repo',
+    ]);
+    const ledger = mergeRules(await reader(LEDGER));
+    expect(ledger.map((entry) => (entry.ok ? '' : entry.reason))).toContain(
+      'config-error: settings.json repo rules: field "rules" must be an array',
+    );
+
+    // Writes keep the rules as they are.
+    expect(await addTrustedRepo(file, LEDGER)).toBe(true);
+    expect(JSON.parse(await readFile(file, 'utf8'))).toEqual({ ...settings, trustedRepos: [SHOP, LEDGER] });
+  });
+
+  it('a repos value or repo entry that is not an object is a config error, not dropped', () => {
+    const base = { v: 1 as const, trustedRepos: [] };
+    expect(ruleSettingsFor({ ...base, repos: [SHOP] }, SHOP)).toEqual({ settingsRepo: null });
+    expect(ruleSettingsFor({ ...base, repos: { [SHOP]: 'rules' } }, SHOP)).toEqual({ settingsRepo: null });
+    expect(ruleSettingsFor({ ...base, repos: { [SHOP]: {} } }, SHOP)).toEqual({});
+    expect(ruleSettingsFor({ ...base, repos: {} }, 'toString')).toEqual({});
+    expect(mergeRules({ settingsRepo: null }).map((entry) => (entry.ok ? '' : entry.reason))).toEqual([
+      'config-error: settings.json repo rules: field "rules" must be an array',
+    ]);
+  });
+
+  it('an invalid settings file gives no rules', async () => {
+    await writeFile(file, '{"v":1,');
+    expect(await createRuleSettingsReader(file)(SHOP)).toEqual({});
   });
 });

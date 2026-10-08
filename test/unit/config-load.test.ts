@@ -52,6 +52,12 @@ describe('loadConfig (ADR-012 config, ADR-007 tier1 shape)', () => {
     expect(config.tier1(['auth', 'schema'])).toEqual(['auth', 'ledger']);
   });
 
+  it('keeps rules as written, even invalid ones: src/core/rules reports them rule by rule (ADR-030)', async () => {
+    const dir = await repoWithConfig(`export default { rules: [{ id: 'size', kind: 'file-size', maxLines: 300 }, { id: 'ci', kind: 'pipeline' }] };\n`);
+    expect(await loadConfig(dir, TRUSTED)).toEqual({ rules: [{ id: 'size', kind: 'file-size', maxLines: 300 }, { id: 'ci', kind: 'pipeline' }] });
+    expect(await loadConfig(await repoWithConfig(`export default { rules: 'size' };\n`), TRUSTED)).toEqual({ rules: 'size' });
+  });
+
   it('accepts an empty default export', async () => {
     expect(await loadConfig(await repoWithConfig('export default {};\n'), TRUSTED)).toEqual({});
   });
