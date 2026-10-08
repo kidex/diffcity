@@ -5,15 +5,14 @@
 
 import { spawn, spawnSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
-import { closeSync, openSync } from 'node:fs';
+import { closeSync, openSync, rmSync } from 'node:fs';
 import { connect } from 'node:net';
-import { join } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
 import type { HomePaths } from '../core/home.js';
 import type { DaemonInfo, SocketRequest, SocketResponseFor } from '../core/model/types.js';
 import { readDaemonInfo, resolvePort } from './files.js';
-import { START_REPORT_ENV, watchStartReport } from './start-report.js';
+import { START_REPORT_ENV, startReportPath, watchStartReport, type StartReportWatch } from './start-report.js';
 
 /** Exit code of the daemon script when its port is taken. */
 export const EXIT_PORT_IN_USE = 3;
@@ -189,6 +188,8 @@ export interface SpawnedDaemon {
   pid: number | undefined;
   /** Resolves with the exit code if the process exits before it is ready, while this one still runs. */
   exited: Promise<number | null>;
+  /** Stops watching the start and removes what it left (the start report); startDaemon calls it on every outcome. */
+  dispose?: () => void;
 }
 
 /**
@@ -246,13 +247,26 @@ const runOpen = (args: string[]): Promise<number | null> =>
  * starts as a detached child instead.
  */
 function launchDaemon(options: SpawnDaemonOptions, args: string[]): SpawnedDaemon {
-  const report = join(options.paths.home, `start-${randomBytes(6).toString('hex')}.report`);
+  const report = startReportPath(options.paths.home, randomBytes(6).toString('hex'));
   const env = { ...(options.env ?? process.env), [START_REPORT_ENV]: report };
+  const state: { watch: StartReportWatch | null; disposed: boolean } = { watch: null, disposed: false };
   const launched = (options.runOpen ?? runOpen)(launchServicesArgs({ execPath: process.execPath, args, env, log: options.paths.log }));
-  const exited = launched.then((code) =>
-    code === 0 ? watchStartReport(report, { timeoutMs: DAEMON_START_TIMEOUT_MS }) : spawnChild(options, args).exited,
-  );
-  return { pid: undefined, exited };
+  const exited = launched.then((code) => {
+    if (code !== 0) return spawnChild(options, args).exited;
+    if (state.disposed) {
+      // The caller found the daemon before `open` returned.
+      rmSync(report, { force: true });
+      return new Promise<number | null>(() => undefined);
+    }
+    state.watch = watchStartReport(report, { timeoutMs: DAEMON_START_TIMEOUT_MS });
+    return state.watch.exited;
+  });
+  const dispose = (): void => {
+    state.disposed = true;
+    state.watch?.stop();
+    rmSync(report, { force: true });
+  };
+  return { pid: undefined, exited, dispose };
 }
 
 /**
@@ -292,6 +306,15 @@ export async function startDaemon(options: StartDaemonOptions): Promise<StartDae
   if (options.port !== undefined) spawnOptions.port = options.port;
   if (options.env !== undefined) spawnOptions.env = options.env;
   const spawned = (options.spawn ?? spawnDaemon)(spawnOptions);
+  try {
+    return await waitForSpawned(options, spawned);
+  } finally {
+    spawned.dispose?.();
+  }
+}
+
+async function waitForSpawned(options: StartDaemonOptions, spawned: SpawnedDaemon): Promise<StartDaemonResult> {
+  const { paths } = options;
   const timeoutMs = options.timeoutMs ?? DAEMON_START_TIMEOUT_MS;
   const started = Date.now();
   let ready = await waitForDaemon(paths, { timeoutMs, stop: spawned.exited });

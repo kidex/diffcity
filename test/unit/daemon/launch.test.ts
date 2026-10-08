@@ -4,13 +4,29 @@
 // and the start report through which a LaunchServices daemon tells the client
 // whether it came up. `open` is stubbed: nothing here starts a real daemon.
 
-import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readdir, readFile, rm, stat, utimes, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { homePaths, type HomePaths } from '../../../src/core/home.js';
-import { defaultLauncher, hasProvenance, launchServicesArgs, spawnDaemon, type RunSync } from '../../../src/daemon/client.js';
-import { parseStartReport, START_REPORT_ENV, takeStartReporter, watchStartReport } from '../../../src/daemon/start-report.js';
+import {
+  DAEMON_START_TIMEOUT_MS,
+  defaultLauncher,
+  hasProvenance,
+  launchServicesArgs,
+  spawnDaemon,
+  startDaemon,
+  type RunSync,
+} from '../../../src/daemon/client.js';
+import {
+  parseStartReport,
+  START_REPORT_ENV,
+  START_REPORT_TTL_MS,
+  sweepStartReports,
+  takeStartReporter,
+  watchStartReport,
+} from '../../../src/daemon/start-report.js';
+import { startFakeDaemon } from '../../helpers/fake-daemon.js';
 
 let root: string;
 let paths: HomePaths;
@@ -104,6 +120,86 @@ describe('daemon launcher', () => {
   });
 });
 
+const reports = async (): Promise<string[]> => (await readdir(paths.home)).filter((name) => name.endsWith('.report'));
+
+describe('start report cleanup', () => {
+  it('launch/no-report-left-when-the-client-finds-the-daemon-first', async () => {
+    // A daemon already answers; `open` returns only after startDaemon found it,
+    // and the daemon's `ready` lands in the report before that.
+    const fake = await startFakeDaemon(paths);
+    try {
+      let openReturned: Promise<void> = Promise.resolve();
+      const result = await startDaemon({
+        paths,
+        env: { DIFFCITY_HOME: paths.home },
+        spawn: (options) =>
+          spawnDaemon({
+            ...options,
+            launcher: 'launch-services',
+            runOpen: async (args) => {
+              const report = (args.find((arg) => arg.startsWith(`${START_REPORT_ENV}=`)) ?? '').slice(START_REPORT_ENV.length + 1);
+              await writeFile(report, 'ready\n');
+              let release = (): void => undefined;
+              openReturned = new Promise((resolve) => { release = resolve; });
+              setTimeout(release, 200);
+              await openReturned;
+              return 0;
+            },
+          }),
+      });
+      expect(result.ok).toBe(true);
+      expect(await reports()).toEqual([]);
+      await openReturned;
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(await reports()).toEqual([]);
+    } finally {
+      await fake.close();
+    }
+  });
+
+  it('launch/no-report-left-when-the-poll-was-still-running', async () => {
+    const fake = await startFakeDaemon(paths);
+    try {
+      const result = await startDaemon({
+        paths,
+        spawn: (options) => spawnDaemon({ ...options, launcher: 'launch-services', runOpen: () => Promise.resolve(0) }),
+      });
+      expect(result.ok).toBe(true);
+      expect(await reports()).toEqual([]);
+    } finally {
+      await fake.close();
+    }
+  });
+
+  it('launch/daemon-removes-its-ready-report-after-the-ttl', async () => {
+    const file = join(paths.home, 'start-ab12.report');
+    takeStartReporter({ [START_REPORT_ENV]: file }, { cleanupAfterMs: 30 })('ready');
+    expect(await readFile(file, 'utf8')).toBe('ready\n');
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(await exists(file)).toBe(false);
+  });
+
+  it('launch/startup-sweep-removes-only-stale-reports', async () => {
+    const stale = join(paths.home, 'start-0a0b.report');
+    const fresh = join(paths.home, 'start-0c0d.report');
+    const other = join(paths.home, 'start-notes.txt');
+    for (const file of [stale, fresh, other]) await writeFile(file, 'ready\n');
+    const old = new Date(Date.now() - START_REPORT_TTL_MS - 5000);
+    await utimes(stale, old, old);
+    await utimes(other, old, old);
+    sweepStartReports(paths.home);
+    expect(await exists(stale)).toBe(false);
+    expect(await exists(fresh)).toBe(true);
+    expect(await exists(other)).toBe(true);
+    // A missing home is not an error.
+    expect(() => { sweepStartReports(join(root, 'missing')); }).not.toThrow();
+  });
+
+  it('launch/report-ttl-covers-the-client-wait', () => {
+    expect(START_REPORT_TTL_MS).toBeGreaterThanOrEqual(DAEMON_START_TIMEOUT_MS);
+  });
+});
+
 describe('start report', () => {
   it('launch/report-parses-only-complete-lines', () => {
     expect(parseStartReport('ready\n')).toBe('ready');
@@ -131,7 +227,7 @@ describe('start report', () => {
     const file = join(root, 'r.report');
     const watched = watchStartReport(file, { timeoutMs: 5000, intervalMs: 10 });
     await writeFile(file, 'ready\n');
-    expect(await within(watched, 200)).toBe(pending);
+    expect(await within(watched.exited, 200)).toBe(pending);
     expect(await exists(file)).toBe(false);
   });
 
@@ -140,7 +236,17 @@ describe('start report', () => {
     const watched = watchStartReport(file, { timeoutMs: 30, intervalMs: 10 });
     await new Promise((resolve) => setTimeout(resolve, 80));
     await writeFile(file, '5\n');
-    expect(await within(watched, 100)).toBe(pending);
+    expect(await within(watched.exited, 100)).toBe(pending);
     expect(await exists(file)).toBe(true);
+  });
+
+  it('launch/watch-stop-removes-the-report-and-stops-polling', async () => {
+    const file = join(root, 'r.report');
+    const watched = watchStartReport(file, { timeoutMs: 5000, intervalMs: 10 });
+    watched.stop();
+    await writeFile(file, '4\n');
+    expect(await within(watched.exited, 100)).toBe(pending);
+    watched.stop();
+    expect(await exists(file)).toBe(false);
   });
 });
