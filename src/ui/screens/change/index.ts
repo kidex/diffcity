@@ -35,7 +35,7 @@ import { createReviewController } from './review/controller.js';
 import type { ReviewUi } from './review/ui.js';
 import { createReviewUi } from './review/ui.js';
 import type { QualityState } from './scene/quality.js';
-import type { CityView, EffectsState, SceneStats } from './scene/view.js';
+import type { CityView, EffectsState, SceneStats, SceneUpdate } from './scene/view.js';
 import { createCityView, disposal } from './scene/view.js';
 
 export const COMPUTING = 'Computing the first snapshot of this change…';
@@ -91,6 +91,8 @@ export interface SceneDebug {
   tweening(): boolean;
   /** Heights the newest tweened building had on each frame of the last tween. */
   tweenTrace(): { id: string; heights: number[] } | null;
+  /** The last Reports the city was given (sequence, when, when first drawn, open findings), oldest first. */
+  updates(): SceneUpdate[];
   /** What the night effects drew: pulsing strips and their phases, halos, markers, the reading path, the tier 1 ring, and whether the loop runs on its own. */
   effects(): EffectsState | null;
   /** Views alive, and the renderer's geometries and textures just before the last view released its context. */
@@ -128,6 +130,7 @@ function installDebug(view: () => CityView | null): SceneDebug {
     shown: () => view()?.shown() ?? null,
     tweening: () => view()?.tweening() ?? false,
     tweenTrace: () => view()?.tweenTrace() ?? null,
+    updates: () => view()?.updates() ?? [],
     effects: () => view()?.effects() ?? null,
     disposal,
   };

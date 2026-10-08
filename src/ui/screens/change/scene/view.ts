@@ -121,9 +121,19 @@ export interface CityView {
   tweening(): boolean;
   /** Heights the newest tweened building had on each frame of the last tween, for tests. */
   tweenTrace(): { id: string; heights: number[] } | null;
+  /** The last Reports given to setReport, oldest first, for tests. */
+  updates(): SceneUpdate[];
   /** Renders every frame for `ms` and reports the frame rate and the scene's draw calls. */
   bench(ms: number): Promise<{ fps: number; drawCalls: number }>;
   dispose(): void;
+}
+
+/** One setReport: its sequence number, when it ran and when the first frame after it was drawn (`performance.now()`), and the Report's open findings. */
+export interface SceneUpdate {
+  seq: number;
+  at: number;
+  drawnAt: number | null;
+  open: number;
 }
 
 /** What the HUD hears from the scene. */
@@ -228,6 +238,9 @@ export function createCityView(host: HTMLElement, report: Report, options: CityV
   let layouts = 0;
   /** The newest program id seen after a frame, for the stats. */
   let lastProgram = -1;
+  /** The last setReport calls, for the debug hook. */
+  const updates: SceneUpdate[] = [];
+  let updateSeq = 0;
   /** The paint of the shown city for the filters alone: hover and selection are laid over it. */
   let baseline: CityPaint | null = null;
   const hooks = options.hooks;
@@ -289,6 +302,8 @@ export function createCityView(host: HTMLElement, report: Report, options: CityV
       afterFrame: () => {
         labels.render(stage.camera);
         for (const program of renderer.info.programs ?? []) lastProgram = Math.max(lastProgram, program.id);
+        const drawnAt = performance.now();
+        for (const update of updates) update.drawnAt ??= drawnAt;
         release();
         if (!settled && content !== null && !orbit.introRunning) {
           // Only when the camera rests, never on every drag frame.
@@ -660,6 +675,9 @@ export function createCityView(host: HTMLElement, report: Report, options: CityV
     element,
     setReport(next) {
       if (disposed) return;
+      updateSeq += 1;
+      updates.push({ seq: updateSeq, at: performance.now(), drawnAt: null, open: next.findings.filter((finding) => finding.state === 'open').length });
+      if (updates.length > 16) updates.shift();
       const previousSteps = lastReport.steps;
       lastReport = next;
       canvas.setAttribute('aria-label', canvasLabel(next));
@@ -747,6 +765,7 @@ export function createCityView(host: HTMLElement, report: Report, options: CityV
     },
     tweening: () => tween !== null,
     tweenTrace: () => (trace === null ? null : { id: trace.id, heights: [...trace.heights] }),
+    updates: () => updates.map((update) => ({ ...update })),
     bench(ms) {
       return new Promise((resolve) => {
         const start = stage.frames;
