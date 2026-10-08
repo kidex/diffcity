@@ -6,10 +6,12 @@ export { findRepoRoot, resolveChange } from './change.js';
 export type { ResolveChangeOptions, ResolvedChange } from './change.js';
 export {
   changedFiles,
+  countLines,
   hashAfter,
   hashBefore,
   listHeadFiles,
   looksBinary,
+  measureAfter,
   parseDiffOutput,
   readAfter,
   readAfterBatch,

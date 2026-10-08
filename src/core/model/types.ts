@@ -98,8 +98,13 @@ export interface ChangeRecord {
   archiveReason: ArchiveReason | null;
 }
 
-/** `snapshots.summary`: `Report.summary` plus the number of touched files. */
-export type SnapshotSummary = Report['summary'] & { touchedFiles: number };
+/**
+ * `snapshots.summary`: `Report.summary` plus the number of touched files and
+ * of open high findings in the stored Report (its rule findings, ADR-030), for
+ * the repo's `highFindings` (DC-120). `openHigh` is absent in snapshots stored
+ * before it existed, which had no rule findings: read as 0.
+ */
+export type SnapshotSummary = Report['summary'] & { touchedFiles: number; openHigh?: number };
 
 /** A row of `snapshots`: one per `(changeId, head)`; the latest by `computedAt` is the one shown. */
 export interface SnapshotRecord {

@@ -6,6 +6,7 @@
 
 import { createHash } from 'node:crypto';
 import type { Fingerprints, SnapshotSummary } from '../model/types.js';
+import type { UserRuleSettings } from '../settings/settings.js';
 import { buildReportWithHead } from './build.js';
 import type { Report } from './types.js';
 
@@ -21,6 +22,8 @@ export interface SnapshotJobInput {
   now?: string | undefined;
   /** Whether the repo root is trusted, so its diffcity.config.js may be imported (ADR-030). */
   trustConfig: boolean;
+  /** The user's rule lists for the repo from settings.json (ADR-030); plain JSON, so it crosses postMessage. */
+  userRules?: UserRuleSettings | undefined;
 }
 
 export interface ComputedSnapshot {
@@ -29,7 +32,7 @@ export interface ComputedSnapshot {
   summary: SnapshotSummary;
   /** Paths of the touched files (status other than `same`), in report order. */
   touched: string[];
-  /** sha256 of the report with meta.generatedAt emptied. */
+  /** sha256 of the report with meta.generatedAt and every checks[].checkedAt emptied. */
   contentHash: string;
   /** The sha the after state was built on. */
   headCommit: string;
@@ -41,9 +44,14 @@ export interface ComputedSnapshot {
   notes?: string[];
 }
 
-/** sha256 hex of the report serialized with `meta.generatedAt` emptied (ADR-018). */
+/**
+ * sha256 hex of the report serialized with `meta.generatedAt` emptied
+ * (ADR-018), and the `checkedAt` of each rule check, which is the same time
+ * (ADR-030). A Report without checks hashes as it always has.
+ */
 export function contentHashOf(report: Report): string {
   const timeless: Report = { ...report, meta: { ...report.meta, generatedAt: '' } };
+  if (report.checks !== undefined) timeless.checks = report.checks.map((check) => ({ ...check, checkedAt: '' }));
   return createHash('sha256').update(JSON.stringify(timeless)).digest('hex');
 }
 
@@ -55,9 +63,10 @@ export function snapshotFromReport(
   fingerprints: Fingerprints,
 ): ComputedSnapshot {
   const touched = report.packages.flatMap((pkg) => pkg.files.filter((file) => file.status !== 'same').map((file) => file.path));
+  const openHigh = report.findings.filter((finding) => finding.state === 'open' && finding.severity === 'high').length;
   return {
     reportJson: JSON.stringify(report),
-    summary: { ...report.summary, touchedFiles: touched.length },
+    summary: { ...report.summary, touchedFiles: touched.length, openHigh },
     touched,
     contentHash: contentHashOf(report),
     headCommit,
@@ -75,6 +84,7 @@ export async function computeSnapshot(input: SnapshotJobInput): Promise<Computed
     head: input.head,
     now: input.now === undefined ? undefined : new Date(input.now),
     trustConfig: input.trustConfig,
+    userRules: input.userRules,
     log: (message) => notes.push(message),
   });
   const snapshot = snapshotFromReport(report, headCommit, mergeBase, fingerprints);

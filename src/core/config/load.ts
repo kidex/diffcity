@@ -14,6 +14,8 @@ export interface DiffcityConfig {
   base?: string;
   /** `string[]` replaces the default tier 1 tokens; a function receives them and returns the list to use. */
   tier1?: string[] | Tier1Fn;
+  /** The repo's rules (ADR-030), as written: src/core/rules validates them rule by rule, so one bad rule never fails the config. */
+  rules?: unknown;
 }
 
 export class ConfigError extends Error {
@@ -27,7 +29,7 @@ export class ConfigError extends Error {
   }
 }
 
-const KNOWN_FIELDS = new Set(['base', 'tier1']);
+const KNOWN_FIELDS = new Set(['base', 'tier1', 'rules']);
 
 function fieldError(field: string, problem: string): ConfigError {
   return new ConfigError(`${CONFIG_FILE_NAME}: field "${field}" ${problem}`, field);
@@ -45,11 +47,12 @@ export function validateConfig(value: unknown): DiffcityConfig {
     throw new ConfigError(`${CONFIG_FILE_NAME}: the default export must be an object`);
   }
   for (const key of Object.keys(value)) {
-    if (!KNOWN_FIELDS.has(key)) throw fieldError(key, 'is not a known field (allowed: base, tier1)');
+    if (!KNOWN_FIELDS.has(key)) throw fieldError(key, 'is not a known field (allowed: base, tier1, rules)');
   }
 
   const config: DiffcityConfig = {};
-  const { base, tier1 } = value;
+  const { base, tier1, rules } = value;
+  if (rules !== undefined) config.rules = rules;
 
   if (base !== undefined) {
     if (typeof base !== 'string' || base.trim() === '') throw fieldError('base', 'must be a non-empty string');

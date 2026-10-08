@@ -2,7 +2,10 @@
 // section 3, ADR-011, ADR-037). Builds the Report in-process through src/core;
 // never starts or contacts the daemon. `--compact` is an output filter only.
 
+import { identifyRepo } from '../core/changes/index.js';
+import { homePaths, resolveHome } from '../core/home.js';
 import { buildReport, type BuildReportOptions } from '../core/report/index.js';
+import { readSettings, ruleSettingsFor, type UserRuleSettings } from '../core/settings/index.js';
 import type { Report, Status, Verdict } from '../core/report/types.js';
 
 export interface DiffCommandOptions {
@@ -24,6 +27,43 @@ export interface DiffDeps {
    * reports are byte-stable. Undocumented in `--help` on purpose.
    */
   now?: string | undefined;
+  /**
+   * The user's rule lists for the repo (ADR-030); `warn` takes a one-line note
+   * for stderr. Absent: no user rules (the CLI passes userRulesFor).
+   */
+  userRules?: ((warn: (message: string) => void) => Promise<UserRuleSettings>) | undefined;
+}
+
+/**
+ * The user's rule lists for the repo around `cwd`, from settings.json in the
+ * diffcity home, so `diff --json` carries the same checks as the daemon's
+ * Report. Never fails the command: a home or settings file that cannot be
+ * read is a note, and no user rule applies.
+ */
+export async function userRulesFor(cwd: string, env: NodeJS.ProcessEnv, warn: (message: string) => void): Promise<UserRuleSettings> {
+  let file: string;
+  try {
+    file = homePaths(resolveHome(env)).settings;
+  } catch (error) {
+    warn(`${oneLine(error)}; no user rules applied`);
+    return {};
+  }
+  const read = await readSettings(file);
+  if (!read.ok) {
+    warn(`settings: ${read.error}; no user rules applied`);
+    return {};
+  }
+  if (read.settings.rules === undefined && read.settings.repos === undefined) return {};
+  let root: string;
+  try {
+    // The key of `repos` is the repo's identity, as the daemon and trustedRepos use it:
+    // the realpath of the main working tree, also from a linked worktree.
+    root = (await identifyRepo(cwd)).path;
+  } catch {
+    // Not a repo: the build reports it.
+    return {};
+  }
+  return ruleSettingsFor(read.settings, root);
 }
 
 /** Environment variable that fixes meta.generatedAt; only the tests set it. */
@@ -119,7 +159,8 @@ export async function runDiff(options: DiffCommandOptions, deps: DiffDeps): Prom
     const log = (message: string): void => {
       deps.io.stderr(`diffcity diff: ${message}\n`);
     };
-    report = await build({ repoDir: deps.cwd, base: options.base, head: options.head, now, trustConfig: true, log });
+    const userRules = await deps.userRules?.(log);
+    report = await build({ repoDir: deps.cwd, base: options.base, head: options.head, now, trustConfig: true, log, ...(userRules === undefined ? {} : { userRules }) });
   } catch (error) {
     deps.io.stderr(`diffcity diff: ${oneLine(error)}\n`);
     return 1;

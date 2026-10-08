@@ -2,11 +2,12 @@
 // Measures collection on real repos for the phase report (SPEC.md section 9).
 //
 //   npm run build:node
-//   node scripts/measure-collect.mjs <repo> [<repo> ...] [--timeout <seconds>]
+//   node scripts/measure-collect.mjs <repo> [<repo> ...] [--timeout <seconds>] [--settings <file>]
 //
 // Starts a daemon from dist/ in a fresh temporary DIFFCITY_HOME (the real
 // ~/.config/diffcity is never touched; no repo is trusted, so no repo config
-// runs), then tracks the repos one at a time. For each repo it prints:
+// runs), then tracks the repos one at a time. `--settings` copies a
+// settings.json into that home first, to measure with user rules (ADR-030). For each repo it prints:
 // - the time from the `track` request to its answer;
 // - the time from the `track` request to the last `snapshot` SSE event of the
 //   collection, and to the collection's `done` event;
@@ -16,7 +17,7 @@
 // into the phase report as it is. gh, git and HOME are the user's own.
 
 import { spawn } from 'node:child_process';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { copyFile, mkdir, mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
@@ -29,12 +30,13 @@ const { sendRequest } = await import(pathToFileURL(join(dist, 'daemon', 'client.
 
 function usage(message) {
   if (message) process.stderr.write(`measure-collect: ${message}\n`);
-  process.stderr.write('usage: node scripts/measure-collect.mjs <repo> [<repo> ...] [--timeout <seconds>]\n');
+  process.stderr.write('usage: node scripts/measure-collect.mjs <repo> [<repo> ...] [--timeout <seconds>] [--settings <file>]\n');
   process.exit(2);
 }
 
 const args = process.argv.slice(2);
 let timeoutMs = 300_000;
+let settingsFile = null;
 const repos = [];
 for (let i = 0; i < args.length; i++) {
   const arg = args[i];
@@ -42,6 +44,10 @@ for (let i = 0; i < args.length; i++) {
     const seconds = Number(args[++i]);
     if (!Number.isFinite(seconds) || seconds <= 0) usage('--timeout needs a number of seconds');
     timeoutMs = seconds * 1000;
+  } else if (arg === '--settings') {
+    const file = args[++i];
+    if (file === undefined) usage('--settings needs a file');
+    settingsFile = resolve(file);
   } else if (arg === '-h' || arg === '--help') {
     usage();
   } else if (arg.startsWith('-')) {
@@ -97,6 +103,10 @@ const ms = (value) => `${value.toFixed(0)} ms`;
 const home = await mkdtemp(join(tmpdir(), 'dc-measure-'));
 const paths = homePaths(join(home, 'home'));
 const env = { ...process.env, DIFFCITY_HOME: paths.home };
+if (settingsFile !== null) {
+  await mkdir(paths.home, { recursive: true, mode: 0o700 });
+  await copyFile(settingsFile, paths.settings);
+}
 let daemonStderr = '';
 const daemon = spawn(process.execPath, [join(dist, 'cli', 'index.js'), 'up', '--foreground', '--no-open', '--port', '0'], {
   env,

@@ -4,11 +4,13 @@ export {
   SETTINGS_VERSION,
   SettingsError,
   addTrustedRepo,
+  createRuleSettingsReader,
   createTrustCheck,
   emptySettings,
   parseSettings,
   readSettings,
   removeTrustedRepo,
+  ruleSettingsFor,
   writeSettings,
 } from './settings.js';
-export type { ParsedSettings, TrustCheck, TrustCheckOptions, UserSettings } from './settings.js';
+export type { ParsedSettings, RuleSettingsReader, TrustCheck, UserRuleSettings, TrustCheckOptions, UserSettings } from './settings.js';
