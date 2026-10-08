@@ -2,8 +2,7 @@
 // section 3, ADR-011, ADR-037). Builds the Report in-process through src/core;
 // never starts or contacts the daemon. `--compact` is an output filter only.
 
-import { realpath } from 'node:fs/promises';
-import { findRepoRoot } from '../core/git/index.js';
+import { identifyRepo } from '../core/changes/index.js';
 import { homePaths, resolveHome } from '../core/home.js';
 import { buildReport, type BuildReportOptions } from '../core/report/index.js';
 import { readSettings, ruleSettingsFor, type UserRuleSettings } from '../core/settings/index.js';
@@ -57,8 +56,9 @@ export async function userRulesFor(cwd: string, env: NodeJS.ProcessEnv, warn: (m
   if (read.settings.rules === undefined && read.settings.repos === undefined) return {};
   let root: string;
   try {
-    // The key of `repos` is the realpath of the repo root, as for trustedRepos.
-    root = await realpath(await findRepoRoot(cwd));
+    // The key of `repos` is the repo's identity, as the daemon and trustedRepos use it:
+    // the realpath of the main working tree, also from a linked worktree.
+    root = (await identifyRepo(cwd)).path;
   } catch {
     // Not a repo: the build reports it.
     return {};

@@ -3,7 +3,8 @@
 // CLI (dist/, built by test/global-setup.ts), invented `acme-cli` repo.
 
 import { execFile } from 'node:child_process';
-import { mkdir, realpath, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -20,10 +21,10 @@ afterEach(async () => {
   while (owned.length > 0) await owned.pop()?.cleanup();
 });
 
-function diffJson(repo: TempRepo, home: TempHome): Promise<{ code: number; stdout: string; stderr: string }> {
+function diffJson(repo: TempRepo | string, home: TempHome): Promise<{ code: number; stdout: string; stderr: string }> {
   const env = { ...home.env, GIT_CONFIG_NOSYSTEM: '1', GIT_TERMINAL_PROMPT: '0', DIFFCITY_NOW: '2026-02-03T04:05:06Z' };
   return new Promise((resolve, reject) => {
-    execFile(process.execPath, [cliEntry, 'diff', '--json', '--base', 'main'], { cwd: repo.dir, env, encoding: 'utf8' }, (error, stdout, stderr) => {
+    execFile(process.execPath, [cliEntry, 'diff', '--json', '--base', 'main'], { cwd: typeof repo === 'string' ? repo : repo.dir, env, encoding: 'utf8' }, (error, stdout, stderr) => {
       if (error !== null && typeof error.code !== 'number') reject(new Error(`could not run the CLI: ${error.message}`, { cause: error }));
       else resolve({ code: typeof error?.code === 'number' ? error.code : 0, stdout, stderr });
     });
@@ -76,5 +77,26 @@ describe('diff --json and the rules', () => {
     expect(result.code).toBe(0);
     expect(result.stderr).toMatch(/^diffcity diff: settings: .*not valid JSON.*; no user rules applied\n$/);
     expect((JSON.parse(result.stdout) as Report).checks?.map((check) => [check.ruleId, check.state])).toEqual([['repo-size', 'passed']]);
+  });
+
+  it('keys the per-repo rules by the repo identity, also from a linked worktree', async () => {
+    const repo = await createRepo({ name: 'ledger', files: { 'src/post.ts': 'export const post = 1;\n' } });
+    owned.push(repo);
+    const outside = await realpath(await mkdtemp(join(tmpdir(), 'dc-linked-')));
+    owned.push({ cleanup: () => rm(outside, { recursive: true, force: true }) });
+    const linked = join(outside, 'ledger-agent');
+    await repo.git('worktree', 'add', '--quiet', '-b', 'feature', linked);
+    await writeFile(join(linked, 'src/post.ts'), 'export const post = 2;\nexport const more = 3;\n');
+    await repo.git('-C', linked, 'commit', '--quiet', '-am', 'more');
+    const home = await tempHome();
+    owned.push(home);
+    await mkdir(home.home, { recursive: true });
+    const root = await realpath(repo.dir);
+    await writeFile(join(home.home, 'settings.json'), JSON.stringify({ v: 1, trustedRepos: [], repos: { [root]: { rules: [{ id: 'size', kind: 'file-size', maxLines: 1 }] } } }));
+
+    const result = await diffJson(linked, home);
+    expect(result.stderr).toBe('');
+    expect(result.code).toBe(0);
+    expect((JSON.parse(result.stdout) as Report).checks?.map((check) => [check.ruleId, check.state])).toEqual([['size', 'violations']]);
   });
 });
