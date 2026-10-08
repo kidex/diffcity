@@ -516,7 +516,7 @@ describe('the hook command', () => {
         '  - Bash(rm -r .diffcity/fix-queue.taking)',
         '  - Read',
         '  - Glob',
-        '  - Write(.diffcity/findings.json)',
+        '  - Edit(.diffcity/findings.json)',
       ]);
     }
   });

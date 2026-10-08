@@ -88,7 +88,7 @@ describe('slash: the /diffcity-review command file', () => {
         'Bash(rm -r .diffcity/fix-queue.taking)',
         'Read',
         'Glob',
-        'Write(.diffcity/findings.json)',
+        'Edit(.diffcity/findings.json)',
       ]);
       expect(entries).toEqual(allowedTools(cli));
       for (const command of bodyCommands(text)) expect(entries.some((rule) => bashAllows(rule, command))).toBe(true);

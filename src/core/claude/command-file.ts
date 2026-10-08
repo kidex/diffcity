@@ -49,10 +49,13 @@ export function slashCommands(cli: string): { diff: string; import: string; take
  * as it reads a comma-separated string, without splitting one rule from the
  * next. The two fix-queue commands are exact rules; `Glob` lists the taken
  * item files and `Read` reads them (and the diff output, when it is long).
+ * The findings file is allowed through an `Edit` rule: Claude Code checks
+ * every file-writing tool, Write included, against `Edit` rules, and a
+ * `Write(...)` rule does not allow the write.
  */
 export function allowedTools(cli: string): string[] {
   const { take, drop } = slashCommands(cli);
-  return [`Bash(${cli} diff:*)`, `Bash(${cli} import:*)`, `Bash(${take})`, `Bash(${drop})`, 'Read', 'Glob', `Write(${FINDINGS_PATH})`];
+  return [`Bash(${cli} diff:*)`, `Bash(${cli} import:*)`, `Bash(${take})`, `Bash(${drop})`, 'Read', 'Glob', `Edit(${FINDINGS_PATH})`];
 }
 
 /** The full file for an invocation `cli`. */

@@ -280,7 +280,7 @@ allowed-tools:
   - Bash(rm -r .diffcity/fix-queue.taking)
   - Read
   - Glob
-  - Write(.diffcity/findings.json)
+  - Edit(.diffcity/findings.json)
 ---
 <!-- diffcity: diffcity-review v1 -->
 All paths below are relative to the repository root: run every command from there.
