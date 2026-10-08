@@ -176,14 +176,16 @@ describe('the user-only kinds', () => {
 describe('rule findings', () => {
   const rules = mergeRules({ settings: [{ id: 'size', kind: 'file-size', maxSymbolLines: 5, maxLines: 50 }] });
 
-  it('rules/finding-id-stable: rule:<id>:sha256(file + line + title), the same across runs and growth', () => {
+  it('rules/finding-id-stable: rule:<id>:sha256(file + "\\n" + line + "\\n" + title), the same across runs and growth', () => {
     const big = (lines: number): RuleFile => file('src/cart/total.ts', { after: { bytes: 10, lines } });
     const first = runRules(rules, [big(60)], AT).findings;
     const grown = runRules(rules, [big(90)], '2026-06-01T00:00:00.000Z').findings;
-    const expected = `rule:size:${createHash('sha256').update('src/cart/total.ts0File over 50 lines').digest('hex')}`;
+    const expected = `rule:size:${createHash('sha256').update('src/cart/total.ts\n0\nFile over 50 lines').digest('hex')}`;
     expect(first.map((finding) => finding.id)).toEqual([expected]);
     expect(grown.map((finding) => finding.id)).toEqual([expected]);
     expect(ruleFindingId('size', 'src/cart/total.ts', 0, 'File over 50 lines')).toBe(expected);
+    // The separators keep apart what plain concatenation would merge.
+    expect(ruleFindingId('size', 'src/a.ts1', 2, 'Function x over 5 lines')).not.toBe(ruleFindingId('size', 'src/a.ts', 12, 'Function x over 5 lines'));
     expect(first[0]).toMatchObject({ source: 'rule:size', severity: 'low', category: 'style', state: 'open', line: 0, message: 'src/cart/total.ts has 60 lines; the limit is 50 lines.' });
   });
 

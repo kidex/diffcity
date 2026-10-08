@@ -41,9 +41,12 @@ export interface RuleRun {
   checks: RuleCheck[];
 }
 
-/** `rule:<id>:` + sha256(file + line + title), stable across snapshots (ADR-030). */
+/**
+ * `rule:<id>:` + sha256(file + "\n" + line + "\n" + title), stable across
+ * snapshots (ADR-030). The separators keep `a.ts1` line 2 apart from `a.ts` line 12.
+ */
 export function ruleFindingId(ruleId: string, file: string, line: number, title: string): string {
-  const digest = createHash('sha256').update(file + String(line) + title).digest('hex');
+  const digest = createHash('sha256').update(`${file}\n${String(line)}\n${title}`).digest('hex');
   return `${RULE_SOURCE_PREFIX}${ruleId}:${digest}`;
 }
 
