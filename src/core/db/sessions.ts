@@ -35,6 +35,7 @@ export interface SessionLink {
   firstHead: string | null;
   /** The change's head at the latest link. */
   lastHead: string | null;
+  /** When the session was first linked to the change. */
   linkedAt: string;
 }
 
@@ -64,7 +65,7 @@ export interface SessionStore {
   storeDigest(id: number, write: SessionDigestWrite): void;
   /** Records why the session could not be read: a code, never content. */
   setParseError(id: number, code: string): void;
-  /** Links the session to a change at `head`: firstHead on the first link, lastHead always. */
+  /** Links the session to a change at `head`: firstHead and linkedAt on the first link, lastHead always. */
   link(changeId: number, sessionRowId: number, head: string | null, at: string): void;
   /** The changes a session is linked to, in link order. */
   links(sessionRowId: number): SessionLink[];
@@ -100,7 +101,15 @@ function toLink(row: SessionLink): SessionLink {
   return { changeId: row.changeId, sessionRowId: row.sessionRowId, firstHead: row.firstHead, lastHead: row.lastHead, linkedAt: row.linkedAt };
 }
 
-const optionalTime = (value: string | null, field: string): string | null => (value === null ? null : isoTime(value, field));
+/** A transcript time in the stored form; null when there is none or it has no zone (transcripts are not trusted to be well formed). */
+function optionalTime(value: string | null, field: string): string | null {
+  if (value === null) return null;
+  try {
+    return isoTime(value, field);
+  } catch {
+    return null;
+  }
+}
 
 export function createSessionStore(db: Connection): SessionStore {
   const upsert = db.prepare<[number, string, string, string, string, string], SessionRecord>(
@@ -116,7 +125,7 @@ export function createSessionStore(db: Connection): SessionStore {
   const parseError = db.prepare<[string, number]>('UPDATE sessions SET parseError = ? WHERE id = ?');
   const link = db.prepare<[number, number, string | null, string | null, string]>(
     `INSERT INTO change_sessions (changeId, sessionRowId, firstHead, lastHead, linkedAt) VALUES (?, ?, ?, ?, ?)
-     ON CONFLICT (changeId, sessionRowId) DO UPDATE SET lastHead = excluded.lastHead, linkedAt = excluded.linkedAt`,
+     ON CONFLICT (changeId, sessionRowId) DO UPDATE SET lastHead = excluded.lastHead`,
   );
   const links = db.prepare<[number], SessionLink>('SELECT * FROM change_sessions WHERE sessionRowId = ? ORDER BY rowid');
   const forChange = db.prepare<[number, number], JoinedRow>(

@@ -116,9 +116,10 @@ export interface Collector extends CollectorPort {
   /**
    * `track --agent` (C3, ADR-001): marks the change of the working tree that
    * contains `dir` as "agent worked, not reviewed", or writes a repo-level
-   * `agent` event when there is none. Run it after a collection.
+   * `agent` event when there is none. Run it after a collection. The event
+   * carries `sessionId` when the hook's session was valid (ADR-038).
    */
-  markAgent(repoId: number, dir: string, at: string): Promise<void>;
+  markAgent(repoId: number, dir: string, at: string, sessionId?: string): Promise<void>;
   /**
    * The working tree containing `dir` (a realpath) as the repo's last
    * collection listed it; null when none does or the repo was never listed.
@@ -534,17 +535,17 @@ export function createCollector(options: CollectorOptions): Collector {
       }
     },
     worktreeOf: (repoId, dir) => worktreeContaining(worktreesSeen.get(repoId) ?? [], dir),
-    async markAgent(repoId, dir, at) {
+    async markAgent(repoId, dir, at, sessionId) {
       if (closing) return;
       const resolved = await realpath(dir).catch(() => dir);
       const worktree = worktreeContaining(worktreesSeen.get(repoId) ?? [], resolved);
       const iso = now().toISOString();
       db.transaction(() => {
         if (worktree === null) {
-          db.events.add({ repoId, changeId: null, type: 'agent', at, payload: { worktree: resolved } });
+          db.events.add({ repoId, changeId: null, type: 'agent', at, payload: { worktree: resolved, ...(sessionId === undefined ? {} : { sessionId }) } });
           return;
         }
-        const outcome = applyAgent(db.changes.listLive(repoId), worktree, at);
+        const outcome = applyAgent(db.changes.listLive(repoId), worktree, at, sessionId);
         if (outcome.update !== null) db.changes.applyPlan(repoId, { create: [], update: [outcome.update], archive: [] }, iso);
         db.events.add({ repoId, ...outcome.event });
       });

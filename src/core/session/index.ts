@@ -17,6 +17,8 @@ export {
 export { SESSION_LIMITS, TRUNCATED_MARKER, truncateUtf8, type SessionLimits } from './limits.js';
 export { decodeRecord, forEachLine, sliceLines, type LineSlice, type TranscriptChunk } from './parse.js';
 export { MAX_META_BYTES, readSessionDigest, readTranscriptChunk, subagentsDir, transcriptGrew, type ReadSessionInput } from './read.js';
+export { runSessionJob, type SessionJob, type SessionJobResult } from './job.js';
+export { SESSIONS_PER_CHANGE, sessionView, treeContaining, type SessionRow, type SessionViewContext } from './view.js';
 export {
   checkTranscriptPath,
   claudeProjectsDir,

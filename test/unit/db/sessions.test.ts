@@ -70,7 +70,7 @@ describe('sessions store', () => {
       return row.id;
     });
     db.sessions.link(change, ids[0] ?? 0, 'h2', daysAfter(T0, 3));
-    expect(db.sessions.links(ids[0] ?? 0)).toEqual([{ changeId: change, sessionRowId: ids[0], firstHead: 'h1', lastHead: 'h2', linkedAt: daysAfter(T0, 3) }]);
+    expect(db.sessions.links(ids[0] ?? 0)).toEqual([{ changeId: change, sessionRowId: ids[0], firstHead: 'h1', lastHead: 'h2', linkedAt: T0 }]);
     expect(db.sessions.forChange(change, 2).map((row) => row.session.sessionId)).toEqual(['aaaa0003', 'aaaa0002']);
   });
 

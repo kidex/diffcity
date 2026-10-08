@@ -12,7 +12,7 @@ import type { ServedCache } from '../../../src/daemon/api/served-cache.js';
 import { dbPlugin } from '../../../src/daemon/db.js';
 import { createCollection, type Collection, type CollectionPluginOptions } from '../../../src/daemon/collector/plugin.js';
 import { startDaemon, type RunningDaemon } from '../../../src/daemon/daemon.js';
-import { createStreamLogger } from '../../../src/daemon/log.js';
+import { createStreamLogger, type Logger } from '../../../src/daemon/log.js';
 import type { DaemonPlugin } from '../../../src/daemon/plugin.js';
 import { tempHome, type TempHome } from '../../helpers/config.js';
 import { waitFor } from '../../helpers/daemon.js';
@@ -103,6 +103,8 @@ export interface TestDaemonOptions {
    * after it and stop before it.
    */
   plugins?: (collection: Collection) => DaemonPlugin[];
+  /** The daemon's logger; a discarding one when absent. */
+  log?: Logger;
 }
 
 export async function startTestDaemon(options: CollectionPluginOptions = {}, extra: TestDaemonOptions = {}): Promise<TestDaemon> {
@@ -112,7 +114,7 @@ export async function startTestDaemon(options: CollectionPluginOptions = {}, ext
     env: home.env,
     port: 0,
     plugins: [dbPlugin, collection.plugin, ...(extra.api === true ? [createApiPlugin({ ...(extra.apiNow === undefined ? {} : { now: extra.apiNow }), ...(extra.servedCache === undefined ? {} : { servedCache: extra.servedCache }), ...(extra.servedSummaries === undefined ? {} : { servedSummaries: extra.servedSummaries }), diffPool: { runner: extra.diffRunner ?? 'inline', size: 2 } })] : []), ...(extra.plugins?.(collection) ?? [])],
-    log: createStreamLogger(new PassThrough()),
+    log: extra.log ?? createStreamLogger(new PassThrough()),
   });
   if (result.status !== 'started') throw new Error(`daemon did not start: ${result.status}`);
   const { daemon } = result;
