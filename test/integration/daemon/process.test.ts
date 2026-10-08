@@ -197,7 +197,14 @@ describe('daemon process', () => {
       const home = await tempHome();
       try {
         const spawned = daemons.spawnDaemon(home.env);
-        const info = await waitFor(() => readDaemonInfo(homePaths(home.home)).then((value) => value ?? undefined), 45_000, 'daemon.json');
+        const info = await waitFor(() => readDaemonInfo(homePaths(home.home)).then((value) => value ?? undefined), 45_000, 'daemon.json').catch(
+          async (error: unknown) => {
+            // A start timeout, not a signal failure: daemon.log tells whether the daemon ran at all.
+            const log = await readFile(homePaths(home.home).log, 'utf8').catch(() => '(no daemon.log)');
+            console.error(`run ${String(run)}: daemon.json never appeared; daemon.log:\n${log}`);
+            throw error;
+          },
+        );
         spawned.child.kill('SIGINT');
         expect(await spawned.exited, `run ${String(run)}`).toBe(0);
         for (const file of [homePaths(home.home).daemonJson, info.socket, homePaths(home.home).lock]) expect(await gone(file), `run ${String(run)}`).toBe(true);

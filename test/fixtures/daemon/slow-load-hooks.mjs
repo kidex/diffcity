@@ -5,14 +5,16 @@ import { setTimeout as sleep } from 'node:timers/promises';
 
 let held = '';
 let release = '';
+let module = '';
 
 export function initialize(data) {
   held = data.held;
   release = data.release;
+  module = data.module;
 }
 
 export async function load(url, context, nextLoad) {
-  if (url.endsWith('/daemon/script.js')) {
+  if (url.endsWith(`/${module}`)) {
     writeFileSync(held, '');
     while (!existsSync(release)) await sleep(10);
   }

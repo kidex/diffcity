@@ -208,6 +208,28 @@ describe('diffcity up', () => {
     expect(result.code).toBe(1);
     expect(result.stderr).toContain(`port ${String(port)} is in use; pass --port\n`);
   });
+
+  // Ctrl+C (or SIGTERM) while the foreground CLI still loads daemon/run.js:
+  // the CLI has no handler yet, so the signal gets its default action. Known
+  // bug DC-122 (DC-119 closed the same window in dist/daemon/main.js only);
+  // it.fails until the fix, then plain it.
+  it.fails.each(['SIGINT', 'SIGTERM'] as const)('up --foreground/signal-during-load: %s while the daemon modules load exits 0', async (signal) => {
+    const slowLoad = fileURLToPath(new URL('../../fixtures/daemon/slow-load.mjs', import.meta.url));
+    const held = join(temp.root, 'load-held');
+    const release = join(temp.root, 'load-release');
+    const env = { ...temp.env, DIFFCITY_TEST_LOAD_HELD: held, DIFFCITY_TEST_LOAD_RELEASE: release, DIFFCITY_TEST_LOAD_MODULE: 'daemon/run.js' };
+    const run = daemons.spawn(CLI_DIST, ['up', '--foreground', '--port', '0', '--no-open'], env, temp.userHome, ['--import', slowLoad]);
+    try {
+      await waitFor(() => missing(held).then((absent) => !absent), 45_000, 'the held load of daemon/run.js');
+      run.child.kill(signal);
+      // The load is still held: only an exit that does not wait for it ends the process.
+      expect(await run.exited).toBe(0);
+      expect(run.child.signalCode).toBeNull();
+      for (const file of [paths.daemonJson, paths.lock, paths.socket]) expect(await missing(file), file).toBe(true);
+    } finally {
+      await writeFile(release, '');
+    }
+  });
 });
 
 describe('up stays light', () => {
