@@ -1,6 +1,7 @@
 import type { Node } from 'web-tree-sitter';
 import { withDuplicateSuffixes } from './dedupe.js';
 import { parserFor } from './grammars.js';
+import { extractImports, type ImportRef } from './imports.js';
 import type { TreeSitterLanguage } from './language.js';
 import { isDirectiveComment, normalize } from './normalize.js';
 import type { ParsedSymbol } from './types.js';
@@ -52,16 +53,19 @@ export async function extractSymbols(source: string, language: TreeSitterLanguag
  * Symbols plus the ADR-005 normal form of the whole file (every leaf token,
  * comments dropped except directives), from a single parse. Two versions with
  * equal normal forms differ only in whitespace and comments (ADR-008).
+ * With `imports`, the file's imports are queried from the same tree (ADR-031).
  */
 export async function parseSource(
   source: string,
   language: TreeSitterLanguage,
-): Promise<{ symbols: ParsedSymbol[]; normalized: string }> {
+  options: { imports?: boolean } = {},
+): Promise<{ symbols: ParsedSymbol[]; normalized: string; imports?: ImportRef[] }> {
   const parser = await parserFor(language);
   const tree = parser.parse(source);
-  if (tree === null) return { symbols: [], normalized: '' };
+  if (tree === null) return { symbols: [], normalized: '', ...(options.imports === true ? { imports: [] } : {}) };
   try {
-    return { symbols: new Extractor(source).run(tree.rootNode), normalized: normalize([tree.rootNode]) };
+    const parsed = { symbols: new Extractor(source).run(tree.rootNode), normalized: normalize([tree.rootNode]) };
+    return options.imports === true ? { ...parsed, imports: extractImports(tree.rootNode, language, tree.language) } : parsed;
   } finally {
     tree.delete();
   }

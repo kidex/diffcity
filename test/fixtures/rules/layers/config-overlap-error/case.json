@@ -1,0 +1,12 @@
+{
+  "rule": {
+    "layers": [
+      [
+        "packages/*/src"
+      ],
+      [
+        "packages/billing/src"
+      ]
+    ]
+  }
+}

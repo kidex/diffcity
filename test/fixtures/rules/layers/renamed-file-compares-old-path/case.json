@@ -1,0 +1,19 @@
+{
+  "rule": {
+    "layers": [
+      [
+        "src/cli",
+        "src/ui"
+      ],
+      [
+        "src/daemon"
+      ],
+      [
+        "src/core"
+      ]
+    ]
+  },
+  "renames": {
+    "src/core/books/ledger.ts": "src/core/ledger.ts"
+  }
+}

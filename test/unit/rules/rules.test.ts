@@ -240,14 +240,12 @@ describe('checks', () => {
   it('rules/not-checked-never-passed: kinds this version does not evaluate are not-checked, with no findings', () => {
     const merged = mergeRules({
       settings: [
-        { id: 'arch', kind: 'layers', layers: [['src/ui'], ['src/core']] },
         { id: 'ci', kind: 'pipeline' },
         { id: 'deps', kind: 'cve' },
       ],
     });
     const { checks } = runRules(merged, [file('src/ui/cart.ts')], AT);
     expect(checks.map((check) => [check.ruleId, check.state])).toEqual([
-      ['arch', 'not-checked'],
       ['ci', 'not-checked'],
       ['deps', 'not-checked'],
     ]);

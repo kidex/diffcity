@@ -1,0 +1,21 @@
+{
+  "rule": {
+    "layers": [
+      [
+        "src/cli",
+        "src/ui"
+      ],
+      [
+        "src/daemon"
+      ],
+      [
+        "src/core"
+      ]
+    ],
+    "aliases": {
+      "@orchard/": "src/",
+      "@orchard/legacy/": "src/daemon/",
+      "@lost/": "src/missing/"
+    }
+  }
+}

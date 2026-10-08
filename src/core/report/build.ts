@@ -31,7 +31,19 @@ import type { FileFingerprint, Fingerprints } from '../model/types.js';
 import { MAX_PARSE_BYTES } from '../parse/file.js';
 import { languageForPath } from '../parse/language.js';
 import { buildExecutionPath } from '../path/order.js';
-import { measureNeeds, mergeRules, runRules, type MergedRule, type RuleFile, type RuleRun } from '../rules/index.js';
+import { loadTsMorph, readTsconfigPaths, tsconfigParses } from '../path/graph.js';
+import {
+  beforeFilesOf,
+  measureNeeds,
+  mergeRules,
+  rulesNeedImports,
+  rulesNeedTsconfigPaths,
+  runRules,
+  type MergedRule,
+  type RuleContext,
+  type RuleFile,
+  type RuleRun,
+} from '../rules/index.js';
 import type { UserRuleSettings } from '../settings/settings.js';
 import { preparePathFile, prepareUntouchedFile, type PathFile } from '../path/prepare.js';
 import { fileVerdict, tier1Matcher, touchedTier1Files } from '../verdict/index.js';
@@ -198,6 +210,10 @@ interface Described {
   path?: PathFile | undefined;
   /** Size and lines of the after version, when a rule asked and the content was in memory; null for a deleted file. */
   after?: RuleFile['after'] | undefined;
+  /** The before path of a renamed file. */
+  oldPath?: string | undefined;
+  /** The imports of both versions, taken from the parse trees when a layers rule runs (ADR-031). */
+  imports?: RuleFile['imports'];
 }
 
 function sha256(bytes: Uint8Array | null): string | null {
@@ -210,7 +226,7 @@ function sha256(bytes: Uint8Array | null): string | null {
  */
 type MeasureNeeds = (path: string) => { lines: boolean } | null;
 
-async function describeChanged(change: ResolvedChange, file: ChangedFile, needs: MeasureNeeds): Promise<Described> {
+async function describeChanged(change: ResolvedChange, file: ChangedFile, needs: MeasureNeeds, imports: boolean): Promise<Described> {
   const oldPath = file.oldPath ?? file.path;
   // Only code files are read into memory and parsed: the status of anything else comes from git (ADR-008).
   // The others are hashed from a stream, so a large asset never sits in the worker's memory.
@@ -243,10 +259,13 @@ async function describeChanged(change: ResolvedChange, file: ChangedFile, needs:
   // binary: git decides the status, with no symbols, for a file that was not parsed.
   const input: FileChange = { path: file.path, change: file.type, binary: file.binary || !readable || grown, before, after };
   if (oldPath !== file.path) input.oldPath = oldPath;
-  const { status, symbols, symbolFingerprints, ranges } = await compareFileWithFingerprints(input);
+  const compared = await compareFileWithFingerprints(input, { imports });
+  const { status, symbols, symbolFingerprints, ranges } = compared;
   const fingerprint: FileFingerprint = { before: beforeHash, after: afterHash };
   if (oldPath !== file.path) fingerprint.oldPath = oldPath;
   const described: Described = { input: { path: file.path, language: languageOf(file.path), status, symbols }, fingerprint, symbolFingerprints };
+  if (oldPath !== file.path) described.oldPath = oldPath;
+  if (compared.imports !== undefined) described.imports = compared.imports;
   const wanted = file.type === 'del' ? null : needs(file.path);
   // Measured now while the bytes are in memory; anything else is measured later (ruleRunOf).
   if (wanted !== null && afterBytes !== null) {
@@ -302,10 +321,11 @@ async function executionPathOf(
   change: ResolvedChange,
   described: readonly Described[],
   log: ((message: string) => void) | undefined,
+  readTsconfig: () => Promise<string | null>,
 ): Promise<ReportPath> {
   const files = described.flatMap((entry) => entry.path ?? []);
   if (!files.some((file) => file.status !== 'same')) return { steps: [], callsites: new Map() };
-  const [tsconfig, packageJson] = await Promise.all([readRootConfig(change, 'tsconfig.json'), readRootConfig(change, 'package.json')]);
+  const [tsconfig, packageJson] = await Promise.all([readTsconfig(), readRootConfig(change, 'package.json')]);
   const { steps, callsites } = await buildExecutionPath({ files, tsconfig, packageJson, log });
   return { steps, callsites };
 }
@@ -324,7 +344,13 @@ function rulesOf(options: BuildReportOptions, config: DiffcityConfig): MergedRul
  * in memory (non-code, binary, large) are measured from a stream, and only
  * when a rule looks at them.
  */
-async function ruleRunOf(change: ResolvedChange, rules: readonly MergedRule[], described: readonly Described[], checkedAt: string): Promise<RuleRun | null> {
+async function ruleRunOf(
+  change: ResolvedChange,
+  rules: readonly MergedRule[],
+  described: readonly Described[],
+  checkedAt: string,
+  context: () => Promise<RuleContext>,
+): Promise<RuleRun | null> {
   if (rules.length === 0) return null;
   const files = await mapLimit(
     described.filter((entry) => entry.input.status !== 'same'),
@@ -337,10 +363,39 @@ async function ruleRunOf(change: ResolvedChange, rules: readonly MergedRule[], d
         const measured = wanted.lines ? await measureAfter(change, path) : await sizeAfter(change, path).then((bytes) => (bytes === null ? null : { bytes, lines: null }));
         after = measured;
       }
-      return { path, status, symbols, after };
+      return { path, ...(entry.oldPath === undefined ? {} : { oldPath: entry.oldPath }), status, symbols, after, ...(entry.imports === undefined ? {} : { imports: entry.imports }) };
     },
   );
-  return runRules(rules, files, checkedAt);
+  return runRules(rules, files, checkedAt, await context());
+}
+
+/** Runs `read` once, on the first call; later calls share its promise. */
+function once<T>(read: () => Promise<T>): () => Promise<T> {
+  let value: Promise<T> | undefined;
+  return () => (value ??= read());
+}
+
+/**
+ * What the layers rule needs of the whole snapshot (ADR-031): the after file
+ * list, the before one derived from it and the changed files, and, for a rule
+ * with `useTsconfigPaths`, the root tsconfig's `compilerOptions.paths` read
+ * from the after state as data (`extends` not followed).
+ */
+async function ruleContextOf(
+  rules: readonly MergedRule[],
+  headFiles: readonly string[],
+  changed: readonly ChangedFile[],
+  readTsconfig: () => Promise<string | null>,
+): Promise<RuleContext> {
+  if (!rulesNeedImports(rules)) return { afterFiles: new Set(), beforeFiles: new Set(), tsconfigPaths: null };
+  const context: RuleContext = { afterFiles: new Set(headFiles), beforeFiles: new Set(beforeFilesOf(headFiles, changed)), tsconfigPaths: null };
+  if (!rulesNeedTsconfigPaths(rules)) return context;
+  // Missing (or above MAX_PATH_CONFIG_BYTES, which readRootConfig does not read) is "not found".
+  const tsconfig = await readTsconfig();
+  if (tsconfig === null) return { ...context, tsconfigProblem: 'not found' };
+  const { ts } = await loadTsMorph();
+  if (!tsconfigParses(tsconfig, ts)) return { ...context, tsconfigProblem: 'could not be parsed' };
+  return { ...context, tsconfigPaths: readTsconfigPaths(tsconfig, ts) };
 }
 
 /**
@@ -381,7 +436,8 @@ export async function buildReportWithHead(
 
   const rules = rulesOf(options, config);
   const needs: MeasureNeeds = (path) => measureNeeds(rules, path);
-  const touchedInputs = await mapLimit(changed, PARSE_CONCURRENCY, (file) => describeChanged(change, file, needs));
+  const imports = rulesNeedImports(rules);
+  const touchedInputs = await mapLimit(changed, PARSE_CONCURRENCY, (file) => describeChanged(change, file, needs, imports));
   const untouchedInputs: (Described | null)[] = [];
   for (let i = 0; i < untouched.length; i += READ_BATCH_SIZE) {
     const paths = untouched.slice(i, i + READ_BATCH_SIZE);
@@ -398,13 +454,15 @@ export async function buildReportWithHead(
   }
 
   const described = [...touchedInputs, ...untouchedInputs.filter((input): input is Described => input !== null)];
+  // Read at most once, for the execution path and the layers rule alike.
+  const readTsconfig = once(() => readRootConfig(change, 'tsconfig.json'));
   const report = assembleReport(
     meta,
     described.map((entry) => entry.input),
     isTier1,
-    await executionPathOf(change, described, options.log),
+    await executionPathOf(change, described, options.log, readTsconfig),
     // checkedAt is the Report's own time: the content hash leaves both out (contentHashOf).
-    await ruleRunOf(change, rules, touchedInputs, meta.generatedAt),
+    await ruleRunOf(change, rules, touchedInputs, meta.generatedAt, () => ruleContextOf(rules, headFiles, changed, readTsconfig)),
   );
   const fingerprints: Fingerprints = { files: {}, symbols: {} };
   for (const entry of described) {

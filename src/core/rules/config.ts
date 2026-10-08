@@ -4,6 +4,7 @@
 // the engine turns into a RuleCheck with state `error`.
 
 import type { RuleCheck } from '../report/types.js';
+import { layerModules } from './modules.js';
 
 export type Severity = 'high' | 'med' | 'low';
 export type RuleKind = RuleCheck['kind'];
@@ -19,7 +20,7 @@ export interface FileSizeRule {
   exclude?: string[];
 }
 
-/** ADR-031; validated now, evaluated by the layers rule. */
+/** ADR-031. */
 export interface LayersRule {
   id: string;
   kind: 'layers';
@@ -124,6 +125,8 @@ function fieldProblem(kind: RuleKind, entry: Record<string, unknown>): string | 
       if (!Array.isArray(layers) || layers.length === 0 || !(layers as unknown[]).every((layer) => isStringArray(layer, true) && layer.length > 0)) {
         return 'field "layers" must be a non-empty array of non-empty arrays of non-empty strings';
       }
+      const modules = layerModules(layers as string[][]);
+      if (!modules.ok) return `field "layers": ${modules.message}`;
       for (const flag of ['allowTypeImports', 'useTsconfigPaths', 'reportExisting'] as const) {
         if (entry[flag] !== undefined && typeof entry[flag] !== 'boolean') return `field "${flag}" must be a boolean`;
       }
