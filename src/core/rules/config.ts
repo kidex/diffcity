@@ -61,8 +61,10 @@ export const ORIGIN_LABEL: Record<RuleOrigin, string> = {
 
 /** An entry that could not be accepted. */
 export interface RuleError {
-  /** The entry's id when it has a valid one; otherwise `rules[<index>]`. */
+  /** The entry's id when it has a valid one; otherwise `rules[<index>]`, or `rules` for the whole list. */
   ruleId: string;
+  /** Whether ruleId is the entry's own id; when false it names a place, which the merge qualifies by origin. */
+  named: boolean;
   /** The entry's kind when it is a known one; null otherwise. */
   kind: RuleKind | null;
   /** Plain English, without the `config-error: ` prefix. */
@@ -150,11 +152,11 @@ function copyRule(entry: Record<string, unknown>): RuleConfig {
 /** Validates one entry of a `rules` list. Pure. */
 export function validateRule(value: unknown, index: number): ValidatedEntry {
   const fallbackId = `rules[${String(index)}]`;
-  if (!isPlainObject(value)) return { ok: false, error: { ruleId: fallbackId, kind: null, message: `${fallbackId} must be an object` } };
+  if (!isPlainObject(value)) return { ok: false, error: { ruleId: fallbackId, named: false, kind: null, message: `${fallbackId} must be an object` } };
   const id = typeof value.id === 'string' && RULE_ID_PATTERN.test(value.id) ? value.id : null;
   const kind = RULE_KINDS.includes(value.kind as RuleKind) ? (value.kind as RuleKind) : null;
   const ruleId = id ?? fallbackId;
-  const fail = (message: string): ValidatedEntry => ({ ok: false, error: { ruleId, kind, message } });
+  const fail = (message: string): ValidatedEntry => ({ ok: false, error: { ruleId, named: id !== null, kind, message } });
   if (id === null) return fail(`${fallbackId}: field "id" must match ${RULE_ID_PATTERN.source}`);
   if (kind === null) return fail(`rule "${id}": field "kind" must be one of ${RULE_KINDS.join(', ')}`);
   const problem = fieldProblem(kind, value);
@@ -168,7 +170,7 @@ export function validateRule(value: unknown, index: number): ValidatedEntry {
  */
 export function validateRules(value: unknown): ValidatedEntry[] {
   if (value === undefined) return [];
-  if (!Array.isArray(value)) return [{ ok: false, error: { ruleId: 'rules', kind: null, message: 'field "rules" must be an array' } }];
+  if (!Array.isArray(value)) return [{ ok: false, error: { ruleId: 'rules', named: false, kind: null, message: 'field "rules" must be an array' } }];
   return (value as unknown[]).map((entry, index) => validateRule(entry, index));
 }
 

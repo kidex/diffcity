@@ -59,7 +59,7 @@ describe('rules/config-validate', () => {
     const unnamed = validateRule({ kind: 'file-size', maxLines: 1 }, 3);
     expect(named.ok ? null : named.error).toMatchObject({ ruleId: 'size', kind: 'file-size' });
     expect(unnamed.ok ? null : unnamed.error).toMatchObject({ ruleId: 'rules[3]', kind: 'file-size' });
-    expect(validateRules({ id: 'size' })).toEqual([{ ok: false, error: { ruleId: 'rules', kind: null, message: 'field "rules" must be an array' } }]);
+    expect(validateRules({ id: 'size' })).toEqual([{ ok: false, error: { ruleId: 'rules', named: false, kind: null, message: 'field "rules" must be an array' } }]);
   });
 
   it('matches include and exclude as path prefixes or simple globs, case-sensitively', () => {
@@ -104,6 +104,19 @@ describe('rules/merge-order', () => {
     expect(merged).toEqual([
       { ok: false, ruleId: 'big', kind: 'file-size', origin: 'settings-repo', reason: 'config-error: settings.json repo rules: rule "big" is defined more than once' },
       { ok: false, ruleId: 'size', kind: 'file-size', origin: 'settings-repo', reason: 'config-error: settings.json repo rules: rule "size": field "maxLines" must be a positive integer' },
+    ]);
+  });
+
+  it('whole lists that are not arrays stay apart, by origin, and never shadow a rule named "rules"', () => {
+    const merged = mergeRules({
+      settings: [{ id: 'rules', kind: 'file-size', maxLines: 10 }],
+      settingsRepo: 'size',
+      repoConfig: { id: 'size' },
+    });
+    expect(merged.map((entry) => (entry.ok ? `${entry.rule.id}:${entry.origin}` : `${entry.ruleId} ${entry.reason}`))).toEqual([
+      'repo-config:rules config-error: diffcity.config.js rules: field "rules" must be an array',
+      'rules:settings',
+      'settings-repo:rules config-error: settings.json repo rules: field "rules" must be an array',
     ]);
   });
 

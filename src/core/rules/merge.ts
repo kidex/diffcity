@@ -5,7 +5,7 @@
 // `pipeline` or `cve` rule: such an entry is a separate config error check
 // (`repo-config:rules[<n>]`), and the user's rule stays as configured. Pure.
 
-import { ORIGIN_LABEL, RULE_ID_PATTERN, validateRules, type RuleConfig, type RuleKind, type RuleOrigin } from './config.js';
+import { ORIGIN_LABEL, validateRules, type RuleConfig, type RuleKind, type RuleOrigin } from './config.js';
 
 /** The raw `rules` values, as read; validated here. */
 export interface RuleSources {
@@ -53,11 +53,16 @@ function entriesOf(origin: RuleOrigin, value: unknown): Placed[] {
   const byId = new Map<string, Placed>();
   const duplicated = new Set<string>();
   for (const [index, validated] of validateRules(value).entries()) {
-    // An entry without a valid id is named by its place, qualified by its origin so two lists never collide.
-    const errorId = (ruleId: string): string => (RULE_ID_PATTERN.test(ruleId) ? ruleId : `${origin}:${ruleId}`);
+    // An entry without a valid id (or a whole list that is not one) is named by its place,
+    // qualified by its origin, so two lists never collide and no place shadows a rule id.
     const entry: MergedRule = validated.ok
       ? { ok: true, rule: validated.rule, origin }
-      : configError(errorId(validated.error.ruleId), validated.error.kind, origin, validated.error.message);
+      : configError(
+          validated.error.named ? validated.error.ruleId : `${origin}:${validated.error.ruleId}`,
+          validated.error.kind,
+          origin,
+          validated.error.message,
+        );
     const id = idOf(entry);
     if (byId.has(id)) duplicated.add(id);
     else byId.set(id, { entry, index });
