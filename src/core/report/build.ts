@@ -248,7 +248,7 @@ async function describeChanged(change: ResolvedChange, file: ChangedFile, needs:
   if (oldPath !== file.path) fingerprint.oldPath = oldPath;
   const described: Described = { input: { path: file.path, language: languageOf(file.path), status, symbols }, fingerprint, symbolFingerprints };
   const wanted = file.type === 'del' ? null : needs(file.path);
-  // Measured now while the bytes are in memory; anything else is streamed later (measureTouched).
+  // Measured now while the bytes are in memory; anything else is measured later (ruleRunOf).
   if (wanted !== null && afterBytes !== null) {
     described.after = { bytes: afterBytes.length, lines: wanted.lines && !looksBinary(afterBytes) ? countLines(afterBytes) : null };
   }
