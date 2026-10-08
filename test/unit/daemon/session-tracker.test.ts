@@ -4,12 +4,13 @@
 
 import { PassThrough } from 'node:stream';
 import { afterEach, describe, expect, it } from 'vitest';
+import type { SseEvent } from '../../../src/core/model/types.js';
 import type { SessionJob, SessionJobResult } from '../../../src/core/session/index.js';
 import { createPool } from '../../../src/daemon/collector/pool.js';
 import { createStreamLogger } from '../../../src/daemon/log.js';
 import { createSessionTracker, type SessionTracker } from '../../../src/daemon/session/tracker.js';
 import { waitFor } from '../../helpers/daemon.js';
-import { T0, addRepo, tempDb, type TempDb } from '../db/db-helpers.js';
+import { T0, addRepo, branchFields, tempDb, type TempDb } from '../db/db-helpers.js';
 
 const DELAY = 30;
 const ID = '0a1b2c3d-0000-4000-8000-000000000001';
@@ -23,6 +24,7 @@ interface Harness {
   temp: TempDb;
   tracker: SessionTracker;
   jobs: SessionJob[];
+  signals: SseEvent[];
   repoId: number;
   hook(at?: string): Promise<void>;
 }
@@ -31,6 +33,7 @@ function harness(answer: (job: SessionJob, index: number) => Promise<SessionJobR
   const temp = tempDb();
   const repo = addRepo(temp.db);
   const jobs: SessionJob[] = [];
+  const signals: SseEvent[] = [];
   const pool = createPool<SessionJob, SessionJobResult>({
     runner: { kind: 'inline', compute: async (job) => { jobs.push(job); return answer(job, jobs.length - 1); } },
     size: 1,
@@ -42,12 +45,14 @@ function harness(answer: (job: SessionJob, index: number) => Promise<SessionJobR
     projectsDir: '/claude/projects',
     worktreeOf: () => null,
     delayMs: DELAY,
+    broadcast: (event) => signals.push(event),
   });
   cleanups.push(() => { temp.cleanup(); }, () => tracker.close());
   return {
     temp,
     tracker,
     jobs,
+    signals,
     repoId: repo.id,
     hook: (at = T0) => tracker.hook(repo.id, { sessionId: ID, transcriptPath: `/claude/projects/p/${ID}.jsonl`, cwd: '/work/sample-shop', event: 'Stop' }, at),
   };
@@ -107,6 +112,30 @@ describe('session tracker schedule', () => {
     await waitFor(() => h.jobs.length === 2 && h.tracker.pending === 0, 5000);
     await sleep(DELAY * 4);
     expect(h.jobs).toHaveLength(2);
+  });
+
+  it('a stored read signals sessions with { changeId } for every linked change; an unlinked or refused one signals nothing', async () => {
+    const h = harness((_job, index) => (index === 0 ? done(10, false) : index === 1 ? done(20, false) : { ok: false, code: 'outside-projects' }));
+    await h.hook();
+    await waitFor(() => h.jobs.length === 1 && h.tracker.pending === 0, 5000);
+    expect(h.signals).toEqual([]);
+
+    const row = h.temp.db.sessions.find(h.repoId, ID);
+    const plan = (ref: string) => ({ create: [branchFields(ref)], update: [], archive: [] });
+    const [a] = h.temp.db.changes.applyPlan(h.repoId, plan('cart'), T0).created;
+    const [b] = h.temp.db.changes.applyPlan(h.repoId, plan('rack'), T0).created;
+    if (row === null || a === undefined || b === undefined) throw new Error('setup failed');
+    h.temp.db.sessions.link(a.id, row.id, 'h', T0);
+    h.temp.db.sessions.link(b.id, row.id, 'h', T0);
+    await h.hook();
+    await waitFor(() => h.jobs.length === 2 && h.tracker.pending === 0, 5000);
+    expect(h.signals).toEqual([
+      { event: 'sessions', data: { changeId: a.id } },
+      { event: 'sessions', data: { changeId: b.id } },
+    ]);
+    await h.hook();
+    await waitFor(() => h.jobs.length === 3 && h.tracker.pending === 0, 5000);
+    expect(h.signals).toHaveLength(2);
   });
 
   it('a refused or failed read stores a code, never the message', async () => {

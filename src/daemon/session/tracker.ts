@@ -13,6 +13,8 @@
 // - After a read, the session is also linked to the change of each working
 //   tree its runs worked in, so a session whose subagents work in linked
 //   worktrees reaches each of their changes.
+// - After each stored read, SSE `sessions` with `{ changeId }` goes out for
+//   every change the session is linked to; it carries no session content.
 //
 // Failures and refusals are logged with the session row id and a code, never a
 // path or transcript content, and stored as `parseError`.
@@ -20,6 +22,7 @@
 import { realpath } from 'node:fs/promises';
 import { changeOfWorktree, type WorktreeInfo } from '../../core/changes/index.js';
 import type { Db } from '../../core/db/index.js';
+import type { SseEvent } from '../../core/model/types.js';
 import type { SessionJob } from '../../core/session/job.js';
 import type { ValidatedSession } from '../../core/session/validate.js';
 import { errorMessage, type Logger } from '../log.js';
@@ -41,6 +44,8 @@ export interface SessionTrackerOptions {
   now?: () => Date;
   /** The home the redactor replaces by `~`; os.homedir() when absent. */
   home?: string | null;
+  /** Sends an SSE signal; a no-op when absent. */
+  broadcast?: (event: SseEvent) => void;
 }
 
 export interface SessionTracker {
@@ -123,10 +128,12 @@ export function createSessionTracker(options: SessionTrackerOptions): SessionTra
         log.warn(`session ${String(rowId)}: not read: ${result.code}`);
         return;
       }
-      db.transaction(() => {
+      const linked = db.transaction(() => {
         db.sessions.storeDigest(rowId, result);
         for (const dir of result.runDirs) linkDir(state.repoId, rowId, dir);
+        return db.sessions.links(rowId);
       });
+      for (const link of linked) options.broadcast?.({ event: 'sessions', data: { changeId: link.changeId } });
       grew = result.grew;
     } catch (error) {
       if (isClosed()) return;

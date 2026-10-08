@@ -342,6 +342,9 @@ export function createCollection(options: CollectionPluginOptions = {}): Collect
           log: context.log,
           projectsDir,
           worktreeOf: (repoId, dir) => created.worktreeOf(repoId, dir),
+          broadcast: (event) => {
+            context.broadcast(event);
+          },
           now,
           ...(options.sessionDelayMs === undefined ? {} : { delayMs: options.sessionDelayMs }),
         });

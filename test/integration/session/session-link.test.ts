@@ -7,6 +7,7 @@ import { mkdir, realpath, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { SessionDigest } from '../../../src/core/session/index.js';
+import { waitFor } from '../../helpers/daemon.js';
 import { transcript } from '../../helpers/transcript.js';
 import type { TempRepo } from '../../helpers/repo.js';
 import { cleanupAfterEach, sampleRepo } from '../collect/collect-helpers.js';
@@ -77,6 +78,11 @@ describe('session links', () => {
     expect(row.parsedBytes).toBe(digestOf(row.digest).state.main.parsedBytes);
     expect(row.parsedBytes).toBeGreaterThan(0);
     expect(daemon.db.sessions.links(row.id)).toEqual([{ changeId: change.id, sessionRowId: row.id, firstHead: change.head, lastHead: change.head, linkedAt: expect.any(String) as unknown }]);
+
+    // The UI hears of the stored read for each linked change, with no session content.
+    await waitFor(() => daemon.test.events().some((record) => record.event === 'sessions'), 10_000, 'the sessions signal');
+    const signals = daemon.test.events().filter((record) => record.event === 'sessions');
+    expect(signals.every((record) => JSON.stringify(record.data) === JSON.stringify({ changeId: change.id }))).toBe(true);
 
     const agent = daemon.db.events.listForRepo(row.repoId).find((event) => event.type === 'agent');
     expect(agent?.payload).toEqual({ worktree: dir, sessionId: id });

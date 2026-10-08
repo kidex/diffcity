@@ -396,6 +396,8 @@ export type SseEvent =
   | { event: 'review'; data: { repoId: number; changeId: number } }
   /** The findings of a change moved (an import, a state, a queued fix; ADR-036): refetch its Report. */
   | { event: 'findings'; data: { repoId: number; changeId: number } }
+  /** A read of a session linked to the change was stored (ADR-038): refetch GET /api/changes/:id/sessions. No session content. */
+  | { event: 'sessions'; data: { changeId: number } }
   | {
       event: 'collect';
       data: { repoId: number; state: 'started' | 'done' } | { repoId: number; state: 'error'; error: string };
