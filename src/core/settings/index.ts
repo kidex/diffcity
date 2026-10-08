@@ -9,8 +9,11 @@ export {
   emptySettings,
   parseSettings,
   readSettings,
+  readToolSetting,
   removeTrustedRepo,
   ruleSettingsFor,
+  toolPathProblem,
+  toolSettingFor,
   writeSettings,
 } from './settings.js';
-export type { ParsedSettings, RuleSettingsReader, TrustCheck, UserRuleSettings, TrustCheckOptions, UserSettings } from './settings.js';
+export type { ParsedSettings, ToolSetting, RuleSettingsReader, TrustCheck, UserRuleSettings, TrustCheckOptions, UserSettings } from './settings.js';

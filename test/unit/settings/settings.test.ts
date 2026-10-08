@@ -2,7 +2,7 @@
 // the trusted repos, the only place trust lives. An invalid file is reported
 // and trusts nothing; writes are atomic with mode 0600 and keep unknown fields.
 
-import { mkdir, mkdtemp, readdir, readFile, rm, stat, utimes, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, mkdtemp, readdir, readFile, rm, stat, utimes, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -13,8 +13,10 @@ import {
   createTrustCheck,
   parseSettings,
   readSettings,
+  readToolSetting,
   removeTrustedRepo,
   ruleSettingsFor,
+  toolSettingFor,
   writeSettings,
 } from '../../../src/core/settings/index.js';
 import { mergeRules } from '../../../src/core/rules/index.js';
@@ -220,5 +222,53 @@ describe('rules in the settings (ADR-030)', () => {
   it('an invalid settings file gives no rules', async () => {
     await writeFile(file, '{"v":1,');
     expect(await createRuleSettingsReader(file)(SHOP)).toEqual({});
+  });
+});
+
+describe('settings.tools (ADR-030, ADR-032)', () => {
+  const settings = (tools: unknown) => ({ v: 1 as const, trustedRepos: [], ...(tools === undefined ? {} : { tools }) });
+
+  it('reads tools.<name> as an absolute path, unset when absent', () => {
+    expect(toolSettingFor(settings(undefined), 'gh')).toEqual({ kind: 'unset' });
+    expect(toolSettingFor(settings({ claude: '/opt/sample/claude' }), 'gh')).toEqual({ kind: 'unset' });
+    expect(toolSettingFor(settings({ gh: '/opt/sample/gh' }), 'gh')).toEqual({ kind: 'path', path: '/opt/sample/gh' });
+  });
+
+  it.each([
+    ['a relative path', { gh: 'bin/gh' }],
+    ['a number', { gh: 7 }],
+    ['an empty string', { gh: '' }],
+  ])('rejects %s without invalidating the file', (_label, tools) => {
+    expect(toolSettingFor(settings(tools), 'gh')).toEqual({ kind: 'invalid', message: 'field "tools.gh" must be an absolute path' });
+    expect(parseSettings(JSON.stringify(settings(tools))).ok).toBe(true);
+  });
+
+  it('rejects a tools field that is not an object', () => {
+    expect(toolSettingFor(settings(['/opt/sample/gh']), 'gh').kind).toBe('invalid');
+    expect(toolSettingFor(settings('/opt/sample/gh'), 'gh').kind).toBe('invalid');
+  });
+
+  it('checks the file: it must exist, be a regular file and be executable', async () => {
+    const binary = join(dir, 'gh');
+    const write = (tools: unknown) => writeFile(file, JSON.stringify(settings(tools)), 'utf8');
+
+    await write({ gh: binary });
+    expect(await readToolSetting(file, 'gh')).toMatchObject({ kind: 'invalid', message: expect.stringContaining('does not exist') as unknown });
+
+    await writeFile(binary, '#!/bin/sh\n', 'utf8');
+    await chmod(binary, 0o644);
+    expect(await readToolSetting(file, 'gh')).toMatchObject({ kind: 'invalid', message: expect.stringContaining('not executable') as unknown });
+
+    await chmod(binary, 0o755);
+    expect(await readToolSetting(file, 'gh')).toEqual({ kind: 'path', path: binary });
+
+    await write({ gh: dir });
+    expect(await readToolSetting(file, 'gh')).toMatchObject({ kind: 'invalid', message: expect.stringContaining('not a regular file') as unknown });
+  });
+
+  it('a missing settings file sets no tool; an invalid one makes every tool invalid', async () => {
+    expect(await readToolSetting(file, 'gh')).toEqual({ kind: 'unset' });
+    await writeFile(file, '{ not json', 'utf8');
+    expect((await readToolSetting(file, 'gh')).kind).toBe('invalid');
   });
 });
