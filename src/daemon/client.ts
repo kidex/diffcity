@@ -3,14 +3,16 @@
 // "is the lock owner really running" check. It stays light: `track` loads it
 // from the shell hook, so it imports node builtins and small core modules only.
 
-import { spawn } from 'node:child_process';
-import { closeSync, openSync } from 'node:fs';
+import { spawn, spawnSync } from 'node:child_process';
+import { randomBytes } from 'node:crypto';
+import { closeSync, openSync, rmSync } from 'node:fs';
 import { connect } from 'node:net';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
 import type { HomePaths } from '../core/home.js';
 import type { DaemonInfo, SocketRequest, SocketResponseFor } from '../core/model/types.js';
 import { readDaemonInfo, resolvePort } from './files.js';
+import { START_REPORT_ENV, startReportPath, watchStartReport, type StartReportWatch } from './start-report.js';
 
 /** Exit code of the daemon script when its port is taken. */
 export const EXIT_PORT_IN_USE = 3;
@@ -104,6 +106,77 @@ export async function findRunningDaemon(
 /** The built daemon entry, next to this module in dist/daemon/. */
 export const DAEMON_MAIN = fileURLToPath(new URL('./main.js', import.meta.url));
 
+/** The built CLI entry: the file a globally installed `diffcity` bin executes. */
+export const CLI_ENTRY = fileURLToPath(new URL('../cli/index.js', import.meta.url));
+
+/**
+ * How spawnDaemon starts the daemon (DC-45):
+ * - `child`: a detached child of this process;
+ * - `launch-services`: through macOS LaunchServices (`open -a <node>`), so the
+ *   daemon is not a descendant of this process.
+ */
+export type DaemonLauncher = 'child' | 'launch-services';
+
+const OPEN = '/usr/bin/open';
+const XATTR = '/usr/bin/xattr';
+const PROVENANCE = 'com.apple.provenance';
+
+/** Runs a program without a shell; the subset of spawnSync these helpers use. */
+export type RunSync = (file: string, args: string[]) => { status: number | null; error?: Error | undefined };
+
+const runSync: RunSync = (file, args) => spawnSync(file, args, { stdio: 'ignore', timeout: 5000 });
+
+/**
+ * True when `file` carries the com.apple.provenance extended attribute
+ * (macOS), and when xattr could not tell (timed out or failed to run): that
+ * happens under exactly the load that makes a tainted daemon slow, and the
+ * LaunchServices start falls back to a child anyway.
+ */
+export function hasProvenance(file: string, run: RunSync = runSync): boolean {
+  const result = run(XATTR, ['-p', PROVENANCE, file]);
+  if (result.error !== undefined || result.status === null) return true;
+  return result.status === 0;
+}
+
+/**
+ * The launcher for this installation. On macOS, a process started by
+ * executing a script that carries com.apple.provenance (a bin written by a
+ * provenance-tracked process, an agent's `npm link` say) has every process
+ * spawn checked by syspolicyd, and so has every process below it: under load,
+ * 0.15 to 3 s per spawn, for the daemon's whole life. The taint follows the
+ * process tree (a detached child, a re-exec through node, /bin/sh all keep
+ * it), so when the CLI's own entry carries the attribute the daemon starts
+ * through LaunchServices instead, which makes it a process of its own,
+ * whichever way this one was started. Elsewhere it is a detached child.
+ */
+export function defaultLauncher({
+  platform = process.platform,
+  tagged = () => hasProvenance(CLI_ENTRY),
+}: { platform?: NodeJS.Platform; tagged?: () => boolean } = {}): DaemonLauncher {
+  return platform === 'darwin' && tagged() ? 'launch-services' : 'child';
+}
+
+/**
+ * The `open` arguments that start `<execPath> <args>` through LaunchServices:
+ * in the background (`-g`), always a new process (`-n`), with exactly `env`
+ * (a launched process otherwise gets launchd's environment, without the
+ * user's PATH or DIFFCITY_HOME) and stdout and stderr appended to `log`.
+ */
+export function launchServicesArgs({
+  execPath,
+  args,
+  env,
+  log,
+}: {
+  execPath: string;
+  args: string[];
+  env: NodeJS.ProcessEnv;
+  log: string;
+}): string[] {
+  const vars = Object.entries(env).flatMap(([name, value]) => (value === undefined ? [] : ['--env', `${name}=${value}`]));
+  return ['-g', '-n', '-a', execPath, '--stdout', log, '--stderr', log, ...vars, '--args', ...args];
+}
+
 export interface SpawnDaemonOptions {
   paths: HomePaths;
   /** Passed as `--port`; omitted, the daemon uses state.json or 4321. */
@@ -111,22 +184,36 @@ export interface SpawnDaemonOptions {
   env?: NodeJS.ProcessEnv;
   /** The daemon script; defaults to DAEMON_MAIN. */
   main?: string;
+  /** Defaults to defaultLauncher(). */
+  launcher?: DaemonLauncher;
+  /** Runs `open` for the launch-services launcher; resolves with its exit code. Tests inject a stub. */
+  runOpen?: (args: string[]) => Promise<number | null>;
 }
 
 export interface SpawnedDaemon {
+  /** Undefined when the daemon was started through LaunchServices. */
   pid: number | undefined;
-  /** Resolves with the exit code if the process exits while this one still runs. */
+  /** Resolves with the exit code if the process exits before it is ready, while this one still runs. */
   exited: Promise<number | null>;
+  /** Stops watching the start and removes what it left (the start report); startDaemon calls it on every outcome. */
+  dispose?: () => void;
 }
 
 /**
- * Starts the daemon detached (ADR-015): its own process group, stdout and
- * stderr appended to daemon.log for anything printed before its logger opens,
- * and unref'd so the caller can exit.
+ * Starts the daemon detached (ADR-015): its own process group (or, through
+ * LaunchServices, its own process outside this one's tree), stdout and stderr
+ * appended to daemon.log for anything printed before its logger opens, and
+ * nothing that keeps the caller from exiting.
  */
 export function spawnDaemon(options: SpawnDaemonOptions): SpawnedDaemon {
   const args = [options.main ?? DAEMON_MAIN];
   if (options.port !== undefined) args.push('--port', String(options.port));
+  // The log exists with its mode before anything opens it.
+  closeSync(openSync(options.paths.log, 'a', 0o600));
+  return (options.launcher ?? defaultLauncher()) === 'launch-services' ? launchDaemon(options, args) : spawnChild(options, args);
+}
+
+function spawnChild(options: SpawnDaemonOptions, args: string[]): SpawnedDaemon {
   const logFd = openSync(options.paths.log, 'a', 0o600);
   try {
     const child = spawn(process.execPath, args, {
@@ -147,6 +234,46 @@ export function spawnDaemon(options: SpawnDaemonOptions): SpawnedDaemon {
   } finally {
     closeSync(logFd);
   }
+}
+
+const runOpen = (args: string[]): Promise<number | null> =>
+  new Promise((resolve) => {
+    const child = spawn(OPEN, args, { stdio: 'ignore' });
+    child.once('exit', (code) => {
+      resolve(code);
+    });
+    child.once('error', () => {
+      resolve(null);
+    });
+  });
+
+/**
+ * Starts the daemon through LaunchServices. It reports `ready` or its early
+ * exit code in a file of the home (start-report.ts), which stands in for the
+ * exit event of a child. When `open` fails (no GUI session, say), the daemon
+ * starts as a detached child instead.
+ */
+function launchDaemon(options: SpawnDaemonOptions, args: string[]): SpawnedDaemon {
+  const report = startReportPath(options.paths.home, randomBytes(6).toString('hex'));
+  const env = { ...(options.env ?? process.env), [START_REPORT_ENV]: report };
+  const state: { watch: StartReportWatch | null; disposed: boolean } = { watch: null, disposed: false };
+  const launched = (options.runOpen ?? runOpen)(launchServicesArgs({ execPath: process.execPath, args, env, log: options.paths.log }));
+  const exited = launched.then((code) => {
+    if (code !== 0) return spawnChild(options, args).exited;
+    if (state.disposed) {
+      // The caller found the daemon before `open` returned.
+      rmSync(report, { force: true });
+      return new Promise<number | null>(() => undefined);
+    }
+    state.watch = watchStartReport(report, { timeoutMs: DAEMON_START_TIMEOUT_MS });
+    return state.watch.exited;
+  });
+  const dispose = (): void => {
+    state.disposed = true;
+    state.watch?.stop();
+    rmSync(report, { force: true });
+  };
+  return { pid: undefined, exited, dispose };
 }
 
 /**
@@ -186,6 +313,15 @@ export async function startDaemon(options: StartDaemonOptions): Promise<StartDae
   if (options.port !== undefined) spawnOptions.port = options.port;
   if (options.env !== undefined) spawnOptions.env = options.env;
   const spawned = (options.spawn ?? spawnDaemon)(spawnOptions);
+  try {
+    return await waitForSpawned(options, spawned);
+  } finally {
+    spawned.dispose?.();
+  }
+}
+
+async function waitForSpawned(options: StartDaemonOptions, spawned: SpawnedDaemon): Promise<StartDaemonResult> {
+  const { paths } = options;
   const timeoutMs = options.timeoutMs ?? DAEMON_START_TIMEOUT_MS;
   const started = Date.now();
   let ready = await waitForDaemon(paths, { timeoutMs, stop: spawned.exited });
