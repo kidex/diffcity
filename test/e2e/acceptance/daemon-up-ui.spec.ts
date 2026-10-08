@@ -3,17 +3,26 @@
 // DIFFCITY_HOME serves the built UI on 127.0.0.1. The top bar's daemon
 // indicator is connected against it, goes offline once the daemon stops, and
 // connects again when `up` starts a new daemon on the same port.
+//
+// daemon/start-through-shim-git-spawn-speed (DC-45): `diffcity start` run by
+// executing the built CLI directly, the way a globally installed bin runs,
+// starts a daemon whose collection (git and gh spawns) lists a tracked repo's
+// changes within 5 s. On macOS, when the CLI carries com.apple.provenance, that
+// daemon was started through LaunchServices, outside the CLI's process tree.
 
-import { spawn, type ChildProcess } from 'node:child_process';
+import { execFile, spawn, spawnSync, type ChildProcess } from 'node:child_process';
 import { mkdir, mkdtemp, rm, stat } from 'node:fs/promises';
 import { request } from 'node:http';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { delimiter, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { expect, test as base, type Page } from '@playwright/test';
+import type { RepoDetail } from '../../../src/core/model/types.js';
+import { hasProvenance } from '../../../src/daemon/client.js';
 import { stopDaemonIn } from '../../helpers/daemon.js';
 import { registerHome } from '../../helpers/daemons.js';
+import { buildSampleShop, ghStubEnv, samplePrs } from '../support/acceptance.js';
 
 const CLI = fileURLToPath(new URL('../../../dist/cli/index.js', import.meta.url));
 
@@ -21,6 +30,10 @@ interface Daemon {
   readonly port: number;
   readonly baseURL: string;
   readonly home: string;
+  /** The fixture's temporary root (DIFFCITY_HOME and HOME live in it). */
+  readonly root: string;
+  /** process.env with the temporary DIFFCITY_HOME and HOME. */
+  readonly env: NodeJS.ProcessEnv;
   /** Starts `up --foreground` and waits until /api/health answers. */
   start(): Promise<void>;
   /** Sends SIGTERM and resolves with the exit code. */
@@ -95,6 +108,8 @@ const test = base.extend<{ daemon: Daemon }>({
       port,
       baseURL,
       home,
+      root,
+      env,
       async start() {
         const child = spawn(process.execPath, [CLI, 'up', '--foreground', '--no-open', '--port', String(port)], {
           env,
@@ -141,6 +156,36 @@ const test = base.extend<{ daemon: Daemon }>({
 
 const indicator = (page: Page) => page.getByTestId('daemon');
 
+const DEADLINE_MS = 5000;
+
+/** Runs the built CLI by executing it, as a shell runs a globally installed `diffcity`. */
+function runShim(args: string[], env: NodeJS.ProcessEnv): Promise<{ code: number; stdout: string; stderr: string }> {
+  // The bin's `#!/usr/bin/env node` finds this node first.
+  const shimEnv = { ...env, PATH: `${dirname(process.execPath)}${delimiter}${env['PATH'] ?? ''}` };
+  return new Promise((resolve) => {
+    execFile(CLI, args, { env: shimEnv, encoding: 'utf8' }, (error, stdout, stderr) => {
+      resolve({ code: error === null ? 0 : typeof error.code === 'number' ? error.code : 1, stdout, stderr });
+    });
+  });
+}
+
+/** Polls /api/repos/:id until it lists 3 changes with stats; gives up after `timeoutMs`. */
+async function waitForChanges(url: string, timeoutMs: number): Promise<RepoDetail> {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    const detail = await fetch(url)
+      .then(async (response) => (response.ok ? ((await response.json()) as RepoDetail) : null))
+      .catch(() => null);
+    if (detail !== null && detail.changes.length === 3 && detail.changes.every((change) => change.stats !== null)) return detail;
+    if (Date.now() > deadline) throw new Error(`${url} did not list 3 changes with stats within ${String(timeoutMs)} ms`);
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+}
+
+/** True when macOS LaunchServices knows `pid` as an application it launched. */
+const launchedByLaunchServices = (pid: number): boolean =>
+  spawnSync('/usr/bin/lsappinfo', ['find', `pid=${String(pid)}`], { encoding: 'utf8' }).stdout.trim() !== '';
+
 test('the UI served by the real daemon is connected, offline once the daemon stops, and connected again after up', async ({ page, daemon }) => {
   test.setTimeout(45_000);
   await daemon.start();
@@ -170,15 +215,39 @@ test('the UI served by the real daemon is connected, offline once the daemon sto
   await expect(indicator(page)).toHaveAttribute('data-state', 'connected', { timeout: 10_000 });
 });
 
-test('the real daemon answers /api/health and hello, and a foreign Host header gets 421', async ({ daemon }) => {
-  await daemon.start();
-  const health = (await (await fetch(`${daemon.baseURL}/api/health`)).json()) as { version: string; pid: number };
-  expect(health.pid).toBeGreaterThan(0);
+test('the real daemon started through the shim answers /api/health and hello, a foreign Host header gets 421, and collects within 5 s', async ({ daemon }) => {
+  test.setTimeout(60_000);
+  const { repo, prHead } = await buildSampleShop();
+  try {
+    await test.step('daemon/start-through-shim-git-spawn-speed', async () => {
+      const env = await ghStubEnv(daemon.root, daemon.env, samplePrs(prHead));
+      const started = await runShim(['start', repo.dir, '--no-open', '--port', String(daemon.port)], env);
+      expect(started.code, started.stderr).toBe(0);
+      // `start` printed the repo's URL once the daemon tracked it.
+      const id = /#\/repo\/(\d+)$/m.exec(started.stdout)?.[1];
+      expect(id, started.stdout).toBeDefined();
+      const t0 = performance.now();
+      await waitForChanges(`${daemon.baseURL}/api/repos/${String(id)}`, 30_000);
+      const elapsedMs = performance.now() - t0;
+      const pid = ((await (await fetch(`${daemon.baseURL}/api/health`)).json()) as { pid: number }).pid;
+      const tagged = process.platform === 'darwin' && hasProvenance(CLI);
+      const measured = `3 changes with stats ${elapsedMs.toFixed(0)} ms after start returned; CLI provenance-tagged: ${String(tagged)}`;
+      test.info().annotations.push({ type: 'measured', description: measured });
+      if (tagged) expect(launchedByLaunchServices(pid), `daemon pid ${String(pid)} is not a LaunchServices launch`).toBe(true);
+      expect(elapsedMs, measured).toBeLessThan(DEADLINE_MS);
+    });
 
-  expect(await statusWithHost(daemon.port, 'rebound.example')).toBe(421);
-  expect(await statusWithHost(daemon.port, `127.0.0.1:${String(daemon.port)}`)).toBe(200);
+    const health = (await (await fetch(`${daemon.baseURL}/api/health`)).json()) as { version: string; pid: number };
+    expect(health.pid).toBeGreaterThan(0);
 
-  const sse = await readSseUntil(`${daemon.baseURL}/api/events`, 'event: hello');
-  expect(sse.contentType).toContain('text/event-stream');
-  expect(sse.text).toContain(`event: hello\ndata: {"version":${JSON.stringify(health.version)}`);
+    expect(await statusWithHost(daemon.port, 'rebound.example')).toBe(421);
+    expect(await statusWithHost(daemon.port, `127.0.0.1:${String(daemon.port)}`)).toBe(200);
+
+    const sse = await readSseUntil(`${daemon.baseURL}/api/events`, 'event: hello');
+    expect(sse.contentType).toContain('text/event-stream');
+    expect(sse.text).toContain(`event: hello\ndata: {"version":${JSON.stringify(health.version)}`);
+  } finally {
+    // The daemon still watches the repo; it is stopped at the fixture's teardown.
+    await repo.cleanup();
+  }
 });
