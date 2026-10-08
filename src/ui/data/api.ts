@@ -91,7 +91,7 @@ export interface Api {
   /**
    * "Ask agent to fix" on finding `key`: the daemon writes it to the repo's fix queue. Rejects with
    * ApiRequestError: 409 `no-snapshot`, `no-working-tree`, `fix-queue-unsafe`, `fix-queue-full`,
-   * `fix-queue-invalid` or `archived`, 404 `finding-not-found` or `not-found`, 403.
+   * `fix-queue-busy` or `archived`, 404 `finding-not-found` or `not-found`, 403.
    */
   fixFinding(changeId: number, key: string): Promise<FixAnswer>;
 }
