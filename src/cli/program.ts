@@ -132,13 +132,20 @@ export function buildProgram(io: CliIo = defaultIo): Command {
     .description('semantic diff of the current change')
     .option('--json', 'print the report as JSON')
     .option('--compact', 'with --json: leave out untouched files and the packages left without files')
+    .option('--with-sessions', 'with --json: add the Claude Code sessions of the change, from the running daemon')
     .option('--base <ref>', 'base ref')
     .option('--head <ref>', 'head ref')
     .action(async (options: DiffCommandOptions) => {
-      const { NOW_ENV, runDiff, userRulesFor } = await import('./diff.js');
+      const { NOW_ENV, runDiff, sessionsFromDaemon, userRulesFor } = await import('./diff.js');
       const cwd = io.cwd?.() ?? process.cwd();
       const env = io.env?.() ?? process.env;
-      process.exitCode = await runDiff(options, { cwd, io, now: env[NOW_ENV], userRules: (warn) => userRulesFor(cwd, env, warn) });
+      process.exitCode = await runDiff(options, {
+        cwd,
+        io,
+        now: env[NOW_ENV],
+        userRules: (warn) => userRulesFor(cwd, env, warn),
+        sessions: () => sessionsFromDaemon(cwd, env),
+      });
     });
 
   program
