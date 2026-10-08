@@ -16,7 +16,11 @@ import { afterEach, describe, expect, it } from 'vitest';
 
 const FIX_QUEUE_DIST = fileURLToPath(new URL('../../../dist/core/fix-queue/index.js', import.meta.url));
 const ITEMS = 50;
-/** Rounds per test: the window is a few microseconds wide, so one race rarely hits it. */
+/**
+ * Rounds per test: the window is a few microseconds wide, so one race rarely
+ * hits it. Each test gets 300 s: the file runs in the timing project, alone,
+ * where 100 rounds take about 7 s.
+ */
 const ROUNDS = 100;
 
 const roots: string[] = [];
@@ -44,20 +48,31 @@ function runNode(source: string, args: string[]): Promise<{ code: number | null;
   });
 }
 
-/** Appends ITEMS items, retrying an item refused with fix-queue-busy; prints the outcome of each. */
+/**
+ * Calls per item at most: an item refused with fix-queue-busy is tried again,
+ * up to this many calls (each call already makes FIX_QUEUE_ATTEMPTS writes).
+ * Against the tight-loop mover every one of 10,000 measured items landed on
+ * its first call, so 3 leaves room for a loaded machine while a refusal that
+ * keeps coming back still fails the test.
+ */
+const MAX_CALLS = 3;
+
+/** Appends ITEMS items, calling again on fix-queue-busy up to MAX_CALLS; prints each outcome and its call count. */
 const APPENDER = `
 import { appendToFixQueue } from ${JSON.stringify(FIX_QUEUE_DIST)};
 const [root, count] = process.argv.slice(1);
 const outcomes = [];
+const calls = [];
 for (let n = 0; n < Number(count); n++) {
   const item = { key: 'f:' + n.toString(16).padStart(16, '0'), file: 'src/kettle/brew.ts', line: 7, severity: 'med',
     title: 'Invented finding ' + n, message: 'An invented finding.', queuedAt: '2026-10-08T09:00:00.000Z' };
   let result = appendToFixQueue(root, item);
   let tries = 1;
-  while (!result.ok && result.code === 'fix-queue-busy' && tries < 100) { result = appendToFixQueue(root, item); tries++; }
+  while (!result.ok && result.code === 'fix-queue-busy' && tries < ${String(MAX_CALLS)}) { result = appendToFixQueue(root, item); tries++; }
   outcomes.push(result.ok ? (result.queued ? 'queued' : 'duplicate') : result.code);
+  calls.push(tries);
 }
-process.stdout.write(JSON.stringify(outcomes));
+process.stdout.write(JSON.stringify({ outcomes, calls }));
 `;
 
 /**
@@ -82,6 +97,8 @@ process.stdout.write(String(taken));
 interface RaceOutcome {
   /** The appender's outcome per item: queued, duplicate or a refusal code. */
   outcomes: string[];
+  /** appendToFixQueue calls per item (1 when the first call queued it). */
+  calls: number[];
   /** Every key found in the taken directories and the final queue, sorted. */
   keys: string[];
   /** Temporary files left in the final queue directory. */
@@ -118,7 +135,8 @@ async function race(): Promise<RaceOutcome> {
     }
     if (queue === 'fix-queue') temporaries = names.filter((entry) => !ITEM_NAME.test(entry));
   }
-  return { outcomes: JSON.parse(appender.stdout) as string[], keys: keys.sort(), temporaries };
+  const { outcomes, calls } = JSON.parse(appender.stdout) as { outcomes: string[]; calls: number[] };
+  return { outcomes, calls, keys: keys.sort(), temporaries };
 }
 
 const keyOf = (n: number): string => `f:${n.toString(16).padStart(16, '0')}`;
@@ -131,12 +149,18 @@ describe('fix-queue/concurrent-take (DC-111, DC-112)', () => {
       expect({ round, keys }).toEqual({ round, keys: queued });
       expect(temporaries).toEqual([]);
     }
-  }, 120_000);
+  }, 300_000);
 
-  it('fix-queue/concurrent-take-no-refusal: a queue taken during an append is written again, never refused', async () => {
+  it('fix-queue/concurrent-take-no-refusal: a queue taken during an append is written again; no item needs more than MAX_CALLS calls', async () => {
+    let extraCalls = 0;
     for (let round = 0; round < ROUNDS; round++) {
-      const { outcomes } = await race();
+      const { outcomes, calls } = await race();
       expect({ round, outcomes }).toEqual({ round, outcomes: Array.from({ length: ITEMS }, () => 'queued') });
+      // The appender gives up after MAX_CALLS calls, so a queued item took at most that many.
+      expect(Math.max(...calls)).toBeLessThanOrEqual(MAX_CALLS);
+      extraCalls += calls.reduce((sum, count) => sum + count - 1, 0);
     }
-  }, 120_000);
+    // A busy refusal is rare: well under one extra call per round on average.
+    expect(extraCalls).toBeLessThan(ROUNDS);
+  }, 300_000);
 });
