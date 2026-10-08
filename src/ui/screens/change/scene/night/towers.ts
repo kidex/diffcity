@@ -168,13 +168,11 @@ interface Shape {
   quiet: number;
   ghost: number;
   strips: number;
-  beams: number;
 }
 
 function shapeOf(city: City): Shape {
-  const shape: Shape = { buildings: city.buildings.length, touched: 0, quiet: 0, ghost: 0, strips: 0, beams: 0 };
+  const shape: Shape = { buildings: city.buildings.length, touched: 0, quiet: 0, ghost: 0, strips: 0 };
   for (const building of city.buildings) {
-    if (hasBeam(building)) shape.beams += 1;
     for (const floor of building.floors) {
       if (floor.status === 'del') shape.ghost += 1;
       else {
@@ -188,7 +186,7 @@ function shapeOf(city: City): Shape {
 }
 
 const sameShape = (a: Shape, b: Shape): boolean =>
-  a.buildings === b.buildings && a.touched === b.touched && a.quiet === b.quiet && a.ghost === b.ghost && a.strips === b.strips && a.beams === b.beams;
+  a.buildings === b.buildings && a.touched === b.touched && a.quiet === b.quiet && a.ghost === b.ghost && a.strips === b.strips;
 
 /** White: each instance carries its own colour, so a dimmed floor can fade without a second material; `aOpacity` scales the opacity per instance. */
 function glassMaterial(opacity: number): MeshPhysicalMaterial {
@@ -321,7 +319,8 @@ export function createTowers(first: City, motion: Motion): Towers {
     side: DoubleSide,
   });
   const beamGeometry = new PlaneGeometry(0.5, 1.1);
-  const beams = new InstancedMesh(beamGeometry, beamMaterial, Math.max(shape.beams, 1));
+  // Room for a beam on every building: a verdict that gains or loses one (a finding marked as intended) is laid out in place.
+  const beams = new InstancedMesh(beamGeometry, beamMaterial, Math.max(shape.buildings, 1));
   beams.count = 0;
   beams.frustumCulled = false;
   disposables.push(beamMaterial, beamGeometry, beams);
@@ -441,6 +440,7 @@ export function createTowers(first: City, motion: Motion): Towers {
         beams.count += 1;
       }
     }
+    beams.visible = beams.count > 0;
     for (const mesh of [touchedMesh, quietMesh, ghostMesh, stripMesh, beams]) {
       mesh.instanceMatrix.needsUpdate = true;
       if (mesh.instanceColor !== null) mesh.instanceColor.needsUpdate = true;

@@ -1,7 +1,9 @@
 // e2e/findings/edge-cases (DC-108, ADR-036): the finding actions under the
 // timings and inputs a reviewer can produce: double clicks, a click while the
 // refetch after a write is still in flight, SSE `findings` arriving before the
-// write's answer, two findings acted on in quick succession, a key holding
+// write's answer, SSE `findings` while the refetch after a write is still in
+// flight (it must not abort it), a burst of events during a slow fetch (two
+// fetches at most, the newest Report shown), two findings acted on in quick succession, a key holding
 // `:` and `/`, a daemon that goes away after a write and comes back, the 409
 // `archived` refusal on Undo, and keyboard-only use with the names a screen
 // reader reads.
@@ -155,6 +157,80 @@ test('findings/edge-cases/sse-before-write-answer', async ({ page }, testInfo) =
   await undoButton(card).click();
   await expect(card).toHaveAttribute('data-state', 'open');
   await expect.poll(() => pinsOn(page, SERVICE)).toContain('high');
+});
+
+test('findings/edge-cases/sse-after-write-does-not-abort-refetch', async ({ page }, testInfo) => {
+  const { api } = await openFindings(page, { wait: false });
+  await tagClient(page, testInfo.testId);
+  await page.goto('/?scene-debug#/change/11');
+  await page.waitForFunction('window.diffcityScene !== undefined && window.diffcityScene.ready === true');
+  await expect(page.getByTestId('daemon')).toHaveAttribute('data-state', 'connected');
+  await page.getByTestId('tab-findings').click();
+  const card = tabCard(page, HIGH);
+  const aborted: string[] = [];
+  page.on('requestfailed', (request) => {
+    if (new URL(request.url()).pathname === REPORT) aborted.push(request.failure()?.errorText ?? 'failed');
+  });
+  const reports = await holdReports(page);
+
+  // The refetch after the write is slow (a large Report); SSE `findings` for the same write starts a second one meanwhile.
+  reports.hold();
+  const reads = api.count(REPORT);
+  await intendButton(card).click();
+  await expect.poll(() => reports.held()).toBe(1);
+  expect(await emitSse(page, testInfo.testId, 'findings', { repoId: 1, changeId: 11 })).toBeGreaterThan(0);
+  await expect.poll(() => reports.held()).toBe(2);
+
+  // The first fetch was not aborted by the second: both answer, and the card shows the write.
+  reports.release();
+  await expect(card).toHaveAttribute('data-state', 'intended');
+  await expect.poll(() => api.count(REPORT)).toBe(reads + 2);
+  await expect.poll(() => pinsOn(page, SERVICE)).not.toContain('high');
+  expect(aborted).toEqual([]);
+  await expect(undoButton(card)).toBeEnabled();
+});
+
+test('findings/edge-cases/event-burst-keeps-two-fetches-and-shows-newest', async ({ page }, testInfo) => {
+  const { reports } = await openFindings(page, { wait: false });
+  await tagClient(page, testInfo.testId);
+  await page.goto('/?scene-debug#/change/11');
+  await page.waitForFunction('window.diffcityScene !== undefined && window.diffcityScene.ready === true');
+  await expect(page.getByTestId('daemon')).toHaveAttribute('data-state', 'connected');
+  await page.getByTestId('tab-findings').click();
+  const card = tabCard(page, HIGH);
+  await expect(card).toHaveAttribute('data-state', 'open');
+
+  // Report fetches in flight, as the page sees them: started, not yet finished, failed or aborted.
+  const inFlight = new Set<unknown>();
+  let most = 0;
+  page.on('request', (request) => {
+    if (new URL(request.url()).pathname !== REPORT) return;
+    inFlight.add(request);
+    most = Math.max(most, inFlight.size);
+  });
+  page.on('requestfinished', (request) => inFlight.delete(request));
+  page.on('requestfailed', (request) => inFlight.delete(request));
+  const held = await holdReports(page);
+
+  // A slow Report during a collection: ten snapshot events, each past the 250 ms coalescing.
+  held.hold();
+  for (let i = 0; i < 10; i += 1) {
+    if (i === 9) {
+      const served = reports[11];
+      if (served === undefined) throw new Error('no Report for change 11');
+      setFindingState(served, HIGH, 'intended');
+    }
+    expect(await emitSse(page, testInfo.testId, 'snapshot', { repoId: 1, changeId: 11, head: `c0ffee${String(i)}` })).toBeGreaterThan(0);
+    await page.waitForTimeout(300);
+    expect(inFlight.size).toBeLessThanOrEqual(2);
+  }
+  expect(most).toBeLessThanOrEqual(2);
+
+  // The fetches answer: the newest Report is on screen.
+  held.release();
+  await expect.poll(() => inFlight.size).toBe(0);
+  await expect(card).toHaveAttribute('data-state', 'intended');
+  await expect.poll(() => pinsOn(page, SERVICE)).not.toContain('high');
 });
 
 test('findings/edge-cases/two-findings-in-quick-succession', async ({ page }) => {

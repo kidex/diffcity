@@ -1,7 +1,10 @@
 // The night data city of a Report (ADR-026): stage, ground, lots, towers and
 // roof labels, the mockup's orbit camera, hover and selection. Rebuilt in
 // place on a new Report, keeping the camera, the selected building and the
-// city's row width (so lots before a change stay put), and on a theme change. Everything it creates is released by dispose().
+// city's row width (so lots before a change stay put), and on a theme change.
+// A Report that keeps the layout (a finding's state, a verdict) is only
+// repainted: markers, outlines, beams, pulses and labels, nothing rebuilt.
+// Everything it creates is released by dispose().
 
 import { Fog, HemisphereLight, PMREMGenerator, Vector3 } from 'three';
 import type { Object3D } from 'three';
@@ -10,12 +13,12 @@ import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import type { Report } from '../../../../core/report/types.js';
 import { h } from '../../../shared/dom.js';
 import type { City, CityBuilding, CityFloor } from '../model/city.js';
-import { buildCity } from '../model/city.js';
+import { buildCity, sameLayout } from '../model/city.js';
 import type { Critical, Marks } from '../model/critical.js';
 import { criticalFloors } from '../model/critical.js';
 import { canvasLabel } from '../model/hud.js';
 import { findingMarkers } from '../model/markers.js';
-import { pathStops } from '../model/path.js';
+import { pathStops, samePath } from '../model/path.js';
 import type { CityPaint, Filters, RuleIndex } from '../model/view.js';
 import { focusPaint, NO_FILTERS, paintCity, ruleIndex } from '../model/view.js';
 import { easeOut, needsTween, TWEEN_MS, tweenCity } from '../model/tween.js';
@@ -53,6 +56,12 @@ export interface SceneStats {
   triangles: number;
   /** Times the towers' instanced buffers were built: once per Report, again only when a tween frame needs another instance count. */
   builds: number;
+  /** Times the city was built (ground, lots, markers, path): at mount, for a Report with another layout and on a theme change; never for one that only repaints. */
+  layouts: number;
+  /** Shader programs the renderer holds now. */
+  programs: number;
+  /** The id of the newest shader program a frame has drawn with; ids only grow, so an unchanged id means no frame compiled one. */
+  lastProgram: number;
 }
 
 /** What the night effects drew, for the debug hook (read-only). */
@@ -112,9 +121,19 @@ export interface CityView {
   tweening(): boolean;
   /** Heights the newest tweened building had on each frame of the last tween, for tests. */
   tweenTrace(): { id: string; heights: number[] } | null;
+  /** The last Reports given to setReport, oldest first, for tests. */
+  updates(): SceneUpdate[];
   /** Renders every frame for `ms` and reports the frame rate and the scene's draw calls. */
   bench(ms: number): Promise<{ fps: number; drawCalls: number }>;
   dispose(): void;
+}
+
+/** One setReport: its sequence number, when it ran and when the first frame after it was drawn (`performance.now()`), and the Report's open findings. */
+export interface SceneUpdate {
+  seq: number;
+  at: number;
+  drawnAt: number | null;
+  open: number;
 }
 
 /** What the HUD hears from the scene. */
@@ -158,8 +177,12 @@ interface Content {
   /** Lot outlines; the towers' own are `towers.lines`. */
   lotLines: FatLines[];
   picker: Picker;
-  /** Frees the content; `keepTowers` leaves the towers (and their GPU buffers) for the next content to lay out again. */
-  dispose(keepTowers?: boolean): void;
+  /**
+   * Takes the content out of the scene and returns what frees its GPU
+   * resources; `keepTowers` leaves the towers (and their buffers) for the next
+   * content to lay out again.
+   */
+  detach(keepTowers?: boolean): () => void;
 }
 
 /** A live-update tween in progress; it starts with the first frame drawn after it was set. */
@@ -211,6 +234,13 @@ export function createCityView(host: HTMLElement, report: Report, options: CityV
   let trace: { id: string; heights: number[] } | null = null;
   /** Times the towers' instanced buffers were built, for the stats. */
   let towerBuilds = 0;
+  /** Times build() ran, for the stats. */
+  let layouts = 0;
+  /** The newest program id seen after a frame, for the stats. */
+  let lastProgram = -1;
+  /** The last setReport calls, for the debug hook. */
+  const updates: SceneUpdate[] = [];
+  let updateSeq = 0;
   /** The paint of the shown city for the filters alone: hover and selection are laid over it. */
   let baseline: CityPaint | null = null;
   const hooks = options.hooks;
@@ -229,6 +259,23 @@ export function createCityView(host: HTMLElement, report: Report, options: CityV
   let introPending = false;
   let firstCamera: OrbitState | null = null;
   const labels = new LabelLayer(element);
+  /**
+   * What replaced content leaves to free, released after the next frame is
+   * drawn: three deletes a shader program as soon as no material uses it, so
+   * freeing the old materials before the new ones are drawn would compile
+   * every program again (seconds in a software renderer, DC-110). A hidden
+   * page draws no frame, so it frees at once rather than piling up.
+   */
+  let retired: (() => void)[] = [];
+  const release = (): void => {
+    const pending = retired;
+    retired = [];
+    for (const free of pending) free();
+  };
+  const retire = (free: () => void): void => {
+    retired.push(free);
+    if (document.visibilityState !== 'visible') release();
+  };
 
   let stage: Stage;
   try {
@@ -254,6 +301,10 @@ export function createCityView(host: HTMLElement, report: Report, options: CityV
       },
       afterFrame: () => {
         labels.render(stage.camera);
+        for (const program of renderer.info.programs ?? []) lastProgram = Math.max(lastProgram, program.id);
+        const drawnAt = performance.now();
+        for (const update of updates) update.drawnAt ??= drawnAt;
+        release();
         if (!settled && content !== null && !orbit.introRunning) {
           // Only when the camera rests, never on every drag frame.
           const wait = cameraMovedAt + REST_MS - performance.now();
@@ -357,8 +408,11 @@ export function createCityView(host: HTMLElement, report: Report, options: CityV
     if (c === null) return;
     c.markers.update(shown);
     if (!c.towers.update(shown)) {
-      scene.remove(c.towers.group);
-      c.towers.dispose();
+      const old = c.towers;
+      scene.remove(old.group);
+      retire(() => {
+        old.dispose();
+      });
       const towers = createTowers(shown, motion);
       towerBuilds += 1;
       scene.add(towers.group);
@@ -395,8 +449,9 @@ export function createCityView(host: HTMLElement, report: Report, options: CityV
    */
   function build(city: City, from: City | null = null, reuse = false): Content {
     const previous = content?.city ?? null;
+    layouts += 1;
     const reusable = reuse && content !== null ? content.towers : null;
-    content?.dispose(reusable !== null);
+    if (content !== null) retire(content.detach(reusable !== null));
     const voidColor = colorToken('--c-void');
     const { bounds } = city;
     scene.background = voidColor;
@@ -419,7 +474,13 @@ export function createCityView(host: HTMLElement, report: Report, options: CityV
     const shown = tween === null ? city : tweenCity(tween.from, city, 0);
     let towers = reusable;
     if (towers === null || !towers.update(shown)) {
-      towers?.dispose();
+      // Freed after the next frame, as the rest of the old content: the new towers take their programs over.
+      const old = towers;
+      if (old !== null) {
+        retire(() => {
+          old.dispose();
+        });
+      }
       towers = createTowers(shown, motion);
       towerBuilds += 1;
     }
@@ -441,14 +502,17 @@ export function createCityView(host: HTMLElement, report: Report, options: CityV
       lotLines: lots.lines,
       parts: [ground.mesh, lots.group, towers.group, markers.group, ...(path === null ? [] : [path.group])],
       picker: new Picker(city),
-      dispose(keepTowers = false) {
-        scene.remove(ground.mesh, lots.group, made.towers.group, markers.group);
+      detach(keepTowers = false) {
+        const towers = made.towers;
+        scene.remove(ground.mesh, lots.group, towers.group, markers.group);
         if (path !== null) scene.remove(path.group);
-        ground.dispose();
-        lots.dispose();
-        if (!keepTowers) made.towers.dispose();
-        markers.dispose();
-        path?.dispose();
+        return () => {
+          ground.dispose();
+          lots.dispose();
+          if (!keepTowers) towers.dispose();
+          markers.dispose();
+          path?.dispose();
+        };
       },
     };
     content = made;
@@ -467,7 +531,30 @@ export function createCityView(host: HTMLElement, report: Report, options: CityV
       }
     }
     applyCamera();
+    settle(city, previous);
+    return made;
+  }
 
+  /**
+   * A new Report that lays out as the city on screen (a finding's state, a
+   * verdict, the marks): the ground, the lots, the path and the towers' buffers
+   * stay, and only what the Report paints is drawn again, so no material or
+   * texture is made anew (DC-110).
+   */
+  function refresh(city: City): void {
+    const c = content;
+    if (c === null) return;
+    const previous = c.city;
+    c.city = city;
+    c.picker = new Picker(city);
+    c.markers.setPlan(findingMarkers(city, lastReport.findings));
+    showCity(city);
+    labels.setCity(city);
+    settle(city, previous);
+  }
+
+  /** After a new city: hover, selection and focused floor follow it, the paint is redone and the hooks hear of it. */
+  function settle(city: City, previous: City | null): void {
     // Hover does not survive a rebuild; the selection does while its file exists.
     hovered = null;
     hoveredFloor = null;
@@ -487,7 +574,6 @@ export function createCityView(host: HTMLElement, report: Report, options: CityV
     if (lost !== null) hooks?.selectionLost(lost);
     settled = false;
     stage.request();
-    return made;
   }
 
   const pickAt = (clientX: number, clientY: number): Pick | null => content?.picker.pick(clientX, clientY, canvas, camera) ?? null;
@@ -589,13 +675,20 @@ export function createCityView(host: HTMLElement, report: Report, options: CityV
     element,
     setReport(next) {
       if (disposed) return;
+      updateSeq += 1;
+      updates.push({ seq: updateSeq, at: performance.now(), drawnAt: null, open: next.findings.filter((finding) => finding.state === 'open').length });
+      if (updates.length > 16) updates.shift();
+      const previousSteps = lastReport.steps;
       lastReport = next;
       canvas.setAttribute('aria-label', canvasLabel(next));
       rules = ruleIndex(next);
       critical = criticalFloors(next, marks);
       // A tween in progress continues from what is on screen.
       const from = options.reducedMotion ? null : (content?.shown ?? null);
-      build(cityOf(next), from, true);
+      const city = cityOf(next);
+      const c = content;
+      if (c !== null && tween === null && sameLayout(c.city, city) && samePath(pathStops(c.city, previousSteps), pathStops(city, next.steps))) refresh(city);
+      else build(city, from, true);
     },
     select,
     hover: setHover,
@@ -643,6 +736,9 @@ export function createCityView(host: HTMLElement, report: Report, options: CityV
         geometries: renderer.info.memory.geometries,
         textures: renderer.info.memory.textures,
         builds: towerBuilds,
+        layouts,
+        programs: renderer.info.programs?.length ?? 0,
+        lastProgram,
       };
     },
     quality: () => stage.quality,
@@ -669,6 +765,7 @@ export function createCityView(host: HTMLElement, report: Report, options: CityV
     },
     tweening: () => tween !== null,
     tweenTrace: () => (trace === null ? null : { id: trace.id, heights: [...trace.heights] }),
+    updates: () => updates.map((update) => ({ ...update })),
     bench(ms) {
       return new Promise((resolve) => {
         const start = stage.frames;
@@ -687,8 +784,9 @@ export function createCityView(host: HTMLElement, report: Report, options: CityV
       clearTimeout(restTimer);
       scheme.removeEventListener('change', onScheme);
       document.removeEventListener('visibilitychange', onVisible);
-      content?.dispose();
+      if (content !== null) retired.push(content.detach());
       content = null;
+      release();
       scene.remove(sky);
       sky.dispose();
       scene.environment = null;

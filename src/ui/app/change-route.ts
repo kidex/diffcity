@@ -79,7 +79,10 @@ export function mountChangeRoute(element: HTMLElement, context: DataContext, cha
     reload();
   });
   let disposed = false;
-  let controller: AbortController | null = null;
+  /** Loads in flight, oldest first: at most two, the oldest and the newest. */
+  const controllers = new Set<AbortController>();
+  /** When the Report on show was fetched: an older one that answers later is dropped. */
+  let shownStart = Number.NEGATIVE_INFINITY;
   let screen: ChangeScreen | null = null;
   /** The Report to mount once the screen chunk arrives; undefined when nothing waits. */
   let waiting: { report: Report | null } | undefined;
@@ -150,11 +153,25 @@ export function mountChangeRoute(element: HTMLElement, context: DataContext, cha
     showReport(loaded.report, startedAt);
   }
 
+  /**
+   * Fetches the change and its Report and shows them. A new load aborts the
+   * loads in flight except the oldest: after a finding write the immediate
+   * refetch is often followed by SSE `findings` for the same write, and
+   * aborting it would push the visible update out to the second fetch
+   * (DC-110), while a burst of events never runs more than two fetches. Each
+   * answer is shown unless a Report fetched later is on screen already; a
+   * failure never hides an older answer that arrives after it.
+   */
   async function load(): Promise<void> {
     if (disposed) return;
-    controller?.abort();
+    let oldest = true;
+    for (const inFlight of controllers) {
+      if (!oldest) inFlight.abort();
+      oldest = false;
+    }
+    for (const inFlight of [...controllers]) if (inFlight.signal.aborted) controllers.delete(inFlight);
     const current = new AbortController();
-    controller = current;
+    controllers.add(current);
     const { signal } = current;
     // A Report fetched from here on is newer than any finding write answered before (the finding actions settle on it).
     const startedAt = performance.now();
@@ -167,8 +184,12 @@ export function mountChangeRoute(element: HTMLElement, context: DataContext, cha
       // Keep a change already on screen; the daemon indicator says why it is stale.
       if (repoId !== null) return;
       loaded = { error: error instanceof ApiRequestError && error.status === 404 ? 'missing' : 'unreachable' };
+    } finally {
+      controllers.delete(current);
     }
-    if (signal.aborted) return;
+    if (signal.aborted || startedAt < shownStart) return;
+    // Only a Report sets the bar: an error shown while nothing else is (repoId null) gives way to any answer after it.
+    if (!('error' in loaded)) shownStart = startedAt;
     show(loaded, startedAt);
   }
 
@@ -193,7 +214,8 @@ export function mountChangeRoute(element: HTMLElement, context: DataContext, cha
   return () => {
     disposed = true;
     for (const stop of stops) stop();
-    controller?.abort();
+    for (const controller of controllers) controller.abort();
+    controllers.clear();
     unmountScreen();
     element.replaceChildren();
   };

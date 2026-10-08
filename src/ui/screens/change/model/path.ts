@@ -26,6 +26,17 @@ export function pathStops(city: City, steps: readonly Step[]): PathStop[] {
   return stops;
 }
 
+/** Whether two lists of stops draw the same path: the same steps on the same buildings, in the same order. */
+export function samePath(a: readonly PathStop[], b: readonly PathStop[]): boolean {
+  return (
+    a.length === b.length &&
+    a.every((stop, i) => {
+      const other = b[i];
+      return other !== undefined && stop.order === other.order && stop.building.id === other.building.id && stop.nth === other.nth;
+    })
+  );
+}
+
 /** The buildings the tube passes through: the stops, with a building that follows itself counted once. */
 export function pathPoints(stops: readonly PathStop[]): CityBuilding[] {
   return stops.map((stop) => stop.building).filter((building, i, all) => i === 0 || all[i - 1] !== building);

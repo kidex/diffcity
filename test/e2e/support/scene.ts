@@ -15,6 +15,9 @@ export interface SceneStats {
   geometries: number;
   textures: number;
   builds: number;
+  layouts: number;
+  programs: number;
+  lastProgram: number;
 }
 
 export interface CameraState {
