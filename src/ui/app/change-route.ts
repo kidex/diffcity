@@ -79,7 +79,10 @@ export function mountChangeRoute(element: HTMLElement, context: DataContext, cha
     reload();
   });
   let disposed = false;
-  let controller: AbortController | null = null;
+  /** Loads in flight; a later one never aborts an earlier one. */
+  const controllers = new Set<AbortController>();
+  /** When the load on show began: an older one that answers later is dropped. */
+  let shownStart = Number.NEGATIVE_INFINITY;
   let screen: ChangeScreen | null = null;
   /** The Report to mount once the screen chunk arrives; undefined when nothing waits. */
   let waiting: { report: Report | null } | undefined;
@@ -150,11 +153,17 @@ export function mountChangeRoute(element: HTMLElement, context: DataContext, cha
     showReport(loaded.report, startedAt);
   }
 
+  /**
+   * Fetches the change and its Report and shows them. A load does not abort
+   * the one in flight: after a finding write the immediate refetch is often
+   * followed by SSE `findings` for the same write, and aborting would push the
+   * visible update out to the second fetch (DC-110). Each answer is shown
+   * unless a load that began later is on screen already.
+   */
   async function load(): Promise<void> {
     if (disposed) return;
-    controller?.abort();
     const current = new AbortController();
-    controller = current;
+    controllers.add(current);
     const { signal } = current;
     // A Report fetched from here on is newer than any finding write answered before (the finding actions settle on it).
     const startedAt = performance.now();
@@ -167,8 +176,11 @@ export function mountChangeRoute(element: HTMLElement, context: DataContext, cha
       // Keep a change already on screen; the daemon indicator says why it is stale.
       if (repoId !== null) return;
       loaded = { error: error instanceof ApiRequestError && error.status === 404 ? 'missing' : 'unreachable' };
+    } finally {
+      controllers.delete(current);
     }
-    if (signal.aborted) return;
+    if (signal.aborted || startedAt < shownStart) return;
+    shownStart = startedAt;
     show(loaded, startedAt);
   }
 
@@ -193,7 +205,8 @@ export function mountChangeRoute(element: HTMLElement, context: DataContext, cha
   return () => {
     disposed = true;
     for (const stop of stops) stop();
-    controller?.abort();
+    for (const controller of controllers) controller.abort();
+    controllers.clear();
     unmountScreen();
     element.replaceChildren();
   };

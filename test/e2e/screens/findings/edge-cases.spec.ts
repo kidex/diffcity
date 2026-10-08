@@ -1,7 +1,8 @@
 // e2e/findings/edge-cases (DC-108, ADR-036): the finding actions under the
 // timings and inputs a reviewer can produce: double clicks, a click while the
 // refetch after a write is still in flight, SSE `findings` arriving before the
-// write's answer, two findings acted on in quick succession, a key holding
+// write's answer, SSE `findings` while the refetch after a write is still in
+// flight (it must not abort it), two findings acted on in quick succession, a key holding
 // `:` and `/`, a daemon that goes away after a write and comes back, the 409
 // `archived` refusal on Undo, and keyboard-only use with the names a screen
 // reader reads.
@@ -155,6 +156,37 @@ test('findings/edge-cases/sse-before-write-answer', async ({ page }, testInfo) =
   await undoButton(card).click();
   await expect(card).toHaveAttribute('data-state', 'open');
   await expect.poll(() => pinsOn(page, SERVICE)).toContain('high');
+});
+
+test('findings/edge-cases/sse-after-write-does-not-abort-refetch', async ({ page }, testInfo) => {
+  const { api } = await openFindings(page, { wait: false });
+  await tagClient(page, testInfo.testId);
+  await page.goto('/?scene-debug#/change/11');
+  await page.waitForFunction('window.diffcityScene !== undefined && window.diffcityScene.ready === true');
+  await expect(page.getByTestId('daemon')).toHaveAttribute('data-state', 'connected');
+  await page.getByTestId('tab-findings').click();
+  const card = tabCard(page, HIGH);
+  const aborted: string[] = [];
+  page.on('requestfailed', (request) => {
+    if (new URL(request.url()).pathname === REPORT) aborted.push(request.failure()?.errorText ?? 'failed');
+  });
+  const reports = await holdReports(page);
+
+  // The refetch after the write is slow (a large Report); SSE `findings` for the same write starts a second one meanwhile.
+  reports.hold();
+  const reads = api.count(REPORT);
+  await intendButton(card).click();
+  await expect.poll(() => reports.held()).toBe(1);
+  expect(await emitSse(page, testInfo.testId, 'findings', { repoId: 1, changeId: 11 })).toBeGreaterThan(0);
+  await expect.poll(() => reports.held()).toBe(2);
+
+  // The first fetch was not aborted by the second: both answer, and the card shows the write.
+  reports.release();
+  await expect(card).toHaveAttribute('data-state', 'intended');
+  await expect.poll(() => api.count(REPORT)).toBe(reads + 2);
+  await expect.poll(() => pinsOn(page, SERVICE)).not.toContain('high');
+  expect(aborted).toEqual([]);
+  await expect(undoButton(card)).toBeEnabled();
 });
 
 test('findings/edge-cases/two-findings-in-quick-succession', async ({ page }) => {
