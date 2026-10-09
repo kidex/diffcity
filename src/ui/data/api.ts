@@ -3,6 +3,7 @@
 // imports this module: it renders from a Report alone (ADR-002).
 
 import type {
+  AgentRunsResponse,
   ApiError,
   ChangeSummary,
   FileDiff,
@@ -67,6 +68,41 @@ export interface ApprovalAnswer {
   approvedAt: string | null;
 }
 
+/** One reason the daemon will not run the agent now (ADR-029): its code and the message to show. */
+export interface AgentRefusalView {
+  code: string;
+  message: string;
+}
+
+/** `POST /api/changes/:id/agent/preview` (ADR-029): exactly what would run, and why it cannot when it cannot. */
+export interface AgentPreview {
+  mode: 'resume' | 'new' | null;
+  /** The argv as it would run, the resolved claude binary first; null when it cannot be built. */
+  argv: string[] | null;
+  /** The working tree the agent runs in; null when there is none. */
+  cwd: string | null;
+  sessionId: string | null;
+  /** The session it resumes, as the dialog shows it; null for a new session. */
+  session: { sessionId: string; title: string | null; firstAt: string | null; lastAt: string | null } | null;
+  /** Why a new session: `no-session-linked`, `session-other-directory`, `session-id-unsupported`, `transcript-gone`. */
+  newSessionReason: string | null;
+  /** `acceptEdits`, `plan`, or null for the project's own Claude Code permission settings. */
+  permissionMode: string | null;
+  timeoutMinutes: number;
+  summary: string;
+  summaryHash: string;
+  refusals: AgentRefusalView[];
+  /** The confirmation token; null while anything is refused. */
+  token: string | null;
+}
+
+/** `POST /api/changes/:id/review/summary/queue` (ADR-029): `queued` is false when the same summary was already queued. */
+export interface SummaryQueueAnswer {
+  key: string;
+  queued: boolean;
+  count: number;
+}
+
 export interface Api {
   health(signal?: AbortSignal): Promise<HealthResponse>;
   repos(signal?: AbortSignal): Promise<RepoSummary[]>;
@@ -114,6 +150,17 @@ export interface Api {
    * refuses a cross-site request. Rejects with ApiRequestError: 404 `not-found`, 403.
    */
   sessions(changeId: number, signal?: AbortSignal): Promise<SessionsResponse>;
+  /** What "Send review to agent" would run (ADR-029). Rejects with ApiRequestError: 409 `no-snapshot`, 404 `not-found`, 403 `cross-site`. */
+  agentPreview(changeId: number): Promise<AgentPreview>;
+  /**
+   * Runs the previewed agent: 202 `{ runId }`. Rejects with ApiRequestError 409 and the refusal code
+   * (`token-invalid`, `summary-changed`, `run-in-progress`, `agent-launch-disabled`, ...), 403 `cross-site`.
+   */
+  agentRun(changeId: number, token: string, summaryHash: string): Promise<{ runId: string }>;
+  /** The agent run in progress or the latest one (ADR-029). Rejects with ApiRequestError: 404 `not-found`, 403 `forbidden`. */
+  agentRuns(changeId: number, signal?: AbortSignal): Promise<AgentRunsResponse>;
+  /** Puts the previewed summary in the fix queue as one item; nothing runs. Rejects with 409 `summary-changed`, `nothing-to-send`, `archived`, `fix-queue-*`. */
+  queueSummary(changeId: number, summaryHash: string): Promise<SummaryQueueAnswer>;
 }
 
 function isApiError(body: unknown): body is ApiError {
@@ -220,5 +267,15 @@ export function createApi(base = '', fetchImpl: typeof fetch = (...args) => fetc
       return (await (await write('DELETE', `/changes/${String(changeId)}/approve`)).json()) as ApprovalAnswer;
     },
     sessions: (changeId, signal) => get<SessionsResponse>(`/changes/${String(changeId)}/sessions`, signal),
+    async agentPreview(changeId) {
+      return (await (await write('POST', `/changes/${String(changeId)}/agent/preview`)).json()) as AgentPreview;
+    },
+    async agentRun(changeId, token, summaryHash) {
+      return (await (await write('POST', `/changes/${String(changeId)}/agent/run`, { token, summaryHash })).json()) as { runId: string };
+    },
+    agentRuns: (changeId, signal) => get<AgentRunsResponse>(`/changes/${String(changeId)}/agent/runs`, signal),
+    async queueSummary(changeId, summaryHash) {
+      return (await (await write('POST', `${reviewPath(changeId)}/summary/queue`, { summaryHash })).json()) as SummaryQueueAnswer;
+    },
   };
 }
