@@ -19,15 +19,27 @@ import type { SessionDigest } from './types.js';
 /** Errors of an open that mean "nothing to read here": missing, or a link refused by O_NOFOLLOW. */
 const NOT_READABLE = new Set(['ENOENT', 'ELOOP', 'EMLINK', 'ENOTDIR']);
 
+/** Opens read-only, never through a link, and never waiting: a FIFO opens at once (and fails isFile below) instead of blocking a thread. */
+const OPEN_FLAGS = constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK;
+
 /**
  * The bytes of `path` from `offset` up to the read limit; null when the file
- * does not exist, is a symbolic link (never followed) or is not a regular file.
+ * does not exist, is a symbolic link (never followed) or is not a regular file
+ * (a FIFO, a socket, a device, a directory). The file is checked with lstat
+ * before the open and with fstat after it, so a file swapped in between is
+ * still refused.
  */
 export async function readTranscriptChunk(path: string, offset: number, limits: Pick<SessionLimits, 'transcriptBytes'> = SESSION_LIMITS): Promise<TranscriptChunk | null> {
+  try {
+    if (!(await lstat(path)).isFile()) return null;
+  } catch (error) {
+    if (NOT_READABLE.has((error as NodeJS.ErrnoException).code ?? '')) return null;
+    throw error;
+  }
   let handle;
   try {
     // O_NOFOLLOW: a link at the last component fails the open instead of being followed.
-    handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
+    handle = await open(path, OPEN_FLAGS);
   } catch (error) {
     if (NOT_READABLE.has((error as NodeJS.ErrnoException).code ?? '')) return null;
     throw error;
@@ -40,6 +52,7 @@ export async function readTranscriptChunk(path: string, offset: number, limits: 
     const bytes = Buffer.alloc(length);
     let read = 0;
     while (read < length) {
+      // A regular file never answers EAGAIN, O_NONBLOCK or not.
       const { bytesRead } = await handle.read(bytes, read, length - read, offset + read);
       if (bytesRead === 0) break;
       read += bytesRead;
