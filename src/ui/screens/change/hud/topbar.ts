@@ -1,8 +1,9 @@
 // The change screen's top bar (mockup .top, minus the brand and search that
 // the SPA shell owns): counters of files and symbols by status, the "need
 // your eyes" badge, the rule-check chips, change-level findings, the Export
-// PlantUML button, which arrives in a later version, and, with an
-// ApprovalPort, Approve (hud/approve.ts).
+// PlantUML button, which arrives in a later version, with an ApprovalPort,
+// Approve (hud/approve.ts), and with an AgentPort the agent run status
+// (hud/agent-run.ts).
 // With `crumb` the bar also carries the mockup's breadcrumb (repo, branch
 // against base, commits and time) for a screen mounted without the SPA shell;
 // inside the SPA the shell already shows it and `crumb` is off.
@@ -58,6 +59,8 @@ function disabledButton(label: string, primary: boolean, testId: string): HTMLEl
 /** Nodes the ports add to the bar: with a ReviewPort the progress and the summary button, with an ApprovalPort Approve. */
 export interface BarExtras {
   progress?: HTMLElement | undefined;
+  /** With an AgentPort: the agent run status (ADR-029). */
+  agent?: HTMLElement | undefined;
   summary?: HTMLElement | undefined;
   approve?: HTMLElement | undefined;
 }
@@ -86,6 +89,7 @@ export function renderTopBar(bar: HTMLElement, report: Report, withCrumb: boolea
       eyes === 0 ? 'No files need your eyes before merge' : `${String(eyes)} ${eyes === 1 ? 'file needs' : 'files need'} your eyes before merge`,
     ),
     extras.progress,
+    extras.agent,
     level === null
       ? null
       : h(

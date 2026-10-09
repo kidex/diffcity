@@ -14,6 +14,8 @@ import type { MarkBar } from './controls.js';
 import { createMarkBar } from './controls.js';
 import type { Dialog } from './dialog.js';
 import { openRewriteDialog } from './rewrite.js';
+import type { AgentPort } from '../ports.js';
+import { openSendDialog } from './send.js';
 import type { SummaryDialog } from './summary.js';
 import { openSummaryDialog } from './summary.js';
 
@@ -24,6 +26,8 @@ export interface ReviewUiOptions {
   selection(): { fileId: string; symbolId: string | null } | null;
   /** The line range selected in the open file's diff. */
   range(): { fileId: string; range: LineRange } | null;
+  /** "Send review to agent" (ADR-029): without it the summary has no Send action. `onSent` runs once the daemon accepted a run. */
+  agent?: { port: AgentPort; onSent(runId: string): void } | undefined;
 }
 
 export interface ReviewUi {
@@ -53,6 +57,7 @@ export function createReviewUi(options: ReviewUiOptions): ReviewUi {
   let whole: { fileId: string; symbolId: string | null } | null = null;
   let rewrite: Dialog | null = null;
   let summary: SummaryDialog | null = null;
+  let send: Dialog | null = null;
 
   const targetOf = (fileId: string, symbolId: string | null): TargetInfo | null => {
     const report = options.report();
@@ -172,12 +177,35 @@ export function createReviewUi(options: ReviewUiOptions): ReviewUi {
     },
     openSummary(trigger) {
       if (summary !== null || rewrite !== null) return;
-      summary = openSummaryDialog(controller, trigger ?? document.activeElement, () => {
-        summary = null;
-      });
+      const agent = options.agent;
+      summary = openSummaryDialog(
+        controller,
+        trigger ?? document.activeElement,
+        () => {
+          summary = null;
+        },
+        agent === undefined
+          ? undefined
+          : (opener) => {
+              if (send !== null) return;
+              send = openSendDialog({
+                port: agent.port,
+                returnFocus: opener,
+                onSent: (runId) => {
+                  agent.onSent(runId);
+                  // The run status in the top bar takes over: both dialogs go, focus back to the summary button.
+                  queueMicrotask(() => summary?.dialog.close());
+                },
+                onClose: () => {
+                  send = null;
+                },
+              });
+            },
+      );
     },
     dispose() {
       keys.abort();
+      send?.close();
       rewrite?.close();
       summary?.dialog.close();
       slots.clear();
