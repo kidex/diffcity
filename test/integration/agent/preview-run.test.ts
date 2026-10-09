@@ -184,6 +184,35 @@ describe('agent preview and run', () => {
     expect(await stubs.records()).toEqual([]);
   });
 
+  it('a claude binary changed between preview and run is refused', async () => {
+    const change = seedChange(test);
+    await test.settings(enabled(test, stubs));
+    const shown = await preview(test, change.id);
+    const other = join(test.scratch, 'other-bin', 'claude');
+    await mkdir(join(test.scratch, 'other-bin'));
+    await writeFile(other, '#!/bin/sh\nexit 0\n');
+    await chmod(other, 0o755);
+    await test.settings(enabled(test, stubs, { claudePath: other }));
+    const answer = await run(test, change.id, { token: shown.token, summaryHash: shown.summaryHash });
+    expect(answer.status).toBe(409);
+    expect(answer.json()).toMatchObject({ error: { code: 'token-invalid' } });
+    expect(await stubs.records()).toEqual([]);
+    expect(agentRunEvents(test)).toEqual([]);
+  });
+
+  it('a session linked between preview and run changes the argv: the token is refused', async () => {
+    const change = seedChange(test);
+    await test.settings(enabled(test, stubs));
+    const shown = await preview(test, change.id);
+    expect(shown.mode).toBe('new');
+    await linkSession(test, change);
+    expect((await preview(test, change.id)).argv).toContain(SESSION);
+    const answer = await run(test, change.id, { token: shown.token, summaryHash: shown.summaryHash });
+    expect(answer.status).toBe(409);
+    expect(answer.json()).toMatchObject({ error: { code: 'token-invalid' } });
+    expect(await stubs.records()).toEqual([]);
+  });
+
   it('agent/claude-in-repo-refused: a claude inside a registered repo never runs', async () => {
     const change = seedChange(test);
     const shim = join(test.repoDir, 'node_modules', '.bin', 'claude');
