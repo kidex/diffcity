@@ -14,12 +14,22 @@
 // the change has no working tree, no run is `here` and none is left out.
 // The session itself is `here` when it ran in the change's working tree; the
 // main agent's activity is shown only then. A kept run whose parent was left
-// out gets `parentAgentId: null`. A failed re-read keeps the last good digest
-// (`stale`); a session with no good digest after a failure is `unreadable`.
+// out gets `parentAgentId: null`. A transient read failure keeps the last good
+// digest (`stale`); a validation refusal, or a failure with no good digest,
+// is `unreadable` with no digest.
 
 import type { SessionDigestView, SessionRunView, SessionView } from '../model/types.js';
 import { isInside } from './validate.js';
 import { DIGEST_FORMAT, type SessionDigest } from './types.js';
+
+/**
+ * Read failures after which the last good digest is still served, `stale`: a
+ * read that failed or timed out, and a transcript Claude Code cleaned up (its
+ * history stays). Every other code is a validation refusal (a link, a path
+ * outside the projects directory, a wrong name, not a regular file): the
+ * session is `unreadable` and no digest is served.
+ */
+export const TRANSIENT_ERRORS: ReadonlySet<string> = new Set(['read-failed', 'transcript-missing']);
 
 /** Sessions per change served by the API, newest first. */
 export const SESSIONS_PER_CHANGE = 20;
@@ -110,8 +120,10 @@ function digestView(digest: SessionDigest, sessionHere: boolean, sessionTree: st
 export function sessionView(row: SessionRow, context: SessionViewContext): SessionView {
   const sessionTree = treeContaining(context.trees, row.cwd);
   const here = context.changeTree !== null && sessionTree === context.changeTree;
-  const digest = parseDigest(row.digest);
   const failed = row.parseError !== null;
+  // A refusal means the file must not be trusted any more: its last digest is not served either.
+  const refused = row.parseError !== null && !TRANSIENT_ERRORS.has(row.parseError);
+  const digest = refused ? null : parseDigest(row.digest);
   return {
     sessionId: row.sessionId,
     title: row.title,
@@ -119,7 +131,7 @@ export function sessionView(row: SessionRow, context: SessionViewContext): Sessi
     lastAt: row.lastAt,
     here,
     active: digest?.state.ended !== true,
-    unreadable: digest === null && (failed || row.digest !== null),
+    unreadable: refused || (digest === null && (failed || row.digest !== null)),
     stale: digest !== null && failed,
     firstHead: row.firstHead,
     lastHead: row.lastHead,

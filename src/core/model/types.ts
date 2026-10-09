@@ -382,9 +382,14 @@ export interface SessionView {
   here: boolean;
   /** False once Claude Code reported the session ended (`SessionEnd`); true while it may go on. */
   active: boolean;
-  /** No digest could ever be read: shown as "Session data could not be read", without content; `digest` is null. */
+  /**
+   * Shown as "Session data could not be read", without content; `digest` is
+   * null. The transcript was refused on validation (a link, outside the
+   * projects directory, a wrong name, not a regular file), or no digest could
+   * ever be read.
+   */
   unreadable: boolean;
-  /** The last read failed; `digest` is the last good one. */
+  /** The last read failed for a transient reason (a failed or timed-out read, a removed transcript); `digest` is the last good one. */
   stale: boolean;
   /** The change's head when the session was first and last linked to it. */
   firstHead: string | null;

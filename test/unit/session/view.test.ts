@@ -112,6 +112,24 @@ describe('session view', () => {
     expect(sessionView(row(null), { changeTree: MAIN, trees: [MAIN] }).active).toBe(true);
   });
 
+  it('transient failures (read-failed, transcript-missing) keep the last good digest as stale', () => {
+    for (const code of ['read-failed', 'transcript-missing']) {
+      const view = sessionView(row(sample(), { parseError: code }), { changeTree: MAIN, trees: [MAIN] });
+      expect(view, code).toMatchObject({ stale: true, unreadable: false });
+      expect(view.digest?.prompts.map((prompt) => prompt.text)).toEqual(['Split']);
+    }
+  });
+
+  it('a validation refusal is unreadable with no digest, even with a good one stored', () => {
+    for (const code of ['symlink', 'outside-projects', 'basename-mismatch', 'not-a-file', 'no-projects-dir', 'bad-transcript-path']) {
+      const view = sessionView(row(sample(), { parseError: code }), { changeTree: MAIN, trees: [MAIN] });
+      expect(view, code).toMatchObject({ unreadable: true, stale: false, digest: null });
+      expect(JSON.stringify(view)).not.toContain('Split');
+      expect(JSON.stringify(view)).not.toContain(code);
+    }
+    expect(sessionView(row(null, { parseError: 'symlink' }), { changeTree: MAIN, trees: [MAIN] })).toMatchObject({ unreadable: true, stale: false, digest: null });
+  });
+
   it('a failed re-read keeps the last good digest as stale; with no good digest it is unreadable, with no content', () => {
     const stale = sessionView(row(sample(), { parseError: 'read-failed' }), { changeTree: MAIN, trees: [MAIN] });
     expect(stale).toMatchObject({ stale: true, unreadable: false });
