@@ -1,10 +1,12 @@
 // The hardened tool runner (ADR-032), against stub binaries on a temporary
 // PATH. Nothing here reaches a real tool or the network.
 
+import { execFile } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { chmod, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises';
 import { devNull, tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { GH_PROFILE, createLimiter, runTool, toolArgs, type Limiter, type ToolContext, type ToolOutcome } from '../../../src/core/exec/index.js';
 import { readToolSetting } from '../../../src/core/settings/index.js';
@@ -274,5 +276,35 @@ describe('tool runner', () => {
     const grandchild = Number((await readFile(join(stubs.dir, 'grandchild'), 'utf8')).trim());
     expect(grandchild).toBeGreaterThan(0);
     expect(await eventually(() => !alive(grandchild) && !alive(record?.pid ?? 0), 10_000)).toBe(true);
+  });
+
+  it('tool/timeout-kills-group: a caller that would exit right after the timeout still kills the group first', async () => {
+    await stubs.mode('orphan-ignore-term');
+    // A separate node process plays a CLI: it runs one gh call through the built runner and then has nothing left
+    // to do. Only the runner's own SIGKILL timer may keep it alive until the group is gone.
+    const runner = fileURLToPath(new URL('../../../dist/core/exec/index.js', import.meta.url));
+    const script = [
+      `const { GH_PROFILE, createLimiter, runTool, toolArgs } = await import(${JSON.stringify(runner)});`,
+      `const outcome = await runTool(GH_PROFILE, toolArgs(GH_PROFILE, ['pr', 'list']), { cwd: ${JSON.stringify(repo)}, timeoutMs: 3000, parse: (j) => j },`,
+      `  { env: { PATH: ${JSON.stringify(`${stubs.bin}:${SYSTEM_PATH}`)}, HOME: ${JSON.stringify(scratch)} }, limiter: createLimiter(), killGraceMs: 1000 });`,
+      'console.log(outcome.kind);',
+    ].join('\n');
+    const printed = await new Promise<string>((resolve, reject) => {
+      execFile(process.execPath, ['--input-type=module', '-e', script], { timeout: 60_000 }, (error, stdout) => {
+        if (error === null) resolve(stdout.trim());
+        else reject(new Error("the caller process failed", { cause: error }));
+      });
+    });
+    expect(printed).toBe('timeout');
+    const [record] = await stubs.records();
+    expect(record, 'the stub never started within the timeout (a stalled exec?); rerun this file alone').toBeDefined();
+    const grandchild = Number((await readFile(join(stubs.dir, 'grandchild'), 'utf8')).trim());
+    expect(grandchild).toBeGreaterThan(0);
+    try {
+      // Reaping by launchd may take a moment; an orphan would live for its full 600 s.
+      expect(await eventually(() => !alive(grandchild), 3000)).toBe(true);
+    } finally {
+      if (alive(grandchild)) process.kill(grandchild, 'SIGKILL');
+    }
   });
 });

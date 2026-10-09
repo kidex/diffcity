@@ -32,9 +32,10 @@ export interface ToolStubs {
    * - `fail`: prints the `stderr` file to stderr and exits with the `code` file (1 by default);
    * - `sleep`: starts a background `sleep` (its pid in `grandchild`) and waits;
    * - `sleep-ignore-term`: the same with SIGTERM ignored by both;
+   * - `orphan-ignore-term`: dies on SIGTERM, leaving a group member that ignores it and holds no pipe;
    * - `flood-stdout` / `flood-stderr`: writes past the runner's caps.
    */
-  mode(mode: 'json' | 'fail' | 'sleep' | 'sleep-ignore-term' | 'flood-stdout' | 'flood-stderr', files?: { stdout?: string; stderr?: string; code?: number }): Promise<void>;
+  mode(mode: 'json' | 'fail' | 'sleep' | 'sleep-ignore-term' | 'orphan-ignore-term' | 'flood-stdout' | 'flood-stderr', files?: { stdout?: string; stderr?: string; code?: number }): Promise<void>;
   /** Every call recorded so far, oldest first. */
   records(): Promise<StubRecord[]>;
   /** Forgets the recorded calls. */
@@ -65,6 +66,8 @@ function body(dir: string): string {
     `  fail) if [ -s ${q('stderr')} ]; then while IFS= read -r line; do printf '%s\\n' "$line" >&2; done < ${q('stderr')}; fi; read -r code < ${q('code')}; exit "$code" ;;`,
     `  sleep) sleep 600 & echo $! > ${q('grandchild')}; wait ;;`,
     `  sleep-ignore-term) trap '' TERM; sleep 600 & echo $! > ${q('grandchild')}; wait; wait ;;`,
+    // The tool dies on SIGTERM; a member of its group ignores it and holds none of its pipes.
+    `  orphan-ignore-term) ( trap '' TERM; sleep 600 & echo $! > ${q('grandchild')}; wait ) > /dev/null 2>&1 < /dev/null & wait ;;`,
     '  flood-stdout) head -c 17000000 /dev/zero ;;',
     '  flood-stderr) head -c 70000 /dev/zero >&2 ;;',
     `  *) if [ -s ${q('stdout')} ]; then while IFS= read -r line || [ -n "$line" ]; do printf '%s\\n' "$line"; done < ${q('stdout')}; fi ;;`,
