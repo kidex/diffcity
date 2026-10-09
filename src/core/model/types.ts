@@ -446,6 +446,28 @@ export type SseEvent =
  */
 export type AgentRunState = 'running' | 'done' | 'failed' | 'timeout' | 'stopped';
 
+/** The latest agent run of a change, as GET /api/changes/:id/agent/runs serves it: never the summary. */
+export interface AgentRunView {
+  runId: string;
+  state: AgentRunState;
+  mode: 'resume' | 'new';
+  startedAt: string;
+  /** Null while running. */
+  durationMs: number | null;
+  /** Null while running, or when claude did not exit by itself. */
+  exitCode: number | null;
+  /** The run log's file name in `<home>/runs`; null while unknown. */
+  log: string | null;
+  message: string | null;
+}
+
+/** GET /api/changes/:id/agent/runs (ADR-029). */
+export interface AgentRunsResponse {
+  running: boolean;
+  /** The run in progress, else the latest recorded one; null when the change never had one. */
+  latest: AgentRunView | null;
+}
+
 export type SseEventName = SseEvent['event'];
 
 /** The SSE event with the given name. */

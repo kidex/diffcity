@@ -6,6 +6,8 @@ import { lstat, readFile, readdir, realpath, utimes, writeFile, mkdir } from 'no
 import { join } from 'node:path';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { openDb } from '../../../src/core/db/index.js';
+import { CLAUDE_PROFILE } from '../../../src/core/exec/index.js';
+import { SHUTDOWN_TIMEOUT_MS } from '../../../src/daemon/daemon.js';
 import { sendRequest } from '../../../src/daemon/client.js';
 import { waitFor } from '../../helpers/daemon.js';
 import { alive, createToolStubs, eventually, type ToolStubs } from '../../helpers/tool-stub.js';
@@ -188,6 +190,33 @@ describe('agent runs', () => {
     expect(agentRunEvents(daemon).map((event) => event.payload['state'])).toEqual(['stopped', 'stopped']);
   }, 60_000);
 
+  it('agent/runs-route: the run in progress, then the latest recorded run; never the summary; same-origin only, no-store', async () => {
+    await stubs.mode('sleep');
+    const daemon = await started();
+    const change = seedChange(daemon);
+    await daemon.settings(enabled(daemon, stubs));
+    const url = `http://127.0.0.1:${String(daemon.port)}/api/changes/${String(change.id)}/agent/runs`;
+    const get = async (headers: Record<string, string> = {}): Promise<{ status: number; cache: string | null; body: Record<string, unknown> }> => {
+      const response = await fetch(url, { headers });
+      return { status: response.status, cache: response.headers.get('cache-control'), body: (await response.json()) as Record<string, unknown> };
+    };
+
+    expect(await get()).toEqual({ status: 200, cache: 'no-store', body: { running: false, latest: null } });
+    const runId = await launch(daemon, change.id);
+    const during = await get();
+    expect(during.body).toMatchObject({ running: true, latest: { runId, state: 'running', mode: 'new', durationMs: null, exitCode: null, log: `${String(change.id)}-${runId}.log` } });
+
+    await daemon.agent.runs().stopAll();
+    const after = await get();
+    expect(after.body).toMatchObject({ running: false, latest: { runId, state: 'stopped', mode: 'new', exitCode: null, log: `${String(change.id)}-${runId}.log` } });
+    expect(Object.keys(after.body['latest'] as object).sort()).toEqual(['durationMs', 'exitCode', 'log', 'message', 'mode', 'runId', 'startedAt', 'state']);
+    expect(JSON.stringify(after.body)).not.toContain(REWRITE_NOTE);
+
+    for (const headers of [{ origin: 'http://evil.invalid' }, { 'sec-fetch-site': 'cross-site' }, { referer: 'http://evil.invalid/page' }]) {
+      expect((await get(headers)).status).toBe(403);
+    }
+  }, 60_000);
+
   it('agent/timeout-kills-group: at timeoutMinutes the whole group gets SIGTERM, then SIGKILL', async () => {
     await stubs.mode('sleep-ignore-term');
     const daemon = await started({ minuteMs: 5000 });
@@ -203,9 +232,11 @@ describe('agent runs', () => {
     expect(states()).toEqual(['running', 'timeout']);
   }, 60_000);
 
-  it('agent/stop-terminates-runs: the shutdown request (diffcity stop) stops running agents and records them', async () => {
+  it('agent/stop-terminates-runs: the shutdown request (diffcity stop) SIGKILLs an agent that ignores SIGTERM after the real 10 s grace and records it before the shutdown deadline', async () => {
     await stubs.mode('sleep-ignore-term');
-    const daemon = await started();
+    // The production grace: the run must be recorded within SHUTDOWN_TIMEOUT_MS, without a forced shutdown.
+    const daemon = await started({ killGraceMs: CLAUDE_PROFILE.killGraceMs ?? 10_000 });
+    expect(SHUTDOWN_TIMEOUT_MS).toBeGreaterThanOrEqual((CLAUDE_PROFILE.killGraceMs ?? 0) + 5000);
     const change = seedChange(daemon);
     await daemon.settings(enabled(daemon, stubs));
     const runId = await launch(daemon, change.id);

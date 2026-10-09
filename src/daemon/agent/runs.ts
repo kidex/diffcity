@@ -77,14 +77,26 @@ export interface AgentRuns {
   killAllNow(): void;
   /** Removes run logs older than AGENT_LOG_RETENTION_MS; returns how many. */
   purge(): Promise<number>;
+  /** The run in progress for the change, or null. */
+  current(changeId: number): CurrentRun | null;
   /** Runs in progress. */
   readonly active: number;
   /** Settles once every run started so far has been recorded. */
   idle(): Promise<void>;
 }
 
+/** A run in progress, as GET /api/changes/:id/agent/runs shows it. */
+export interface CurrentRun {
+  runId: string;
+  mode: AgentMode;
+  startedAt: string;
+}
+
 interface Running {
   changeId: number;
+  runId: string;
+  mode: AgentMode;
+  startedAt: string;
   controller: AbortController;
   pid: number | null;
   done: Promise<void>;
@@ -131,7 +143,7 @@ export function createAgentRuns(deps: AgentRunsDeps): AgentRuns {
   };
 
   const execute = async (input: AgentRunInput, runId: string, entry: Running): Promise<void> => {
-    const startedAt = deps.now().toISOString();
+    const { startedAt } = entry;
     const name = `${String(input.changeId)}-${runId}.log`;
     let state: AgentRunState = 'failed';
     let exitCode: number | null = null;
@@ -244,11 +256,25 @@ export function createAgentRuns(deps: AgentRunsDeps): AgentRuns {
   return {
     busy,
     purge,
+    current(changeId) {
+      for (const run of running.values()) {
+        if (run.changeId === changeId) return { runId: run.runId, mode: run.mode, startedAt: run.startedAt };
+      }
+      return null;
+    },
     start(input) {
       const blocked = busy(input.changeId);
       if (blocked !== null) throw new Error(blocked === 'change' ? 'an agent is already running for this change' : 'two agents are already running');
       const runId = randomBytes(8).toString('hex');
-      const entry: Running = { changeId: input.changeId, controller: new AbortController(), pid: null, done: Promise.resolve() };
+      const entry: Running = {
+        changeId: input.changeId,
+        runId,
+        mode: input.mode,
+        startedAt: deps.now().toISOString(),
+        controller: new AbortController(),
+        pid: null,
+        done: Promise.resolve(),
+      };
       running.set(runId, entry);
       entry.done = execute(input, runId, entry).finally(() => {
         running.delete(runId);

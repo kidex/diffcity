@@ -8,6 +8,9 @@
 //        `token` is null while anything is refused.
 //   POST /api/changes/:id/agent/run { token, summaryHash }
 //     -> 202 { runId }, or 409 with the refusal code
+//   GET  /api/changes/:id/agent/runs
+//     -> 200 { running, latest }: the run in progress or the latest recorded one,
+//        for a dialog opened after a reload; cross-site 403, no-store.
 //   POST /api/changes/:id/review/summary/queue { summaryHash }
 //     -> 200 { key, queued, count }: the summary as one fix-queue item; nothing runs.
 //
@@ -18,7 +21,7 @@ import type { FastifyInstance } from 'fastify';
 import type { AgentRefusal, AgentRefusalCode } from '../../core/agent/index.js';
 import type { Db } from '../../core/db/index.js';
 import { appendToFixQueue, fixQueueRoot, type SummaryQueueItem } from '../../core/fix-queue/index.js';
-import type { ChangeRecord } from '../../core/model/types.js';
+import type { AgentRunState, AgentRunView, AgentRunsResponse, ChangeRecord, EventRecord } from '../../core/model/types.js';
 import { createConfirmedActions, type ConfirmOptions } from '../actions/confirm.js';
 import { isSameOrigin } from '../api/origin.js';
 import { parseId } from '../api/params.js';
@@ -65,6 +68,31 @@ interface IdParams {
 const HASH = /^[0-9a-f]{64}$/;
 
 const refused = (code: AgentRefusalCode, message: string): HttpError => new HttpError(409, code, message);
+
+const STATES: readonly AgentRunState[] = ['running', 'done', 'failed', 'timeout', 'stopped'];
+
+/** The view of a recorded agent-run event; null when its payload is not one diffcity wrote. */
+function viewOf(event: EventRecord): AgentRunView | null {
+  const p = event.payload;
+  if (typeof p !== 'object' || p === null || Array.isArray(p)) return null;
+  const f = p as Record<string, unknown>;
+  const state = f['state'];
+  const mode = f['mode'];
+  const runId = f['runId'];
+  if (typeof runId !== 'string' || !STATES.includes(state as AgentRunState) || (mode !== 'resume' && mode !== 'new')) return null;
+  const num = (value: unknown): number | null => (typeof value === 'number' && Number.isFinite(value) ? value : null);
+  const str = (value: unknown): string | null => (typeof value === 'string' ? value : null);
+  return {
+    runId,
+    state: state as AgentRunState,
+    mode,
+    startedAt: str(f['startedAt']) ?? event.at,
+    durationMs: num(f['durationMs']),
+    exitCode: num(f['exitCode']),
+    log: str(f['log']),
+    message: str(f['message']),
+  };
+}
 
 const sameArgv = (a: readonly string[], b: readonly string[]): boolean => a.length === b.length && a.every((value, i) => value === b[i]);
 
@@ -154,6 +182,19 @@ export function registerAgentRoutes(http: FastifyInstance, deps: AgentRoutesDeps
       toolContext: plan.toolContext,
     });
     return reply.status(202).send({ runId });
+  });
+
+  http.get<{ Params: IdParams }>('/api/changes/:id/agent/runs', (request, reply): AgentRunsResponse => {
+    reply.header('cache-control', 'no-store');
+    if (!isSameOrigin(request, deps.port())) throw new HttpError(403, 'forbidden', 'agent runs are for the daemon page only');
+    const change = changeOf(request.params.id);
+    const current = deps.runs.current(change.id);
+    if (current !== null) {
+      const log = `${String(change.id)}-${current.runId}.log`;
+      return { running: true, latest: { ...current, state: 'running', durationMs: null, exitCode: null, log, message: null } };
+    }
+    const event = db.events.latest(change.id, 'agent-run');
+    return { running: false, latest: event === null ? null : viewOf(event) };
   });
 
   // The fallback channel (ADR-029): the summary as one fix-queue item for /diffcity-review; nothing is executed.
