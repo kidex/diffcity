@@ -1,6 +1,6 @@
 {
   "meta": {
-    "repo": "shopfront",
+    "repo": "shopfront-cancel",
     "base": "main",
     "head": "feature/cancel-order",
     "commits": 3,

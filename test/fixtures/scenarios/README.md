@@ -7,7 +7,7 @@ Each directory here is one realistic change in an invented repo. `test/integrati
 | `order-discounts` | `shopfront` | the change in `design/mockup.html`: `sig` on a tier 1 guard, a new SQL migration, a new file, a deleted function, a new test, untouched files in touched packages, a whole untouched package |
 | `session-refresh` | `ledger` | working-tree mode (staged, unstaged, untracked), tier 1 on `session`, a renamed and modified file, a deleted file, a reformat-only file (`same`), a JS file, a modified `Dockerfile` |
 | `report-cli-command` | `acme-cli` | a new command in TS and TSX, a `master` base with no `main` that moved on after the fork, `tier1` overridden in `diffcity.config.js`, import-only changes, overloads, `export { }` |
-| `spec-scope` | `shopfront` | spec scope (SPEC.md 5.5): a `.diffcity/spec.md` added on the branch names a route string; the route's registration, its handler and the handler's callee are in the spec, one unrelated file is outside it (`spec` verdict), the touched spec file is in it |
+| `spec-scope` | `shopfront-cancel` | spec scope (SPEC.md 5.5): a `.diffcity/spec.md` added on the branch names a route string; the route's registration, its handler and the handler's callee are in the spec, one unrelated file is outside it (`spec` verdict), the touched spec file is in it |
 
 ## Layout
 
