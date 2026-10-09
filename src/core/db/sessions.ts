@@ -71,6 +71,8 @@ export interface SessionStore {
   links(sessionRowId: number): SessionLink[];
   /** The sessions linked to a change, newest first (by their last activity), at most `limit`. */
   forChange(changeId: number, limit: number): { session: SessionRecord; link: SessionLink }[];
+  /** How many sessions are linked to a change. */
+  countForChange(changeId: number): number;
 }
 
 interface JoinedRow extends SessionRecord {
@@ -135,6 +137,8 @@ export function createSessionStore(db: Connection): SessionStore {
      ORDER BY coalesce(s.lastAt, l.linkedAt) DESC, s.id DESC LIMIT ?`,
   );
 
+  const countForChange = db.prepare<[number], { n: number }>('SELECT count(*) AS n FROM change_sessions WHERE changeId = ?');
+
   return {
     see: (sighting) => {
       const at = isoTime(sighting.at, 'at');
@@ -161,5 +165,6 @@ export function createSessionStore(db: Connection): SessionStore {
     },
     links: (sessionRowId) => links.all(sessionRowId).map(toLink),
     forChange: (changeId, limit) => forChange.all(changeId, limit).map((row) => ({ session: toSession(row), link: toLink(row) })),
+    countForChange: (changeId) => countForChange.get(changeId)?.n ?? 0,
   };
 }

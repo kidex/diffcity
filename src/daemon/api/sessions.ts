@@ -16,6 +16,8 @@ export interface SessionsRouteDeps {
   db: Db;
   /** The daemon's HTTP port, read per request. */
   port: () => number;
+  /** The repo's working trees as its last collection listed them; null when not listed (or no collection). */
+  worktrees?: (repoId: number) => readonly string[] | null;
 }
 
 export function registerSessionsRoute(http: FastifyInstance, deps: SessionsRouteDeps): void {
@@ -27,6 +29,6 @@ export function registerSessionsRoute(http: FastifyInstance, deps: SessionsRoute
     const id = parseId('id', request.params.id);
     const change = deps.db.changes.get(id);
     if (change === null) throw new HttpError(404, 'not-found', `change ${String(id)} not found`);
-    return { sessions: sessionViewsOf(deps.db, change) };
+    return sessionViewsOf(deps.db, change, deps.worktrees?.(change.repoId) ?? null);
   });
 }

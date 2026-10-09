@@ -8,7 +8,7 @@
 
 import type { Report, Status, Verdict } from '../report/types.js';
 import type { FindingInput, ParseWarning } from '../findings/types.js';
-import type { AgentRun, SessionDigest } from '../session/types.js';
+import type { Activity, AgentRun, SessionDigest } from '../session/types.js';
 
 // ---------------------------------------------------------------------------
 // Enumerations (ADR-018 CHECK constraints, ADR-017, ADR-020)
@@ -331,20 +331,42 @@ export interface HealthResponse {
   collecting: number;
 }
 
-/** A run of a session as the sessions route serves it: `here` when it worked in the change's working tree. */
+/**
+ * A run of a session as the sessions route serves it. `here`: it worked in the
+ * change's working tree. `parentAgentId` names a run that is in the same
+ * view; it is null for runs of the main agent and for a run whose parent was
+ * left out, so it never points at a run the view does not have.
+ */
 export interface SessionRunView extends AgentRun {
   here: boolean;
 }
 
 /**
- * A session digest as served: without its parse state (cursors, hashes, the
- * runs' working directories), with the runs that worked in another working
- * tree of the repo left out and counted.
+ * A session digest as served: no parse state (cursors, hashes, the runs'
+ * working directories) and none of the fields SessionView already has
+ * (sessionId, title, firstAt, lastAt). Runs that worked in another working
+ * tree of the repo are left out and counted.
+ *
+ * Activity is scoped to what the view shows: `main` is the main agent's
+ * activity when the session ran in the change's working tree, null otherwise;
+ * each kept run carries its own. The session's totals over every agent, shown
+ * or not, are in `sessionWide`.
  */
-export type SessionDigestView = Omit<SessionDigest, 'state' | 'runs'> & {
+export type SessionDigestView = Omit<
+  SessionDigest,
+  'state' | 'runs' | 'sessionId' | 'title' | 'firstAt' | 'lastAt' | 'main' | 'files' | 'filesDropped' | 'outsideFiles'
+> & {
   runs: SessionRunView[];
   /** Runs left out because they worked in another working tree of the repo. */
   runsElsewhere: number;
+  main: Activity | null;
+  sessionWide: {
+    /** Repo-relative files edited by the main agent and every run. */
+    files: string[];
+    filesDropped: number;
+    /** Distinct files edited outside the repo. */
+    outsideFiles: number;
+  };
 };
 
 /**
@@ -358,19 +380,24 @@ export interface SessionView {
   lastAt: string | null;
   /** The session ran in the change's working tree. */
   here: boolean;
-  /** The last read failed: shown as "Session data could not be read", without content. */
+  /** False once Claude Code reported the session ended (`SessionEnd`); true while it may go on. */
+  active: boolean;
+  /** No digest could ever be read: shown as "Session data could not be read", without content; `digest` is null. */
   unreadable: boolean;
+  /** The last read failed; `digest` is the last good one. */
+  stale: boolean;
   /** The change's head when the session was first and last linked to it. */
   firstHead: string | null;
   lastHead: string | null;
   linkedAt: string;
-  /** Null until the transcript was read. */
+  /** Null until the transcript was read, and when it is `unreadable`. */
   digest: SessionDigestView | null;
 }
 
-/** `GET /api/changes/:id/sessions`: at most 20, newest first. */
+/** `GET /api/changes/:id/sessions`: at most 20 sessions, newest first, and how many are linked in all. */
 export interface SessionsResponse {
   sessions: SessionView[];
+  total: number;
 }
 
 /** Body of every API error response. */
@@ -491,7 +518,7 @@ export interface SocketSuccessResponses {
     anchoredAgainst: ImportAnchor;
   };
   /** `sessions` (ADR-038): the change checked out in the directory and its sessions. */
-  sessions: { ok: true; change: { id: number; repoId: number; ref: string }; sessions: SessionView[] };
+  sessions: { ok: true; change: { id: number; repoId: number; ref: string }; sessions: SessionView[]; total: number };
   shutdown: { ok: true };
 }
 

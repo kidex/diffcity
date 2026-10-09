@@ -277,8 +277,8 @@ describe('socket server', () => {
     const path = await start();
     const request = { v: 1 as const, type: 'sessions' as const, dir: '/work/sample-shop' };
     expect(await sendRequest(path, request)).toEqual({ ok: false, error: 'sessions is not supported by this daemon yet' });
-    server?.handlers.handle('sessions', () => ({ ok: true, change: { id: 3, repoId: 1, ref: 'branch:feature/cancel' }, sessions: [] }));
-    expect(await sendRequest(path, request)).toEqual({ ok: true, change: { id: 3, repoId: 1, ref: 'branch:feature/cancel' }, sessions: [] });
+    server?.handlers.handle('sessions', () => ({ ok: true, change: { id: 3, repoId: 1, ref: 'branch:feature/cancel' }, sessions: [], total: 0 }));
+    expect(await sendRequest(path, request)).toEqual({ ok: true, change: { id: 3, repoId: 1, ref: 'branch:feature/cancel' }, sessions: [], total: 0 });
   });
 
   it('an import line may pass 64 KiB up to the import cap; past it, it is refused at once', async () => {

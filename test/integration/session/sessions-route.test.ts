@@ -30,6 +30,9 @@ async function scenario(): Promise<{ daemon: SessionDaemon; repo: TempRepo; dir:
   await writeFile(join(rack, 'src', 'rack.ts'), 'export const rack = 1;\n');
   await repo.git('-C', rack, 'add', '.');
   await repo.git('-C', rack, 'commit', '--quiet', '-m', 'add rack');
+  // A nested working tree with no change of its own: clean, detached at main.
+  await repo.git('worktree', 'add', '--quiet', '--detach', '.worktrees/scratch', 'main');
+  const scratch = join(dir, '.worktrees', 'scratch');
 
   const claude = await claudeDir();
   claudes.push(claude);
@@ -39,9 +42,11 @@ async function scenario(): Promise<{ daemon: SessionDaemon; repo: TempRepo; dir:
   main.agent({ agentId: 'cartdev', type: 'dev', foreground: { report: 'Cart report', durationMs: 1000, toolUses: 1 } });
   main.agent({ agentId: 'rackdev', type: 'dev', foreground: { report: 'Rack report', durationMs: 1000, toolUses: 1 } });
   main.agent({ agentId: 'nodir', type: 'dev', foreground: { report: 'No sidechain', durationMs: 1000, toolUses: 1 } });
+  main.agent({ agentId: 'scratchdev', type: 'dev', foreground: { report: 'Scratch report', durationMs: 1000, toolUses: 1 } });
   await claude.write(id, main);
   await claude.sidechain(id, 'cartdev', transcript({ sessionId: id, agentId: 'cartdev', cwd: join(dir, 'src') }).text('Cart report'), { agentType: 'dev' });
   await claude.sidechain(id, 'rackdev', transcript({ sessionId: id, agentId: 'rackdev', cwd: rack }).text('Rack report'), { agentType: 'dev' });
+  await claude.sidechain(id, 'scratchdev', transcript({ sessionId: id, agentId: 'scratchdev', cwd: scratch }).text('Scratch report'), { agentType: 'dev' });
   await daemon.hook(dir, { sessionId: id, transcriptPath: claude.transcriptPath(id), cwd: dir, event: 'Stop' });
   await daemon.until(id, (row) => row.digest !== null && daemon.db.sessions.links(row.id).length === 2);
   return { daemon, repo, dir, rack, id };
@@ -85,13 +90,17 @@ describe('GET /api/changes/:id/sessions', () => {
       ['cartdev', true],
       ['nodir', true],
     ]);
-    expect(onCart?.digest?.runsElsewhere).toBe(1);
+    // rackdev worked in rack, scratchdev in a nested worktree with no change: both are elsewhere.
+    expect(onCart?.digest?.runsElsewhere).toBe(2);
+    expect(cart.total).toBe(1);
+    expect(onCart).toMatchObject({ active: true, stale: false });
 
     const rackView = (await (await daemon.get(`/api/changes/${String(changeId(daemon, 'branch:feature/rack'))}/sessions`)).json()) as SessionsResponse;
     const [onRack] = rackView.sessions;
     expect(onRack?.here).toBe(false);
     expect(onRack?.digest?.runs.map((run) => [run.agentId, run.here, run.report])).toEqual([['rackdev', true, 'Rack report']]);
-    expect(onRack?.digest?.runsElsewhere).toBe(2);
+    expect(onRack?.digest?.runsElsewhere).toBe(3);
+    expect(onRack?.digest?.main).toBeNull();
 
     for (const body of [JSON.stringify(cart), JSON.stringify(rackView)]) {
       expect(body).not.toContain('"state"');
@@ -101,13 +110,14 @@ describe('GET /api/changes/:id/sessions', () => {
     }
   });
 
-  it('an unreadable session is served without content', async () => {
+  it('a failed re-read keeps the last good digest, marked stale; the code is never served', async () => {
     const { daemon, id } = await scenario();
     const row = daemon.row(id);
     if (row === null) throw new Error('no row');
     daemon.db.sessions.setParseError(row.id, 'read-failed');
     const view = (await (await daemon.get(`/api/changes/${String(changeId(daemon, 'branch:feature/cart'))}/sessions`)).json()) as SessionsResponse;
-    expect(view.sessions[0]).toMatchObject({ unreadable: true, digest: null });
+    expect(view.sessions[0]).toMatchObject({ unreadable: false, stale: true, title: 'Cart here, rack there' });
+    expect(view.sessions[0]?.digest?.prompts.map((prompt) => prompt.text)).toEqual(['Cart here, rack there']);
     expect(JSON.stringify(view)).not.toContain('read-failed');
   });
 });

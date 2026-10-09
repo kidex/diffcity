@@ -81,6 +81,7 @@ export async function runSessionJob(job: SessionJob): Promise<SessionJobResult> 
       ...(previous === null ? {} : { previous }),
     });
     await resolveRunDirs(digest);
+    digest.state.ended = !job.active;
     return {
       ok: true,
       runDirs: [...new Set(Object.values(digest.state.cwds ?? {}))],

@@ -55,6 +55,7 @@ import { createSnapshotPool, type SnapshotRunnerKind } from './snapshot-pool.js'
 import { createSessionPool } from '../session/pool.js';
 import { createSessionTracker, type SessionTracker } from '../session/tracker.js';
 import { sessionViewsOf } from '../session/views.js';
+import { provideWorktrees } from '../session/worktrees.js';
 
 /** Directories identified at the same time by one `register` request. */
 const REGISTER_CONCURRENCY = 8;
@@ -255,7 +256,8 @@ export function createCollection(options: CollectionPluginOptions = {}): Collect
     const worktree = active.worktreeOf(repo.id, dir) ?? { path: root, head: '' };
     const change = changeOfWorktree(store.changes.listLive(repo.id), worktree);
     if (change === null) throw new Error(`no change is checked out in ${worktree.path}: nothing differs from the base`);
-    return { ok: true, change: { id: change.id, repoId: repo.id, ref: change.ref }, sessions: sessionViewsOf(store, change) };
+    const listed = active.worktreesOf(repo.id)?.map((tree) => tree.path) ?? null;
+    return { ok: true, change: { id: change.id, repoId: repo.id, ref: change.ref }, ...sessionViewsOf(store, change, listed) };
   }
 
   async function register(context: DaemonContext, request: SocketRequestOf<'register'>): Promise<SocketSuccessResponses['register']> {
@@ -355,6 +357,7 @@ export function createCollection(options: CollectionPluginOptions = {}): Collect
         notes: (repoId) => created.notes(repoId),
       });
       provideRepoOpen(context, (repoId) => open(context, repoId));
+      provideWorktrees(context, (repoId) => created.worktreesOf(repoId)?.map((tree) => tree.path) ?? null);
       context.socket.handle('track', (request) => track(context, request));
       context.socket.handle('register', (request) => register(context, request));
       context.socket.handle('sessions', (request) => sessionsOfDir(request));

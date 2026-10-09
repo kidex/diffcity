@@ -39,6 +39,8 @@ export interface ApiDeps {
   now?: () => Date;
   /** Computes file diffs (ADR-027); GET /api/changes/:id/diff is not served without it. */
   diff?: { pool: DiffPool; log: Logger };
+  /** The repo's listed working trees, for the sessions route (src/daemon/session/worktrees.ts). */
+  worktrees?: (repoId: number) => readonly string[] | null;
   /** The served Reports' cache; a fresh one when absent. */
   servedCache?: ServedCache;
   /** The served Reports' counts, for the change and repo summaries; a fresh one when absent. */
@@ -123,7 +125,7 @@ export function registerApiRoutes(http: FastifyInstance, deps: ApiDeps): void {
   });
 
   if (deps.diff !== undefined) registerDiffRoute(http, { db, port: deps.port, ...deps.diff });
-  registerSessionsRoute(http, { db, port: deps.port });
+  registerSessionsRoute(http, { db, port: deps.port, ...(deps.worktrees === undefined ? {} : { worktrees: deps.worktrees }) });
 
   const writes = { db, broadcast: deps.broadcast ?? (() => undefined), now: deps.now ?? (() => new Date()) };
   registerReviewRoutes(http, writes);

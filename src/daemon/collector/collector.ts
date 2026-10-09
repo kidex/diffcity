@@ -125,6 +125,8 @@ export interface Collector extends CollectorPort {
    * collection listed it; null when none does or the repo was never listed.
    */
   worktreeOf(repoId: number, dir: string): WorktreeInfo | null;
+  /** The repo's working trees as its last collection listed them; null when it was never listed. */
+  worktreesOf(repoId: number): readonly WorktreeInfo[] | null;
   /** Refuses new requests, stops the pools and waits for the running collections. */
   close(): Promise<void>;
 }
@@ -535,6 +537,7 @@ export function createCollector(options: CollectorOptions): Collector {
       }
     },
     worktreeOf: (repoId, dir) => worktreeContaining(worktreesSeen.get(repoId) ?? [], dir),
+    worktreesOf: (repoId) => worktreesSeen.get(repoId) ?? null,
     async markAgent(repoId, dir, at, sessionId) {
       if (closing) return;
       const resolved = await realpath(dir).catch(() => dir);

@@ -1,7 +1,7 @@
 // The sessions of a change as the API serves them (ADR-038): stored rows
-// turned into SessionView, outside the Report (ADR-002). The parse state
-// (cursors, hashes, the runs' working directories) is never served; runs are
-// filtered to the change's working tree:
+// turned into SessionView, outside the Report (ADR-002). The UI only renders
+// what this computes. The parse state (cursors, hashes, the runs' working
+// directories) is never served; runs are filtered to the change's working tree:
 //
 // - a run whose working directory lies in the change's working tree is kept
 //   and marked `here`;
@@ -12,7 +12,10 @@
 //
 // A run with no directory of its own counts as working in the session's. When
 // the change has no working tree, no run is `here` and none is left out.
-// The session itself is `here` when it ran in the change's working tree.
+// The session itself is `here` when it ran in the change's working tree; the
+// main agent's activity is shown only then. A kept run whose parent was left
+// out gets `parentAgentId: null`. A failed re-read keeps the last good digest
+// (`stale`); a session with no good digest after a failure is `unreadable`.
 
 import type { SessionDigestView, SessionRunView, SessionView } from '../model/types.js';
 import { isInside } from './validate.js';
@@ -55,14 +58,14 @@ function parseDigest(text: string | null): SessionDigest | null {
   if (text === null) return null;
   try {
     const value = JSON.parse(text) as Partial<SessionDigest> | null;
-    return value !== null && value.format === DIGEST_FORMAT && Array.isArray(value.runs) ? (value as SessionDigest) : null;
+    return value !== null && value.format === DIGEST_FORMAT && Array.isArray(value.runs) && typeof value.state === 'object' ? (value as SessionDigest) : null;
   } catch {
     return null;
   }
 }
 
-function digestView(digest: SessionDigest, sessionTree: string | null, context: SessionViewContext): SessionDigestView {
-  const { state, runs, ...rest } = digest;
+function digestView(digest: SessionDigest, sessionHere: boolean, sessionTree: string | null, context: SessionViewContext): SessionDigestView {
+  const { state, runs } = digest;
   const cwds = state.cwds ?? {};
   const kept: SessionRunView[] = [];
   let elsewhere = 0;
@@ -77,23 +80,50 @@ function digestView(digest: SessionDigest, sessionTree: string | null, context: 
       elsewhere++;
     }
   }
-  return { ...rest, runs: kept, runsElsewhere: elsewhere };
+  const shown = new Set(kept.map((run) => run.agentId).filter((id): id is string => id !== null));
+  for (const run of kept) {
+    if (run.parentAgentId !== null && !shown.has(run.parentAgentId)) run.parentAgentId = null;
+  }
+  // Listed field by field: a field added to the digest later is not served until it is added here.
+  // SessionView carries sessionId, title, firstAt and lastAt; the session totals move to sessionWide.
+  return {
+    format: digest.format,
+    version: digest.version,
+    branch: digest.branch,
+    prompts: digest.prompts,
+    promptsDropped: digest.promptsDropped,
+    questions: digest.questions,
+    questionsDropped: digest.questionsDropped,
+    runs: kept,
+    runsDropped: digest.runsDropped,
+    runsElsewhere: elsewhere,
+    main: sessionHere || context.changeTree === null ? digest.main : null,
+    sessionWide: { files: digest.files, filesDropped: digest.filesDropped, outsideFiles: digest.outsideFiles },
+    truncated: digest.truncated,
+    capped: digest.capped,
+    badLines: digest.badLines,
+    skippedLines: digest.skippedLines,
+  };
 }
 
 /** The served view of one linked session. */
 export function sessionView(row: SessionRow, context: SessionViewContext): SessionView {
   const sessionTree = treeContaining(context.trees, row.cwd);
-  const digest = row.parseError === null ? parseDigest(row.digest) : null;
+  const here = context.changeTree !== null && sessionTree === context.changeTree;
+  const digest = parseDigest(row.digest);
+  const failed = row.parseError !== null;
   return {
     sessionId: row.sessionId,
     title: row.title,
     firstAt: row.firstAt,
     lastAt: row.lastAt,
-    here: context.changeTree !== null && sessionTree === context.changeTree,
-    unreadable: row.parseError !== null || (row.digest !== null && digest === null),
+    here,
+    active: digest?.state.ended !== true,
+    unreadable: digest === null && (failed || row.digest !== null),
+    stale: digest !== null && failed,
     firstHead: row.firstHead,
     lastHead: row.lastHead,
     linkedAt: row.linkedAt,
-    digest: digest === null ? null : digestView(digest, sessionTree, context),
+    digest: digest === null ? null : digestView(digest, here, sessionTree, context),
   };
 }
