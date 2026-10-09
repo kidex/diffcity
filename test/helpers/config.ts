@@ -21,6 +21,14 @@ export interface TempHome {
   cleanup(): Promise<void>;
 }
 
+/** Every root tempHome() created in this test file (module state is per file). */
+const createdRoots: string[] = [];
+
+/** The roots tempHome() created so far in this test file, removed or not. */
+export function tempRootsCreated(): readonly string[] {
+  return createdRoots;
+}
+
 /**
  * Creates `<os.tmpdir()>/dc-XXXXXX/` with `home` (the diffcity home) and `user`
  * (HOME) inside. The prefix stays short so `<home>/daemon.sock` fits the
@@ -28,6 +36,7 @@ export interface TempHome {
  */
 export async function tempHome(): Promise<TempHome> {
   const root = await mkdtemp(join(tmpdir(), 'dc-'));
+  createdRoots.push(root);
   const home = join(root, 'home');
   const userHome = join(root, 'user');
   await mkdir(userHome);
