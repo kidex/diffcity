@@ -8,6 +8,7 @@
 
 import type { Report, Status, Verdict } from '../report/types.js';
 import type { FindingInput, ParseWarning } from '../findings/types.js';
+import type { Activity, AgentRun, SessionDigest } from '../session/types.js';
 
 // ---------------------------------------------------------------------------
 // Enumerations (ADR-018 CHECK constraints, ADR-017, ADR-020)
@@ -20,6 +21,12 @@ export type ReviewState = 'unreviewed' | 'in-review' | 'approved';
 
 /** Type of a recorded event; `review` and `import` arrive in phase 4, `audit` in phase 5. */
 export type EventType = 'collect' | 'agent' | 'commit' | 'review' | 'import' | 'audit';
+
+/**
+ * Type of a row of `events`: every EventType, and `agent-run` (schema v4,
+ * ADR-029, ADR-038), which is never a change's last event.
+ */
+export type EventLogType = EventType | 'agent-run';
 
 /** Why a change left the live list (ADR-019, SPEC.md section 3a L7). */
 export type ArchiveReason = 'merged' | 'deleted' | 'closed' | 'clean';
@@ -131,7 +138,7 @@ export interface EventRecord {
   id: number;
   repoId: number;
   changeId: number | null;
-  type: EventType;
+  type: EventLogType;
   at: string;
   /** Parsed JSON payload; null when the event has none. */
   payload: unknown;
@@ -324,6 +331,81 @@ export interface HealthResponse {
   collecting: number;
 }
 
+/**
+ * A run of a session as the sessions route serves it. `here`: it worked in the
+ * change's working tree. `parentAgentId` names a run that is in the same
+ * view; it is null for runs of the main agent and for a run whose parent was
+ * left out, so it never points at a run the view does not have.
+ */
+export interface SessionRunView extends AgentRun {
+  here: boolean;
+}
+
+/**
+ * A session digest as served: no parse state (cursors, hashes, the runs'
+ * working directories) and none of the fields SessionView already has
+ * (sessionId, title, firstAt, lastAt). Runs that worked in another working
+ * tree of the repo are left out and counted.
+ *
+ * Activity is scoped to what the view shows: `main` is the main agent's
+ * activity when the session ran in the change's working tree, null otherwise;
+ * each kept run carries its own. The session's totals over every agent, shown
+ * or not, are in `sessionWide`.
+ */
+export type SessionDigestView = Omit<
+  SessionDigest,
+  'state' | 'runs' | 'sessionId' | 'title' | 'firstAt' | 'lastAt' | 'main' | 'files' | 'filesDropped' | 'outsideFiles'
+> & {
+  runs: SessionRunView[];
+  /** Runs left out because they worked in another working tree of the repo. */
+  runsElsewhere: number;
+  main: Activity | null;
+  sessionWide: {
+    /** Repo-relative files edited by the main agent and every run. */
+    files: string[];
+    filesDropped: number;
+    /** Distinct files edited outside the repo. */
+    outsideFiles: number;
+  };
+};
+
+/**
+ * A Claude Code session linked to a change (ADR-038), served by
+ * `GET /api/changes/:id/sessions` outside the Report (ADR-002).
+ */
+export interface SessionView {
+  sessionId: string;
+  /** Null until read, and when the transcript was refused on validation. */
+  title: string | null;
+  firstAt: string | null;
+  lastAt: string | null;
+  /** The session ran in the change's working tree. */
+  here: boolean;
+  /** False once Claude Code reported the session ended (`SessionEnd`); true while it may go on. */
+  active: boolean;
+  /**
+   * Shown as "Session data could not be read", without content; `digest` is
+   * null. The transcript was refused on validation (a link, outside the
+   * projects directory, a wrong name, not a regular file), or no digest could
+   * ever be read.
+   */
+  unreadable: boolean;
+  /** The last read failed for a transient reason (a failed or timed-out read, a removed transcript); `digest` is the last good one. */
+  stale: boolean;
+  /** The change's head when the session was first and last linked to it. */
+  firstHead: string | null;
+  lastHead: string | null;
+  linkedAt: string;
+  /** Null until the transcript was read, and when it is `unreadable`. */
+  digest: SessionDigestView | null;
+}
+
+/** `GET /api/changes/:id/sessions`: at most 20 sessions, newest first, and how many are linked in all. */
+export interface SessionsResponse {
+  sessions: SessionView[];
+  total: number;
+}
+
 /** Body of every API error response. */
 export interface ApiError {
   error: { code: string; message: string };
@@ -347,6 +429,8 @@ export type SseEvent =
   | { event: 'review'; data: { repoId: number; changeId: number } }
   /** The findings of a change moved (an import, a state, a queued fix; ADR-036): refetch its Report. */
   | { event: 'findings'; data: { repoId: number; changeId: number } }
+  /** A read of a session linked to the change was stored (ADR-038): refetch GET /api/changes/:id/sessions. No session content. */
+  | { event: 'sessions'; data: { changeId: number } }
   | {
       event: 'collect';
       data: { repoId: number; state: 'started' | 'done' } | { repoId: number; state: 'error'; error: string };
@@ -364,8 +448,13 @@ export type SocketProtocolVersion = 1;
 
 export type SocketRequest =
   | { v: SocketProtocolVersion; type: 'ping' }
-  /** `dir` is absolute; `at` is the ISO time of the request. */
-  | { v: SocketProtocolVersion; type: 'track'; dir: string; agent: boolean; at: string }
+  /**
+   * `dir` is absolute; `at` is the ISO time of the request. `session` comes
+   * with `agent` when the Claude Code hook JSON was valid (ADR-038); daemons
+   * that predate it ignore the field, and the daemon validates every value
+   * before it touches a file.
+   */
+  | { v: SocketProtocolVersion; type: 'track'; dir: string; agent: boolean; at: string; session?: TrackSession }
   /** `dirs` are absolute repo roots (from `scan`). */
   | { v: SocketProtocolVersion; type: 'register'; dirs: string[] }
   /**
@@ -383,7 +472,21 @@ export type SocketRequest =
       sources?: string[];
       at: string;
     }
+  /**
+   * `diff --with-sessions` (ADR-038): the sessions of the change checked out
+   * in `dir` (absolute), as GET /api/changes/:id/sessions serves them.
+   */
+  | { v: SocketProtocolVersion; type: 'sessions'; dir: string }
   | { v: SocketProtocolVersion; type: 'shutdown' };
+
+/** The session fields of a `track` request (ADR-038), forwarded from the hook JSON as they came. */
+export interface TrackSession {
+  sessionId: string;
+  transcriptPath: string;
+  cwd: string;
+  /** `hook_event_name`; `Stop` when the hook gave none. */
+  event: string;
+}
 
 export type SocketRequestType = SocketRequest['type'];
 
@@ -420,6 +523,8 @@ export interface SocketSuccessResponses {
     warnings: ParseWarning[];
     anchoredAgainst: ImportAnchor;
   };
+  /** `sessions` (ADR-038): the change checked out in the directory and its sessions. */
+  sessions: { ok: true; change: { id: number; repoId: number; ref: string }; sessions: SessionView[]; total: number };
   shutdown: { ok: true };
 }
 

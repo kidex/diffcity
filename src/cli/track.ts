@@ -8,7 +8,7 @@ import { resolve } from 'node:path';
 import { identifyRepo } from '../core/changes/identity.js';
 import { MAX_HOOK_INPUT_BYTES, parseAgentHookInput, type AgentHookInput } from '../core/changes/hook-input.js';
 import { ensureHome, homePaths, resolveHome } from '../core/home.js';
-import type { SocketRequest } from '../core/model/types.js';
+import type { SocketRequest, TrackSession } from '../core/model/types.js';
 import { requestWithAutostart, type SpawnDaemonOptions, type SpawnedDaemon } from '../daemon/client.js';
 import { readStdin } from './stdin.js';
 
@@ -65,9 +65,12 @@ async function readHookInput(stdin: TrackStdin, warn: (message: string) => void)
   return parsed.input;
 }
 
-/** The `track` socket request for an absolute repo directory; `start` sends it too. */
-export function trackRequest(dir: string, agent: boolean, at: Date): Extract<SocketRequest, { type: 'track' }> {
-  return { v: 1, type: 'track', dir, agent, at: at.toISOString() };
+/**
+ * The `track` socket request for an absolute repo directory; `start` sends it
+ * too. `session` goes with `--agent` when the hook JSON was valid (ADR-038).
+ */
+export function trackRequest(dir: string, agent: boolean, at: Date, session?: TrackSession): Extract<SocketRequest, { type: 'track' }> {
+  return { v: 1, type: 'track', dir, agent, at: at.toISOString(), ...(session === undefined ? {} : { session }) };
 }
 
 /**
@@ -84,9 +87,10 @@ export async function runTrack(dirArg: string | undefined, options: TrackCommand
   };
   const cwd = deps.cwd ?? process.cwd();
 
-  // The hook JSON carries the session (session_id, transcript_path) and the cwd
-  // that replaces the default <dir>. The v1 track request has no session
-  // fields, so only cwd is used until the protocol carries the session.
+  // The hook JSON carries the session (session_id, transcript_path, the event)
+  // and the cwd that replaces the default <dir>. The four fields are forwarded
+  // as they came: the daemon validates them before it reads anything, and this
+  // module never loads the session parser (ADR-038).
   const hook = agent ? await readHookInput(deps.stdin ?? processStdin, (message) => { io.stderr(`diffcity track: ${message}\n`); }) : null;
   const dir = dirArg !== undefined ? resolve(cwd, dirArg) : (hook?.cwd ?? cwd);
 
@@ -108,7 +112,12 @@ export async function runTrack(dirArg: string | undefined, options: TrackCommand
 
   const result = await requestWithAutostart(
     paths,
-    trackRequest(dir, agent, deps.now?.() ?? new Date()),
+    trackRequest(
+      dir,
+      agent,
+      deps.now?.() ?? new Date(),
+      hook === null ? undefined : { sessionId: hook.sessionId, transcriptPath: hook.transcriptPath, cwd: hook.cwd, event: hook.event },
+    ),
     {
       env,
       ...(deps.spawnDaemon === undefined ? {} : { spawn: deps.spawnDaemon }),

@@ -84,6 +84,8 @@ const CUT_TAIL = 1024;
 /** Longest agentId, toolUseId or parent id kept; Claude Code's are well under it. */
 const MAX_ID = 128;
 const TITLE_CHARS = 80;
+/** Longest working directory kept for a run. */
+const MAX_CWD = 4096;
 
 function context(input: DigestContext): Ctx {
   return {
@@ -199,6 +201,11 @@ export function applySidechainChunk(digest: SessionDigest, agentId: string, chun
     if (at !== null) {
       run.sidechainFirstAt ??= at;
       run.sidechainLastAt = at;
+    }
+    const cwd = str(record.cwd);
+    if (cwd !== null && cwd.length <= MAX_CWD && isAbsolute(cwd)) {
+      digest.state.cwds ??= {};
+      digest.state.cwds[agentId] = cwd;
     }
     const type = str(record.type);
     if (type === 'assistant') {
@@ -707,6 +714,7 @@ function dropRuns(digest: SessionDigest, count: number): void {
       // Its sidechain is no longer followed.
       digest.state.sidechains = without(digest.state.sidechains, run.agentId);
       digest.state.outside = without(digest.state.outside, run.agentId);
+      if (digest.state.cwds !== undefined) digest.state.cwds = without(digest.state.cwds, run.agentId);
     }
   }
   digest.runsDropped += count;

@@ -35,7 +35,7 @@ diffcity stop
 | `diffcity shell-init [zsh\|bash\|fish]` | print the shell hook that registers a repo when you `cd` into it |
 | `diffcity track [<dir>] [--agent]` | register a repo and ask the daemon to collect its changes |
 | `diffcity scan <dir>` | discover and register every repo under a folder |
-| `diffcity diff --json [--compact] [--base] [--head]` | semantic diff of the current change; `--compact` leaves out untouched files |
+| `diffcity diff --json [--compact] [--with-sessions] [--base] [--head]` | semantic diff of the current change; `--compact` leaves out untouched files, `--with-sessions` adds the change's Claude Code sessions from the running daemon |
 | `diffcity import <file> [--open]` | anchor findings (own JSON or SARIF) to symbols of the current change |
 | `diffcity setup-claude [--repo [<dir>]] [--dry-run] [--remove]` | install the `/diffcity-review` command and the Stop hook for Claude Code |
 | `diffcity export html\|puml [--out]` | self-contained export of the current change |

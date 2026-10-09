@@ -1,5 +1,5 @@
 // The daemon's socket server (ADR-016). `ping` and `shutdown` are built in;
-// `track`, `register` and `import` go through a handler registry that the
+// `track`, `register`, `import` and `sessions` go through a handler registry that the
 // collection fills, and answer with an explicit error until then. A line is
 // read up to 64 KiB, or up to 4 MiB when it starts as an `import` request,
 // whose exchange may also take 30 s instead of 5 (ADR-036, protocol.ts).
@@ -22,7 +22,7 @@ import {
 } from './protocol.js';
 
 /** Request types served by a registered handler rather than by the socket server itself. */
-export type PluggableRequestType = 'track' | 'register' | 'import';
+export type PluggableRequestType = 'track' | 'register' | 'import' | 'sessions';
 
 export type SocketRequestOf<T extends SocketRequest['type']> = Extract<SocketRequest, { type: T }>;
 
@@ -141,6 +141,8 @@ export function createSocketServer(options: SocketServerOptions): SocketServer {
         return handlerMap.register ? await handlerMap.register(request) : notSupported('register');
       case 'import':
         return handlerMap.import ? await handlerMap.import(request) : notSupported('import');
+      case 'sessions':
+        return handlerMap.sessions ? await handlerMap.sessions(request) : notSupported('sessions');
     }
   }
 

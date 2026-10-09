@@ -77,14 +77,54 @@ describe('parseRequest', () => {
       { v: 1, type: 'ping' },
       { v: 1, type: 'shutdown' },
       { v: 1, type: 'track', dir: '/work/sample-shop', agent: true, at: '2026-01-01T00:00:00.000Z' },
+      {
+        v: 1,
+        type: 'track',
+        dir: '/work/sample-shop',
+        agent: true,
+        at: '2026-01-01T00:00:00.000Z',
+        session: { sessionId: 'deadbeef-0001', transcriptPath: '/claude/projects/p/deadbeef-0001.jsonl', cwd: '/work/sample-shop', event: 'Stop' },
+      },
+      { v: 1, type: 'sessions', dir: '/work/sample-shop' },
       { v: 1, type: 'register', dirs: ['/work/sample-shop', '/work/order-service'] },
       { v: 1, type: 'import', dir: '/work/sample-shop', findings: [IMPORTED], warnings: [{ at: 'findings[1]', message: 'skipped: empty path' }], sources: ['claude'], at: '2026-01-01T00:00:00.000Z' },
     ];
     for (const request of requests) expect(parseRequest(JSON.stringify(request))).toEqual({ ok: true, request });
   });
 
+  it('a track session that is not four strings is dropped; the track itself stands, extra session fields go', () => {
+    const base = { v: 1, type: 'track', dir: '/work/sample-shop', agent: true, at: '2026-01-01T00:00:00.000Z' };
+    const plain = { ok: true, request: base };
+    expect(parseRequest(JSON.stringify({ ...base, session: 'deadbeef-0001' }))).toEqual(plain);
+    expect(parseRequest(JSON.stringify({ ...base, session: { sessionId: 'deadbeef-0001', transcriptPath: 7, cwd: '/a', event: 'Stop' } }))).toEqual(plain);
+    expect(parseRequest(JSON.stringify({ ...base, session: null }))).toEqual(plain);
+    const session = { sessionId: 'deadbeef-0001', transcriptPath: '/claude/projects/p/deadbeef-0001.jsonl', cwd: '/a', event: 'Stop' };
+    expect(parseRequest(JSON.stringify({ ...base, session: { ...session, subagentsDir: '/elsewhere' } }))).toEqual({ ok: true, request: { ...base, session } });
+  });
+
+  it('socket/track-old-daemon-ignores-session: a v1 track line with fields the parser does not know is accepted with the known ones', () => {
+    // A daemon from before ADR-038 knows dir, agent and at; `session` is one more unknown field to it,
+    // like `future` is to this one: the request is served, the field ignored.
+    const line = JSON.stringify({
+      v: 1,
+      type: 'track',
+      dir: '/work/sample-shop',
+      agent: true,
+      at: '2026-01-01T00:00:00.000Z',
+      session: { sessionId: 'deadbeef-0001', transcriptPath: '/claude/projects/p/deadbeef-0001.jsonl', cwd: '/work/sample-shop', event: 'Stop' },
+      future: { anything: [1, 2] },
+    });
+    const parsed = parseRequest(line);
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) return;
+    expect(parsed.request).not.toHaveProperty('future');
+    const request = parsed.request as Extract<SocketRequest, { type: 'track' }>;
+    expect([request.v, request.type, request.dir, request.agent, request.at]).toEqual([1, 'track', '/work/sample-shop', true, '2026-01-01T00:00:00.000Z']);
+  });
+
   it.each([
     ['not json', /invalid JSON/],
+    ['{"v":1,"type":"sessions","dir":"relative"}', /invalid sessions request: dir must be an absolute path/],
     ['[1]', /must be a JSON object/],
     ['{"type":"ping"}', /unsupported protocol version/],
     ['{"v":2,"type":"ping"}', /unsupported protocol version: 2/],
@@ -231,6 +271,14 @@ describe('socket server', () => {
       anchoredAgainst: 'current-snapshot',
     }));
     expect(await sendRequest(path, request)).toMatchObject({ ok: true, imported: 1 });
+  });
+
+  it('sessions answers with an explicit error until a handler is registered, then routes to it', async () => {
+    const path = await start();
+    const request = { v: 1 as const, type: 'sessions' as const, dir: '/work/sample-shop' };
+    expect(await sendRequest(path, request)).toEqual({ ok: false, error: 'sessions is not supported by this daemon yet' });
+    server?.handlers.handle('sessions', () => ({ ok: true, change: { id: 3, repoId: 1, ref: 'branch:feature/cancel' }, sessions: [], total: 0 }));
+    expect(await sendRequest(path, request)).toEqual({ ok: true, change: { id: 3, repoId: 1, ref: 'branch:feature/cancel' }, sessions: [], total: 0 });
   });
 
   it('an import line may pass 64 KiB up to the import cap; past it, it is refused at once', async () => {

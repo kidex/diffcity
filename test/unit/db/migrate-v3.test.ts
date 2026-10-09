@@ -1,9 +1,9 @@
 // Schema v3 (ADR-018 migrations, ADR-036): a v2 database migrates in place,
-// keeps its rows, gains the findings and approval columns; a newer database is
-// refused untouched.
+// keeps its rows, gains the findings and approval columns. The newer-version
+// refusal is in migrate-v4.test.ts (db/v5-refused).
 
 import { afterEach, describe, expect, it } from 'vitest';
-import { MIGRATIONS, SCHEMA_VERSION, newerVersionMessage, openDb } from '../../../src/core/db/index.js';
+import { MIGRATIONS, SCHEMA_VERSION, openDb } from '../../../src/core/db/index.js';
 import { T0, rawConnection, tempDbPath } from './db-helpers.js';
 
 const cleanups: (() => void)[] = [];
@@ -65,12 +65,11 @@ describe('schema v3', () => {
     db.close();
 
     const raw = rawConnection(path, { readOnly: true });
-    expect(raw.pragma('user_version', { simple: true })).toBe(3);
+    expect(raw.pragma('user_version', { simple: true })).toBe(SCHEMA_VERSION);
     expect(raw.prepare('SELECT origin, key, finding FROM findings').all()).toEqual([
       { origin: 'import', key: null, finding: '{"title":"legacy"}' },
     ]);
     raw.close();
-    expect(SCHEMA_VERSION).toBe(3);
   });
 
   it('db/migrate-v2-to-v3: findings and changes have the v3 columns, the key index and the CHECKs', () => {
@@ -134,19 +133,5 @@ describe('schema v3', () => {
     const before = read();
     openDb(path).close();
     expect(read()).toEqual(before);
-  });
-
-  it('db/v4-refused: user_version 4 is a clear error and the file is left as it was', () => {
-    const { path, remove } = tempDbPath();
-    cleanups.push(remove);
-    const raw = rawConnection(path);
-    raw.pragma('user_version = 4');
-    raw.close();
-    expect(() => openDb(path)).toThrow(new Error(newerVersionMessage(4)));
-    expect(newerVersionMessage(4)).toBe('database was created by a newer diffcity (v4); upgrade diffcity');
-    const check = rawConnection(path, { readOnly: true });
-    expect(check.pragma('user_version', { simple: true })).toBe(4);
-    expect(check.prepare("SELECT count(*) AS n FROM sqlite_master WHERE type = 'table'").get()).toEqual({ n: 0 });
-    check.close();
   });
 });

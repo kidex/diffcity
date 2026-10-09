@@ -142,8 +142,55 @@ ALTER TABLE changes ADD COLUMN approvedHead TEXT;
 ALTER TABLE changes ADD COLUMN approvedAt TEXT;
 `;
 
+/**
+ * Schema v4 (ADR-038): the Claude Code sessions seen by `track --agent` and
+ * their links to changes, and the `agent-run` event type (ADR-029). SQLite
+ * cannot alter a CHECK, so `events` is rebuilt once with its rows, ids and
+ * index. `parsedBytes` mirrors the digest's main cursor (`digest.state`, the
+ * source of truth for every cursor) for queries that do not parse the digest.
+ */
+const V4 = `
+CREATE TABLE sessions (
+  id INTEGER PRIMARY KEY,
+  repoId INTEGER NOT NULL REFERENCES repos(id) ON DELETE CASCADE,
+  sessionId TEXT NOT NULL,
+  transcriptPath TEXT NOT NULL,
+  cwd TEXT NOT NULL,
+  title TEXT,
+  firstAt TEXT,
+  lastAt TEXT,
+  digest TEXT,
+  parsedBytes INTEGER NOT NULL DEFAULT 0,
+  parseError TEXT,
+  UNIQUE (repoId, sessionId)
+);
+
+CREATE TABLE change_sessions (
+  changeId INTEGER NOT NULL REFERENCES changes(id) ON DELETE CASCADE,
+  sessionRowId INTEGER NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+  firstHead TEXT,
+  lastHead TEXT,
+  linkedAt TEXT NOT NULL,
+  UNIQUE (changeId, sessionRowId)
+);
+CREATE INDEX change_sessions_session ON change_sessions(sessionRowId);
+
+CREATE TABLE events_v4 (
+  id INTEGER PRIMARY KEY,
+  repoId INTEGER NOT NULL REFERENCES repos(id) ON DELETE CASCADE,
+  changeId INTEGER REFERENCES changes(id) ON DELETE CASCADE,
+  type TEXT NOT NULL CHECK (type IN ('collect','agent','commit','review','import','audit','agent-run')),
+  at TEXT NOT NULL,
+  payload TEXT
+);
+INSERT INTO events_v4 (id, repoId, changeId, type, at, payload) SELECT id, repoId, changeId, type, at, payload FROM events;
+DROP TABLE events;
+ALTER TABLE events_v4 RENAME TO events;
+CREATE INDEX events_repo_at ON events(repoId, at);
+`;
+
 /** The migrations in order; index i holds the SQL that produces version i + 1. */
-export const MIGRATIONS: readonly string[] = [V1, V2, V3];
+export const MIGRATIONS: readonly string[] = [V1, V2, V3, V4];
 
 /** The schema version this code writes. */
 export const SCHEMA_VERSION = MIGRATIONS.length;

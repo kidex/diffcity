@@ -66,6 +66,37 @@ describe('lazy command modules', () => {
     expect(urls.filter((url) => url.endsWith('/dist/cli/diff.js'))).toEqual([]);
   });
 
+  it('track/lazy-imports-unchanged: track --agent with a session in the hook JSON forwards it without loading the session parser', async () => {
+    const repo = await createRepo({ name: 'sample-shop', files: { 'src/cart/total.ts': 'export const total = 1;\n' } });
+    const fake = await startFakeDaemon(homePaths(temp.home));
+    try {
+      const log = join(temp.root, 'imports.log');
+      const hook = JSON.stringify({ session_id: 'deadbeef-0001', transcript_path: '/claude/projects/p/deadbeef-0001.jsonl', cwd: repo.dir, hook_event_name: 'Stop' });
+      const stdout = await new Promise<string>((resolve) => {
+        const child = execFile(
+          process.execPath,
+          ['--import', recorder, cliEntry, 'track', '--agent'],
+          { cwd: temp.userHome, env: { ...temp.env, DIFFCITY_TEST_IMPORT_LOG: log } },
+          (_error, out) => {
+            resolve(out);
+          },
+        );
+        child.stdin?.end(hook);
+      });
+      expect(stdout).toBe('tracked sample-shop\n');
+      expect(fake.requests).toMatchObject([{ type: 'track', agent: true, session: { sessionId: 'deadbeef-0001', event: 'Stop' } }]);
+      const urls = (await readFile(log, 'utf8')).split('\n').filter((line) => line !== '');
+      expect(urls.some((url) => url.endsWith('/dist/cli/track.js'))).toBe(true);
+      expect(urls.filter((url) => url.includes('/dist/core/session/'))).toEqual([]);
+      expect(urls.filter(loadsParser)).toEqual([]);
+      expect(urls.filter(loadsTsMorph)).toEqual([]);
+      expect(urls.filter(loadsReport)).toEqual([]);
+    } finally {
+      await fake.close();
+      await repo.cleanup();
+    }
+  });
+
   it('graph/ts-morph-not-loaded-by-track: neither track nor --help loads ts-morph', async () => {
     const tracked = await loadedModules(['track', temp.userHome]);
     expect(tracked.filter(loadsTsMorph)).toEqual([]);

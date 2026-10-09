@@ -7,6 +7,7 @@ import { getDb } from '../db.js';
 import type { DaemonPlugin } from '../plugin.js';
 import { createDiffPool, type DiffPool, type DiffPoolOptions } from '../diff/pool.js';
 import { getRuntime } from '../runtime.js';
+import { listedWorktrees } from '../session/worktrees.js';
 import { registerApiRoutes } from './routes.js';
 import type { ServedCounts } from '../../core/served/index.js';
 import type { ServedCache } from './served-cache.js';
@@ -51,6 +52,8 @@ export function createApiPlugin(options: ApiPluginOptions = {}): DaemonPlugin {
         ...(options.servedCache === undefined ? {} : { servedCache: options.servedCache }),
         ...(options.servedSummaries === undefined ? {} : { servedSummaries: options.servedSummaries }),
         diff: { pool: diffPool, log: context.log },
+        // Through the collection plugin's provider, the listing the session tracker links with.
+        worktrees: (repoId) => listedWorktrees(context, repoId),
       });
     },
     async stop() {

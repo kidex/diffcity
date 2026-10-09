@@ -17,10 +17,12 @@ export interface FakeDaemonHandlers {
   track?: (request: SocketRequestOf<'track'>) => SocketResponseFor<'track'> | Promise<SocketResponseFor<'track'>>;
   register?: (request: SocketRequestOf<'register'>) => SocketResponseFor<'register'>;
   import?: (request: SocketRequestOf<'import'>) => SocketResponseFor<'import'> | Promise<SocketResponseFor<'import'>>;
+  /** Without one, `sessions` gets the "not supported" answer of a daemon that predates it (ADR-038). */
+  sessions?: (request: SocketRequestOf<'sessions'>) => SocketResponseFor<'sessions'> | Promise<SocketResponseFor<'sessions'>>;
 }
 
 export interface FakeDaemon {
-  /** Every track, register and import request, in arrival order. */
+  /** Every track, register, import and sessions request, in arrival order. */
   readonly requests: SocketRequest[];
   readonly info: DaemonInfo;
   close(): Promise<void>;
@@ -31,7 +33,7 @@ export interface FakeDaemon {
  * counts dirs it saw before as known; import takes every finding into change
  * 12 (`branch:feature/totals` of repo 1) and echoes the warnings.
  */
-function defaultHandlers(): Required<FakeDaemonHandlers> {
+function defaultHandlers(): Required<Omit<FakeDaemonHandlers, 'sessions'>> {
   const known = new Set<string>();
   let nextId = 1;
   return {
@@ -82,6 +84,13 @@ export async function startFakeDaemon(paths: HomePaths, handlers: FakeDaemonHand
     requests.push(request);
     return importFindings(request);
   });
+  const { sessions } = handlers;
+  if (sessions !== undefined) {
+    server.handlers.handle('sessions', (request) => {
+      requests.push(request);
+      return sessions(request);
+    });
+  }
   await server.listen();
   await writeDaemonInfo(paths, info);
   return { requests, info, close: () => server.close() };

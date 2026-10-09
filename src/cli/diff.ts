@@ -1,9 +1,15 @@
-// `diffcity diff [--json [--compact]] [--base <ref>] [--head <ref>]` (SPEC.md
-// section 3, ADR-011, ADR-037). Builds the Report in-process through src/core;
-// never starts or contacts the daemon. `--compact` is an output filter only.
+// `diffcity diff [--json [--compact] [--with-sessions]] [--base <ref>] [--head <ref>]`
+// (SPEC.md section 3, ADR-011, ADR-037, ADR-038). Builds the Report in-process
+// through src/core; never starts the daemon. `--compact` is an output filter
+// only. `--with-sessions` asks the running daemon for the Claude Code sessions
+// of the change checked out here and adds them under a `sessions` key next to
+// the Report's own keys; without a daemon it fails. The sessions follow the
+// change checked out in the current directory, whatever --base and --head say. Session data reaches the
+// output through that flag only: the Report itself never carries it.
 
 import { identifyRepo } from '../core/changes/index.js';
 import { homePaths, resolveHome } from '../core/home.js';
+import type { SessionView } from '../core/model/types.js';
 import { buildReport, type BuildReportOptions } from '../core/report/index.js';
 import { readSettings, ruleSettingsFor, type UserRuleSettings } from '../core/settings/index.js';
 import type { Report, Status, Verdict } from '../core/report/types.js';
@@ -14,7 +20,11 @@ export interface DiffCommandOptions {
   compact?: boolean;
   base?: string;
   head?: string;
+  /** With --json: add the sessions of the change from the running daemon (ADR-038). */
+  withSessions?: boolean;
 }
+
+export type SessionsFetch = { ok: true; sessions: SessionView[] } | { ok: false; error: string };
 
 export interface DiffDeps {
   /** Directory the command runs in; the repo is found from it. */
@@ -32,6 +42,41 @@ export interface DiffDeps {
    * for stderr. Absent: no user rules (the CLI passes userRulesFor).
    */
   userRules?: ((warn: (message: string) => void) => Promise<UserRuleSettings>) | undefined;
+  /** Fetches the sessions for --with-sessions; the CLI passes sessionsFromDaemon. */
+  sessions?: (() => Promise<SessionsFetch>) | undefined;
+}
+
+/** The error of --with-sessions when no daemon answers. */
+export const NO_DAEMON_FOR_SESSIONS = '--with-sessions needs the diffcity daemon, which is not running; start it with diffcity up';
+
+/**
+ * The sessions of the change checked out in `cwd`, from the running daemon
+ * (the `sessions` socket request, ADR-038). Never starts a daemon.
+ */
+export async function sessionsFromDaemon(cwd: string, env: NodeJS.ProcessEnv): Promise<SessionsFetch> {
+  // Loaded here: a plain `diff` never touches the socket client.
+  const { findRunningDaemon, sendRequest } = await import('../daemon/client.js');
+  let paths;
+  try {
+    paths = homePaths(resolveHome(env));
+  } catch (error) {
+    return { ok: false, error: oneLine(error) };
+  }
+  const running = await findRunningDaemon(paths);
+  if (running === null) return { ok: false, error: NO_DAEMON_FOR_SESSIONS };
+  let response;
+  try {
+    response = await sendRequest(running.info.socket, { v: 1, type: 'sessions', dir: cwd });
+  } catch (error) {
+    return { ok: false, error: `the daemon did not answer: ${oneLine(error)}` };
+  }
+  if (!response.ok) {
+    if (/^unknown request type: sessions$|^sessions is not supported/.test(response.error)) {
+      return { ok: false, error: `the running daemon (v${running.version}) predates --with-sessions; restart it with diffcity stop and diffcity up` };
+    }
+    return { ok: false, error: response.error };
+  }
+  return { ok: true, sessions: response.sessions };
 }
 
 /**
@@ -151,6 +196,19 @@ function oneLine(error: unknown): string {
 /** Runs the command; resolves with the process exit code (0 on success, 1 on any error). */
 export async function runDiff(options: DiffCommandOptions, deps: DiffDeps): Promise<number> {
   const build = deps.build ?? buildReport;
+  let sessions: SessionView[] | null = null;
+  if (options.withSessions === true) {
+    if (options.json !== true) {
+      deps.io.stderr('diffcity diff: --with-sessions needs --json\n');
+      return 1;
+    }
+    const fetched = deps.sessions === undefined ? { ok: false as const, error: NO_DAEMON_FOR_SESSIONS } : await deps.sessions();
+    if (!fetched.ok) {
+      deps.io.stderr(`diffcity diff: ${oneLine(fetched.error)}\n`);
+      return 1;
+    }
+    sessions = fetched.sessions;
+  }
   let report: Report;
   try {
     const now = deps.now === undefined ? undefined : parseNow(deps.now);
@@ -170,6 +228,7 @@ export async function runDiff(options: DiffCommandOptions, deps: DiffDeps): Prom
     return 0;
   }
   const output = options.compact === true ? compactReport(report) : report;
-  deps.io.stdout(`${JSON.stringify(output, null, 2)}\n`);
+  // The sessions sit next to the Report's keys, never inside the Report.
+  deps.io.stdout(`${JSON.stringify(sessions === null ? output : { ...output, sessions }, null, 2)}\n`);
   return 0;
 }

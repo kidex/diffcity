@@ -3,14 +3,14 @@
 // retention are pruned daily, the other types stay with their repo or change.
 
 import type { Connection } from './driver.js';
-import type { EventRecord, EventType } from '../model/types.js';
+import type { EventLogType, EventRecord } from '../model/types.js';
 import { isoTime, jsonOrNull, parseJsonOrNull, retentionCutoff } from './time.js';
 
 interface EventRow {
   id: number;
   repoId: number;
   changeId: number | null;
-  type: EventType;
+  type: EventLogType;
   at: string;
   payload: string | null;
 }
@@ -23,7 +23,7 @@ export interface EventStore {
   /** Events of a repo (its changes included), latest first. */
   listForRepo(repoId: number): EventRecord[];
   /** The `at` of the latest event of `type` for the change, or null. */
-  latestAt(changeId: number, type: EventType): string | null;
+  latestAt(changeId: number, type: EventLogType): string | null;
   /** Deletes `collect` events with `at` more than RETENTION_DAYS before `now`; returns how many. */
   pruneCollect(now: string): number;
 }
@@ -40,11 +40,11 @@ function toRecord(row: EventRow): EventRecord {
 }
 
 export function createEventStore(db: Connection): EventStore {
-  const insert = db.prepare<[number, number | null, EventType, string, string | null], EventRow>(
+  const insert = db.prepare<[number, number | null, EventLogType, string, string | null], EventRow>(
     'INSERT INTO events (repoId, changeId, type, at, payload) VALUES (?, ?, ?, ?, ?) RETURNING *',
   );
   const forRepo = db.prepare<[number], EventRow>('SELECT * FROM events WHERE repoId = ? ORDER BY at DESC, id DESC');
-  const latestAt = db.prepare<[number, EventType], { at: string }>(
+  const latestAt = db.prepare<[number, EventLogType], { at: string }>(
     'SELECT at FROM events WHERE changeId = ? AND type = ? ORDER BY at DESC, id DESC LIMIT 1',
   );
   const prune = db.prepare<[string]>("DELETE FROM events WHERE type = 'collect' AND at < ?");

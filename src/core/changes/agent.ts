@@ -13,7 +13,8 @@ export interface AgentEvent {
   changeId: number | null;
   type: 'agent';
   at: string;
-  payload: { worktree: string };
+  /** `sessionId` when the hook carried a valid session (ADR-038): the id only, nothing else of the session. */
+  payload: { worktree: string; sessionId?: string };
 }
 
 export interface AgentOutcome {
@@ -51,9 +52,10 @@ export function applyAgent(
   live: readonly ChangeRecord[],
   worktree: Pick<WorktreeInfo, 'path' | 'head'>,
   at: string,
+  sessionId?: string,
 ): AgentOutcome {
   const change = changeOfWorktree(live, worktree);
-  const payload = { worktree: worktree.path };
+  const payload = { worktree: worktree.path, ...(sessionId === undefined ? {} : { sessionId }) };
   if (change === null) return { update: null, event: { changeId: null, type: 'agent', at, payload } };
   return {
     update: changedColumns(change, { reviewState: 'unreviewed', lastEventType: 'agent', lastEventAt: at }),

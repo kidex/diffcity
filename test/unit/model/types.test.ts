@@ -233,8 +233,8 @@ describe('model types', () => {
     expectTypeOf<ArchiveReason>().toEqualTypeOf<'merged' | 'deleted' | 'closed' | 'clean'>();
     expectTypeOf<WatchMode>().toEqualTypeOf<'full' | 'git-only' | 'off'>();
     expectTypeOf<CollectPriority>().toEqualTypeOf<'high' | 'normal' | 'low'>();
-    expectTypeOf<SseEventName>().toEqualTypeOf<'hello' | 'repo' | 'changes' | 'snapshot' | 'review' | 'findings' | 'collect'>();
-    expectTypeOf<SocketRequest['type']>().toEqualTypeOf<'ping' | 'track' | 'register' | 'import' | 'shutdown'>();
+    expectTypeOf<SseEventName>().toEqualTypeOf<'hello' | 'repo' | 'changes' | 'snapshot' | 'review' | 'findings' | 'sessions' | 'collect'>();
+    expectTypeOf<SocketRequest['type']>().toEqualTypeOf<'ping' | 'track' | 'register' | 'import' | 'sessions' | 'shutdown'>();
     expectTypeOf<SocketRequest['v']>().toEqualTypeOf<1>();
   });
 

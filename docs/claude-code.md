@@ -32,6 +32,12 @@ The absolute form holds paths of your machine. With `--repo` setup warns about i
 
 The hook never blocks the agent: on any failure it prints one line on stderr and exits 0. It never opens the browser.
 
+## Sessions
+
+The Stop hook's JSON on stdin carries the session: `session_id`, `transcript_path`, `cwd` and `hook_event_name`. `track --agent` forwards those four fields to the daemon unchanged and reads nothing else. The daemon checks them before it reads any file: the session id is hex digits and dashes, the transcript is a regular file named `<session_id>.jsonl` whose real path lies under `<Claude config dir>/projects` (`CLAUDE_CONFIG_DIR`, else `~/.claude`), and the subagent files it reads are derived from that path, never taken from the message, and never followed through a symbolic link. A refused session is logged with a code only; the agent mark still happens. The daemon resolves the Claude config directory from its own environment, not the hook's: if you set `CLAUDE_CONFIG_DIR`, set it where the daemon starts too (the shell that runs `diffcity up`, or the one whose `track` starts it). Otherwise every session is refused, and `daemon.log` shows `session refused: outside-projects`.
+
+About 1.5 s after the hook, a worker reads the transcript from where the last read stopped, once more if it had grown meanwhile, and again at every later Stop. It keeps a redacted, size-capped digest (prompts, questions, agent runs, activity) and links the session to the change of the working tree it ran in, and to the change of each working tree its subagents worked in. `GET /api/changes/:id/sessions` serves the 20 newest sessions of a change, outside the Report; `diffcity diff --json --with-sessions` adds the same list under a `sessions` key and needs a running daemon. The sessions follow the change checked out in the current directory, whatever `--base` and `--head` say.
+
 ## settings.json
 
 - The file is parsed as JSON. A file that is not JSON, is not an object, or has a `hooks` that is not an object or a `hooks.Stop` that is not an array is refused, never rewritten. A missing or blank file counts as `{}`.
@@ -61,4 +67,4 @@ The command:
 
 ## Claude Code version
 
-The frontmatter keys, the `allowed-tools` rule syntax and the settings hooks format belong to Claude Code, not to diffcity. The files were checked against Claude Code 2.1.288.
+The frontmatter keys, the `allowed-tools` rule syntax and the settings hooks format belong to Claude Code, not to diffcity. The files were checked against Claude Code 2.1.288. The transcript format the session digest reads (records, subagent files, task notifications) belongs to Claude Code too; it was checked against Claude Code 2.1.294 and 2.1.295. A format change gives fewer fields and a count of unreadable lines, never a failed collection.
