@@ -119,9 +119,17 @@ describe('panel model', () => {
   it('outside the spec lists files with inSpec false; no spec at all is told apart from none outside', () => {
     expect(outsideSpec(report()).files.map((p) => p.file.id)).toEqual(['src/a.ts']);
     const none = report({ packages: [{ id: 'src', path: 'src', tier1: false, files: [file('src/a.ts', [], null), file('src/b.ts', [], null)] }] });
-    expect(outsideSpec(none)).toEqual({ files: [], specKnown: false });
+    expect(outsideSpec(none)).toEqual({ files: [], specKnown: false, notice: null });
     const allIn = report({ packages: [{ id: 'src', path: 'src', tier1: false, files: [file('src/a.ts', [], true), file('src/b.ts', [], null)] }] });
-    expect(outsideSpec(allIn)).toEqual({ files: [], specKnown: true });
+    expect(outsideSpec(allIn)).toEqual({ files: [], specKnown: true, notice: null });
+  });
+
+  it('outside the spec carries the Report specNotice as is (ADR-035)', () => {
+    const noRoot = report({
+      packages: [{ id: 'src', path: 'src', tier1: false, files: [file('src/a.ts', [], null)] }],
+      specNotice: 'The spec names no touched symbol or file',
+    });
+    expect(outsideSpec(noRoot)).toEqual({ files: [], specKnown: false, notice: 'The spec names no touched symbol or file' });
   });
 
   it('touched symbols are grouped by file in source order and leave the untouched out', () => {

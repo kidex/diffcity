@@ -158,12 +158,12 @@ export function findingsBody(report: Report, actions: TabActions): TabBody {
 }
 
 export function outsideBody(report: Report, actions: TabActions): TabBody {
-  const { files, specKnown } = outsideSpec(report);
+  const { files, specKnown, notice } = outsideSpec(report);
   const root = h(
     'div',
     { class: 'tab-body', 'data-testid': 'tab-outside-body' },
     files.length === 0
-      ? empty('empty-outside', specKnown ? EMPTY_OUTSIDE_ALL_IN : EMPTY_OUTSIDE_NO_SPEC)
+      ? empty('empty-outside', notice ?? (specKnown ? EMPTY_OUTSIDE_ALL_IN : EMPTY_OUTSIDE_NO_SPEC))
       : h('ul', { class: 'plain-list' }, files.map((placed) => h('li', { 'data-testid': 'outside-file' }, fileHead(placed, actions)))),
   );
   return { root, stops: [], symbols: [] };
