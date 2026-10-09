@@ -7,7 +7,7 @@ import { mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { createServer, type Server } from 'node:net';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { homePaths, type HomePaths } from '../../../src/core/home.js';
 import type { DaemonInfo } from '../../../src/core/model/types.js';
 import { readVersion } from '../../../src/core/version.js';
@@ -16,6 +16,7 @@ import { OWNER_WAIT_MS, sendRequest, spawnDaemon } from '../../../src/daemon/cli
 import { isProcessAlive, readDaemonInfo, writeDaemonInfo } from '../../../src/daemon/files.js';
 import { tempHome, type TempHome } from '../../helpers/config.js';
 import { CLI_DIST, DAEMON_MAIN_DIST, DaemonTracker, waitFor } from '../../helpers/daemon.js';
+import { expectNoRecorderLeft, IMPORT_RECORDER } from '../../helpers/import-recorder-guard.js';
 
 let temp: TempHome;
 let paths: HomePaths;
@@ -32,6 +33,7 @@ afterEach(async () => {
   for (const server of servers.splice(0)) await new Promise((resolve) => server.close(resolve));
   await temp.cleanup();
 });
+afterAll(expectNoRecorderLeft);
 
 const version = readVersion();
 
@@ -235,11 +237,12 @@ describe('up stays light', () => {
   const loadsServer = (url: string): boolean => url.endsWith('/dist/daemon/daemon.js') || url.endsWith('/dist/daemon/http/server.js');
 
   it('up without --foreground loads neither Fastify nor the daemon server', async () => {
-    const recorder = fileURLToPath(new URL('../../helpers/import-recorder.mjs', import.meta.url));
     const log = join(temp.root, 'imports.log');
     const env = { ...temp.env, DIFFCITY_TEST_IMPORT_LOG: log };
-    const run = daemons.spawn(CLI_DIST, ['up', '--port', '0', '--no-open'], env, temp.userHome, ['--import', recorder]);
+    // Its own process group with a timeout below the test's: a hung run is killed, not orphaned (DC-130).
+    const run = daemons.spawn(CLI_DIST, ['up', '--port', '0', '--no-open'], env, temp.userHome, ['--import', IMPORT_RECORDER], { group: true, timeoutMs: 45_000 });
     const code = await run.exited;
+    expect(run.timedOut(), `stderr: ${run.stderr()}`).toBe(false);
     await reportStartTimeout(run.stderr());
     expect(code, `stderr: ${run.stderr()}`).toBe(0);
     const urls = (await readFile(log, 'utf8')).split('\n').filter((line) => line !== '');

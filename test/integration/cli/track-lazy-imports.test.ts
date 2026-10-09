@@ -5,52 +5,56 @@
 // web-tree-sitter, ts-morph, src/core/report nor src/core/parse; neither does
 // `setup-claude` (ADR-037), which loads only src/core/claude and the git root
 // probe. Runs the built CLI with a module recorder preloaded and inspects what
-// Node loaded.
+// Node loaded. Every run goes through DaemonTracker in its own process group,
+// with a timeout, and the guard checks that none outlives the file (DC-130).
 
-import { execFile } from 'node:child_process';
 import { readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { homePaths } from '../../../src/core/home.js';
 import { tempHome, type TempHome } from '../../helpers/config.js';
+import { CLI_DIST, DaemonTracker } from '../../helpers/daemon.js';
 import { startFakeDaemon } from '../../helpers/fake-daemon.js';
 import { isolateGitConfig } from '../../helpers/git-env.js';
+import { expectNoRecorderLeft, IMPORT_RECORDER } from '../../helpers/import-recorder-guard.js';
 import { createRepo } from '../../helpers/repo.js';
 
 isolateGitConfig();
 
-const repoRoot = fileURLToPath(new URL('../../../', import.meta.url));
-const cliEntry = join(repoRoot, 'dist', 'cli', 'index.js');
-const recorder = join(repoRoot, 'test', 'helpers', 'import-recorder.mjs');
+/** Below the 60 s test timeout: a run that hangs is killed and fails its test with a clear message. */
+const RUN_TIMEOUT_MS = 45_000;
 
 let temp: TempHome;
+const daemons = new DaemonTracker();
 beforeEach(async () => {
   temp = await tempHome();
+  daemons.track(temp.home);
 });
 afterEach(async () => {
+  await daemons.cleanup();
   await temp.cleanup();
 });
+afterAll(expectNoRecorderLeft);
 
 /** Runs the built CLI (in an empty directory unless `cwd` is given) and returns the URLs of every module it loaded. */
 async function loadedModules(args: string[], cwd = temp.userHome): Promise<string[]> {
   return (await runRecorded(args, cwd)).urls;
 }
 
-async function runRecorded(args: string[], cwd: string): Promise<{ urls: string[]; stdout: string }> {
+/**
+ * Runs the built CLI under the recorder (stdin closed unless `input` is
+ * given) and returns its stdout and the URLs of every module it loaded. The
+ * log starts empty for each run.
+ */
+async function runRecorded(args: string[], cwd: string, options: { env?: NodeJS.ProcessEnv; input?: string } = {}): Promise<{ urls: string[]; stdout: string }> {
   const log = join(temp.root, 'imports.log');
-  const stdout = await new Promise<string>((resolve) => {
-    execFile(
-      process.execPath,
-      ['--import', recorder, cliEntry, ...args],
-      { cwd, env: { ...temp.env, DIFFCITY_TEST_IMPORT_LOG: log } },
-      // The exit code is not the point here: only what got loaded on the way.
-      (_error, out) => {
-        resolve(out);
-      },
-    );
-  });
-  return { urls: (await readFile(log, 'utf8')).split('\n').filter((line) => line !== ''), stdout };
+  await rm(log, { force: true });
+  const env = { ...(options.env ?? temp.env), DIFFCITY_TEST_IMPORT_LOG: log };
+  const run = daemons.spawn(CLI_DIST, args, env, cwd, ['--import', IMPORT_RECORDER], { group: true, timeoutMs: RUN_TIMEOUT_MS, ...(options.input === undefined ? {} : { input: options.input }) });
+  // The exit code is not the point here: only what got loaded on the way.
+  await run.exited;
+  if (run.timedOut()) throw new Error(`diffcity ${args.join(' ')} did not exit within ${String(RUN_TIMEOUT_MS)} ms; stderr: ${run.stderr()}`);
+  return { urls: (await readFile(log, 'utf8')).split('\n').filter((line) => line !== ''), stdout: run.stdout() };
 }
 
 const loadsParser = (url: string): boolean => url.includes('/node_modules/web-tree-sitter/');
@@ -70,22 +74,10 @@ describe('lazy command modules', () => {
     const repo = await createRepo({ name: 'sample-shop', files: { 'src/cart/total.ts': 'export const total = 1;\n' } });
     const fake = await startFakeDaemon(homePaths(temp.home));
     try {
-      const log = join(temp.root, 'imports.log');
       const hook = JSON.stringify({ session_id: 'deadbeef-0001', transcript_path: '/claude/projects/p/deadbeef-0001.jsonl', cwd: repo.dir, hook_event_name: 'Stop' });
-      const stdout = await new Promise<string>((resolve) => {
-        const child = execFile(
-          process.execPath,
-          ['--import', recorder, cliEntry, 'track', '--agent'],
-          { cwd: temp.userHome, env: { ...temp.env, DIFFCITY_TEST_IMPORT_LOG: log } },
-          (_error, out) => {
-            resolve(out);
-          },
-        );
-        child.stdin?.end(hook);
-      });
+      const { urls, stdout } = await runRecorded(['track', '--agent'], temp.userHome, { input: hook });
       expect(stdout).toBe('tracked sample-shop\n');
       expect(fake.requests).toMatchObject([{ type: 'track', agent: true, session: { sessionId: 'deadbeef-0001', event: 'Stop' } }]);
-      const urls = (await readFile(log, 'utf8')).split('\n').filter((line) => line !== '');
       expect(urls.some((url) => url.endsWith('/dist/cli/track.js'))).toBe(true);
       expect(urls.filter((url) => url.includes('/dist/core/session/'))).toEqual([]);
       expect(urls.filter(loadsParser)).toEqual([]);
@@ -141,21 +133,9 @@ describe('lazy command modules', () => {
         [['setup-claude', '--repo'], repo.dir],
       ];
       for (const [args, cwd] of runs) {
-        const log = join(temp.root, 'imports.log');
-        await rm(log, { force: true });
-        const stdout = await new Promise<string>((resolve) => {
-          execFile(
-            process.execPath,
-            ['--import', recorder, cliEntry, ...args],
-            { cwd, env: { ...temp.env, CLAUDE_CONFIG_DIR: claudeDir, DIFFCITY_TEST_IMPORT_LOG: log } },
-            (_error, out) => {
-              resolve(out);
-            },
-          );
-        });
+        const { urls, stdout } = await runRecorded(args, cwd, { env: { ...temp.env, CLAUDE_CONFIG_DIR: claudeDir } });
         // A real run: it wrote the files.
         expect(stdout).toMatch(/^created .*diffcity-review\.md$/m);
-        const urls = (await readFile(log, 'utf8')).split('\n').filter((line) => line !== '');
         expect(urls.some((url) => url.endsWith('/dist/cli/setup-claude.js'))).toBe(true);
         expect(urls.some((url) => url.endsWith('/dist/core/claude/setup.js'))).toBe(true);
         expect(urls.filter(loadsParser)).toEqual([]);
