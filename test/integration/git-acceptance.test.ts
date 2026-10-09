@@ -142,11 +142,18 @@ describe('process execution (ADR-012)', () => {
       const text = await readFile(new URL(file, root), 'utf8');
       // git/exec.ts alone also uses spawn, for gitStream (output hashed as it arrives, never buffered); still no shell.
       const streams = file === 'git/exec.ts';
-      const banned = streams ? /(?<![.\w])(exec|execSync|spawnSync|execFileSync|fork)\s*\(/ : /(?<![.\w])(exec|execSync|spawn|spawnSync|execFileSync|fork)\s*\(/;
+      // exec/tool.ts, the external tool runner (ADR-032), spawns each tool in its own process group, with shell: false spelled out.
+      const tool = file === 'exec/tool.ts';
+      const banned = streams || tool ? /(?<![.\w])(exec|execSync|spawnSync|execFileSync|fork)\s*\(/ : /(?<![.\w])(exec|execSync|spawn|spawnSync|execFileSync|fork)\s*\(/;
       expect(text, file).not.toMatch(banned);
-      expect(text, file).not.toMatch(/shell\s*:/);
+      expect(text, file).not.toMatch(/shell\s*:(?!\s*false\b)/);
+      if (!tool) expect(text, file).not.toMatch(/shell\s*:/);
       if (text.includes('node:child_process')) {
-        const imports = streams ? /import \{ execFile, spawn \} from 'node:child_process'/ : /import \{ execFile \} from 'node:child_process'/;
+        const imports = streams
+          ? /import \{ execFile, spawn \} from 'node:child_process'/
+          : tool
+            ? /import \{ spawn \} from 'node:child_process'/
+            : /import \{ execFile \} from 'node:child_process'/;
         expect(text, file).toMatch(imports);
       }
     }
