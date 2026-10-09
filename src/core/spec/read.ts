@@ -7,7 +7,7 @@
 
 import { open, realpath } from 'node:fs/promises';
 import { isAbsolute, relative, resolve, sep } from 'node:path';
-import { readAfterBytes, sizeAfter, type ResolvedChange } from '../git/index.js';
+import { GitError, readAfterBytes, sizeAfter, type ResolvedChange } from '../git/index.js';
 import { MAX_SPEC_BYTES, SPEC_PATH } from './scope.js';
 
 /** The spec of a build, as read. */
@@ -17,8 +17,21 @@ export type SpecSource =
   /** `path` is repo-relative for `.diffcity/spec.md`; absolute for a `--spec` file. */
   | { kind: 'text'; text: string; path: string };
 
-/** `.diffcity/spec.md` of the change's after state. */
+/**
+ * `.diffcity/spec.md` of the change's after state. In a working tree whose
+ * `.diffcity` links out of the repo, the git layer refuses the path: the spec
+ * there is not read, as if there were none.
+ */
 export async function readRepoSpec(change: ResolvedChange): Promise<SpecSource> {
+  try {
+    return await readRepoSpecUnguarded(change);
+  } catch (error) {
+    if (error instanceof GitError && error.code === 'bad-path') return { kind: 'absent' };
+    throw error;
+  }
+}
+
+async function readRepoSpecUnguarded(change: ResolvedChange): Promise<SpecSource> {
   const size = await sizeAfter(change, SPEC_PATH);
   if (size === null) return { kind: 'absent' };
   if (size > MAX_SPEC_BYTES) return { kind: 'too-large' };

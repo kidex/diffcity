@@ -115,6 +115,19 @@ describe('spec read from the change (ADR-035)', () => {
   });
 });
 
+describe('spec read through a .diffcity link out of the repo', () => {
+  it('a .diffcity directory symlinked outside the repo is not read: no spec, and the build still succeeds', async () => {
+    const outside = await scratch();
+    await writeFile(join(outside, 'spec.md'), 'Bake longer in `bake`.\n', 'utf8');
+    const { repo } = await fixtureRepo('spec/spec-arg-wins', { commit: true });
+    await symlink(outside, join(repo.dir, '.diffcity'));
+    const report = await build(repo.dir);
+    // The link itself is a touched file of the dirty change.
+    expect(inSpec(report)).toEqual({ '.diffcity': null, ...NONE });
+    expect('specNotice' in report).toBe(false);
+  });
+});
+
 describe('spec/spec-file-too-large-absent', () => {
   it.each([
     ['head tree', true],
