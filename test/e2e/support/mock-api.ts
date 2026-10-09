@@ -79,7 +79,8 @@ export interface ApiData {
   findingsMocks: Map<number, FindingsMock>;
   /**
    * `GET /api/changes/:id/sessions` per change id (ADR-038), read at each request: replace an entry and
-   * emit SSE `sessions` to serve another answer. A change without one answers 404, as an unmocked route did.
+   * emit SSE `sessions` to serve another answer. Without one, a change the mock knows (a Report, a live or
+   * archived change) has no sessions, as the daemon answers; any other id answers 404.
    */
   sessions?: Record<number, SessionsResponse>;
 }
@@ -252,8 +253,11 @@ export async function mockApi(page: Page, overrides: Partial<ApiData> = {}): Pro
         return;
       }
       if ((match = /^\/api\/changes\/(\d+)\/sessions$/.exec(path))) {
-        const sessions = data.sessions?.[Number(match[1])];
-        return sessions ? answer(route, sessions) : answer(route, notFound('no sessions mocked'), 404);
+        const id = Number(match[1]);
+        const sessions = data.sessions?.[id];
+        if (sessions) return answer(route, sessions);
+        const known = data.reports[id] !== undefined || liveChange(id) !== undefined || Object.values(data.archived).flat().some((change) => change.id === id);
+        return known ? answer(route, { sessions: [], total: 0 }) : answer(route, notFound(`change ${String(id)} not found`), 404);
       }
       if (path === '/api/search') return answer(route, data.search(url.searchParams.get('q') ?? ''));
       return answer(route, notFound(`no mock for ${path}`), 404);
