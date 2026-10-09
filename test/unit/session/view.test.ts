@@ -123,7 +123,7 @@ describe('session view', () => {
   it('a validation refusal is unreadable with no digest, even with a good one stored', () => {
     for (const code of ['symlink', 'outside-projects', 'basename-mismatch', 'not-a-file', 'no-projects-dir', 'bad-transcript-path']) {
       const view = sessionView(row(sample(), { parseError: code }), { changeTree: MAIN, trees: [MAIN] });
-      expect(view, code).toMatchObject({ unreadable: true, stale: false, digest: null });
+      expect(view, code).toMatchObject({ unreadable: true, stale: false, digest: null, title: null });
       expect(JSON.stringify(view)).not.toContain('Split');
       expect(JSON.stringify(view)).not.toContain(code);
     }

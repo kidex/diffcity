@@ -126,7 +126,8 @@ export function sessionView(row: SessionRow, context: SessionViewContext): Sessi
   const digest = refused ? null : parseDigest(row.digest);
   return {
     sessionId: row.sessionId,
-    title: row.title,
+    // The title is transcript content: a refused transcript shows none of it.
+    title: refused ? null : row.title,
     firstAt: row.firstAt,
     lastAt: row.lastAt,
     here,

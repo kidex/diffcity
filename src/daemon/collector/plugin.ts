@@ -37,7 +37,7 @@ import { availableParallelism } from 'node:os';
 import { changeOfWorktree, identifyRepo, type RepoIdentity, type WorktreeInfo } from '../../core/changes/index.js';
 import { claudeConfigDir } from '../../core/claude/config-dir.js';
 import { findRepoRoot } from '../../core/git/change.js';
-import { claudeProjectsDir, validateSession, type ValidatedSession } from '../../core/session/validate.js';
+import { claudeProjectsDir, validateSession, type SessionRefusal, type ValidatedSession } from '../../core/session/validate.js';
 import { createRuleSettingsReader, createTrustCheck } from '../../core/settings/index.js';
 import type { Db } from '../../core/db/index.js';
 import type { CommandRunner } from '../../core/git/index.js';
@@ -56,6 +56,17 @@ import { createSessionPool } from '../session/pool.js';
 import { createSessionTracker, type SessionTracker } from '../session/tracker.js';
 import { sessionViewsOf } from '../session/views.js';
 import { provideWorktrees } from '../session/worktrees.js';
+
+/** Refusals about the transcript file itself, as opposed to a malformed message. */
+const FILE_REFUSALS: ReadonlySet<SessionRefusal> = new Set<SessionRefusal>([
+  'bad-transcript-path',
+  'basename-mismatch',
+  'no-projects-dir',
+  'transcript-missing',
+  'symlink',
+  'not-a-file',
+  'outside-projects',
+]);
 
 /** Directories identified at the same time by one `register` request. */
 const REGISTER_CONCURRENCY = 8;
@@ -204,7 +215,7 @@ export function createCollection(options: CollectionPluginOptions = {}): Collect
   }
 
   /** The session of a track request when it passes validation; a refusal is logged by code only (ADR-038). */
-  async function acceptSession(context: DaemonContext, session: TrackSession): Promise<ValidatedSession | null> {
+  async function acceptSession(context: DaemonContext, session: TrackSession, trackRepoId: number): Promise<ValidatedSession | null> {
     if (projectsDir === null || sessions === null) {
       context.log.warn('session refused: no-claude-config-dir');
       return null;
@@ -212,9 +223,29 @@ export function createCollection(options: CollectionPluginOptions = {}): Collect
     const checked = await validateSession(session, projectsDir);
     if (!checked.ok) {
       context.log.warn(`session refused: ${checked.code}`);
+      await markRefused(session, checked.code, trackRepoId);
       return null;
     }
     return checked.session;
+  }
+
+  /**
+   * A refused transcript of a session already stored (DC-129): the row with
+   * the same session id and the same stored transcript path, in a registered
+   * repo of the request, takes the refusal code, so its last digest stops
+   * being served (ADR-038). A refusal naming another path, or a session that
+   * is not stored, changes nothing: a forged message cannot blank a session.
+   */
+  async function markRefused(session: TrackSession, code: SessionRefusal, trackRepoId: number): Promise<void> {
+    if (!FILE_REFUSALS.has(code)) return;
+    const store = need(db, 'database');
+    // Where hookSession would have stored it: the repo of its cwd, else the track's repo.
+    const repoIds = new Set<number>([trackRepoId]);
+    // A file refusal comes after the cwd check, so the cwd is an absolute path here.
+    const identity = await identifyRepo(session.cwd).catch(() => null);
+    const repo = identity === null ? null : store.repos.getByGitCommonDir(identity.gitCommonDir);
+    if (repo !== null) repoIds.add(repo.id);
+    for (const repoId of repoIds) sessions?.refused(repoId, session.sessionId, session.transcriptPath, code);
   }
 
   /** Stores and links a valid session in the repo its cwd is in, or in the track's repo when it is in none. */
@@ -236,7 +267,7 @@ export function createCollection(options: CollectionPluginOptions = {}): Collect
     const { repo } = see(context, identity, at);
     later(async () => {
       // Validated before anything else touches it: a refused session is never read.
-      const session = request.agent && request.session !== undefined ? await acceptSession(context, request.session) : null;
+      const session = request.agent && request.session !== undefined ? await acceptSession(context, request.session, repo.id) : null;
       await active.request(repo.id, 'full', 'high');
       if (request.agent) await active.markAgent(repo.id, request.dir, at, session?.sessionId);
       if (session !== null) await hookSession(context, repo, identity, session, at);

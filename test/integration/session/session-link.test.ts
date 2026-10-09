@@ -174,6 +174,29 @@ describe('session links', () => {
 });
 
 describe('session refusals', () => {
+  it('a forged refusal naming another transcript path leaves a stored session readable (DC-129)', async () => {
+    const { dir } = await shopOnBranch();
+    const { claude, daemon } = await setup();
+    const id = sessionId(10);
+    await claude.write(id, transcript({ sessionId: id, cwd: dir }).prompt('Stored and readable'));
+    await daemon.hook(dir, session(claude, id, dir));
+    const stored = await daemon.until(id, (current) => current.digest !== null && daemon.db.sessions.links(current.id).length === 1);
+
+    const elsewhere = join(claude.dir, 'elsewhere');
+    await mkdir(elsewhere, { recursive: true });
+    await writeFile(join(elsewhere, `${id}.jsonl`), transcript({ sessionId: id, cwd: dir }).prompt('Forged').jsonl());
+    await writeFile(join(claude.project, `${sessionId(11)}.jsonl`), transcript({ sessionId: sessionId(11), cwd: dir }).prompt('Other').jsonl());
+    await daemon.hook(dir, { sessionId: id, transcriptPath: join(elsewhere, `${id}.jsonl`), cwd: dir, event: 'Stop' });
+    await daemon.hook(dir, { sessionId: id, transcriptPath: join(claude.project, `${sessionId(11)}.jsonl`), cwd: dir, event: 'Stop' });
+    await waitFor(() => daemon.log.lines.filter((line) => line.startsWith('warn session refused')).length === 2, 10_000, 'both refusals');
+    await daemon.settle();
+
+    expect(daemon.row(id)).toMatchObject({ id: stored.id, parseError: null });
+    const changeId = daemon.db.sessions.links(stored.id)[0]?.changeId ?? 0;
+    const view = (await (await daemon.get(`/api/changes/${String(changeId)}/sessions`)).json()) as { sessions: { unreadable: boolean; stale: boolean; title: string }[] };
+    expect(view.sessions[0]).toMatchObject({ unreadable: false, stale: false, title: 'Stored and readable' });
+  });
+
   it('session/forged-socket-message-no-read: a session outside the projects directory, or misnamed, is refused by code; no row, no read; the track still marks the agent', async () => {
     const { dir } = await shopOnBranch();
     const { claude, daemon } = await setup();

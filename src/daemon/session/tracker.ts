@@ -51,6 +51,12 @@ export interface SessionTrackerOptions {
 export interface SessionTracker {
   /** A hook reported `session` for the repo at `at`: store, link, and schedule a read. */
   hook(repoId: number, session: ValidatedSession, at: string): Promise<void>;
+  /**
+   * The socket-time validation refused `transcriptPath` for this session: the
+   * stored row takes `code` (and its changes get SSE `sessions`) only when it
+   * exists in the repo with exactly that transcript path. Returns whether a row was marked.
+   */
+  refused(repoId: number, sessionId: string, transcriptPath: string, code: string): boolean;
   /** Sessions with a read scheduled or running. */
   readonly pending: number;
   /** Cancels scheduled reads, waits for running ones and stops the pool. */
@@ -170,6 +176,14 @@ export function createSessionTracker(options: SessionTrackerOptions): SessionTra
       state.active = session.event !== 'SessionEnd';
       state.checkGrowth = true;
       schedule(row.id, state);
+    },
+    refused(repoId, sessionId, transcriptPath, code) {
+      if (closed) return false;
+      const row = db.sessions.find(repoId, sessionId);
+      if (row?.transcriptPath !== transcriptPath) return false;
+      db.sessions.setParseError(row.id, code);
+      for (const link of db.sessions.links(row.id)) options.broadcast?.({ event: 'sessions', data: { changeId: link.changeId } });
+      return true;
     },
     get pending() {
       return states.size;

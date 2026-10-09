@@ -375,6 +375,7 @@ export type SessionDigestView = Omit<
  */
 export interface SessionView {
   sessionId: string;
+  /** Null until read, and when the transcript was refused on validation. */
   title: string | null;
   firstAt: string | null;
   lastAt: string | null;
