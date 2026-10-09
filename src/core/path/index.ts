@@ -3,7 +3,7 @@ export { isNextRouteFile, isTestFile, mayRegisterEntries, nextRoutePath, routeKe
 export type { CallbackFact, EntryFacts, HandlerRef, RouteFact } from './entries.js';
 export { MAX_TS_MORPH_FILES, buildCallGraph } from './graph.js';
 export type { CallEdge, CallGraph, CallGraphInput, GraphFile, GraphSymbol } from './graph.js';
-export { ENTRY_CLASSES, buildExecutionPath, classifyEntries, packageEntryFiles } from './order.js';
+export { ENTRY_CLASSES, buildExecutionPath, classifyEntries, packageEntryFiles, routeRegistrations } from './order.js';
 export type { EntryClass, ExecutionPath, ExecutionPathInput } from './order.js';
 export { preparePathFile, prepareUntouchedFile } from './prepare.js';
 export type { PathFile, PrepareFileInput } from './prepare.js';

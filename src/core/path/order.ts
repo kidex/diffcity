@@ -32,6 +32,10 @@ export interface ExecutionPath {
   /** `sig` symbol id to its call sites, for Symbol.callsites. */
   callsites: Map<string, number>;
   mode: CallGraph['mode'];
+  /** The call graph the path walked: caller symbol id to its callees; spec scope walks it too (ADR-035). */
+  edges: CallGraph['edges'];
+  /** Touched symbol id to the HTTP routes it registers or handles (routeRegistrations). */
+  routes: Map<string, { method: string; path: string }[]>;
 }
 
 /** Entry classes in the priority order of 5.4. */
@@ -209,6 +213,30 @@ export function classifyEntries(set: Changeset, packageJson: string | null | und
   return entries;
 }
 
+/**
+ * The HTTP routes of the change by touched symbol (ADR-035 roots): each route
+ * goes to the symbol that declares it, when touched, and to its touched
+ * handlers passed by name, so a spec naming `POST /orders/:id/cancel` reaches
+ * the registration and the code that serves it. `del`, `same` and SQL
+ * symbols get none. Routes in line order, one entry per method and path.
+ */
+export function routeRegistrations(set: Changeset): Map<string, { method: string; path: string }[]> {
+  const found = new Map<string, { method: string; path: string }[]>();
+  const add = (symbol: Symbol | undefined, route: RouteFact): void => {
+    if (symbol === undefined || !changed(symbol) || symbol.kind === 'sql') return;
+    const list = found.get(symbol.id) ?? [];
+    if (!list.some((known) => known.method === route.method && known.path === route.path)) list.push({ method: route.method, path: route.path });
+    found.set(symbol.id, list);
+  };
+  for (const file of set.files) {
+    for (const route of [...(file.facts?.routes ?? [])].sort((a, b) => a.line - b.line)) {
+      add(set.at(file, route.line), route);
+      for (const ref of route.handlers) add(set.resolve(file, ref), route);
+    }
+  }
+  return new Map([...found].sort(([a], [b]) => compare(a, b)));
+}
+
 /** A test: a symbol of a test file, or a top-level `describe` / `it` / `test` block anywhere. */
 function isTest(file: PathFile, symbol: Symbol): boolean {
   return isTestFile(file.path) || (file.facts?.testBlocks.includes(symbol.range.start) ?? false);
@@ -273,6 +301,6 @@ export async function buildExecutionPath(input: ExecutionPathInput): Promise<Exe
     if (root !== undefined) step.entry = root;
     return step;
   });
-  return { steps, callsites: graph.callsites, mode: graph.mode };
+  return { steps, callsites: graph.callsites, mode: graph.mode, edges: graph.edges, routes: routeRegistrations(set) };
 }
 
