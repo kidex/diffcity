@@ -95,6 +95,8 @@ export function createPanel(options: PanelOptions, first: Report): Panel {
   /** The sessions as the port last gave them; null: none, no Session tab. */
   let sessions: SessionsResponse | null = null;
   let sessionsLoad: AbortController | null = null;
+  /** After dispose(): a refetch the app's coalescer still had queued must not fetch or draw. */
+  let disposed = false;
   const sessionState: SessionBodyState = { expanded: new Set() };
   let selection: Target | null = null;
   let fileId: string | null = null;
@@ -387,13 +389,13 @@ export function createPanel(options: PanelOptions, first: Report): Panel {
   /** Fetches the sessions again; an older answer that arrives later is dropped, a failed fetch keeps what is shown. */
   function loadSessions(): void {
     const port = options.sessions;
-    if (port === undefined) return;
+    if (port === undefined || disposed) return;
     sessionsLoad?.abort();
     const current = new AbortController();
     sessionsLoad = current;
     port.load(current.signal).then(
       (next) => {
-        if (current.signal.aborted) return;
+        if (disposed || current.signal.aborted) return;
         sessionsLoad = null;
         sessions = next;
         if (tab === 'session') {
@@ -457,6 +459,7 @@ export function createPanel(options: PanelOptions, first: Report): Panel {
     },
     open: openFile,
     dispose() {
+      disposed = true;
       stopActions?.();
       stopSessions?.();
       sessionsLoad?.abort();
