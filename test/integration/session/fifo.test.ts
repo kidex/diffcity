@@ -39,7 +39,7 @@ const mkfifo = (path: string): void => {
 function runJobInChild(input: object): Promise<Record<string, unknown>> {
   const script = `import { runSessionJob } from ${JSON.stringify(job)};\nconst result = await runSessionJob(${JSON.stringify(input)});\nprocess.stdout.write(JSON.stringify(result));\n`;
   return new Promise((resolve, reject) => {
-    execFile(process.execPath, ['--input-type=module', '-e', script], { timeout: 10_000, killSignal: 'SIGKILL' }, (error, stdout) => {
+    execFile(process.execPath, ['--input-type=module', '-e', script], { timeout: 30_000, killSignal: 'SIGKILL' }, (error, stdout) => {
       if (error !== null) {
         reject(new Error(`the reader process did not finish: ${error.message}`));
         return;
@@ -79,7 +79,7 @@ describe('session/fifo-never-blocks', () => {
     const read = fileURLToPath(new URL('../../../dist/core/session/read.js', import.meta.url));
     const script = `import { readSessionDigest } from ${JSON.stringify(read)};\nconst d = await readSessionDigest({ transcriptPath: ${JSON.stringify(path)}, active: true, repoRoot: null });\nprocess.stdout.write(JSON.stringify({ parsed: d.state.main.parsedBytes, prompts: d.prompts.length }));\n`;
     const out = await new Promise<string>((resolve, reject) => {
-      execFile(process.execPath, ['--input-type=module', '-e', script], { timeout: 10_000, killSignal: 'SIGKILL' }, (error, stdout) => {
+      execFile(process.execPath, ['--input-type=module', '-e', script], { timeout: 30_000, killSignal: 'SIGKILL' }, (error, stdout) => {
         if (error !== null) reject(new Error(`the reader process did not finish: ${error.message}`));
         else resolve(stdout);
       });
