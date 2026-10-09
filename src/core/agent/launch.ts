@@ -21,8 +21,11 @@ import { isAgentPermissionMode, type AgentLaunchParse, type AgentPermissionMode 
 
 export type AgentMode = 'resume' | 'new';
 
-/** A Claude Code session id that may be resumed: a lowercase UUID. */
-export const AGENT_SESSION_ID = /^[0-9a-f-]{36}$/;
+/**
+ * A Claude Code session id that may be resumed: a lowercase UUID, strictly
+ * 8-4-4-4-12, so it never starts with `-` and cannot read as a flag after --resume.
+ */
+export const AGENT_SESSION_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 /** Anything that would loosen the permissions; the builder refuses an argv holding one. */
 const BYPASS = /bypass|dangerously|skip-permissions/i;

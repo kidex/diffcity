@@ -2,7 +2,7 @@
 // timeout and the daemon's shutdown, all through the ADR-032 runner, against
 // a stub claude only.
 
-import { lstat, readFile, readdir, realpath, utimes, writeFile, mkdir } from 'node:fs/promises';
+import { chmod, lstat, readFile, readdir, realpath, utimes, writeFile, mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { openDb } from '../../../src/core/db/index.js';
@@ -121,6 +121,9 @@ describe('agent runs', () => {
     const daemon = await started();
     const change = seedChange(daemon);
     await daemon.settings(enabled(daemon, stubs));
+    // A runs directory that already exists with a wider mode is narrowed to 0700.
+    await mkdir(daemon.daemon.context.paths.runs, { recursive: true, mode: 0o755 });
+    await chmod(daemon.daemon.context.paths.runs, 0o755);
     const shown = await preview(daemon, change.id);
     const runId = await launch(daemon, change.id);
     await daemon.agent.runs().idle();

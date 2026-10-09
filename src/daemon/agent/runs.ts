@@ -8,7 +8,7 @@
 // killAllNow() is the last resort on process exit.
 
 import { randomBytes } from 'node:crypto';
-import { lstat, mkdir, open, readdir, unlink } from 'node:fs/promises';
+import { chmod, lstat, mkdir, open, readdir, unlink } from 'node:fs/promises';
 import { join } from 'node:path';
 import { CLAUDE_PROFILE, createLimiter, runToolDetailed, type ToolArgs, type ToolContext } from '../../core/exec/index.js';
 import { resultSessionId, type AgentMode } from '../../core/agent/index.js';
@@ -119,6 +119,8 @@ export function createAgentRuns(deps: AgentRunsDeps): AgentRuns {
     await mkdir(deps.runsDir, { recursive: true, mode: 0o700 });
     const info = await lstat(deps.runsDir);
     if (info.isSymbolicLink() || !info.isDirectory()) throw new Error(`${deps.runsDir} is not a plain directory`);
+    // mkdir leaves an existing directory's mode alone (and the umask narrows a new one): state it.
+    await chmod(deps.runsDir, 0o700);
     return deps.runsDir;
   };
 

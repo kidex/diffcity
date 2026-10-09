@@ -76,7 +76,8 @@ describe('agent launch argv', () => {
     const enabledValues: unknown[] = [undefined, true, false];
     const claudePaths: unknown[] = [undefined, null, CLAUDE, '--dangerously-skip-permissions'];
     const timeouts: unknown[] = [undefined, 1, 30, 120];
-    const sessions: (string | null)[] = [null, SESSION, '--dangerously-skip-permissions', 'bypassPermissions'.padEnd(36, '-')];
+    // A leading dash would read as a flag after --resume; dash-only and misplaced dashes too.
+    const sessions: (string | null)[] = [null, SESSION, '--dangerously-skip-permissions', 'bypassPermissions'.padEnd(36, '-'), '-0f1e2d3-4b5a-4968-8776-a5b4c3d2e1f0', '-'.repeat(36), '0f1e2d3c4b5a-4968-8776-a5b4c3d2e1f0-'];
     const modes: AgentMode[] = ['resume', 'new'];
     let built = 0;
     for (const permissionMode of permissionValues) {
@@ -95,6 +96,8 @@ describe('agent launch argv', () => {
                   continue;
                 }
                 built++;
+                if (mode === 'resume') expect(argv[1]).toBe(SESSION);
+                expect(argv.filter((arg) => arg.startsWith('-')).every((arg) => ['--resume', '-p', '--output-format', '--permission-mode'].includes(arg))).toBe(true);
                 for (const arg of argv) expect(arg).not.toMatch(/bypass|dangerously|skip-permissions/i);
                 const permission = argv.indexOf('--permission-mode');
                 if (permission !== -1) expect(['acceptEdits', 'plan']).toContain(argv[permission + 1]);
@@ -140,7 +143,7 @@ describe('agent launch session choice', () => {
   });
 
   it('launch/session-id-format: only a lowercase 36-character id is resumed', () => {
-    for (const sessionId of ['0F1E2D3C-4B5A-4968-8776-A5B4C3D2E1F0', 'abcdef01', `${SESSION}0`, '../../../etc/passwd-0000000000000000', '0f1e2d3c 4b5a-4968-8776-a5b4c3d2e1f0']) {
+    for (const sessionId of ['-0f1e2d3-4b5a-4968-8776-a5b4c3d2e1f0', '-'.repeat(36), '0f1e2d3c4b5a-4968-8776-a5b4c3d2e1f0-', '0F1E2D3C-4B5A-4968-8776-A5B4C3D2E1F0', 'abcdef01', `${SESSION}0`, '../../../etc/passwd-0000000000000000', '0f1e2d3c 4b5a-4968-8776-a5b4c3d2e1f0']) {
       expect(chooseSession([candidate({ sessionId })], TREE)).toEqual({ mode: 'new', reason: 'session-id-unsupported' });
       expect(() => claudeArgs({ mode: 'resume', sessionId, permissionMode: null })).toThrow(RangeError);
     }
