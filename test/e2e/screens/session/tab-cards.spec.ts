@@ -11,8 +11,8 @@
 import { test, type Page } from '@playwright/test';
 import type { SessionsResponse } from '../../../../src/core/model/types.js';
 import { GUARD, SERVICE } from '../../support/hud.js';
-import { fixtures, mockApi } from '../../support/mock-api.js';
-import { attributesOf, openPanel, panel, panelReport, tab } from '../../support/panel.js';
+import { fixtures, mockApi, type MockedApi } from '../../support/mock-api.js';
+import { attributesOf, panel, panelReport, tab } from '../../support/panel.js';
 import { sceneExpect as expect, waitForCityAttribute, waitReady } from '../../support/scene.js';
 import { emitSse, tagClient } from '../../support/sse.js';
 
@@ -21,11 +21,18 @@ test.describe.configure({ timeout: 90_000 });
 const sessionTab = (page: Page) => page.getByTestId('tab-session');
 const cards = (page: Page) => page.getByTestId('session-card');
 
-async function openSessions(page: Page, sessions: SessionsResponse = fixtures.sessionsTwo()): Promise<void> {
-  await openPanel(page, panelReport(), { sessions: { 11: sessions } });
+/** Opens change 11 on the Session tab. With `client`, the page's SSE streams are tagged so the spec can send `sessions`; returns the mocked API. */
+async function openSessions(page: Page, sessions: SessionsResponse = fixtures.sessionsTwo(), client?: string): Promise<MockedApi> {
+  await page.emulateMedia({ reducedMotion: 'reduce', colorScheme: 'dark' });
+  const api = await mockApi(page, { reports: { 11: panelReport() }, sessions: { 11: sessions } });
+  if (client !== undefined) await tagClient(page, client);
+  await page.goto('/?scene-debug#/change/11');
+  await waitReady(page);
+  if (client !== undefined) await expect(page.getByTestId('daemon')).toHaveAttribute('data-state', 'connected');
   await expect(sessionTab(page)).toBeVisible();
   await sessionTab(page).click();
   await expect(page.getByTestId('tab-session-body')).toBeVisible();
+  return api;
 }
 
 test('session/tab-cards/tab-hidden-without-sessions', async ({ page }, testInfo) => {
@@ -81,8 +88,9 @@ test('session/tab-cards/card-prompts-questions-agents', async ({ page }) => {
   await expect(first.getByTestId('session-wide').getByTestId('edited-outside')).toHaveText('1 file outside the repo');
 });
 
-test('session/tab-cards/agent-row-expands-report-and-activity', async ({ page }) => {
-  await openSessions(page);
+test('session/tab-cards/agent-row-expands-report-and-activity', async ({ page }, testInfo) => {
+  const served = fixtures.sessionsTwo();
+  await openSessions(page, served, testInfo.testId);
   const run = cards(page).first().getByTestId('session-run').nth(1);
   const toggle = run.getByTestId('run-toggle');
   const detail = run.getByTestId('run-detail');
@@ -101,12 +109,45 @@ test('session/tab-cards/agent-row-expands-report-and-activity', async ({ page })
   await page.keyboard.press('Space');
   await expect(toggle).toHaveAttribute('aria-expanded', 'false');
   await expect(detail).toBeHidden();
-  // A click opens it too, and a refetch keeps it open with the focus on it.
+  // A click opens it too.
   await toggle.click();
   await expect(detail).toBeVisible();
-  await tab(page, 'order').click();
-  await sessionTab(page).click();
-  await expect(cards(page).first().getByTestId('run-toggle').nth(1)).toHaveAttribute('aria-expanded', 'true');
+
+  // SSE `sessions` with a new prompt refetches and redraws the tab: the row stays open and keeps the focus.
+  await toggle.focus();
+  served.sessions[0]?.digest?.prompts.push({ at: null, text: 'Also cover the cancel endpoint.', command: false, truncated: false });
+  expect(await emitSse(page, testInfo.testId, 'sessions', { changeId: 11 })).toBeGreaterThan(0);
+  await expect(cards(page).first().getByTestId('session-prompt')).toHaveCount(3);
+  const again = cards(page).first().getByTestId('run-toggle').nth(1);
+  await expect(again).toBeFocused();
+  await expect(again).toHaveAttribute('aria-expanded', 'true');
+  await expect(cards(page).first().getByTestId('run-detail').nth(1)).toBeVisible();
+});
+
+test('session/tab-cards/no-fetch-after-leaving', async ({ page }, testInfo) => {
+  const api = await openSessions(page, fixtures.sessionsTwo(), testInfo.testId);
+  const path = '/api/changes/11/sessions';
+  // A second stream of the same client counts the events as the page receives them.
+  await page.evaluate(`(() => {
+    window.__seen = 0;
+    const source = new EventSource('/api/events');
+    source.addEventListener('sessions', () => { window.__seen += 1; });
+    window.__probe = source;
+  })()`);
+  await page.waitForFunction('window.__probe.readyState === 1');
+  // Two events inside the 250 ms window: the first refetches now, the second is queued for the end of the window.
+  await Promise.all([emitSse(page, testInfo.testId, 'sessions', { changeId: 11 }), emitSse(page, testInfo.testId, 'sessions', { changeId: 11 })]);
+  await page.waitForFunction('window.__seen >= 2', undefined, { polling: 'raf' });
+  // Leave for Fleet inside the window: the queued refetch must not reach the daemon.
+  const mark = api.requests.length;
+  await page.evaluate(`location.hash = '#/'`);
+  await expect(page.getByTestId('reading-panel')).toHaveCount(0);
+  await page.waitForTimeout(800);
+  // Fleet asks for /api/repos once the change screen is gone: no sessions request may follow it.
+  const after = api.requests.slice(mark).map((url) => url.pathname);
+  const fleet = after.indexOf('/api/repos');
+  expect(fleet).toBeGreaterThanOrEqual(0);
+  expect(after.slice(fleet)).not.toContain(path);
 });
 
 test('session/tab-cards/edited-file-click-selects-building', async ({ page }) => {
