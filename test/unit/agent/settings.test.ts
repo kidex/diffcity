@@ -22,6 +22,12 @@ describe('agentLaunch settings', () => {
     });
   });
 
+  it('timeoutMinutes accepts the bounds 1 and 120', () => {
+    for (const timeoutMinutes of [1, 120]) {
+      expect(with_({ timeoutMinutes })).toEqual({ ok: true, settings: { ...defaultAgentLaunch(), timeoutMinutes } });
+    }
+  });
+
   it('refuses a bad value of each key, naming it', () => {
     const cases: [unknown, string][] = [
       [[], 'agentLaunch'],
