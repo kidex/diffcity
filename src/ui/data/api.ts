@@ -13,6 +13,7 @@ import type {
   ReviewMarkValue,
   ReviewProgress,
   SearchResult,
+  SessionsResponse,
 } from '../../core/model/types.js';
 import type { Report } from '../../core/report/types.js';
 
@@ -108,6 +109,11 @@ export interface Api {
   approve(changeId: number): Promise<ApprovalAnswer>;
   /** Undoes Approve. Rejects with ApiRequestError: 409 `not-approved` or `archived`, 404 `not-found`, 403. */
   unapprove(changeId: number): Promise<ApprovalAnswer>;
+  /**
+   * The Claude Code sessions linked to a change (ADR-038), the 20 newest. A code-bearing read: the daemon
+   * refuses a cross-site request. Rejects with ApiRequestError: 404 `not-found`, 403.
+   */
+  sessions(changeId: number, signal?: AbortSignal): Promise<SessionsResponse>;
 }
 
 function isApiError(body: unknown): body is ApiError {
@@ -213,5 +219,6 @@ export function createApi(base = '', fetchImpl: typeof fetch = (...args) => fetc
     async unapprove(changeId) {
       return (await (await write('DELETE', `/changes/${String(changeId)}/approve`)).json()) as ApprovalAnswer;
     },
+    sessions: (changeId, signal) => get<SessionsResponse>(`/changes/${String(changeId)}/sessions`, signal),
   };
 }
