@@ -15,6 +15,8 @@
 import { createHash } from 'node:crypto';
 import { CLAUDE_PROFILE } from '../exec/profiles.js';
 import { toolArgs, type ToolArgs } from '../exec/tool.js';
+
+export { lastJsonObject } from '../exec/tool.js';
 import { isAgentPermissionMode, type AgentLaunchParse, type AgentPermissionMode } from './settings.js';
 
 export type AgentMode = 'resume' | 'new';
@@ -174,22 +176,6 @@ export function agentRefusals(check: AgentCheck): AgentRefusal[] {
 
 // ---------------------------------------------------------------------------
 // The result of `--output-format json`.
-
-/** The last line of `text` that parses as a JSON object, or undefined. */
-export function lastJsonObject(text: string): Record<string, unknown> | undefined {
-  const lines = text.split('\n');
-  for (let i = lines.length - 1; i >= 0; i--) {
-    const line = (lines[i] ?? '').trim();
-    if (!line.startsWith('{')) continue;
-    try {
-      const value: unknown = JSON.parse(line);
-      if (typeof value === 'object' && value !== null && !Array.isArray(value)) return value as Record<string, unknown>;
-    } catch {
-      // Not a whole JSON object: keep looking.
-    }
-  }
-  return undefined;
-}
 
 /** `session_id` of a claude JSON result when it is a resumable id; null otherwise. */
 export function resultSessionId(result: unknown): string | null {

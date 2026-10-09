@@ -17,6 +17,13 @@ export interface StubRecord {
   cwd: string;
   env: Record<string, string>;
   pid: number;
+  /** What the stub read on stdin, for stubs made with `{ stdin: true }`; undefined otherwise. */
+  stdin?: string;
+}
+
+export interface ToolStubOptions {
+  /** The stubs read their stdin to the end and record it (a builtin loop, no extra exec). */
+  stdin?: boolean;
 }
 
 export interface ToolStubs {
@@ -50,7 +57,7 @@ export interface ToolStubs {
  * extra exec is one more chance for a macOS process-start stall to push a
  * call past its timeout. Only the sleep and flood modes run another program.
  */
-function body(dir: string): string {
+function body(dir: string, options: ToolStubOptions): string {
   const q = (path: string): string => `"${join(dir, path)}"`;
   return [
     '#!/bin/sh',
@@ -59,6 +66,7 @@ function body(dir: string): string {
     'pwd -P > "$rec.cwd"',
     'export -p > "$rec.env"',
     'for a in "$@"; do printf "%s\\0" "$a"; done > "$rec.argv"',
+    ...(options.stdin === true ? [`while IFS= read -r line || [ -n "$line" ]; do printf '%s\\n' "$line"; done > "$rec.stdin"`] : []),
     'mode=json',
     `[ -f ${q('mode')} ] && read -r mode < ${q('mode')}`,
     'echo done > "$rec.started"',
@@ -92,13 +100,13 @@ function parseEnv(text: string): Record<string, string> {
   return env;
 }
 
-export async function createToolStubs(names: readonly string[] = ['gh']): Promise<ToolStubs> {
+export async function createToolStubs(names: readonly string[] = ['gh'], options: ToolStubOptions = {}): Promise<ToolStubs> {
   const dir = await mkdtemp(join(tmpdir(), 'diffcity-tool-stubs-'));
   const bin = join(dir, 'bin');
   await mkdir(bin);
   await mkdir(join(dir, 'records'));
   for (const name of names) {
-    await writeFile(join(bin, name), body(dir), 'utf8');
+    await writeFile(join(bin, name), body(dir, options), 'utf8');
     await chmod(join(bin, name), 0o755);
   }
   const stubs: ToolStubs = {
@@ -121,10 +129,13 @@ export async function createToolStubs(names: readonly string[] = ['gh']): Promis
           const argv = (await read('argv').catch(() => '')).split('\0');
           argv.pop();
           const started = (await stat(join(at, `${pid}.started`))).mtimeMs;
-          return { argv, cwd: (await read('cwd')).trim(), env: parseEnv(await read('env')), pid: Number(pid), started };
+          const stdin = options.stdin === true ? await read('stdin').catch(() => undefined) : undefined;
+          return { argv, cwd: (await read('cwd')).trim(), env: parseEnv(await read('env')), pid: Number(pid), started, stdin };
         }),
       );
-      return records.sort((a, b) => a.started - b.started).map(({ argv, cwd, env, pid }) => ({ argv, cwd, env, pid }));
+      return records
+        .sort((a, b) => a.started - b.started)
+        .map(({ argv, cwd, env, pid, stdin }) => ({ argv, cwd, env, pid, ...(stdin === undefined ? {} : { stdin }) }));
     },
     async clear() {
       await rm(join(dir, 'records'), { recursive: true, force: true });
@@ -134,10 +145,12 @@ export async function createToolStubs(names: readonly string[] = ['gh']): Promis
       await stubs.mode('json', { stdout: '{}' });
       for (const name of names) {
         await new Promise<void>((resolve, reject) => {
-          execFile(join(bin, name), [], { cwd: dir }, (error) => {
+          const child = execFile(join(bin, name), [], { cwd: dir }, (error) => {
             if (error === null) resolve();
             else reject(new Error(`warming ${name} failed`, { cause: error }));
           });
+          // A stub that reads its stdin waits for its end.
+          child.stdin?.end();
         });
       }
       await stubs.clear();

@@ -78,8 +78,10 @@ describe('profiles', () => {
     expect(GH_PROFILE.classify(stderr)).toBe(kind);
   });
 
-  it('claude: reads its input on stdin, keeps CLAUDE_CONFIG_DIR', () => {
-    expect(CLAUDE_PROFILE).toMatchObject({ name: 'claude', stdin: 'input', env: ['CLAUDE_CONFIG_DIR'] });
-    expect(CLAUDE_PROFILE.timeoutMs).toBeGreaterThan(GH_PROFILE.timeoutMs);
+  it('claude: reads its input on stdin, keeps its config dir and the API-key login variables (ADR-029 decision 1)', () => {
+    expect(CLAUDE_PROFILE).toMatchObject({ name: 'claude', stdin: 'input', env: ['CLAUDE_CONFIG_DIR', 'ANTHROPIC_API_KEY', 'ANTHROPIC_BASE_URL'] });
+    // The longest agentLaunch.timeoutMinutes, and SIGKILL 10 s after SIGTERM (ADR-029).
+    expect(CLAUDE_PROFILE.timeoutMs).toBe(120 * 60 * 1000);
+    expect(CLAUDE_PROFILE.killGraceMs).toBe(10_000);
   });
 });
