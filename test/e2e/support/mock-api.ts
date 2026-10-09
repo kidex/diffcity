@@ -5,7 +5,17 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import type { Page, Route } from '@playwright/test';
-import type { ApiError, ChangeSummary, FileDiff, RepoDetail, RepoSummary, SearchResult, SessionsResponse } from '../../../src/core/model/types.js';
+import type {
+  AgentRunsResponse,
+  ApiError,
+  ChangeSummary,
+  FileDiff,
+  RepoDetail,
+  RepoSummary,
+  SearchResult,
+  SessionsResponse,
+} from '../../../src/core/model/types.js';
+import type { AgentPreview } from '../../../src/ui/data/api.js';
 import type { Report } from '../../../src/core/report/types.js';
 import { uncheckedTier1Files } from '../../../src/core/review/index.js';
 import type { FindingsMock } from './findings-api.js';
@@ -85,6 +95,45 @@ export interface ApiData {
   sessions?: Record<number, SessionsResponse>;
 }
 
+/**
+ * The "send review to agent" routes of one change (ADR-029), standing in for
+ * the daemon: the preview a spec set, a run bound to its token and summary
+ * hash (anything else is 409 `token-invalid`), the runs answer, and the
+ * summary fix-queue item, queued once per hash.
+ */
+export interface AgentMock {
+  /** What `POST /agent/preview` answers; a spec replaces it to show refusals or another session. */
+  preview: AgentPreview;
+  /** What `GET /agent/runs` answers; `run` sets it to the started run, a spec moves it on (and emits SSE `agent-run`). */
+  runs: AgentRunsResponse;
+  /** Every write the page made, in order. */
+  readonly writes: { route: 'preview' | 'run' | 'queue'; body: unknown }[];
+  /** Summary hashes in the fix queue. */
+  readonly queued: string[];
+  /** Answers the next write (once) with this status, code and message, whatever it is. */
+  failNext: { status: number; code: string; message: string } | null;
+}
+
+/** A preview with nothing refused: resume the linked session in the change's working tree. */
+export function agentPreview(over: Partial<AgentPreview> = {}): AgentPreview {
+  const sessionId = '0f8d2c4e-5b1a-4c3d-9e7f-1a2b3c4d5e6f';
+  return {
+    mode: 'resume',
+    argv: ['/opt/tools/claude', '--resume', sessionId, '-p', '--output-format', 'json'],
+    cwd: '/work/order-desk',
+    sessionId,
+    session: { sessionId, title: 'Add order discounts', firstAt: '2026-05-02T10:14:00.000Z', lastAt: '2026-05-02T11:02:00.000Z' },
+    newSessionReason: null,
+    permissionMode: null,
+    timeoutMinutes: 30,
+    summary: ['# Review of feat/discounts', '', ...Array.from({ length: 60 }, (_, i) => `- note line ${String(i + 1)}`), '', 'End of the review.'].join('\n'),
+    summaryHash: 'a'.repeat(64),
+    refusals: [],
+    token: 'token-1',
+    ...over,
+  };
+}
+
 /** The approve route of one change (ADR-036): writes made and hooks, as for the findings routes. */
 export interface ApprovalMock {
   /** Every approve request the page made, in order. */
@@ -105,6 +154,8 @@ export interface MockedApi {
   findings(changeId: number): FindingsMock;
   /** The approve route's state of a change, created on first use. */
   approval(changeId: number): ApprovalMock;
+  /** The agent routes' state of a change, created on first use. */
+  agent(changeId: number): AgentMock;
 }
 
 export function defaultApiData(): ApiData {
@@ -165,6 +216,15 @@ export async function mockApi(page: Page, overrides: Partial<ApiData> = {}): Pro
     }
     return mock;
   };
+  const agents = new Map<number, AgentMock>();
+  const agent = (changeId: number): AgentMock => {
+    let mock = agents.get(changeId);
+    if (mock === undefined) {
+      mock = { preview: agentPreview(), runs: { running: false, latest: null }, writes: [], queued: [], failNext: null };
+      agents.set(changeId, mock);
+    }
+    return mock;
+  };
   const liveChange = (id: number): ChangeSummary | undefined => data.details.flatMap((detail) => detail.changes).find((candidate) => candidate.id === id);
 
   const answer = async (route: Route, body: unknown, status = 200): Promise<void> => {
@@ -200,6 +260,42 @@ export async function mockApi(page: Page, overrides: Partial<ApiData> = {}): Pro
       if ((match = /^\/api\/changes\/(\d+)\/report$/.exec(path))) {
         const report = data.reports[Number(match[1])];
         return report ? answer(route, report) : answer(route, { error: { code: 'no-snapshot', message: 'no snapshot yet' } }, 404);
+      }
+      // Before the review routes: `review/summary/queue` is an agent route (ADR-029).
+      if ((match = /^\/api\/changes\/(\d+)\/(agent\/preview|agent\/run|agent\/runs|review\/summary\/queue)$/.exec(path))) {
+        const id = Number(match[1]);
+        const mock = agent(id);
+        const which = match[2] ?? '';
+        const method = route.request().method();
+        if (which === 'agent/runs') return method === 'GET' ? answer(route, mock.runs) : answer(route, notFound('GET only'), 404);
+        if (method !== 'POST') return answer(route, notFound('POST only'), 404);
+        const body: unknown = route.request().postData() === null ? null : (route.request().postDataJSON() as unknown);
+        const kind = which === 'agent/preview' ? 'preview' : which === 'agent/run' ? 'run' : 'queue';
+        mock.writes.push({ route: kind, body });
+        if (mock.failNext !== null) {
+          const { status, code, message } = mock.failNext;
+          mock.failNext = null;
+          return answer(route, { error: { code, message } }, status);
+        }
+        if (kind === 'preview') return answer(route, mock.preview);
+        const fields = (body ?? {}) as { token?: unknown; summaryHash?: unknown };
+        if (fields.summaryHash !== mock.preview.summaryHash) {
+          return answer(route, { error: { code: 'summary-changed', message: 'the summary is not the one previewed; preview again' } }, 409);
+        }
+        if (kind === 'queue') {
+          const queued = !mock.queued.includes(mock.preview.summaryHash);
+          if (queued) mock.queued.push(mock.preview.summaryHash);
+          return answer(route, { key: `review-summary:${String(id)}:${mock.preview.summaryHash.slice(0, 16)}`, queued, count: mock.queued.length });
+        }
+        if (mock.preview.token === null || fields.token !== mock.preview.token) {
+          return answer(route, { error: { code: 'token-invalid', message: 'the confirmation is unknown, used or expired; preview again' } }, 409);
+        }
+        const runId = '0123456789abcdef';
+        mock.runs = {
+          running: true,
+          latest: { runId, state: 'running', mode: mock.preview.mode ?? 'new', startedAt: new Date().toISOString(), durationMs: null, exitCode: null, log: `${String(id)}-${runId}.log`, message: null },
+        };
+        return answer(route, { runId }, 202);
       }
       if ((match = /^\/api\/changes\/(\d+)\/review(\/.*)?$/.exec(path))) {
         const id = Number(match[1]);
@@ -270,5 +366,6 @@ export async function mockApi(page: Page, overrides: Partial<ApiData> = {}): Pro
     review,
     findings,
     approval,
+    agent,
   };
 }
