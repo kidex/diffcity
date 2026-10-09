@@ -6,10 +6,10 @@ import { mkdir, mkdtemp, realpath, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { fetchOpenPrs, prState } from '../../../src/core/changes/sources.js';
-import { ToolCallError, createGhRunner, createLimiter, ghPrList, type ToolContext } from '../../../src/core/exec/index.js';
+import { GH_PR_TIMEOUT_MS, fetchOpenPrs, prState } from '../../../src/core/changes/sources.js';
+import { GH_PROFILE, ToolCallError, createGhRunner, createLimiter, ghPrList, type ToolContext } from '../../../src/core/exec/index.js';
 import type { CommandRunner } from '../../../src/core/git/index.js';
-import { resolveBase } from '../../../src/core/git/index.js';
+import { GH_TIMEOUT_MS, resolveBase } from '../../../src/core/git/index.js';
 import { isolateGitConfig } from '../../helpers/git-env.js';
 import { createRepo, type TempRepo } from '../../helpers/repo.js';
 import { createToolStubs, type ToolStubs } from '../../helpers/tool-stub.js';
@@ -20,6 +20,7 @@ let stubs: ToolStubs;
 let scratch: string;
 let repo: TempRepo;
 let runner: CommandRunner;
+let calls: number[];
 
 const PR = {
   number: 7,
@@ -34,13 +35,31 @@ function ghRunner(context: ToolContext = {}): CommandRunner {
   return createGhRunner({ env: { PATH: `${stubs.bin}:/usr/bin:/bin`, HOME: scratch }, limiter: createLimiter(), ...context });
 }
 
+/**
+ * The call sites' own timeouts (5 s, 10 s) are recorded, then raised to the
+ * profile's 30 s: a macOS process-start stall must not read as a gh timeout.
+ * The timeout outcome itself is tested with an explicit timeout.
+ */
+function generous(inner: CommandRunner): { runner: CommandRunner; timeouts: number[] } {
+  const timeouts: number[] = [];
+  return {
+    timeouts,
+    runner: (file, args, options) => {
+      timeouts.push(options.timeoutMs);
+      return inner(file, args, { ...options, timeoutMs: GH_PROFILE.timeoutMs });
+    },
+  };
+}
+
 beforeAll(async () => {
   stubs = await createToolStubs(['gh']);
   await stubs.warm();
   scratch = await realpath(await mkdtemp(join(tmpdir(), 'diffcity-gh-runner-')));
   await mkdir(join(scratch, 'empty-bin'));
   repo = await createRepo({ initialBranch: 'trunk', files: { 'lib/ledger.ts': 'export const total = 1;\n' } });
-  runner = ghRunner();
+  const wrapped = generous(ghRunner());
+  runner = wrapped.runner;
+  calls = wrapped.timeouts;
 }, 120_000);
 
 afterAll(async () => {
@@ -51,6 +70,7 @@ afterAll(async () => {
 
 beforeEach(async () => {
   await stubs.clear();
+  calls.length = 0;
 });
 
 describe('gh adapter', () => {
@@ -77,7 +97,7 @@ describe('gh adapter', () => {
     await expect(missing('gh', ghPrList().argv, { cwd: repo.dir, timeoutMs: 1000 })).rejects.toMatchObject({ code: 'ENOENT', kind: 'missing' });
 
     await stubs.mode('sleep');
-    await expect(ghRunner({ killGraceMs: 200 })('gh', ghPrList().argv, { cwd: repo.dir, timeoutMs: 1500 })).rejects.toMatchObject({ killed: true, kind: 'timeout' });
+    await expect(ghRunner({ killGraceMs: 200 })('gh', ghPrList().argv, { cwd: repo.dir, timeoutMs: 3000 })).rejects.toMatchObject({ killed: true, kind: 'timeout' });
   });
 
   it('a PR list that is not an array is unexpected output, not an empty list', async () => {
@@ -90,6 +110,7 @@ describe('gh/behaviour-unchanged-on-collector-fixtures', () => {
   it('fetchOpenPrs: ok with the PRs, else missing, failed or timeout as before', async () => {
     await stubs.mode('json', { stdout: JSON.stringify([PR, { ...PR, number: 0 }]) });
     expect(await fetchOpenPrs(repo.dir, runner)).toEqual({ ok: true, prs: [PR] });
+    expect(calls).toEqual([GH_PR_TIMEOUT_MS]);
 
     await stubs.mode('fail', { stderr: 'no git remotes found\n' });
     expect(await fetchOpenPrs(repo.dir, runner)).toEqual({ ok: false, reason: 'failed' });
@@ -103,12 +124,14 @@ describe('gh/behaviour-unchanged-on-collector-fixtures', () => {
     expect(await fetchOpenPrs(repo.dir, ghRunner({ env: { PATH: join(scratch, 'empty-bin') } }))).toEqual({ ok: false, reason: 'missing' });
 
     await stubs.mode('sleep');
-    expect(await fetchOpenPrs(repo.dir, ghRunner({ killGraceMs: 200 }))).toEqual({ ok: false, reason: 'timeout' });
+    const quick: CommandRunner = (file, args, options) => ghRunner({ killGraceMs: 200 })(file, args, { ...options, timeoutMs: 3000 });
+    expect(await fetchOpenPrs(repo.dir, quick)).toEqual({ ok: false, reason: 'timeout' });
   });
 
   it('prState: the confirmed state, else null', async () => {
     await stubs.mode('json', { stdout: '{"state":"MERGED"}' });
     expect(await prState(repo.dir, 7, runner)).toBe('MERGED');
+    expect(calls).toEqual([GH_PR_TIMEOUT_MS]);
     expect((await stubs.records()).at(-1)?.argv).toEqual(['pr', 'view', '7', '--json', 'state']);
 
     await stubs.mode('json', { stdout: '{"state":"DRAFTED"}' });
@@ -126,6 +149,7 @@ describe('gh/behaviour-unchanged-on-collector-fixtures', () => {
   it('base detection: the default branch from gh repo view, and no base when gh fails', async () => {
     await stubs.mode('json', { stdout: '{"defaultBranchRef":{"name":"trunk"}}' });
     expect(await resolveBase(repo.dir, { runner })).toMatchObject({ name: 'trunk', ref: 'refs/heads/trunk', source: 'gh' });
+    expect(calls).toEqual([GH_TIMEOUT_MS]);
     expect((await stubs.records()).at(-1)?.argv).toEqual(['repo', 'view', '--json', 'defaultBranchRef']);
 
     await stubs.mode('fail', { stderr: 'To get started with GitHub CLI, please run:  gh auth login\n' });

@@ -8,7 +8,7 @@
 // each is run once by `warm()` before the tests start.
 
 import { execFile } from 'node:child_process';
-import { chmod, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -44,35 +44,47 @@ export interface ToolStubs {
   cleanup(): Promise<void>;
 }
 
+/**
+ * The stub script. Recording and answering use shell builtins only: every
+ * extra exec is one more chance for a macOS process-start stall to push a
+ * call past its timeout. Only the sleep and flood modes run another program.
+ */
 function body(dir: string): string {
   const q = (path: string): string => `"${join(dir, path)}"`;
   return [
     '#!/bin/sh',
-    `n=$(date +%s)-$$`,
-    `rec=${q('records')}/$n`,
-    'mkdir -p "$rec"',
-    'echo $$ > "$rec/pid"',
-    'pwd -P > "$rec/cwd"',
-    'env > "$rec/env"',
-    'for a in "$@"; do printf "%s\\0" "$a"; done > "$rec/argv"',
-    `mode=$(cat ${q('mode')} 2>/dev/null)`,
+    `rec=${q('records')}/$$`,
+    'echo $$ > "$rec.pid"',
+    'pwd -P > "$rec.cwd"',
+    'export -p > "$rec.env"',
+    'for a in "$@"; do printf "%s\\0" "$a"; done > "$rec.argv"',
+    'mode=json',
+    `[ -f ${q('mode')} ] && read -r mode < ${q('mode')}`,
+    'echo done > "$rec.started"',
     'case "$mode" in',
-    `  fail) cat ${q('stderr')} >&2 2>/dev/null; exit $(cat ${q('code')} 2>/dev/null || echo 1) ;;`,
+    `  fail) if [ -s ${q('stderr')} ]; then while IFS= read -r line; do printf '%s\\n' "$line" >&2; done < ${q('stderr')}; fi; read -r code < ${q('code')}; exit "$code" ;;`,
     `  sleep) sleep 600 & echo $! > ${q('grandchild')}; wait ;;`,
     `  sleep-ignore-term) trap '' TERM; sleep 600 & echo $! > ${q('grandchild')}; wait; wait ;;`,
     '  flood-stdout) head -c 17000000 /dev/zero ;;',
     '  flood-stderr) head -c 70000 /dev/zero >&2 ;;',
-    `  *) cat ${q('stdout')} 2>/dev/null ;;`,
+    `  *) if [ -s ${q('stdout')} ]; then while IFS= read -r line || [ -n "$line" ]; do printf '%s\\n' "$line"; done < ${q('stdout')}; fi ;;`,
     'esac',
     '',
   ].join('\n');
 }
 
+/** Parses `export -p` (`export NAME="value"`, or `export NAME='value'` from dash). */
 function parseEnv(text: string): Record<string, string> {
   const env: Record<string, string> = {};
-  for (const line of text.split('\n')) {
+  for (const raw of text.split('\n')) {
+    const line = raw.replace(/^(?:export|declare -x) /, '');
     const at = line.indexOf('=');
-    if (at > 0) env[line.slice(0, at)] = line.slice(at + 1);
+    if (at <= 0) continue;
+    const name = line.slice(0, at);
+    let value = line.slice(at + 1);
+    if (value.startsWith('"') && value.endsWith('"')) value = value.slice(1, -1).replace(/\\(["\\$`])/g, '$1');
+    else if (value.startsWith("'") && value.endsWith("'")) value = value.slice(1, -1).replace(/'\\''/g, "'");
+    env[name] = value;
   }
   return env;
 }
@@ -98,20 +110,18 @@ export async function createToolStubs(names: readonly string[] = ['gh']): Promis
       await rm(join(dir, 'grandchild'), { force: true });
     },
     async records() {
-      const entries = (await readdir(join(dir, 'records'))).sort();
-      return Promise.all(
-        entries.map(async (entry) => {
-          const at = join(dir, 'records', entry);
-          const argv = (await readFile(join(at, 'argv'), 'utf8').catch(() => '')).split('\0');
+      const at = join(dir, 'records');
+      const pids = (await readdir(at)).filter((name) => name.endsWith('.started')).map((name) => name.slice(0, -'.started'.length));
+      const records = await Promise.all(
+        pids.map(async (pid) => {
+          const read = (ext: string): Promise<string> => readFile(join(at, `${pid}.${ext}`), 'utf8');
+          const argv = (await read('argv').catch(() => '')).split('\0');
           argv.pop();
-          return {
-            argv,
-            cwd: (await readFile(join(at, 'cwd'), 'utf8')).trim(),
-            env: parseEnv(await readFile(join(at, 'env'), 'utf8')),
-            pid: Number((await readFile(join(at, 'pid'), 'utf8')).trim()),
-          };
+          const started = (await stat(join(at, `${pid}.started`))).mtimeMs;
+          return { argv, cwd: (await read('cwd')).trim(), env: parseEnv(await read('env')), pid: Number(pid), started };
         }),
       );
+      return records.sort((a, b) => a.started - b.started).map(({ argv, cwd, env, pid }) => ({ argv, cwd, env, pid }));
     },
     async clear() {
       await rm(join(dir, 'records'), { recursive: true, force: true });

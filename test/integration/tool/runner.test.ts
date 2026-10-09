@@ -155,10 +155,10 @@ describe('tool runner', () => {
     });
   });
 
-  // The stub sleeps 600 s; the call's timeout is 1.5 s. Only "the group is gone" is asserted, never a duration.
+  // The stub sleeps 600 s; the call's timeout is 3 s. Only "the group is gone" is asserted, never a duration.
   it.each(['sleep', 'sleep-ignore-term'] as const)('tool/timeout-kills-group: on timeout the tool and what it started are gone (%s)', async (mode) => {
     await stubs.mode(mode);
-    const outcome = await gh(['pr', 'list'], { timeoutMs: 1500, context: { killGraceMs: 200 } });
+    const outcome = await gh(['pr', 'list'], { timeoutMs: 3000, context: { killGraceMs: 200 } });
     expect(outcome.kind).toBe('timeout');
     const [record] = await stubs.records();
     expect(record, 'the stub never started within the timeout (a stalled exec?); rerun this file alone').toBeDefined();
