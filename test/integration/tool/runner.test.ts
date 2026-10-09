@@ -155,18 +155,6 @@ describe('tool runner', () => {
     });
   });
 
-  // The stub sleeps 600 s; the call's timeout is 3 s. Only "the group is gone" is asserted, never a duration.
-  it.each(['sleep', 'sleep-ignore-term'] as const)('tool/timeout-kills-group: on timeout the tool and what it started are gone (%s)', async (mode) => {
-    await stubs.mode(mode);
-    const outcome = await gh(['pr', 'list'], { timeoutMs: 3000, context: { killGraceMs: 200 } });
-    expect(outcome.kind).toBe('timeout');
-    const [record] = await stubs.records();
-    expect(record, 'the stub never started within the timeout (a stalled exec?); rerun this file alone').toBeDefined();
-    const grandchild = Number((await readFile(join(stubs.dir, 'grandchild'), 'utf8')).trim());
-    expect(grandchild).toBeGreaterThan(0);
-    expect(await eventually(() => !alive(grandchild) && !alive(record?.pid ?? 0), 10_000)).toBe(true);
-  });
-
   it('tool/stdout-cap: more than 16 MiB on stdout is an error, not a result', async () => {
     await stubs.mode('flood-stdout');
     expect(await gh(['pr', 'list'])).toMatchObject({ kind: 'error', message: expect.stringContaining('16 MiB') as unknown });
@@ -271,5 +259,19 @@ describe('tool runner', () => {
     const outcomes = await Promise.all([1, 2, 3].map(() => gh(['pr', 'list'], { context: { limiter: counting } })));
     expect(outcomes.map((o) => o.kind)).toEqual(['ok', 'ok', 'ok']);
     expect(seen).toEqual([1, 1, 1]);
+  });
+
+  // Last in the file: on a machine where macOS stalls process starts, the calls
+  // after a killed group can stall too, and nothing runs after these.
+  // The stub sleeps 600 s; the call's timeout is 3 s. Only "the group is gone" is asserted, never a duration.
+  it.each(['sleep', 'sleep-ignore-term'] as const)('tool/timeout-kills-group: on timeout the tool and what it started are gone (%s)', async (mode) => {
+    await stubs.mode(mode);
+    const outcome = await gh(['pr', 'list'], { timeoutMs: 3000, context: { killGraceMs: 200 } });
+    expect(outcome.kind).toBe('timeout');
+    const [record] = await stubs.records();
+    expect(record, 'the stub never started within the timeout (a stalled exec?); rerun this file alone').toBeDefined();
+    const grandchild = Number((await readFile(join(stubs.dir, 'grandchild'), 'utf8')).trim());
+    expect(grandchild).toBeGreaterThan(0);
+    expect(await eventually(() => !alive(grandchild) && !alive(record?.pid ?? 0), 10_000)).toBe(true);
   });
 });

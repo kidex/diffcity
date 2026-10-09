@@ -92,12 +92,9 @@ describe('gh adapter', () => {
     expect(await stubs.records()).toEqual([]);
   });
 
-  it('rejects like execFile did: ENOENT when gh is missing, killed on a timeout', async () => {
+  it('rejects like execFile did: ENOENT when gh is missing', async () => {
     const missing = ghRunner({ env: { PATH: join(scratch, 'empty-bin') } });
     await expect(missing('gh', ghPrList().argv, { cwd: repo.dir, timeoutMs: 1000 })).rejects.toMatchObject({ code: 'ENOENT', kind: 'missing' });
-
-    await stubs.mode('sleep');
-    await expect(ghRunner({ killGraceMs: 200 })('gh', ghPrList().argv, { cwd: repo.dir, timeoutMs: 3000 })).rejects.toMatchObject({ killed: true, kind: 'timeout' });
   });
 
   it('a PR list that is not an array is unexpected output, not an empty list', async () => {
@@ -122,10 +119,6 @@ describe('gh/behaviour-unchanged-on-collector-fixtures', () => {
     expect(await fetchOpenPrs(repo.dir, runner)).toEqual({ ok: false, reason: 'failed' });
 
     expect(await fetchOpenPrs(repo.dir, ghRunner({ env: { PATH: join(scratch, 'empty-bin') } }))).toEqual({ ok: false, reason: 'missing' });
-
-    await stubs.mode('sleep');
-    const quick: CommandRunner = (file, args, options) => ghRunner({ killGraceMs: 200 })(file, args, { ...options, timeoutMs: 3000 });
-    expect(await fetchOpenPrs(repo.dir, quick)).toEqual({ ok: false, reason: 'timeout' });
   });
 
   it('prState: the confirmed state, else null', async () => {
@@ -154,5 +147,20 @@ describe('gh/behaviour-unchanged-on-collector-fixtures', () => {
 
     await stubs.mode('fail', { stderr: 'To get started with GitHub CLI, please run:  gh auth login\n' });
     await expect(resolveBase(repo.dir, { runner })).rejects.toMatchObject({ code: 'no-base' });
+  });
+});
+
+// Last in the file: on a machine where macOS stalls process starts, the calls
+// after a killed group can stall too, and nothing runs after these.
+describe('gh timeouts', () => {
+  it('rejects like execFile did: killed on a timeout', async () => {
+    await stubs.mode('sleep');
+    await expect(ghRunner({ killGraceMs: 200 })('gh', ghPrList().argv, { cwd: repo.dir, timeoutMs: 3000 })).rejects.toMatchObject({ killed: true, kind: 'timeout' });
+  });
+
+  it('fetchOpenPrs: a gh that does not answer in time is a timeout, as before', async () => {
+    await stubs.mode('sleep');
+    const quick: CommandRunner = (file, args, options) => ghRunner({ killGraceMs: 200 })(file, args, { ...options, timeoutMs: 3000 });
+    expect(await fetchOpenPrs(repo.dir, quick)).toEqual({ ok: false, reason: 'timeout' });
   });
 });
