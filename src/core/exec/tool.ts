@@ -168,6 +168,7 @@ function execute(binary: string, argv: readonly string[], options: ExecOptions):
       stopped = why;
       killGroup(child.pid, 'SIGTERM');
       // Whatever ignores SIGTERM in the group goes after the grace period, even once the tool itself has exited.
+      // Unref'd, here and below: a CLI may exit right after a timeout without waiting on the grace period.
       setTimeout(() => {
         killGroup(child.pid, 'SIGKILL');
         // A process that left the group (setsid) can hold the pipes open: stop waiting for them.
@@ -175,8 +176,8 @@ function execute(binary: string, argv: readonly string[], options: ExecOptions):
           child.stdout?.destroy();
           child.stderr?.destroy();
           finish({ kind: 'stopped', why, stderr: stderrText() });
-        }, PIPE_GRACE_MS);
-      }, options.graceMs);
+        }, PIPE_GRACE_MS).unref();
+      }, options.graceMs).unref();
     };
     const timer = setTimeout(() => {
       stop('timeout');
