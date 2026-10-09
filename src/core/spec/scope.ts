@@ -4,7 +4,8 @@
 // identifier equal to a touched symbol's base or qualified name, the
 // repo-relative path or the basename of a touched file, or an HTTP route
 // string (`POST /orders/:id/cancel`) equal to a route entry point's
-// registration. Matching is exact and case-sensitive on those tokens only;
+// registration (the touched symbol that declares the route and its touched
+// handlers passed by name; routeRegistrations in src/core/path). Matching is exact and case-sensitive on those tokens only;
 // prose words never match a symbol. A touched file is in the spec when one
 // of its touched symbols is a root or is connected to one through call edges
 // (callers and callees) among touched symbols, the ADR-034 call graph. A
