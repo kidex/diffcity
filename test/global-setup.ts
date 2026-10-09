@@ -8,11 +8,15 @@
 // daemon; the teardown stops whatever still runs in any of them, even for a
 // worker that died. Registries left by an earlier run that was killed before
 // its teardown are swept first.
+//
+// And it writes the gh, npm and claude sentinels the workers put first on
+// their PATH (test/helpers/tool-sentinel.ts, ADR-032): no test starts a real tool.
 
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import type { TestProject } from 'vitest/node';
 import { createRunRegistry, sweepRunRegistry, sweepStaleRegistries } from './helpers/daemons.js';
+import { SENTINEL_ENV, createSentinels, removeSentinels } from './helpers/tool-sentinel.js';
 
 function buildDist(): void {
   const repoRoot = fileURLToPath(new URL('../', import.meta.url));
@@ -27,7 +31,15 @@ export default async function setup(project: TestProject): Promise<() => Promise
   const registry = createRunRegistry();
   buildDist();
   project.onTestsRerun(buildDist);
+  // After the build, which runs the real npm; the workers inherit the variable.
+  const sentinels = createSentinels();
+  for (const path of sentinels.paths) {
+    // Each fresh file pays macOS's first-exec check here, once per run; a sentinel exits 1.
+    spawnSync(path, [], { stdio: 'ignore' });
+  }
+  process.env[SENTINEL_ENV] = sentinels.dir;
   return async () => {
     await sweepRunRegistry(registry);
+    removeSentinels(sentinels.dir);
   };
 }
