@@ -7,6 +7,7 @@ Each directory here is one realistic change in an invented repo. `test/integrati
 | `order-discounts` | `shopfront` | the change in `design/mockup.html`: `sig` on a tier 1 guard, a new SQL migration, a new file, a deleted function, a new test, untouched files in touched packages, a whole untouched package |
 | `session-refresh` | `ledger` | working-tree mode (staged, unstaged, untracked), tier 1 on `session`, a renamed and modified file, a deleted file, a reformat-only file (`same`), a JS file, a modified `Dockerfile` |
 | `report-cli-command` | `acme-cli` | a new command in TS and TSX, a `master` base with no `main` that moved on after the fork, `tier1` overridden in `diffcity.config.js`, import-only changes, overloads, `export { }` |
+| `spec-scope` | `shopfront` | spec scope (SPEC.md 5.5): a `.diffcity/spec.md` added on the branch names a route string; the route's registration, its handler and the handler's callee are in the spec, one unrelated file is outside it (`spec` verdict), the touched spec file is in it |
 
 ## Layout
 
@@ -28,4 +29,4 @@ Each directory here is one realistic change in an invented repo. `test/integrati
 UPDATE_GOLDEN=1 npm test
 ```
 
-This rewrites every `expected.json` from the current CLI output. The hand-written tables in `test/integration/golden-review.ts` are not regenerated: they list every file with its status and verdict, every symbol with its status, the packages with their tier 1 flag and the touched tier 1 files, and the test derives the summary counts from them. A golden that breaks a rule therefore still fails the test. Review every changed `expected.json` against SPEC.md sections 5.1 to 5.3 before committing it.
+This rewrites every `expected.json` from the current CLI output. The hand-written tables in `test/integration/golden-review.ts` are not regenerated: they list every file with its status and verdict, every symbol with its status, the packages with their tier 1 flag and the touched tier 1 files, and the test derives the summary counts from them. A golden that breaks a rule therefore still fails the test. Review every changed `expected.json` against SPEC.md sections 5.1 to 5.5 before committing it.

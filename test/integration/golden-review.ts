@@ -24,6 +24,12 @@ export interface ReviewedScenario {
   path: ReviewedStep[];
   /** Symbol.callsites of every `sig` symbol. */
   callsites: Record<string, number>;
+  /**
+   * `inSpec` of every file, in report order (SPEC.md 5.5, ADR-035). Absent for
+   * a scenario without a spec: every file is then null and the Report has no
+   * `specNotice`.
+   */
+  inSpec?: [path: string, inSpec: boolean | null][];
 }
 
 const ROUTES = 'src/api/orders/orders.routes.ts';
@@ -372,5 +378,58 @@ export const reviewed: Record<string, ReviewedScenario> = {
       ['unconnected', 'src/session/refresh.ts#Session', null, 'Body changed'],
     ],
     callsites: { 'src/session/refresh.ts#refreshSession': 2 },
+  },
+  // A spec on the branch (.diffcity/spec.md, ADR-035) that names one route; one file is outside it.
+  'spec-scope': {
+    files: [
+      // The spec file itself is touched (add) and in the spec; not code, no symbols.
+      ['.diffcity/spec.md', 'add', 'ok'],
+      // registerRoutes gains a route, same parameters: mod. In the spec: it declares `POST /orders/:id/cancel`.
+      ['src/api/routes.ts', 'mod', 'ok'],
+      // Outside the spec: no route, no name, no call links bannerText to the roots.
+      ['src/catalog/banner.ts', 'mod', 'spec'],
+      // New file; cancelOrder is the route's handler, a root.
+      ['src/orders/cancel.ts', 'add', 'ok'],
+      ['src/orders/lookup.ts', 'same', 'same'],
+      // refundOrder gains `reason`: sig, eyes (5.2 order), and in the spec as a callee of cancelOrder.
+      ['src/orders/refund.ts', 'sig', 'eyes'],
+      ['src/shared/money.ts', 'same', 'same'],
+    ],
+    symbols: {
+      '.diffcity/spec.md': [],
+      'src/api/routes.ts': [['registerRoutes', 'mod']],
+      'src/catalog/banner.ts': [['bannerText', 'mod']],
+      'src/orders/cancel.ts': [['cancelOrder', 'add']],
+      'src/orders/lookup.ts': [['getOrder', 'same']],
+      'src/orders/refund.ts': [['refundOrder', 'sig']],
+      'src/shared/money.ts': [['formatCents', 'same']],
+    },
+    packages: [
+      ['.diffcity', false],
+      ['src/api', false],
+      ['src/catalog', false],
+      ['src/orders', false],
+      ['src/shared', false],
+    ],
+    tier1Files: [],
+    path: [
+      // Class 1: the new route, declared by registerRoutes, which calls nothing touched.
+      ['path', 'src/api/routes.ts#registerRoutes', 'src/api/routes.ts#registerRoutes', 'New endpoint POST /orders/:id/cancel'],
+      // Class 2: its handler, then its callee.
+      ['path', 'src/orders/cancel.ts#cancelOrder', 'src/orders/cancel.ts#cancelOrder', 'New function'],
+      ['path', 'src/orders/refund.ts#refundOrder', 'src/orders/cancel.ts#cancelOrder', 'Signature changed, 1 call site rewritten'],
+      ['unconnected', 'src/catalog/banner.ts#bannerText', null, 'Body changed'],
+    ],
+    callsites: { 'src/orders/refund.ts#refundOrder': 1 },
+    inSpec: [
+      ['.diffcity/spec.md', true],
+      ['src/api/routes.ts', true],
+      ['src/catalog/banner.ts', false],
+      ['src/orders/cancel.ts', true],
+      // Untouched files are null.
+      ['src/orders/lookup.ts', null],
+      ['src/orders/refund.ts', true],
+      ['src/shared/money.ts', null],
+    ],
   },
 };
