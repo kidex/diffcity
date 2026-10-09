@@ -1,5 +1,6 @@
 // The reading panel (SPEC.md section 6, right panel; ADR-026): the header and
-// its four tabs with counters, the stop cards, the findings, the files outside
+// its four tabs with counters (a fifth, Session, with a SessionsPort and
+// sessions to show, ADR-038), the stop cards, the findings, the files outside
 // the spec and the touched symbols, and, once a building or a stop is
 // clicked, the file view in place of the tabs. With finding actions (a
 // FindingsPort) every finding card gets its buttons, and a new Report puts the
@@ -25,7 +26,9 @@ import {
   TABS,
   touchedTargets,
 } from '../model/panel.js';
-import type { DiffPort } from '../ports.js';
+import type { SessionsResponse } from '../../../../core/model/types.js';
+import { hasSessions, sessionTab } from '../model/session.js';
+import type { DiffPort, SessionsPort } from '../ports.js';
 import type { FindingActions } from './finding-actions.js';
 import type { FileViewRender } from './file-view.js';
 import { DIFF_MOUNT, renderFileView } from './file-view.js';
@@ -33,6 +36,11 @@ import type { DiffView, LineRange } from './fileview/view.js';
 import { createDiffView } from './fileview/view.js';
 import type { TabActions, TabBody } from './lists.js';
 import { bindHover, findingsBody, orderBody, outsideBody, symbolsBody } from './lists.js';
+import type { SessionBodyState } from './session.js';
+import { sessionBody } from './session.js';
+
+/** The tabs of the panel: the Report's four, and Session. */
+type PanelTab = TabId | 'session';
 
 export interface PanelOptions {
   /** Selects a building (a file id) and its floor (a symbol id) in the city; null clears. */
@@ -49,6 +57,8 @@ export interface PanelOptions {
   review?: { fill(slot: HTMLElement, fileId: string, symbolId: string | null): void } | undefined;
   /** With a FindingsPort: the action buttons of the finding cards. Without it the cards have none. */
   findings?: FindingActions | undefined;
+  /** The Claude Code sessions of the change (ADR-038): the Session tab. Without it, or without sessions, there is no Session tab. */
+  sessions?: SessionsPort | undefined;
   reducedMotion: boolean;
 }
 
@@ -81,7 +91,11 @@ function sourcesText(sources: readonly string[]): string {
 
 export function createPanel(options: PanelOptions, first: Report): Panel {
   let report = first;
-  let tab: TabId = 'order';
+  let tab: PanelTab = 'order';
+  /** The sessions as the port last gave them; null: none, no Session tab. */
+  let sessions: SessionsResponse | null = null;
+  let sessionsLoad: AbortController | null = null;
+  const sessionState: SessionBodyState = { expanded: new Set() };
   let selection: Target | null = null;
   let fileId: string | null = null;
   let body: TabBody | null = null;
@@ -137,28 +151,34 @@ export function createPanel(options: PanelOptions, first: Report): Panel {
   };
   bindHover(scroll, actions);
 
-  const tabButtons = new Map<TabId, HTMLButtonElement>();
+  const tabButtons = new Map<PanelTab, HTMLButtonElement>();
   const counts = (): Counters => counters(report);
+
+  function tabButton(id: PanelTab, label: string, count: number): HTMLButtonElement {
+    let button = tabButtons.get(id);
+    if (button === undefined) {
+      button = h('button', {
+        type: 'button',
+        'data-testid': `tab-${id}`,
+        onclick: () => {
+          showTab(id);
+        },
+      });
+      tabButtons.set(id, button);
+    }
+    if (button.parentElement !== tabsRow) tabsRow.append(button);
+    button.className = tab === id ? 'on' : '';
+    button.setAttribute('aria-pressed', String(tab === id));
+    button.replaceChildren(label, h('span', { class: 'cnt', 'data-testid': `count-${id}` }, String(count)));
+    return button;
+  }
 
   function renderTabs(): void {
     const current = counts();
-    for (const { id, label } of TABS) {
-      let button = tabButtons.get(id);
-      if (button === undefined) {
-        button = h('button', {
-          type: 'button',
-          'data-testid': `tab-${id}`,
-          onclick: () => {
-            showTab(id);
-          },
-        });
-        tabButtons.set(id, button);
-        tabsRow.append(button);
-      }
-      button.className = tab === id ? 'on' : '';
-      button.setAttribute('aria-pressed', String(tab === id));
-      button.replaceChildren(label, h('span', { class: 'cnt', 'data-testid': `count-${id}` }, String(current[id])));
-    }
+    for (const { id, label } of TABS) tabButton(id, label, current[id]);
+    // Session is there only with sessions to show: never in the HTML export.
+    if (hasSessions(sessions)) tabButton('session', 'Session', sessions.total);
+    else tabButtons.get('session')?.remove();
   }
 
   function renderChrome(): void {
@@ -182,9 +202,21 @@ export function createPanel(options: PanelOptions, first: Report): Panel {
   }
 
   function renderBody(): void {
-    const make = { order: orderBody, findings: findingsBody, outside: outsideBody, symbols: symbolsBody }[tab];
-    body = make(report, actions);
+    if (tab === 'session' && !hasSessions(sessions)) tab = 'order';
+    if (tab === 'session' && hasSessions(sessions)) {
+      body = sessionBody(sessionTab(sessions, report), actions, sessionState);
+    } else {
+      const make = { order: orderBody, findings: findingsBody, outside: outsideBody, symbols: symbolsBody }[tab === 'session' ? 'order' : tab];
+      body = make(report, actions);
+    }
+    // A redraw keeps the focus on the same agent row or file of the Session tab.
+    const active = document.activeElement;
+    const focusKey = active instanceof HTMLElement && scroll.contains(active) ? (active.dataset['focusKey'] ?? null) : null;
     scroll.replaceChildren(body.root);
+    if (focusKey !== null) {
+      const again = [...body.root.querySelectorAll<HTMLElement>('[data-focus-key]')].find((node) => node.dataset['focusKey'] === focusKey);
+      (again ?? scroll).focus({ preventScroll: true });
+    }
     scroll.dataset['tab'] = tab;
     markCurrent();
     fillActions();
@@ -237,7 +269,7 @@ export function createPanel(options: PanelOptions, first: Report): Panel {
     });
   }
 
-  function showTab(next: TabId): void {
+  function showTab(next: PanelTab): void {
     if (next === tab && body !== null) return;
     tab = next;
     renderTabs();
@@ -352,8 +384,36 @@ export function createPanel(options: PanelOptions, first: Report): Panel {
   };
   document.addEventListener('keydown', onKey);
 
+  /** Fetches the sessions again; an older answer that arrives later is dropped, a failed fetch keeps what is shown. */
+  function loadSessions(): void {
+    const port = options.sessions;
+    if (port === undefined) return;
+    sessionsLoad?.abort();
+    const current = new AbortController();
+    sessionsLoad = current;
+    port.load(current.signal).then(
+      (next) => {
+        if (current.signal.aborted) return;
+        sessionsLoad = null;
+        sessions = next;
+        if (tab === 'session') {
+          // Without sessions any more the tab goes back to Execution order.
+          const top = hasSessions(sessions) ? scroll.scrollTop : 0;
+          renderBody();
+          scroll.scrollTop = top;
+        }
+        renderTabs();
+      },
+      () => {
+        if (sessionsLoad === current) sessionsLoad = null;
+      },
+    );
+  }
+  const stopSessions = options.sessions?.onChange(loadSessions);
+
   renderChrome();
   renderBody();
+  loadSessions();
 
   return {
     root,
@@ -398,6 +458,8 @@ export function createPanel(options: PanelOptions, first: Report): Panel {
     open: openFile,
     dispose() {
       stopActions?.();
+      stopSessions?.();
+      sessionsLoad?.abort();
       diffView?.dispose();
       document.removeEventListener('keydown', onKey);
       if (scrollFrame !== undefined) cancelAnimationFrame(scrollFrame);

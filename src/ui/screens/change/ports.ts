@@ -3,7 +3,7 @@
 // ones it has data for in src/ui/app/ from src/ui/data/. The HTML export
 // passes none.
 
-import type { FileDiff, ReviewMark, ReviewMarkValue, ReviewProgress } from '../../../core/model/types.js';
+import type { FileDiff, ReviewMark, ReviewMarkValue, ReviewProgress, SessionsResponse } from '../../../core/model/types.js';
 
 /**
  * What the file view reads to show the diff of one file (ADR-027). Structurally
@@ -136,4 +136,17 @@ export interface ApprovalPort {
   approve(): Promise<FindingAnswer<ApprovalResult>>;
   /** Undo: back to `in-review`. */
   unapprove(): Promise<FindingAnswer<ApprovalResult>>;
+}
+
+/**
+ * The Claude Code sessions linked to the change (ADR-038), for the panel's
+ * Session tab. Structurally the port of src/ui/data/sessions-port.ts.
+ * Sessions are not part of the Report: without the port (the HTML export, the
+ * standalone page) there is no Session tab.
+ */
+export interface SessionsPort {
+  /** The sessions now, newest first; null when the daemon will not give them (no tab). Rejects when it did not answer: the tab keeps what it shows. */
+  load(signal?: AbortSignal): Promise<SessionsResponse | null>;
+  /** Calls `listener` when the sessions of this change may have moved; returns the function that stops it. */
+  onChange(listener: () => void): () => void;
 }

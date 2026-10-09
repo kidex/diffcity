@@ -17,9 +17,10 @@ import { createApprovalPort } from '../data/approval-port.js';
 import { createDiffPort } from '../data/diff-port.js';
 import { createFindingsPort } from '../data/findings-port.js';
 import { createReviewPort } from '../data/review-port.js';
+import { createSessionsPort } from '../data/sessions-port.js';
 import type * as ChangeScreenChunk from '../screens/change/index.js';
 import type { ChangeScreen } from '../screens/change/index.js';
-import type { DiffPort, FindingsPort, ReviewPort } from '../screens/change/ports.js';
+import type { DiffPort, FindingsPort, ReviewPort, SessionsPort } from '../screens/change/ports.js';
 import { h, replaceChildren } from '../shared/dom.js';
 import {
   aheadBehind,
@@ -83,6 +84,8 @@ export function mountChangeRoute(element: HTMLElement, context: DataContext, cha
   const approval = createApprovalPort(api, changeId, () => {
     reload();
   });
+  // The Claude Code sessions of the change (ADR-038), outside the Report: SSE `sessions` refetches them.
+  const sessions: SessionsPort = createSessionsPort(api, live, changeId, refetch);
   let disposed = false;
   /** Loads in flight, oldest first: at most two, the oldest and the newest. */
   const controllers = new Set<AbortController>();
@@ -113,7 +116,7 @@ export function mountChangeRoute(element: HTMLElement, context: DataContext, cha
         if (disposed || waiting === undefined) return;
         const { report: latest } = waiting;
         waiting = undefined;
-        screen = module.mountChange(body, { report: latest, diffs, review, findings, approval });
+        screen = module.mountChange(body, { report: latest, diffs, review, findings, approval, sessions });
       },
       () => {
         if (disposed || waiting === undefined) return;

@@ -10,7 +10,7 @@
 // or the city, with the HUD around it (hud/): top bar, filters, legend,
 // tooltip, selection card, Fleet card, and the reading panel at its right
 // (panel/): tabs, stop cards and the file view, and, with a FindingsPort, the
-// finding cards' actions.
+// finding cards' actions; with a SessionsPort, the Session tab.
 
 import './change.css';
 
@@ -31,7 +31,7 @@ import type { FindingActions } from './panel/finding-actions.js';
 import { createFindingActions } from './panel/finding-actions.js';
 import type { ApproveControl } from './hud/approve.js';
 import { createApproveControl } from './hud/approve.js';
-import type { ApprovalPort, DiffPort, FindingsPort, FleetPort, ReviewPort } from './ports.js';
+import type { ApprovalPort, DiffPort, FindingsPort, FleetPort, ReviewPort, SessionsPort } from './ports.js';
 import type { ReviewController } from './review/controller.js';
 import { createReviewController } from './review/controller.js';
 import type { ReviewUi } from './review/ui.js';
@@ -58,6 +58,8 @@ export interface ChangeScreenOptions {
   findings?: FindingsPort;
   /** Approve and its undo in the top bar (ADR-036); without it there is no Approve button. */
   approval?: ApprovalPort;
+  /** The Claude Code sessions of the change (ADR-038): the panel's Session tab; without it there is no such tab. */
+  sessions?: SessionsPort;
 }
 
 export interface ChangeScreen {
@@ -264,6 +266,7 @@ export function mountChange(element: HTMLElement, options: ChangeScreenOptions):
                 },
               },
         findings: findingActions ?? undefined,
+        sessions: options.sessions,
         reducedMotion,
       },
       report,
