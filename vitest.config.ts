@@ -23,7 +23,8 @@ export default defineConfig({
     globalSetup: ['test/global-setup.ts'],
     // Points DIFFCITY_HOME and HOME at a fresh temporary directory for each test
     // file (ADR-015), and stops the daemons of the homes a file registered.
-    setupFiles: ['test/setup/home.ts', 'test/setup/daemons.ts'],
+    // Puts the gh, npm and claude sentinels first on PATH (ADR-032): no test starts a real tool.
+    setupFiles: ['test/setup/home.ts', 'test/setup/daemons.ts', 'test/setup/tools.ts'],
     // Integration tests spawn many git processes; under parallel load they exceed the 5 s default.
     testTimeout: 60_000,
     // Shared-repo beforeAll hooks spawn as many git processes as a test does.

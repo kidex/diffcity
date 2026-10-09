@@ -1,7 +1,9 @@
 // Base detection (ADR-012): `--base`, then `base` from diffcity.config.js, then
 // main, master (each local first, then origin), then the default branch from gh.
 
-import { GitError, defaultRunner, resolveCommit, type CommandRunner } from './exec.js';
+import { GH_REPO_VIEW_ARGV } from '../exec/profiles.js';
+import { defaultRunner } from '../exec/gh.js';
+import { GitError, resolveCommit, type CommandRunner } from './exec.js';
 
 export const NO_BASE_MESSAGE = 'no base branch found; pass --base or set base in diffcity.config.js';
 
@@ -24,7 +26,7 @@ export interface ResolveBaseOptions {
   flag?: string | undefined;
   /** `base` from diffcity.config.js. */
   config?: string | undefined;
-  /** Runs `gh`; defaults to execFile. Tests inject a fake. */
+  /** Runs `gh`; defaults to the hardened tool runner (ADR-032). Tests inject a fake. */
   runner?: CommandRunner | undefined;
 }
 
@@ -54,7 +56,7 @@ async function resolveExplicit(root: string, value: string, source: 'flag' | 'co
 async function ghDefaultBranch(root: string, runner: CommandRunner): Promise<string | null> {
   let stdout: string;
   try {
-    stdout = await runner('gh', ['repo', 'view', '--json', 'defaultBranchRef'], { cwd: root, timeoutMs: GH_TIMEOUT_MS });
+    stdout = await runner('gh', GH_REPO_VIEW_ARGV, { cwd: root, timeoutMs: GH_TIMEOUT_MS });
   } catch {
     return null;
   }

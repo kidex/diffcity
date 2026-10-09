@@ -8,7 +8,8 @@
 // fields this version does not know.
 
 import { randomBytes } from 'node:crypto';
-import { chmod, mkdir, open, readFile, rename, rm } from 'node:fs/promises';
+import { constants } from 'node:fs';
+import { access, chmod, mkdir, open, readFile, rename, rm, stat } from 'node:fs/promises';
 import { dirname, isAbsolute } from 'node:path';
 import type { RepoNote } from '../model/types.js';
 
@@ -31,6 +32,8 @@ export interface UserSettings {
   rules?: unknown;
   /** Per repo root (absolute realpath): `{ rules }`, merged after the user's `rules` (ADR-030). */
   repos?: unknown;
+  /** Per external tool name: the absolute path of its binary (ADR-030, ADR-032); checked by toolSettingFor. */
+  tools?: unknown;
   /** Fields written by another diffcity version, kept as they are. */
   [field: string]: unknown;
 }
@@ -101,6 +104,56 @@ export function ruleSettingsFor(settings: UserSettings, repoRoot: string): UserR
   if (!isObject(entry)) return { ...result, settingsRepo: null };
   if (entry.rules !== undefined) result.settingsRepo = entry.rules;
   return result;
+}
+
+/**
+ * `tools.<name>` of settings.json (ADR-032): unset (the tool is looked up on
+ * the PATH), a binary path, or invalid. Like the rules, a bad entry does not
+ * invalidate the file; it only stops that tool, which never falls back to the
+ * PATH then: the user named a binary and gets that one or none.
+ */
+export type ToolSetting = { kind: 'unset' } | { kind: 'path'; path: string } | { kind: 'invalid'; message: string };
+
+/** The shape of `tools.<name>`: an absolute path. Pure; toolSetting checks the file. */
+export function toolSettingFor(settings: UserSettings, name: string): ToolSetting {
+  const { tools } = settings;
+  if (tools === undefined) return { kind: 'unset' };
+  if (!isObject(tools)) return { kind: 'invalid', message: 'field "tools" must be an object of absolute paths' };
+  if (!Object.prototype.hasOwnProperty.call(tools, name)) return { kind: 'unset' };
+  const path = tools[name];
+  if (typeof path !== 'string' || !isAbsolute(path)) {
+    return { kind: 'invalid', message: `field "tools.${name}" must be an absolute path` };
+  }
+  return { kind: 'path', path };
+}
+
+/** Why `path` cannot be a tool's binary, or null when it is an existing, executable regular file. */
+export async function toolPathProblem(path: string): Promise<string | null> {
+  try {
+    const info = await stat(path);
+    if (!info.isFile()) return `${path} is not a regular file`;
+    await access(path, constants.X_OK);
+    return null;
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === 'ENOENT' || code === 'ENOTDIR') return `${path} does not exist`;
+    if (code === 'EACCES') return `${path} is not executable`;
+    return `${path}: ${error instanceof Error ? error.message : String(error)}`;
+  }
+}
+
+/**
+ * `tools.<name>` read from settings.json and checked on disk: an absolute
+ * path to an existing, executable regular file. An unreadable or invalid
+ * settings file makes every tool invalid: which binary the user wanted is unknown.
+ */
+export async function readToolSetting(path: string, name: string): Promise<ToolSetting> {
+  const read = await readSettings(path);
+  if (!read.ok) return { kind: 'invalid', message: read.error };
+  const setting = toolSettingFor(read.settings, name);
+  if (setting.kind !== 'path') return setting;
+  const problem = await toolPathProblem(setting.path);
+  return problem === null ? setting : { kind: 'invalid', message: `field "tools.${name}": ${problem}` };
 }
 
 /** Reads settings.json; a missing file gives empty settings. Errors name the file. */

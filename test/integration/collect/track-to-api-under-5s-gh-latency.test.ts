@@ -36,12 +36,14 @@ afterEach(async () => {
 
 const GH_DELAY_S = '1.5';
 
+// gh runs with an allow-listed environment (ADR-032): GH_STUB_* reach the stub
+// only when the test execs it directly; under the daemon it reads the files next to it.
 const GH_STUB = `#!/bin/sh
-sleep "$GH_STUB_DELAY"
+sleep "\${GH_STUB_DELAY:-$(cat "$(dirname "$0")/../gh-delay")}"
 case "$1" in
   --version) echo "gh version 2.0.0 (stub)"; exit 0 ;;
   auth) exit 0 ;;
-  pr) if [ "$2" = "list" ]; then cat "$GH_STUB_PR_LIST"; exit 0; fi ;;
+  pr) if [ "$2" = "list" ]; then cat "\${GH_STUB_PR_LIST:-$(dirname "$0")/../pr-list.json}"; exit 0; fi ;;
 esac
 exit 1
 `;
@@ -72,6 +74,7 @@ describe('integration/track-to-api-under-5s-gh-latency', () => {
         { number: 7, title: 'Checkout flow', headRefName: 'feature/checkout', headRefOid: prHead, baseRefName: 'main', isCrossRepository: false },
       ]),
     );
+    await writeFile(join(home.root, 'gh-delay'), GH_DELAY_S);
     const env: NodeJS.ProcessEnv = {
       ...home.env,
       PATH: `${stubDir}${delimiter}${process.env.PATH ?? ''}`,
