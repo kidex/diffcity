@@ -15,7 +15,7 @@ import { plural } from '../../../shared/format.js';
 export const UNTITLED_SESSION = 'Untitled session';
 export const UNREADABLE_SESSION = 'Session data could not be read';
 export const NOT_READ_SESSION = 'Session data has not been read yet';
-export const STALE_SESSION = 'Out of date: the last read of this session failed, this is the one before it';
+export const STALE_SESSION = 'Out of date — the latest update could not be read; showing the last good copy.';
 export const CLIPPED_SESSION = 'Part of this session was too large to keep';
 export const NO_DESCRIPTION = 'No description';
 export const NO_ANSWER = 'Not answered';

@@ -185,7 +185,9 @@ test('session/tab-cards/stale-note', async ({ page }) => {
   await openSessions(page);
   const stale = cards(page).nth(1);
   await expect(stale).toHaveAttribute('data-state', 'stale');
-  await expect(stale.getByTestId('session-note')).toHaveText(/^Out of date/);
+  await expect(stale.getByTestId('session-note')).toHaveText('Out of date — the latest update could not be read; showing the last good copy.');
+  // No "active" tag until a session can end (DC-128).
+  await expect(page.getByTestId('session-active')).toHaveCount(0);
   // The data is still shown.
   await expect(stale.getByTestId('session-prompt')).toHaveText('Write the migration for the discount column.');
   await expect(stale.getByTestId('edited-file')).toHaveText('db/migrations/20260921_order_discounts.sql');
