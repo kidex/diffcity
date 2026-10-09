@@ -1,0 +1,19 @@
+{
+  "sessions": [
+    {
+      "sessionId": "1d2e3f40-5a6b-4c7d-8e9f-0a1b2c3d4e5f",
+      "title": null,
+      "firstAt": "2026-10-08T11:00:00.000Z",
+      "lastAt": "2026-10-08T11:05:00.000Z",
+      "here": true,
+      "active": true,
+      "unreadable": true,
+      "stale": false,
+      "firstHead": null,
+      "lastHead": null,
+      "linkedAt": "2026-10-08T11:00:30.000Z",
+      "digest": null
+    }
+  ],
+  "total": 1
+}

@@ -1,0 +1,263 @@
+{
+  "sessions": [
+    {
+      "sessionId": "6f1c2a40-0d4e-4c55-9a1e-1b2c3d4e5f60",
+      "title": "Add percentage discounts to orders",
+      "firstAt": "2026-10-08T09:12:00.000Z",
+      "lastAt": "2026-10-08T10:47:00.000Z",
+      "here": true,
+      "active": true,
+      "unreadable": false,
+      "stale": false,
+      "firstHead": "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0",
+      "lastHead": "b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1",
+      "linkedAt": "2026-10-08T09:13:00.000Z",
+      "digest": {
+        "format": 1,
+        "version": "2.1.0",
+        "branch": "feat/order-discounts",
+        "prompts": [
+          {
+            "at": "2026-10-08T09:12:00.000Z",
+            "text": "Add percentage discounts to orders. Keep the guard strict: only the owner may place an order.",
+            "command": false,
+            "truncated": false
+          },
+          {
+            "at": "2026-10-08T10:30:00.000Z",
+            "text": "/review",
+            "command": true,
+            "truncated": false
+          }
+        ],
+        "promptsDropped": 0,
+        "questions": [
+          {
+            "toolUseId": "toolu_q1",
+            "at": "2026-10-08T09:20:00.000Z",
+            "header": "Rounding",
+            "question": "Round discounted totals per line or per order?",
+            "options": [
+              "Per line",
+              "Per order"
+            ],
+            "multiSelect": false,
+            "answer": "Per order",
+            "truncated": false
+          },
+          {
+            "toolUseId": "toolu_q2",
+            "at": "2026-10-08T09:40:00.000Z",
+            "header": "Migration",
+            "question": "Backfill the new column for open orders?",
+            "options": [
+              "Yes",
+              "No"
+            ],
+            "multiSelect": false,
+            "answer": null,
+            "truncated": false
+          }
+        ],
+        "questionsDropped": 0,
+        "runs": [
+          {
+            "toolUseId": "toolu_a-plan",
+            "agentId": "a-plan",
+            "parentAgentId": null,
+            "order": 1,
+            "type": "Plan",
+            "description": "Plan the discount rules",
+            "spawnDepth": null,
+            "foreground": true,
+            "startedAt": null,
+            "status": "completed",
+            "statusSource": "tool-result",
+            "durationMs": 95000,
+            "durationApproximate": false,
+            "toolUses": null,
+            "report": "Three steps: rules module, service change, migration.\nNo change to the public API.",
+            "reportSource": "tool-result",
+            "reportTruncated": false,
+            "sidechainFirstAt": null,
+            "sidechainLastAt": null,
+            "activity": {
+              "counts": {
+                "edit": 0,
+                "read-search": 6,
+                "shell": 0,
+                "web": 0,
+                "subagents": 0,
+                "mcp": 0,
+                "other": 0
+              },
+              "mcp": {},
+              "files": [],
+              "filesDropped": 0,
+              "outsideFiles": 0
+            },
+            "here": true
+          },
+          {
+            "toolUseId": "toolu_a-impl",
+            "agentId": "a-impl",
+            "parentAgentId": null,
+            "order": 2,
+            "type": "general-purpose",
+            "description": "Implement the discount service",
+            "spawnDepth": null,
+            "foreground": false,
+            "startedAt": null,
+            "status": "completed",
+            "statusSource": "notification",
+            "durationMs": 312000,
+            "durationApproximate": true,
+            "toolUses": null,
+            "report": "Added applyDiscount to OrdersService and the rules module. Tests pass.",
+            "reportSource": "handback",
+            "reportTruncated": false,
+            "sidechainFirstAt": null,
+            "sidechainLastAt": null,
+            "activity": {
+              "counts": {
+                "edit": 3,
+                "read-search": 0,
+                "shell": 2,
+                "web": 0,
+                "subagents": 0,
+                "mcp": 1,
+                "other": 0
+              },
+              "mcp": {
+                "tracker": 1
+              },
+              "files": [
+                "src/services/orders/orders.service.ts",
+                "src/services/orders/discount.rules.ts",
+                "docs/discounts.md"
+              ],
+              "filesDropped": 0,
+              "outsideFiles": 0
+            },
+            "here": true
+          },
+          {
+            "toolUseId": "toolu_a-check",
+            "agentId": "a-check",
+            "parentAgentId": "a-impl",
+            "order": 3,
+            "type": "Explore",
+            "description": "Find the callers of place()",
+            "spawnDepth": null,
+            "foreground": true,
+            "startedAt": null,
+            "status": "running",
+            "statusSource": null,
+            "durationMs": null,
+            "durationApproximate": false,
+            "toolUses": null,
+            "report": null,
+            "reportSource": null,
+            "reportTruncated": false,
+            "sidechainFirstAt": null,
+            "sidechainLastAt": null,
+            "activity": {
+              "counts": {
+                "edit": 0,
+                "read-search": 4,
+                "shell": 0,
+                "web": 0,
+                "subagents": 0,
+                "mcp": 0,
+                "other": 0
+              },
+              "mcp": {},
+              "files": [],
+              "filesDropped": 0,
+              "outsideFiles": 0
+            },
+            "here": false
+          }
+        ],
+        "runsDropped": 0,
+        "runsElsewhere": 2,
+        "main": {
+          "counts": {
+            "edit": 1,
+            "read-search": 3,
+            "shell": 1,
+            "web": 0,
+            "subagents": 3,
+            "mcp": 0,
+            "other": 0
+          },
+          "mcp": {},
+          "files": [
+            "src/auth/order.guard.ts"
+          ],
+          "filesDropped": 0,
+          "outsideFiles": 0
+        },
+        "sessionWide": {
+          "files": [
+            "src/auth/order.guard.ts",
+            "src/services/orders/orders.service.ts",
+            "src/services/orders/discount.rules.ts",
+            "docs/discounts.md"
+          ],
+          "filesDropped": 0,
+          "outsideFiles": 1
+        },
+        "truncated": false,
+        "capped": false,
+        "badLines": 0,
+        "skippedLines": 0
+      }
+    },
+    {
+      "sessionId": "0a9b8c7d-6e5f-4a3b-8c2d-1e0f9a8b7c6d",
+      "title": null,
+      "firstAt": "2026-10-07T15:02:00.000Z",
+      "lastAt": "2026-10-07T15:20:00.000Z",
+      "here": false,
+      "active": true,
+      "unreadable": false,
+      "stale": true,
+      "firstHead": "c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2",
+      "lastHead": "c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2",
+      "linkedAt": "2026-10-07T15:03:00.000Z",
+      "digest": {
+        "format": 1,
+        "version": "2.1.0",
+        "branch": "feat/order-discounts",
+        "prompts": [
+          {
+            "at": "2026-10-07T15:02:00.000Z",
+            "text": "Write the migration for the discount column.",
+            "command": false,
+            "truncated": false
+          }
+        ],
+        "promptsDropped": 0,
+        "questions": [],
+        "questionsDropped": 0,
+        "runs": [],
+        "runsDropped": 0,
+        "runsElsewhere": 0,
+        "main": null,
+        "sessionWide": {
+          "files": [
+            "db/migrations/20260921_order_discounts.sql"
+          ],
+          "filesDropped": 0,
+          "outsideFiles": 0
+        },
+        "truncated": false,
+        "capped": false,
+        "badLines": 0,
+        "skippedLines": 0
+      }
+    }
+  ],
+  "total": 2
+}

@@ -106,6 +106,51 @@ button.group-head:hover { background: color-mix(in srgb, var(--panel-2) 70%, tra
 .read .sym-row .sym { font-family: var(--mono); color: var(--ink); overflow-wrap: anywhere; min-width: 0; }
 .read .sym-row .tag { margin-left: auto; }
 
+/* ---------- Session tab: one card per Claude Code session ---------- */
+.read .sess-shown { margin: 8px 22px 0; }
+.read .sess { padding: 12px 0 14px; }
+.read .sess-head { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 10px; padding: 0 22px; }
+.read .sess-title { margin: 0; font-size: 13.5px; font-weight: 600; color: var(--ink); overflow-wrap: anywhere; min-width: 0; }
+.read .sess-title.untitled { color: var(--ink-2); font-weight: 500; }
+.read .sess-tags { margin-left: auto; display: inline-flex; gap: 6px; align-items: baseline; }
+.read .sess-range { flex: 1 0 100%; margin: 0; color: var(--muted); font-size: 12px; font-family: var(--mono); }
+.read .sess-note { margin: 8px 22px 0; padding: 6px 10px; border-radius: 7px; font-size: 12px; color: var(--mod-text); background: color-mix(in srgb, var(--mod) 12%, transparent); border: 1px solid color-mix(in srgb, var(--mod) 35%, transparent); }
+.read .sess-empty { padding: 10px 22px 0; }
+.read .sess-sec { margin-top: 10px; }
+.read .sess-h { margin: 0 22px 4px; font-size: 12px; font-weight: 500; color: var(--muted); }
+.read .sess-more { margin: 4px 22px 0; color: var(--muted); font-size: 12px; }
+.read .sess-prompt { margin: 6px 22px 0; padding: 8px 11px; border-radius: 8px; background: var(--panel-2); border: 1px solid var(--line-soft); font-size: 12.5px; color: var(--ink); white-space: pre-wrap; overflow-wrap: anywhere; }
+.read .sess-prompt.command { font-family: var(--mono); font-size: 12px; }
+.read .sess-prompt .sess-more, .read .sess-report .sess-more { margin: 0; }
+.read .sess-qa { margin: 6px 22px 0; padding: 8px 11px; border-radius: 8px; background: var(--panel-2); border: 1px solid var(--line-soft); }
+.read .sess-q { margin: 4px 0 0; font-size: 12.5px; color: var(--ink); overflow-wrap: anywhere; white-space: pre-wrap; }
+.read .sess-a { margin: 4px 0 0; font-size: 12px; color: var(--add-text); overflow-wrap: anywhere; white-space: pre-wrap; }
+.read .sess-a.none { color: var(--muted); }
+.read .sess-run { padding-left: calc(var(--depth, 0) * 18px); }
+.read .sess-run[data-depth]:not([data-depth="0"]) > .sess-run-row { border-left-color: var(--line); }
+.read .sess-run-row { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; width: 100%; padding: 6px 22px; text-align: left; border-left: 3px solid transparent; font-size: 12.5px; color: var(--ink); }
+.read .sess-run-row:hover { background: color-mix(in srgb, var(--panel-2) 70%, transparent); }
+.read .sess-run-row:focus-visible { outline-offset: -2px; }
+.read .sess-caret { width: 0; height: 0; border-left: 5px solid var(--muted); border-top: 4px solid transparent; border-bottom: 4px solid transparent; flex: 0 0 auto; }
+.read .sess-run-row[aria-expanded="true"] .sess-caret { transform: rotate(90deg); }
+.read .sess-type { font-family: var(--mono); color: var(--sig-text); background: color-mix(in srgb, var(--sig) 14%, transparent); }
+.read .sess-desc { min-width: 0; overflow-wrap: anywhere; }
+.read .sess-run-tags { margin-left: auto; display: inline-flex; gap: 6px; align-items: baseline; }
+.read .sess-dur { color: var(--muted); font-size: 12px; font-family: var(--mono); white-space: nowrap; }
+.read .sess-status.completed { color: var(--add-text); background: color-mix(in srgb, var(--add) 14%, transparent); }
+.read .sess-status.failed, .read .sess-status.killed { color: var(--del-text); background: color-mix(in srgb, var(--del) 14%, transparent); }
+.read .sess-status.running { color: var(--mod-text); background: color-mix(in srgb, var(--mod) 14%, transparent); }
+.read .sess-run-detail { padding: 0 0 6px 21px; }
+.read .sess-run-detail > .sess-more { margin-top: 2px; }
+.read .sess-report { margin: 6px 22px 0; padding: 8px 11px; border-radius: 8px; background: var(--code-bg); border: 1px solid var(--line-soft); font-family: var(--mono); font-size: 12px; line-height: 1.55; color: var(--ink-2); white-space: pre-wrap; overflow-wrap: anywhere; max-height: 320px; overflow: auto; }
+.read .sess-chips { list-style: none; margin: 6px 22px 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
+.read .sess-chips b { color: var(--ink); font-weight: 600; }
+.read .sess-files { margin-top: 6px; }
+.read .sess-file { display: block; width: 100%; padding: 4px 22px 4px 34px; text-align: left; font-family: var(--mono); font-size: 12px; color: var(--ink); border-left: 3px solid transparent; overflow-wrap: anywhere; }
+button.sess-file:hover { background: color-mix(in srgb, var(--panel-2) 70%, transparent); }
+.read .sess-file:focus-visible { outline-offset: -2px; }
+.read .sess-file.absent { color: var(--muted); }
+
 /* ---------- footer ---------- */
 .read .foot { border-top: 1px solid var(--line-soft); padding: 12px 22px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; font-size: 12.5px; color: var(--muted); }
 .read .foot .keys { display: inline-flex; align-items: center; gap: 6px; }
