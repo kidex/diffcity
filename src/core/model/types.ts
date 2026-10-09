@@ -431,10 +431,20 @@ export type SseEvent =
   | { event: 'findings'; data: { repoId: number; changeId: number } }
   /** A read of a session linked to the change was stored (ADR-038): refetch GET /api/changes/:id/sessions. No session content. */
   | { event: 'sessions'; data: { changeId: number } }
+  /** An agent run of "send review to the agent" (ADR-029) started or ended; no summary, no output. */
+  | { event: 'agent-run'; data: { changeId: number; runId: string; state: AgentRunState } }
   | {
       event: 'collect';
       data: { repoId: number; state: 'started' | 'done' } | { repoId: number; state: 'error'; error: string };
     };
+
+/**
+ * Where an agent run is: `running` once claude started; then `done` (exit 0
+ * and a JSON result that is not an error), `failed` (anything else, an
+ * unparseable result included), `timeout` (stopped at agentLaunch.timeoutMinutes)
+ * or `stopped` (the daemon stopped it).
+ */
+export type AgentRunState = 'running' | 'done' | 'failed' | 'timeout' | 'stopped';
 
 export type SseEventName = SseEvent['event'];
 

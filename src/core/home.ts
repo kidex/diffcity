@@ -34,6 +34,8 @@ export interface HomePaths {
   state: string;
   /** `settings.json`: the user settings, the trusted repos among them (ADR-030). */
   settings: string;
+  /** `runs/`: the logs of agent runs, `<changeId>-<runId>.log` (ADR-029), mode 0700. */
+  runs: string;
 }
 
 /**
@@ -75,6 +77,7 @@ export function homePaths(home: string): HomePaths {
     log: join(home, 'daemon.log'),
     state: join(home, 'state.json'),
     settings: join(home, 'settings.json'),
+    runs: join(home, 'runs'),
   };
 }
 
