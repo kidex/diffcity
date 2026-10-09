@@ -3,9 +3,11 @@
 // refuses a binary outside the temporary directory (test/helpers/tool-sentinel.ts).
 
 import { execFile } from 'node:child_process';
-import { mkdtemp, realpath, rm } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
+import { chmod, mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { GH_PROFILE, TEST_TOOLS_ENV, createLimiter, findOnPath, ghPrList, isInside, runTool } from '../../../src/core/exec/index.js';
 import { SENTINEL_ENV, SENTINEL_MESSAGE, SENTINEL_TOOLS, TEST_TOOLS_ENV as HELPER_TEST_TOOLS_ENV } from '../../helpers/tool-sentinel.js';
@@ -61,5 +63,28 @@ describe('tool/no-real-tools-in-tests', () => {
     const outcome = await runTool(GH_PROFILE, ghPrList(), { cwd, parse: (json) => json }, { limiter: createLimiter() });
     expect(outcome.kind).not.toBe('ok');
     expect(outcome.kind === 'ok' ? '' : outcome.message).toContain(SENTINEL_MESSAGE);
+  });
+
+  it('a call with its own environment cannot turn the sandbox off: a gh outside the temp dir is refused', async () => {
+    // Outside the temporary directory, in the repo's gitignored .tmp/: a fake gh that leaves a marker if it ever runs.
+    const outside = fileURLToPath(new URL(`../../../.tmp/no-real-tools-${String(process.pid)}/`, import.meta.url));
+    const marker = join(cwd, 'ran');
+    await mkdir(outside, { recursive: true });
+    try {
+      await writeFile(join(outside, 'gh'), `#!/bin/sh\n: > "${marker}"\necho '[]'\n`, 'utf8');
+      await chmod(join(outside, 'gh'), 0o755);
+      expect(isInside(await realpath(outside), await realpath(tmpdir()))).toBe(false);
+      const outcome = await runTool(
+        GH_PROFILE,
+        ghPrList(),
+        { cwd, parse: (json) => json },
+        // No DIFFCITY_TEST_TOOLS here: the sandbox is read from the process, not from the call.
+        { env: { PATH: `${outside}:/usr/bin:/bin`, HOME: cwd }, limiter: createLimiter() },
+      );
+      expect(outcome).toMatchObject({ kind: 'error', message: expect.stringContaining('outside the test tool sandbox') as unknown });
+      expect(existsSync(marker)).toBe(false);
+    } finally {
+      await rm(outside, { recursive: true, force: true });
+    }
   });
 });

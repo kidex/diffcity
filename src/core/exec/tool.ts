@@ -233,7 +233,8 @@ async function locate(profile: ToolProfile, cwd: string, context: ToolContext, e
   if (inside !== undefined) {
     return { kind: 'error', message: `${name} resolves to ${binary}, inside the repo ${inside}; refused` };
   }
-  const sandbox = env[TEST_TOOLS_ENV];
+  // A property of the process, never of the call: a call's own env must not turn the sandbox off.
+  const sandbox = process.env[TEST_TOOLS_ENV];
   if (sandbox !== undefined && sandbox !== '' && !isInside(binary, await realOrSelf(sandbox))) {
     return { kind: 'error', message: `${name} resolves to ${binary}, outside the test tool sandbox; refused` };
   }

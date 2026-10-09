@@ -180,10 +180,11 @@ describe('tool runner', () => {
     expect(outcome).toMatchObject({ kind: 'error', message: expect.stringContaining('unexpected JSON') as unknown });
   });
 
+  // These PATHs hold only a test directory: a machine whose /usr/bin has a real gh must still answer `missing`.
   it('tool/missing-binary: no binary on the PATH is `missing`', async () => {
     const empty = join(scratch, 'empty-bin');
     await mkdir(empty, { recursive: true });
-    expect(await gh(['pr', 'list'], { env: { PATH: `${empty}:${SYSTEM_PATH}` } })).toMatchObject({ kind: 'missing' });
+    expect(await gh(['pr', 'list'], { env: { PATH: empty } })).toMatchObject({ kind: 'missing' });
   });
 
   it('tool/missing-binary: a non-executable file on the PATH is not a binary', async () => {
@@ -191,7 +192,7 @@ describe('tool runner', () => {
     await mkdir(dir, { recursive: true });
     await writeFile(join(dir, 'gh'), '#!/bin/sh\n', 'utf8');
     await chmod(join(dir, 'gh'), 0o644);
-    expect((await gh(['pr', 'list'], { env: { PATH: `${dir}:${SYSTEM_PATH}` } })).kind).toBe('missing');
+    expect((await gh(['pr', 'list'], { env: { PATH: dir } })).kind).toBe('missing');
   });
 
   it('tool/missing-binary: a settings.tools path that does not exist stops the tool, with no PATH fallback', async () => {
