@@ -3,21 +3,21 @@
 // blocks the agent: every failure prints one line on stderr and exits 0. It
 // never opens the browser: the UI updates live over SSE.
 
-import { spawn } from 'node:child_process';
 import { chmod, mkdir, readFile, realpath, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { homePaths } from '../../../src/core/home.js';
 import { tempHome, type TempHome } from '../../helpers/config.js';
 import { CLI_DIST, DaemonTracker } from '../../helpers/daemon.js';
 import { startFakeDaemon, type FakeDaemon } from '../../helpers/fake-daemon.js';
 import { isolateGitConfig } from '../../helpers/git-env.js';
+import { expectNoRecorderLeft, IMPORT_RECORDER } from '../../helpers/import-recorder-guard.js';
 import { createRepo, type TempRepo } from '../../helpers/repo.js';
 
 isolateGitConfig();
 
-const recorder = fileURLToPath(new URL('../../helpers/import-recorder.mjs', import.meta.url));
+/** Below the 60 s test timeout: a run that hangs is killed and fails its test with a clear message. */
+const RUN_TIMEOUT_MS = 45_000;
 
 let temp: TempHome;
 let repo: TempRepo;
@@ -36,6 +36,7 @@ afterEach(async () => {
   await repo.cleanup();
   await temp.cleanup();
 });
+afterAll(expectNoRecorderLeft);
 
 interface Run {
   code: number | null;
@@ -46,20 +47,15 @@ interface Run {
 const stopInput = (cwd: string): string =>
   JSON.stringify({ session_id: 'session-0107', transcript_path: '/work/transcripts/session-0107.jsonl', cwd, hook_event_name: 'Stop', stop_hook_active: false });
 
-/** Runs the built CLI with `args`, the hook JSON on stdin, in `cwd`. */
+/**
+ * Runs the built CLI with `args`, the hook JSON on stdin, in `cwd`: tracked,
+ * in its own process group, killed if it outlives RUN_TIMEOUT_MS (DC-130).
+ */
 async function runCli(args: string[], input: string, options: { cwd: string; env?: NodeJS.ProcessEnv; nodeArgs?: string[] }): Promise<Run> {
-  const child = spawn(process.execPath, [...(options.nodeArgs ?? []), CLI_DIST, ...args], {
-    cwd: options.cwd,
-    env: options.env ?? temp.env,
-    stdio: ['pipe', 'pipe', 'pipe'],
-  });
-  let stdout = '';
-  let stderr = '';
-  child.stdout.setEncoding('utf8').on('data', (chunk: string) => (stdout += chunk));
-  child.stderr.setEncoding('utf8').on('data', (chunk: string) => (stderr += chunk));
-  child.stdin.end(input);
-  const code = await new Promise<number | null>((resolve) => child.once('exit', resolve));
-  return { code, stdout, stderr };
+  const run = daemons.spawn(CLI_DIST, args, options.env ?? temp.env, options.cwd, options.nodeArgs ?? [], { input, group: true, timeoutMs: RUN_TIMEOUT_MS });
+  const code = await run.exited;
+  if (run.timedOut()) throw new Error(`diffcity ${args.join(' ')} did not exit within ${String(RUN_TIMEOUT_MS)} ms; stderr: ${run.stderr()}`);
+  return { code, stdout: run.stdout(), stderr: run.stderr() };
 }
 
 describe('hook/never-fails-the-agent: the Stop hook exits 0 with one line on stderr on every failure', () => {
@@ -122,7 +118,7 @@ describe('hook/no-browser-opened', () => {
     const run = await runCli(['track', '--agent'], stopInput(repo.dir), {
       cwd: repo.dir,
       env: { ...env, DIFFCITY_TEST_IMPORT_LOG: log },
-      nodeArgs: ['--import', recorder],
+      nodeArgs: ['--import', IMPORT_RECORDER],
     });
     expect(run).toEqual({ code: 0, stdout: 'tracked sample-depot\n', stderr: '' });
     expect(fake.requests).toHaveLength(1);
