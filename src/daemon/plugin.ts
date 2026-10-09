@@ -51,7 +51,7 @@ export interface DaemonPlugin {
    * release only what was actually acquired and tolerate never having started.
    *
    * Errors are logged and do not stop the other plugins. The servers and all
-   * stops share a deadline (SHUTDOWN_TIMEOUT_MS, 10 s), and a second SIGTERM or
+   * stops share a deadline (SHUTDOWN_TIMEOUT_MS, 15 s), and a second SIGTERM or
    * SIGINT stops waiting at once: a stop still pending then is abandoned and the
    * process exits with code 1.
    */
