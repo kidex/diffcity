@@ -10,14 +10,20 @@
 //   profile's builder (profiles.ts), from validated values only.
 // - Environment: an allow-list plus the git guards (env.ts).
 // - Limits: the profile's timeout, then SIGTERM to the group and SIGKILL after
-//   5 s; stdout capped at 16 MiB and stderr at 64 KiB; two tool processes at
-//   once in the process, one per repo (limiter.ts).
+//   the profile's grace (5 s by default); stdout capped at 16 MiB and stderr at
+//   64 KiB; two tool processes at once in the process, one per repo
+//   (limiter.ts), or the caller's own limiter (agent runs, ADR-029).
+// - Output to a file sink instead (agent runs, ADR-029): stdout and stderr go
+//   to a log file (0600, capped; past the cap the process keeps running and
+//   the log notes the truncation), and the result is the last JSON object of
+//   stdout's tail. A caller's abort signal stops the group as a timeout does.
 // - Outcome: a closed union. `ok` carries the parsed JSON once the caller's
 //   schema accepted it; unparseable or unexpected output is an `error`, never a pass.
 // - Logging: argv, cwd, outcome, exit code and duration; stderr only after the
 //   session redactor (ADR-038) has been over it, in the log and in messages alike.
 
 import { spawn } from 'node:child_process';
+import { closeSync, constants, createWriteStream, fchmodSync, fstatSync, openSync } from 'node:fs';
 import type { ToolSetting } from '../settings/settings.js';
 import { createRedactor } from '../session/redact.js';
 import { toolEnv } from './env.js';
@@ -46,6 +52,8 @@ export interface ToolProfile {
   readonly env: readonly string[];
   /** `input`: the call may write a string to stdin; `closed`: stdin is never open. */
   readonly stdin: 'closed' | 'input';
+  /** Between SIGTERM and SIGKILL; TOOL_KILL_GRACE_MS when absent. */
+  readonly killGraceMs?: number;
   /** The kind of a non-zero exit, from the redacted stderr. */
   classify(stderr: string): 'unavailable' | 'offline' | 'error';
 }
@@ -72,6 +80,38 @@ export interface ToolCall<T> {
   input?: string;
   /** Checks the parsed JSON; undefined rejects it as unexpected output. */
   parse(json: unknown): T | undefined;
+  /**
+   * Streams stdout and stderr to this file instead of memory: opened for
+   * appending (never through a symbolic link), mode 0600, written up to
+   * `capBytes` in all. The in-memory stdout cap does not apply; the result is
+   * the last JSON object in stdout's last TOOL_SINK_TAIL bytes.
+   */
+  sink?: ToolSink;
+  /** Aborting stops the call: SIGTERM to the group, SIGKILL after the grace. */
+  signal?: AbortSignal;
+  /** The binary the caller confirmed (an absolute realpath); any other resolution is refused. */
+  binary?: string;
+  /** Told the pid (the process group) once the tool started. */
+  onSpawn?(pid: number): void;
+}
+
+export interface ToolSink {
+  path: string;
+  capBytes: number;
+}
+
+/** What a call did, beyond its outcome. */
+export interface ToolRun<T> {
+  outcome: ToolOutcome<T>;
+  /** The exit code; null when the tool did not exit by itself (not started, killed, stopped). */
+  exitCode: number | null;
+  durationMs: number;
+  /** Why the runner stopped the tool, if it did. */
+  stopped: 'timeout' | 'aborted' | 'stdout-cap' | 'stderr-cap' | null;
+  /** The sink reached its cap: later output was not written. */
+  truncated: boolean;
+  /** Sink mode: the parsed last JSON object of stdout, whatever the exit code, when `parse` accepted it. */
+  result?: T;
 }
 
 export interface ToolLog {
@@ -97,6 +137,8 @@ export interface ToolContext {
 export const TOOL_STDOUT_CAP = 16 * 1024 * 1024;
 export const TOOL_STDERR_CAP = 64 * 1024;
 export const TOOL_KILL_GRACE_MS = 5000;
+/** How much of stdout's end a sink-mode call keeps in memory for its result. */
+export const TOOL_SINK_TAIL = 1024 * 1024;
 
 /**
  * Set by the test setup to a directory (the temporary directory): a binary
@@ -116,10 +158,12 @@ const PIPE_GRACE_MS = 1000;
 /** How much redacted stderr goes into a message or a log line. */
 const STDERR_SHOWN = 2000;
 
+type StopReason = 'timeout' | 'aborted' | 'stdout-cap' | 'stderr-cap';
+
 type Exec =
   | { kind: 'exit'; code: number | null; signal: NodeJS.Signals | null; stdout: Buffer; stderr: string }
   | { kind: 'spawn-error'; code: string | undefined; message: string; stderr: string }
-  | { kind: 'stopped'; why: 'timeout' | 'stdout-cap' | 'stderr-cap'; stderr: string };
+  | { kind: 'stopped'; why: StopReason; stderr: string };
 
 interface ExecOptions {
   cwd: string;
@@ -127,6 +171,89 @@ interface ExecOptions {
   input: string | undefined;
   timeoutMs: number;
   graceMs: number;
+  /** Sink mode: output goes here; stdout keeps only its tail in memory, and no cap stops the tool. */
+  sink: Sink | null;
+  signal: AbortSignal | undefined;
+  onSpawn: ((pid: number) => void) | undefined;
+}
+
+/** The last line of `text` that parses as a JSON object, or undefined. */
+export function lastJsonObject(text: string): Record<string, unknown> | undefined {
+  const lines = text.split('\n');
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const line = (lines[i] ?? '').trim();
+    if (!line.startsWith('{')) continue;
+    try {
+      const value: unknown = JSON.parse(line);
+      if (typeof value === 'object' && value !== null && !Array.isArray(value)) return value as Record<string, unknown>;
+    } catch {
+      // Not a whole JSON object: keep looking.
+    }
+  }
+  return undefined;
+}
+
+/** The note a capped sink ends with. */
+export function sinkTruncatedNote(capBytes: number): string {
+  return `\n[diffcity: the log reached ${String(capBytes)} bytes; later output was not written, the process kept running]\n`;
+}
+
+/** A log file the output is appended to, up to its cap. */
+interface Sink {
+  write(chunk: Buffer): void;
+  /** Flushes and closes the file. */
+  close(): Promise<void>;
+  readonly truncated: boolean;
+}
+
+/** Opens `sink.path` for appending: never through a link, mode 0600. Throws when it cannot. */
+function openSink(sink: ToolSink): Sink {
+  const fd = openSync(sink.path, constants.O_WRONLY | constants.O_APPEND | constants.O_CREAT | constants.O_NOFOLLOW, 0o600);
+  let size: number;
+  try {
+    const info = fstatSync(fd);
+    if (!info.isFile()) throw new Error(`${sink.path} is not a regular file`);
+    fchmodSync(fd, 0o600);
+    size = info.size;
+  } catch (error) {
+    closeSync(fd);
+    throw error;
+  }
+  const stream = createWriteStream('', { fd, autoClose: true });
+  // A write error (a full disk) must not take the daemon down: the log stops, the tool goes on.
+  stream.on('error', () => undefined);
+  const note = Buffer.from(sinkTruncatedNote(sink.capBytes), 'utf8');
+  const room = Math.max(0, sink.capBytes - note.length);
+  let truncated = false;
+  return {
+    write(chunk) {
+      if (truncated) return;
+      if (size + chunk.length <= room) {
+        size += chunk.length;
+        stream.write(chunk);
+        return;
+      }
+      const fits = Math.max(0, room - size);
+      if (fits > 0) stream.write(chunk.subarray(0, fits));
+      stream.write(note);
+      size = room + note.length;
+      truncated = true;
+    },
+    close: () =>
+      new Promise<void>((resolve) => {
+        if (stream.destroyed) {
+          resolve();
+          return;
+        }
+        stream.once('close', () => {
+          resolve();
+        });
+        stream.end();
+      }),
+    get truncated() {
+      return truncated;
+    },
+  };
 }
 
 function killGroup(pid: number | undefined, signal: NodeJS.Signals): void {
@@ -149,21 +276,26 @@ function execute(binary: string, argv: readonly string[], options: ExecOptions):
       windowsHide: true,
       stdio: [options.input === undefined ? 'ignore' : 'pipe', 'pipe', 'pipe'],
     });
-    const stdout: Buffer[] = [];
+    const { sink } = options;
+    let stdout: Buffer[] = [];
     const stderr: Buffer[] = [];
     let stdoutSize = 0;
     let stderrSize = 0;
-    let stopped: 'timeout' | 'stdout-cap' | 'stderr-cap' | null = null;
+    let stopped: StopReason | null = null;
     let settled = false;
 
     const stderrText = (): string => Buffer.concat(stderr).toString('utf8');
+    const onAbort = (): void => {
+      stop('aborted');
+    };
     const finish = (result: Exec): void => {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
+      options.signal?.removeEventListener('abort', onAbort);
       resolve(result);
     };
-    const stop = (why: 'timeout' | 'stdout-cap' | 'stderr-cap'): void => {
+    const stop = (why: StopReason): void => {
       if (stopped !== null) return;
       stopped = why;
       killGroup(child.pid, 'SIGTERM');
@@ -184,14 +316,35 @@ function execute(binary: string, argv: readonly string[], options: ExecOptions):
     const timer = setTimeout(() => {
       stop('timeout');
     }, options.timeoutMs);
+    if (child.pid !== undefined) options.onSpawn?.(child.pid);
+    options.signal?.addEventListener('abort', onAbort, { once: true });
 
     child.stdout?.on('data', (chunk: Buffer) => {
+      if (sink !== null) {
+        // Sink mode: everything goes to the log, even while the group is being stopped; only the tail stays here.
+        sink.write(chunk);
+        stdout.push(chunk);
+        stdoutSize += chunk.length;
+        if (stdoutSize > 2 * TOOL_SINK_TAIL) {
+          const tail = Buffer.concat(stdout).subarray(-TOOL_SINK_TAIL);
+          stdout = [tail];
+          stdoutSize = tail.length;
+        }
+        return;
+      }
       if (stopped !== null) return;
       stdoutSize += chunk.length;
       if (stdoutSize > TOOL_STDOUT_CAP) stop('stdout-cap');
       else stdout.push(chunk);
     });
     child.stderr?.on('data', (chunk: Buffer) => {
+      if (sink !== null) {
+        sink.write(chunk);
+        // The first TOOL_STDERR_CAP bytes are kept for the message; the cap stops nothing here.
+        if (stderrSize < TOOL_STDERR_CAP) stderr.push(chunk.subarray(0, TOOL_STDERR_CAP - stderrSize));
+        stderrSize += chunk.length;
+        return;
+      }
       if (stopped !== null) return;
       stderrSize += chunk.length;
       if (stderrSize > TOOL_STDERR_CAP) stop('stderr-cap');
@@ -204,6 +357,7 @@ function execute(binary: string, argv: readonly string[], options: ExecOptions):
       if (stopped !== null) finish({ kind: 'stopped', why: stopped, stderr: stderrText() });
       else finish({ kind: 'exit', code, signal, stdout: Buffer.concat(stdout), stderr: stderrText() });
     });
+    if (options.signal?.aborted === true) stop('aborted');
     if (options.input !== undefined && child.stdin !== null) {
       // The tool may exit before reading its input; the exit code reports that.
       child.stdin.on('error', () => undefined);
@@ -218,30 +372,40 @@ function shown(stderr: string): string {
   return text.length > STDERR_SHOWN ? `${text.slice(0, STDERR_SHOWN)}...` : text;
 }
 
-/** The binary to run, or the outcome that stops the call. */
-async function locate(profile: ToolProfile, cwd: string, context: ToolContext, env: Readonly<Record<string, string | undefined>>): Promise<{ binary: string } | { kind: ToolFailure; message: string }> {
+/** Where a tool's binary is, or why it may not run: `missing`, `setting` (an invalid setting), `in-repo`, `sandbox`. */
+export type ToolResolution =
+  | { ok: true; binary: string }
+  | { ok: false; kind: ToolFailure; why: 'missing' | 'setting' | 'in-repo' | 'sandbox'; message: string };
+
+/**
+ * The binary a call of `profile` in `cwd` would run: the setting, else the
+ * PATH of `env` (context.env, else process.env), refused inside a registered
+ * repo or `cwd`, and outside the test sandbox when one is set.
+ */
+export async function resolveTool(profile: ToolProfile, cwd: string, context: ToolContext = {}): Promise<ToolResolution> {
+  const env = context.env ?? process.env;
   const name = profile.name;
   const setting: ToolSetting = (await context.toolSetting?.(name)) ?? { kind: 'unset' };
   let binary: string;
-  if (setting.kind === 'invalid') return { kind: 'error', message: `settings: ${setting.message}` };
+  if (setting.kind === 'invalid') return { ok: false, kind: 'error', why: 'setting', message: `settings: ${setting.message}` };
   if (setting.kind === 'path') {
     binary = await realOrSelf(setting.path);
   } else {
     const found = await findOnPath(name, env.PATH);
-    if (found === null) return { kind: 'missing', message: `${name} not found on the PATH` };
+    if (found === null) return { ok: false, kind: 'missing', why: 'missing', message: `${name} not found on the PATH` };
     binary = found;
   }
   const roots = await Promise.all([...((await context.repoRoots?.()) ?? []), cwd].map(realOrSelf));
   const inside = roots.find((root) => isInside(binary, root));
   if (inside !== undefined) {
-    return { kind: 'error', message: `${name} resolves to ${binary}, inside the repo ${inside}; refused` };
+    return { ok: false, kind: 'error', why: 'in-repo', message: `${name} resolves to ${binary}, inside the repo ${inside}; refused` };
   }
   // A property of the process, never of the call: a call's own env must not turn the sandbox off.
   const sandbox = process.env[TEST_TOOLS_ENV];
   if (sandbox !== undefined && sandbox !== '' && !isInside(binary, await realOrSelf(sandbox))) {
-    return { kind: 'error', message: `${name} resolves to ${binary}, outside the test tool sandbox; refused` };
+    return { ok: false, kind: 'error', why: 'sandbox', message: `${name} resolves to ${binary}, outside the test tool sandbox; refused` };
   }
-  return { binary };
+  return { ok: true, binary };
 }
 
 function interpret<T>(profile: ToolProfile, result: Exec, call: ToolCall<T>, stderr: string): ToolOutcome<T> {
@@ -252,6 +416,7 @@ function interpret<T>(profile: ToolProfile, result: Exec, call: ToolCall<T>, std
       return { kind: 'error', message: `${name} could not start: ${result.message}` };
     case 'stopped':
       if (result.why === 'timeout') return { kind: 'timeout', message: `${name} did not answer in time` };
+      if (result.why === 'aborted') return { kind: 'error', message: `${name} was stopped` };
       return { kind: 'error', message: `${name} wrote more than ${result.why === 'stdout-cap' ? '16 MiB to stdout' : '64 KiB to stderr'}` };
     case 'exit': {
       if (result.code !== 0) {
@@ -260,10 +425,15 @@ function interpret<T>(profile: ToolProfile, result: Exec, call: ToolCall<T>, std
         return { kind: profile.classify(stderr), message: detail === '' ? `${name} ${how}` : `${name} ${how}: ${detail}` };
       }
       let json: unknown;
-      try {
-        json = JSON.parse(result.stdout.toString('utf8'));
-      } catch {
-        return { kind: 'error', message: `${name} answered something that is not JSON` };
+      if (call.sink !== undefined) {
+        json = lastJsonObject(result.stdout.toString('utf8'));
+        if (json === undefined) return { kind: 'error', message: `${name} wrote no JSON result` };
+      } else {
+        try {
+          json = JSON.parse(result.stdout.toString('utf8'));
+        } catch {
+          return { kind: 'error', message: `${name} answered something that is not JSON` };
+        }
       }
       const value = call.parse(json);
       if (value === undefined) return { kind: 'error', message: `${name} answered unexpected JSON` };
@@ -274,6 +444,11 @@ function interpret<T>(profile: ToolProfile, result: Exec, call: ToolCall<T>, std
 
 /** Runs one tool call; never throws. */
 export async function runTool<T>(profile: ToolProfile, args: ToolArgs, call: ToolCall<T>, context: ToolContext = {}): Promise<ToolOutcome<T>> {
+  return (await runToolDetailed(profile, args, call, context)).outcome;
+}
+
+/** runTool with what the call did: exit code, duration, why it was stopped, the sink's truncation. Never throws. */
+export async function runToolDetailed<T>(profile: ToolProfile, args: ToolArgs, call: ToolCall<T>, context: ToolContext = {}): Promise<ToolRun<T>> {
   const env = context.env ?? process.env;
   const log = (outcome: ToolOutcome<T>, exitCode: number | null, durationMs: number, stderr: string): void => {
     if (context.log === undefined) return;
@@ -291,34 +466,62 @@ export async function runTool<T>(profile: ToolProfile, args: ToolArgs, call: Too
     else context.log.warn(parts.join(' '));
   };
 
-  const refuse = (message: string): ToolOutcome<T> => {
+  const refuse = (message: string): ToolRun<T> => {
     const outcome: ToolOutcome<T> = { kind: 'error', message };
     log(outcome, null, 0, '');
-    return outcome;
+    return { outcome, exitCode: null, durationMs: 0, stopped: null, truncated: false };
   };
   if (args.tool !== profile.name) return refuse(`arguments built for ${args.tool} cannot run ${profile.name}`);
   if (call.input !== undefined && profile.stdin !== 'input') return refuse(`${profile.name} takes no input`);
+  if (call.signal?.aborted === true) return refuse(`${profile.name} was stopped before it started`);
 
-  const located = await locate(profile, call.cwd, context, env);
-  if (!('binary' in located)) {
-    log(located, null, 0, '');
-    return located;
+  const located = await resolveTool(profile, call.cwd, context);
+  if (!located.ok) {
+    const outcome: ToolOutcome<T> = { kind: located.kind, message: located.message };
+    log(outcome, null, 0, '');
+    return { outcome, exitCode: null, durationMs: 0, stopped: null, truncated: false };
+  }
+  if (call.binary !== undefined && located.binary !== call.binary) {
+    return refuse(`${profile.name} resolves to ${located.binary}, not ${call.binary} as confirmed; refused`);
   }
   const limiter = context.limiter ?? sharedLimiter;
   return limiter.run(call.repo ?? call.cwd, async () => {
+    let sink: Sink | null = null;
+    if (call.sink !== undefined) {
+      try {
+        sink = openSink(call.sink);
+      } catch (error) {
+        return refuse(`${profile.name}: cannot open its log: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
     const started = performance.now();
     const result = await execute(located.binary, args.argv, {
       cwd: call.cwd,
       env: toolEnv(profile.env, env),
       input: call.input,
       timeoutMs: Math.min(call.timeoutMs ?? profile.timeoutMs, profile.timeoutMs),
-      graceMs: context.killGraceMs ?? TOOL_KILL_GRACE_MS,
+      graceMs: context.killGraceMs ?? profile.killGraceMs ?? TOOL_KILL_GRACE_MS,
+      sink,
+      signal: call.signal,
+      onSpawn: call.onSpawn === undefined ? undefined : (pid) => call.onSpawn?.(pid),
     });
+    await sink?.close();
     const duration = Math.round(performance.now() - started);
     if (result.kind === 'spawn-error' && result.code === 'ENOENT') forgetBinary(profile.name, env.PATH);
     const stderr = redactStderr(result.stderr);
     const outcome = interpret(profile, result, call, stderr);
     log(outcome, result.kind === 'exit' ? result.code : null, duration, stderr);
-    return outcome;
+    const run: ToolRun<T> = {
+      outcome,
+      exitCode: result.kind === 'exit' ? result.code : null,
+      durationMs: duration,
+      stopped: result.kind === 'stopped' ? result.why : null,
+      truncated: sink?.truncated ?? false,
+    };
+    if (call.sink !== undefined && result.kind === 'exit') {
+      const parsed = call.parse(lastJsonObject(result.stdout.toString('utf8')));
+      if (parsed !== undefined) run.result = parsed;
+    }
+    return run;
   });
 }

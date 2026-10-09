@@ -52,6 +52,7 @@ describe('homePaths', () => {
       log: '/srv/order-service/daemon.log',
       state: '/srv/order-service/state.json',
       settings: '/srv/order-service/settings.json',
+      runs: '/srv/order-service/runs',
     });
   });
 

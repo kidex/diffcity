@@ -24,6 +24,8 @@ export interface EventStore {
   listForRepo(repoId: number): EventRecord[];
   /** The `at` of the latest event of `type` for the change, or null. */
   latestAt(changeId: number, type: EventLogType): string | null;
+  /** The latest event of `type` for the change, or null. */
+  latest(changeId: number, type: EventLogType): EventRecord | null;
   /** Deletes `collect` events with `at` more than RETENTION_DAYS before `now`; returns how many. */
   pruneCollect(now: string): number;
 }
@@ -47,6 +49,7 @@ export function createEventStore(db: Connection): EventStore {
   const latestAt = db.prepare<[number, EventLogType], { at: string }>(
     'SELECT at FROM events WHERE changeId = ? AND type = ? ORDER BY at DESC, id DESC LIMIT 1',
   );
+  const latest = db.prepare<[number, EventLogType], EventRow>('SELECT * FROM events WHERE changeId = ? AND type = ? ORDER BY at DESC, id DESC LIMIT 1');
   const prune = db.prepare<[string]>("DELETE FROM events WHERE type = 'collect' AND at < ?");
 
   return {
@@ -58,6 +61,10 @@ export function createEventStore(db: Connection): EventStore {
     },
     listForRepo: (repoId) => forRepo.all(repoId).map(toRecord),
     latestAt: (changeId, type) => latestAt.get(changeId, type)?.at ?? null,
+    latest: (changeId, type) => {
+      const row = latest.get(changeId, type);
+      return row === undefined ? null : toRecord(row);
+    },
     pruneCollect: (now) => prune.run(retentionCutoff(now)).changes,
   };
 }

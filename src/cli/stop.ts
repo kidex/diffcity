@@ -12,10 +12,10 @@ import type { CliStreams } from './ensure-daemon.js';
 
 /**
  * How long stop waits for the daemon to exit: the daemon's own shutdown
- * deadline (SHUTDOWN_TIMEOUT_MS in src/daemon/daemon.ts, 10 s) plus time to
+ * deadline (SHUTDOWN_TIMEOUT_MS in src/daemon/daemon.ts, 15 s) plus time to
  * remove its files and exit.
  */
-export const STOP_TIMEOUT_MS = 15_000;
+export const STOP_TIMEOUT_MS = 20_000;
 
 export interface StopDeps {
   io: CliStreams;

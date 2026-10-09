@@ -21,7 +21,9 @@ import { createSseHub } from './sse.js';
 export const DEFAULT_UI_DIR = fileURLToPath(new URL('../../dist/ui/', import.meta.url));
 
 /** How long a shutdown waits for the servers and the plugins to stop before it is forced. */
-export const SHUTDOWN_TIMEOUT_MS = 10_000;
+// 15 s: an agent run that ignores SIGTERM gets SIGKILL after 10 s (ADR-029),
+// and its agent-run event must still be recorded before the shutdown is forced.
+export const SHUTDOWN_TIMEOUT_MS = 15_000;
 
 export { OWNER_WAIT_MS } from './client.js';
 

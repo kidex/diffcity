@@ -37,13 +37,17 @@ export const GH_PROFILE: ToolProfile = {
 
 /**
  * `claude` for "send review to the agent" (ADR-029): the summary goes on
- * stdin. Only the profile lives here; building and starting the call is the
- * review feature's.
+ * stdin. The timeout is the longest `agentLaunch.timeoutMinutes`
+ * (src/core/agent/settings.ts, 120); a run asks for its setting. SIGKILL
+ * follows SIGTERM after 10 s. Besides COMMON_ENV, the variables of an API-key
+ * or proxy login; an OAuth (keychain) login needs none. Building and starting
+ * the call is src/core/agent's and the daemon's agent plugin's.
  */
 export const CLAUDE_PROFILE: ToolProfile = {
   name: 'claude',
-  timeoutMs: 10 * 60 * 1000,
-  env: ['CLAUDE_CONFIG_DIR'],
+  timeoutMs: 120 * 60 * 1000,
+  killGraceMs: 10_000,
+  env: ['CLAUDE_CONFIG_DIR', 'ANTHROPIC_API_KEY', 'ANTHROPIC_BASE_URL'],
   stdin: 'input',
   classify() {
     return 'error';

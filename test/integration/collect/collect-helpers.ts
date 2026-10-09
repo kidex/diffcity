@@ -55,7 +55,7 @@ function collectsOpen(events: readonly SseRecord[]): number {
 }
 
 /** Reads GET /api/events continuously and parses every event as it arrives. */
-async function recordSse(port: number): Promise<{ events: SseRecord[]; close: () => void }> {
+export async function recordSse(port: number): Promise<{ events: SseRecord[]; close: () => void }> {
   const controller = new AbortController();
   const response = await fetch(`http://127.0.0.1:${String(port)}/api/events`, { signal: controller.signal });
   if (response.body === null) throw new Error('SSE response without a body');
