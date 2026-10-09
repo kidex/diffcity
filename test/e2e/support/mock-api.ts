@@ -5,7 +5,7 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import type { Page, Route } from '@playwright/test';
-import type { ApiError, ChangeSummary, FileDiff, RepoDetail, RepoSummary, SearchResult } from '../../../src/core/model/types.js';
+import type { ApiError, ChangeSummary, FileDiff, RepoDetail, RepoSummary, SearchResult, SessionsResponse } from '../../../src/core/model/types.js';
 import type { Report } from '../../../src/core/report/types.js';
 import { uncheckedTier1Files } from '../../../src/core/review/index.js';
 import type { FindingsMock } from './findings-api.js';
@@ -39,6 +39,10 @@ export const fixtures = {
   /** The `large` preset: 2,000 files, about 20,000 floors, 300 touched, 40 packages; written by gen-large-city.mjs in the global setup. */
   reportLargeCity: () => load('generated/report-large-city.json') as Report,
   searchResults: () => load('search-results.json') as SearchResult[],
+  /** Two sessions of the golden change (ADR-038): a read one that ran here, with prompts, questions, nested agents and edits, and an untitled stale one. */
+  sessionsTwo: () => load('sessions-two.json') as SessionsResponse,
+  /** One session whose transcript was refused: unreadable, no digest. */
+  sessionsParseError: () => load('sessions-parse-error.json') as SessionsResponse,
 };
 
 /** One request of the diff route, as the `diff` handler sees it. */
@@ -73,6 +77,11 @@ export interface ApiData {
   reviewMocks: Map<number, ReviewMock>;
   /** The fix queue and the writes of the findings routes per change id (ADR-036), created on first use. */
   findingsMocks: Map<number, FindingsMock>;
+  /**
+   * `GET /api/changes/:id/sessions` per change id (ADR-038), read at each request: replace an entry and
+   * emit SSE `sessions` to serve another answer. A change without one answers 404, as an unmocked route did.
+   */
+  sessions?: Record<number, SessionsResponse>;
 }
 
 /** The approve route of one change (ADR-036): writes made and hooks, as for the findings routes. */
@@ -241,6 +250,10 @@ export async function mockApi(page: Page, overrides: Partial<ApiData> = {}): Pro
           // The page aborted the request while it was held.
         }
         return;
+      }
+      if ((match = /^\/api\/changes\/(\d+)\/sessions$/.exec(path))) {
+        const sessions = data.sessions?.[Number(match[1])];
+        return sessions ? answer(route, sessions) : answer(route, notFound('no sessions mocked'), 404);
       }
       if (path === '/api/search') return answer(route, data.search(url.searchParams.get('q') ?? ''));
       return answer(route, notFound(`no mock for ${path}`), 404);
