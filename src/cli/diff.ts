@@ -3,7 +3,8 @@
 // through src/core; never starts the daemon. `--compact` is an output filter
 // only. `--with-sessions` asks the running daemon for the Claude Code sessions
 // of the change checked out here and adds them under a `sessions` key next to
-// the Report's own keys; without a daemon it fails. Session data reaches the
+// the Report's own keys; without a daemon it fails. The sessions follow the
+// change checked out in the current directory, whatever --base and --head say. Session data reaches the
 // output through that flag only: the Report itself never carries it.
 
 import { identifyRepo } from '../core/changes/index.js';
