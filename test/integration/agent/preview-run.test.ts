@@ -249,6 +249,26 @@ describe('agent preview and run', () => {
     expect(await stubs.records()).toEqual([]);
   });
 
+  it('a general note alone, or a "Needs rewrite" mark with no note, is a complete review: no refusal, a token, the summary sent', async () => {
+    await test.settings(enabled(test, stubs));
+    const noteOnly = seedChange(test, { name: 'note-only', rewrite: false, note: 'Split the cart module before merging.' });
+    const shownNote = await preview(test, noteOnly.id);
+    expect(codes(shownNote.refusals)).toEqual([]);
+    expect(shownNote.token).not.toBeNull();
+    expect(shownNote.summary).toContain('> Split the cart module before merging.');
+    expect(shownNote.summary).toContain('## Needs rewrite (0)');
+
+    const bare = seedChange(test, { name: 'bare-rewrite', rewriteNote: null });
+    const shownBare = await preview(test, bare.id);
+    expect(codes(shownBare.refusals)).toEqual([]);
+    expect(shownBare.summary).toContain('### src/cart/total.ts\n- Rewrite `total`\n');
+
+    const started = await run(test, noteOnly.id, { token: shownNote.token, summaryHash: shownNote.summaryHash });
+    expect(started.status).toBe(202);
+    await test.agent.runs().idle();
+    expect((await stubs.records()).map((record) => record.stdin)).toEqual([shownNote.summary]);
+  });
+
   it('agent/settings-key-validated: an invalid agentLaunch turns the launch off and names the key', async () => {
     const change = seedChange(test);
     await test.settings(enabled(test, stubs, { permissionMode: 'bypassPermissions' }));

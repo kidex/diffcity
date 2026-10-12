@@ -1,5 +1,6 @@
 // Validation of a review write body (ADR-028), pure. Returns the clean input or
-// the first problem as a message; the route turns a message into a 400.
+// the first problem as a message; the route turns a message into a 400. A note
+// is optional on every mark, "Needs rewrite" included; a blank one is stored as none.
 
 import type { ReviewMarkValue } from '../model/types.js';
 import type { TargetRef } from './types.js';
@@ -54,7 +55,6 @@ export function validateMarkInput(body: unknown): Validated<MarkInput> {
     if (note.length > MARK_NOTE_MAX) return fail(`note must be at most ${String(MARK_NOTE_MAX)} characters`);
     cleanNote = note.trim() === '' ? null : note;
   }
-  if (markValue === 'rewrite' && cleanNote === null) return fail('a rewrite mark needs a note of 1 to 2000 characters');
 
   let cleanLines: MarkInput['lines'] = null;
   if (lines !== undefined && lines !== null) {

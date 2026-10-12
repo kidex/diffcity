@@ -1,6 +1,6 @@
 // Schema v2 (ADR-018 migrations, ADR-027, ADR-028): a v1 database migrates in
 // place and a second open changes nothing. The newer-version refusal is in
-// migrate-v4.test.ts (db/v5-refused).
+// migrate-v5.test.ts (db/v6-refused).
 
 import { afterEach, describe, expect, it } from 'vitest';
 import { MIGRATIONS, SCHEMA_VERSION, openDb } from '../../../src/core/db/index.js';
@@ -88,7 +88,6 @@ describe('schema v2', () => {
     insert('mark', "'checked'");
     expect(() => { insert('mark', "'good'"); }).toThrow(/UNIQUE/);
     raw.prepare('DELETE FROM review_marks').run();
-    expect(() => { insert('mark', "'rewrite'"); }).toThrow(/CHECK/);
     expect(() => { insert('mark, note', "'rewrite', ''"); }).toThrow(/CHECK/);
     expect(() => { insert('mark, note', `'rewrite', '${'x'.repeat(2001)}'`); }).toThrow(/CHECK/);
     insert('mark, note', "'rewrite', 'split this'");

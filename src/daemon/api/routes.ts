@@ -129,5 +129,5 @@ export function registerApiRoutes(http: FastifyInstance, deps: ApiDeps): void {
 
   const writes = { db, broadcast: deps.broadcast ?? (() => undefined), now: deps.now ?? (() => new Date()) };
   registerReviewRoutes(http, writes);
-  registerFindingsRoutes(http, writes);
+  registerFindingsRoutes(http, { ...writes, port: deps.port });
 }

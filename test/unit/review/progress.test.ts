@@ -133,11 +133,18 @@ describe('review/progress-tier1-matches-server-gate', () => {
   });
 });
 
-describe('review/rewrite-needs-note', () => {
+describe('review/rewrite-note-optional', () => {
   const body = (extra: Record<string, unknown>) => ({ snapshotId: 3, target: { kind: 'file', id: 'f-total' }, mark: 'rewrite', ...extra });
 
-  it('a rewrite mark without a note, with an empty or blank note, or with a note over 2000 characters is rejected', () => {
-    for (const bad of [body({}), body({ note: '' }), body({ note: '   ' }), body({ note: 'x'.repeat(2001) })]) {
+  it('a rewrite mark without a note, or with an empty or blank note, is accepted with note null', () => {
+    for (const bare of [body({}), body({ note: null }), body({ note: '' }), body({ note: '   ' })]) {
+      expect(validateMarkInput(bare)).toEqual({ ok: true, value: { snapshotId: 3, target: { kind: 'file', id: 'f-total' }, mark: 'rewrite', note: null, lines: null } });
+    }
+    expect(validateMarkInput(body({ lines: { side: 'old', start: 2, end: 3 } }))).toMatchObject({ ok: true, value: { note: null, lines: { side: 'old', start: 2, end: 3 } } });
+  });
+
+  it('a note over 2000 characters or not a string is still rejected', () => {
+    for (const bad of [body({ note: 'x'.repeat(2001) }), body({ note: 7 })]) {
       expect(validateMarkInput(bad).ok).toBe(false);
     }
   });
