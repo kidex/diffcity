@@ -18,7 +18,7 @@ export interface CheckRestDialogOptions {
 }
 
 export interface CheckRestDialog {
-  /** Shows `shown` as the list to confirm; `notice` says why it is shown again. */
+  /** Shows `shown` as the list to confirm, ready to confirm again; `notice` says why it is shown again. */
   show(shown: RemainingFiles, notice: string | null): void;
   /** A request is in flight: Confirm waits. */
   busy(on: boolean): void;
@@ -48,7 +48,8 @@ export function openCheckRestDialog(first: RemainingFiles, options: CheckRestDia
     notice.textContent = why ?? '';
     notice.hidden = why === null;
     label = view.confirm;
-    if (!pending) confirm.textContent = label;
+    // A list shown is a list to confirm: whatever was in flight is over.
+    busy(false);
   }
 
   function busy(on: boolean): void {

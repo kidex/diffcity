@@ -62,7 +62,21 @@ test('approve/moved/check-rest-snapshot-moved-re-shows', async ({ page }) => {
 
   // The change is recomputed behind the open confirmation: the daemon refuses, the list is asked for again and shown with a notice.
   api.review(11).moveSnapshot([]);
-  await dialog.getByTestId('check-rest-confirm').click();
+  let release = (): void => undefined;
+  api.approval(11).holdRemaining = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const confirm = dialog.getByTestId('check-rest-confirm');
+  await confirm.click();
+  // While the fresh list is asked for, the refused one stays busy: a second click sends nothing.
+  await expect.poll(() => api.approval(11).remainingReads).toBe(2);
+  await expect(confirm).toHaveAttribute('aria-disabled', 'true');
+  await expect(confirm).toHaveText('Approving…');
+  await confirm.click({ force: true });
+  expect(api.approval(11).bodies).toHaveLength(1);
+  api.approval(11).holdRemaining = null;
+  release();
+  await expect(confirm).not.toHaveAttribute('aria-disabled');
   const notice = dialog.getByTestId('check-rest-notice');
   await expect(notice).toBeVisible();
   await expect(notice).toHaveAttribute('role', 'alert');

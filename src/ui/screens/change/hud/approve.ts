@@ -97,8 +97,14 @@ export function createApproveControl(port: ApprovalPort, hooks: ApproveHooks = {
     } catch {
       result = null;
     }
-    bulkPending = false;
     if (disposed) return;
+    if (result !== null && !result.ok && isStaleList(result.refusal.code) && checking !== null) {
+      // The refused list stays busy until the fresh one replaces it (show() clears busy): its token must not go again.
+      await askRemaining(CHECK_REST_MOVED);
+      bulkPending = false;
+      return;
+    }
+    bulkPending = false;
     checking?.busy(false);
     if (result?.ok === true) {
       hooks.onMarked?.();
@@ -106,10 +112,6 @@ export function createApproveControl(port: ApprovalPort, hooks: ApproveHooks = {
       checking = null;
       open?.close();
       render('approve-undo');
-      return;
-    }
-    if (result !== null && isStaleList(result.refusal.code) && checking !== null) {
-      await askRemaining(CHECK_REST_MOVED);
       return;
     }
     error = result === null ? APPROVE_FAILED : result.refusal.message;

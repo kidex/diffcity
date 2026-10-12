@@ -145,6 +145,8 @@ export interface ApprovalMock {
   readonly bodies: unknown[];
   /** Reads of `GET /approve/remaining` (DC-135). */
   remainingReads: number;
+  /** Holds every `GET /approve/remaining` until it settles (a slow daemon). */
+  holdRemaining: Promise<void> | null;
   /** Answers the next request (once) with this status, code and message, whatever it is. */
   failNext: { status: number; code: string; message: string } | null;
   /** Holds every request until it settles (a slow daemon). */
@@ -222,7 +224,7 @@ export async function mockApi(page: Page, overrides: Partial<ApiData> = {}): Pro
   const approval = (changeId: number): ApprovalMock => {
     let mock = approvals.get(changeId);
     if (mock === undefined) {
-      mock = { writes: [], bodies: [], remainingReads: 0, failNext: null, hold: null };
+      mock = { writes: [], bodies: [], remainingReads: 0, holdRemaining: null, failNext: null, hold: null };
       approvals.set(changeId, mock);
     }
     return mock;
@@ -325,6 +327,7 @@ export async function mockApi(page: Page, overrides: Partial<ApiData> = {}): Pro
         if (route.request().method() !== 'GET') return answer(route, notFound('GET only'), 404);
         const mock = approval(id);
         mock.remainingReads += 1;
+        if (mock.holdRemaining !== null) await mock.holdRemaining;
         const report = data.reports[id];
         if (report === undefined) return answer(route, { error: { code: 'no-snapshot', message: `change ${String(id)} has no snapshot yet` } }, 409);
         const snapshotId = reviews.get(id)?.snapshotId ?? 1;
