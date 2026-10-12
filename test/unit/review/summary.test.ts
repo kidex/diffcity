@@ -65,6 +65,50 @@ describe('summary/rewrite-only', () => {
   });
 });
 
+describe('summary/rewrite-without-note', () => {
+  it('a rewrite mark with no note reads "Rewrite this file" or "Rewrite `<symbol>`", the line range kept', () => {
+    const text = renderSummary({
+      ...base,
+      note: null,
+      report: sampleReport(),
+      marks: [
+        mark('symbol', 's-total', { note: null }),
+        mark('symbol', 's-round', { note: null, lines: { side: 'new', start: 4, end: 9 } }),
+        mark('file', 'f-total', { note: null }),
+        mark('file', 'f-tax', { note: null, lines: { side: 'old', start: 1, end: 2 } }),
+      ],
+    });
+    expect(text).toBe(
+      [
+        TITLE,
+        '',
+        '## Needs rewrite (4)',
+        '',
+        '### src/cart/total.ts',
+        '- Rewrite `total`',
+        '- Rewrite `roundCents`, lines 4–9',
+        '- Rewrite this file',
+        '',
+        '### src/cart/tax.ts',
+        '- Rewrite this file, lines 1–2',
+        '',
+      ].join('\n'),
+    );
+  });
+
+  it('a blank note counts as no note', () => {
+    const text = renderSummary({ ...base, note: null, report: sampleReport(), marks: [mark('file', 'f-tax', { note: '  \n ' })] });
+    expect(text).toContain('### src/cart/tax.ts\n- Rewrite this file\n');
+  });
+});
+
+describe('summary/general-note-only', () => {
+  it('a general note with no marks is the whole summary: title, the quoted note and an empty section', () => {
+    const text = renderSummary({ ...base, note: 'Split the cart module before merging.', report: sampleReport(), marks: [] });
+    expect(text).toBe(`${TITLE}\n\n> Split the cart module before merging.\n\n## Needs rewrite (0)\n`);
+  });
+});
+
 describe('summary/report-order', () => {
   it('files come in Report order and symbols in floor order, whatever the order of the marks', () => {
     const text = renderSummary({

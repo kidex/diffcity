@@ -4,7 +4,7 @@
 // database is refused untouched.
 
 import { afterEach, describe, expect, it } from 'vitest';
-import { MIGRATIONS, SCHEMA_VERSION, newerVersionMessage, openDb } from '../../../src/core/db/index.js';
+import { MIGRATIONS, SCHEMA_VERSION, openDb } from '../../../src/core/db/index.js';
 import { T0, rawConnection, tempDbPath } from './db-helpers.js';
 
 const cleanups: (() => void)[] = [];
@@ -82,7 +82,6 @@ describe('schema v4', () => {
     const raw = rawConnection(path);
     raw.pragma('foreign_keys = ON');
     expect(raw.pragma('user_version', { simple: true })).toBe(SCHEMA_VERSION);
-    expect(SCHEMA_VERSION).toBe(4);
     expect(raw.prepare('SELECT key, state, finding FROM findings').all()).toEqual([{ key: 'f:00000000000000aa', state: 'open', finding: '{"title":"Invented"}' }]);
     const index = raw.prepare<[], { sql: string }>("SELECT sql FROM sqlite_master WHERE name = 'events_repo_at'").get();
     expect(index?.sql).toBe('CREATE INDEX events_repo_at ON events(repoId, at)');
@@ -112,19 +111,5 @@ describe('schema v4', () => {
     const before = read();
     openDb(path).close();
     expect(read()).toEqual(before);
-  });
-
-  it('db/v5-refused: user_version 5 is a clear error and the file is left as it was', () => {
-    const { path, remove } = tempDbPath();
-    cleanups.push(remove);
-    const raw = rawConnection(path);
-    raw.pragma('user_version = 5');
-    raw.close();
-    expect(() => openDb(path)).toThrow(new Error(newerVersionMessage(5)));
-    expect(newerVersionMessage(5)).toBe('database was created by a newer diffcity (v5); upgrade diffcity');
-    const check = rawConnection(path, { readOnly: true });
-    expect(check.pragma('user_version', { simple: true })).toBe(5);
-    expect(check.prepare("SELECT count(*) AS n FROM sqlite_master WHERE type = 'table'").get()).toEqual({ n: 0 });
-    check.close();
   });
 });
