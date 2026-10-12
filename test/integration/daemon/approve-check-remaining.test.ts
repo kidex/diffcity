@@ -289,6 +289,38 @@ describe('approve/check-remaining', () => {
     expect(s.db.changes.get(s.change.id)?.reviewState).toBe('unreviewed');
   });
 
+  it('the remaining list is answered with cache-control: no-store', async () => {
+    const s = await seeded();
+    const answer = await call(s.port, 'GET', path(s, '/approve/remaining'));
+    expect(answer.status).toBe(200);
+    expect(answer.headers['cache-control']).toBe('no-store');
+  });
+
+  it('a token shown for one file list is refused for another list on the same snapshot: 409, nothing written', async () => {
+    const s = await seeded();
+    const both = await remaining(s);
+    expect(both.files).toEqual([TOTAL, TAX]);
+    await mark(s, 'file', 'f-tax', 'good');
+    const one = await remaining(s);
+    expect(one.snapshotId).toBe(both.snapshotId);
+    expect(one.files).toEqual([TOTAL]);
+    expect(one.token).not.toBe(both.token);
+
+    // The current list with the token of the earlier list, and the earlier list with the current token.
+    for (const body of [
+      { checkRemaining: true, snapshotId: one.snapshotId, files: one.files, token: both.token },
+      { checkRemaining: true, snapshotId: both.snapshotId, files: both.files, token: one.token },
+    ]) {
+      const answer = await call(s.port, 'POST', path(s, '/approve'), { body });
+      expect(answer.status).toBe(409);
+      expect(['snapshot-moved', 'remaining-changed']).toContain(errorCode(answer));
+    }
+    expect(marksOf(s)).toEqual([['f-tax', 'good', null, 'current']]);
+    expect(s.db.changes.get(s.change.id)?.reviewState).not.toBe('approved');
+    // The matching pair is still accepted.
+    expect((await confirm(s, one)).status).toBe(200);
+  });
+
   it('the remaining list answers 404 for an unknown change, 409 without a snapshot', async () => {
     const s = await seeded();
     const answer = await call(s.port, 'GET', path(s, '/approve/remaining'));
