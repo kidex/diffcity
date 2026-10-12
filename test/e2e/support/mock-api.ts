@@ -2,6 +2,7 @@
 // test/fixtures/ui/ (ADR-023). `/api/events` is left to the server: a route
 // mock cannot hold an SSE stream open.
 
+import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import type { Page, Route } from '@playwright/test';
@@ -140,6 +141,10 @@ export function agentPreview(over: Partial<AgentPreview> = {}): AgentPreview {
 export interface ApprovalMock {
   /** Every approve request the page made, in order. */
   readonly writes: ('POST' | 'DELETE')[];
+  /** The body of every POST, in order: null for the plain Approve, the confirmed list for "Check the rest and approve". */
+  readonly bodies: unknown[];
+  /** Reads of `GET /approve/remaining` (DC-135). */
+  remainingReads: number;
   /** Answers the next request (once) with this status, code and message, whatever it is. */
   failNext: { status: number; code: string; message: string } | null;
   /** Holds every request until it settles (a slow daemon). */
@@ -184,6 +189,10 @@ export function defaultApiData(): ApiData {
   };
 }
 
+/** The mock's token of "Check the rest and approve": 64 hex over the snapshot and the listed files, like the daemon's. */
+const remainingToken = (snapshotId: number, files: readonly string[]): string =>
+  createHash('sha256').update(`${String(snapshotId)}\n${files.join('\n')}`).digest('hex');
+
 const notFound = (message: string): ApiError => ({ error: { code: 'not-found', message } });
 
 export async function mockApi(page: Page, overrides: Partial<ApiData> = {}): Promise<MockedApi> {
@@ -213,7 +222,7 @@ export async function mockApi(page: Page, overrides: Partial<ApiData> = {}): Pro
   const approval = (changeId: number): ApprovalMock => {
     let mock = approvals.get(changeId);
     if (mock === undefined) {
-      mock = { writes: [], failNext: null, hold: null };
+      mock = { writes: [], bodies: [], remainingReads: 0, failNext: null, hold: null };
       approvals.set(changeId, mock);
     }
     return mock;
@@ -310,6 +319,18 @@ export async function mockApi(page: Page, overrides: Partial<ApiData> = {}): Pro
         const id = Number(match[1]);
         return answerFindings(route, findings(id), data.reports[id], decodeURIComponent(match[2] ?? ''), match[3] ?? '');
       }
+      if ((match = /^\/api\/changes\/(\d+)\/approve\/remaining$/.exec(path))) {
+        // "Check the rest and approve" (DC-135): the unmarked touched tier 1 files of the latest snapshot, and a token over both.
+        const id = Number(match[1]);
+        if (route.request().method() !== 'GET') return answer(route, notFound('GET only'), 404);
+        const mock = approval(id);
+        mock.remainingReads += 1;
+        const report = data.reports[id];
+        if (report === undefined) return answer(route, { error: { code: 'no-snapshot', message: `change ${String(id)} has no snapshot yet` } }, 409);
+        const snapshotId = reviews.get(id)?.snapshotId ?? 1;
+        const files = uncheckedTier1Files(report, reviews.get(id)?.marks ?? []);
+        return answer(route, { snapshotId, head: liveChange(id)?.head ?? report.meta.head, files, token: remainingToken(snapshotId, files) });
+      }
       if ((match = /^\/api\/changes\/(\d+)\/approve$/.exec(path))) {
         // Stands in for the daemon (DC-100): the gate from the latest Report and the stored marks, with core's own rule.
         const id = Number(match[1]);
@@ -317,6 +338,8 @@ export async function mockApi(page: Page, overrides: Partial<ApiData> = {}): Pro
         if (method !== 'POST' && method !== 'DELETE') return answer(route, notFound('no such approve route'), 404);
         const mock = approval(id);
         mock.writes.push(method);
+        const body: unknown = method === 'POST' && route.request().postData() !== null ? (route.request().postDataJSON() as unknown) : null;
+        if (method === 'POST') mock.bodies.push(body);
         if (mock.hold !== null) await mock.hold;
         if (mock.failNext !== null) {
           const { status, code, message } = mock.failNext;
@@ -332,6 +355,28 @@ export async function mockApi(page: Page, overrides: Partial<ApiData> = {}): Pro
         }
         const report = data.reports[id];
         if (report === undefined) return answer(route, { error: { code: 'no-snapshot', message: `change ${String(id)} has no snapshot yet` } }, 409);
+        const bulk = body as { checkRemaining?: unknown; snapshotId?: unknown; files?: unknown; token?: unknown } | null;
+        if (bulk?.checkRemaining === true) {
+          // As the daemon does it: the token binds the snapshot and the list shown; the list must still be the one to mark.
+          const review = reviews.get(id);
+          const files = Array.isArray(bulk.files) ? (bulk.files as string[]) : [];
+          if (review === undefined || bulk.snapshotId !== review.snapshotId || bulk.token !== remainingToken(review.snapshotId, files)) {
+            return answer(route, { error: { code: 'snapshot-moved', message: 'the change was recomputed since the confirmation; look again before approving' } }, 409);
+          }
+          const now = uncheckedTier1Files(report, review.marks);
+          if (now.length !== files.length || now.some((file, index) => file !== files[index])) {
+            return answer(route, { error: { code: 'remaining-changed', message: 'the files without a mark are not the ones the confirmation listed; look again' } }, 409);
+          }
+          for (const file of report.packages.flatMap((pkg) => pkg.files).filter((candidate) => now.includes(candidate.path))) {
+            const at = new Date().toISOString();
+            review.marks = [
+              ...review.marks.filter((other) => !(other.targetKind === 'file' && other.targetId === file.id)),
+              { targetKind: 'file', targetId: file.id, filePath: file.path, mark: 'checked', note: null, lines: null, state: 'current', createdAt: at, updatedAt: at, outdatedAt: null },
+            ];
+          }
+          if (change.reviewState !== 'approved') Object.assign(change, { reviewState: 'approved', approvedHead: change.head, approvedAt: new Date().toISOString() });
+          return answer(route, { reviewState: 'approved', approvedHead: change.approvedHead, approvedAt: change.approvedAt, marked: now });
+        }
         const unchecked = uncheckedTier1Files(report, reviews.get(id)?.marks ?? []);
         if (unchecked.length > 0) {
           const message = `${String(unchecked.length)} touched tier 1 file(s) have no current review mark: ${unchecked.join(', ')}`;

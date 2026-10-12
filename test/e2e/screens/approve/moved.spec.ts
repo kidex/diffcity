@@ -1,8 +1,10 @@
 // e2e/approve/moved (DC-116, ADR-019, ADR-036): an approved change whose head
 // moves is reset to unreviewed by the daemon. The UI computes none of it: on
 // SSE `changes` and `review` the route refetches the change and the marks, the
-// badge goes, and Approve closes again because the mark on the tier 1 file
-// that changed went outdated.
+// badge goes, and the plain Approve goes back to "Check the rest and approve"
+// because the mark on the tier 1 file that changed went outdated. A
+// confirmation of "Check the rest and approve" whose list went stale under it
+// (`snapshot-moved`, `remaining-changed`) is shown again with the fresh list.
 
 import { test } from '@playwright/test';
 import { GUARD, MIGRATION } from '../../support/hud.js';
@@ -15,6 +17,8 @@ import { emitSse, tagClient } from '../../support/sse.js';
 
 test.describe.configure({ timeout: 90_000 });
 
+/** The touched tier 1 files, in the daemon's order (the Report's `tier1Files`). */
+const BOTH = panelReport().summary.tier1Files;
 const NEW_HEAD = 'c0ffee12d4b7e6a5c4d3e2f1a0b9c8d7e6f5a4b3';
 
 test('approve/moved/returns-to-unreviewed-on-new-head', async ({ page }, testInfo) => {
@@ -43,8 +47,61 @@ test('approve/moved/returns-to-unreviewed-on-new-head', async ({ page }, testInf
   await expect(page.getByTestId('approved-badge')).toHaveCount(0);
   await expect(reviewTag).toHaveText('Unreviewed');
   const approve = page.getByTestId('approve');
-  await expect(approve).toHaveText('Approve when tier 1 is read');
-  await expect(approve).toHaveAttribute('aria-disabled', 'true');
-  await expect(approve).toHaveAttribute('title', '1 of 2 touched tier 1 files have a current review mark');
+  await expect(approve).toHaveText('Check the rest and approve');
+  await expect(approve).toHaveAttribute('title', /^1 of 2 touched tier 1 files have a current review mark/);
   expect(api.approval(11).writes).toEqual(['POST']);
+});
+
+test('approve/moved/check-rest-snapshot-moved-re-shows', async ({ page }) => {
+  const { api } = await openReview(page);
+  const approve = page.getByTestId('approve');
+  await approve.click();
+  const dialog = page.getByTestId('check-rest-dialog');
+  await expect(dialog.getByTestId('check-rest-file')).toHaveText(BOTH);
+  await expect(dialog.getByTestId('check-rest-confirm')).toHaveText('Check 2 files and approve');
+
+  // The change is recomputed behind the open confirmation: the daemon refuses, the list is asked for again and shown with a notice.
+  api.review(11).moveSnapshot([]);
+  await dialog.getByTestId('check-rest-confirm').click();
+  const notice = dialog.getByTestId('check-rest-notice');
+  await expect(notice).toBeVisible();
+  await expect(notice).toHaveAttribute('role', 'alert');
+  await expect(notice).toContainText('look again before approving');
+  await expect.poll(() => api.approval(11).remainingReads).toBe(2);
+  await expect(dialog).toBeVisible();
+  await expect(page.getByTestId('approved-badge')).toHaveCount(0);
+  expect(api.approval(11).bodies).toHaveLength(1);
+  expect(api.approval(11).bodies[0]).toMatchObject({ snapshotId: 1, files: BOTH });
+
+  // Another tab marks the guard meanwhile: the list the reviewer saw is no longer the one to mark (remaining-changed), shown again.
+  const review = api.review(11);
+  review.marks = marksFromOverlay(panelReport(), { files: { [GUARD]: 'checked' } });
+  await dialog.getByTestId('check-rest-confirm').click();
+  await expect.poll(() => api.approval(11).remainingReads).toBe(3);
+  await expect(dialog.getByTestId('check-rest-file')).toHaveText([MIGRATION]);
+  await expect(dialog.getByTestId('check-rest-confirm')).toHaveText('Check 1 file and approve');
+  expect(api.approval(11).bodies[1]).toMatchObject({ snapshotId: 2, files: BOTH });
+  await expect(page.getByTestId('approved-badge')).toHaveCount(0);
+
+  // Confirmed on the fresh list: approved.
+  await dialog.getByTestId('check-rest-confirm').click();
+  await expect(dialog).toHaveCount(0);
+  await expect(page.getByTestId('approved-badge')).toHaveText('Approved 3f2a9c4');
+  expect(api.approval(11).bodies[2]).toMatchObject({ checkRemaining: true, snapshotId: 2, files: [MIGRATION] });
+  expect(api.approval(11).writes).toEqual(['POST', 'POST', 'POST']);
+});
+
+test('approve/moved/check-rest-other-refusal-shown-in-bar', async ({ page }) => {
+  const { api } = await openReview(page);
+  await page.getByTestId('approve').click();
+  const dialog = page.getByTestId('check-rest-dialog');
+  await expect(dialog).toBeVisible();
+  // A refusal that is not about the list (the snapshot is being computed): the dialog goes, the reason stays in the bar.
+  api.approval(11).failNext = { status: 409, code: 'snapshot-pending', message: 'a newer snapshot is being computed; try again in a moment' };
+  await dialog.getByTestId('check-rest-confirm').click();
+  await expect(dialog).toHaveCount(0);
+  await expect(page.getByTestId('approve-error')).toHaveText('a newer snapshot is being computed; try again in a moment');
+  await expect(page.getByTestId('approve')).toHaveText('Check the rest and approve');
+  await expect(page.getByTestId('approve')).toBeFocused();
+  expect(api.approval(11).remainingReads).toBe(1);
 });
