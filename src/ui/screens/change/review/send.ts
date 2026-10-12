@@ -130,7 +130,10 @@ export function openSendDialog(options: SendDialogOptions): Dialog {
     send.textContent = pending ? SENDING : SEND;
     hint.textContent = dirty ? NOTE_UNSAVED : SCROLL_TO_SEND;
     hint.hidden = dirty ? false : !offered || read;
-    noteSave.disabled = savingNote || pending || !dirty;
+    // aria-disabled, not disabled: a focused button that turns disabled drops focus to <body>, out of the dialog,
+    // where Esc no longer closes it and the screen's mark keys act behind it.
+    if (savingNote || pending || !dirty) noteSave.setAttribute('aria-disabled', 'true');
+    else noteSave.removeAttribute('aria-disabled');
     copy.disabled = preview === null;
     queue.disabled = preview === null || pending || queuing;
   }

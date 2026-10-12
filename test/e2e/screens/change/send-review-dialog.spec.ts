@@ -185,7 +185,7 @@ test('change/send-review-dialog: send-from-top-bar-with-general-note-only', asyn
   await expect(dialog.getByTestId('send-run')).toBeHidden();
   const note = dialog.getByTestId('send-note');
   await expect(note).toHaveValue('');
-  await expect(dialog.getByTestId('send-note-save')).toBeDisabled();
+  await expect(dialog.getByTestId('send-note-save')).toHaveAttribute('aria-disabled', 'true');
 
   // A general note, typed: not sent until saved, and the dialog says so.
   const NOTE = 'Split the discount rules out of the order service before merging.';
@@ -196,6 +196,13 @@ test('change/send-review-dialog: send-from-top-bar-with-general-note-only', asyn
   await dialog.getByTestId('send-note-save').click();
   await expect(dialog.getByTestId('send-note-status')).toHaveText('Note saved; the summary below now holds it');
   expect(api.review(11).writes.map((write) => write.body)).toEqual([{ note: NOTE }]);
+  // Saved, the button waits without dropping focus out of the dialog: the screen's mark keys stay out of it.
+  await expect(dialog.getByTestId('send-note-save')).toHaveAttribute('aria-disabled', 'true');
+  expect(await page.evaluate(`document.querySelector('[data-testid="send-dialog"]').contains(document.activeElement)`)).toBe(true);
+  await page.keyboard.press('w');
+  await page.keyboard.press('c');
+  await page.waitForTimeout(300);
+  expect(api.review(11).writes).toHaveLength(1);
   // Saved, then previewed again: the summary shown is the one the new hash and token stand for.
   await expect.poll(() => agent.writes.filter((write) => write.route === 'preview').length).toBe(2);
   expect(await dialog.getByTestId('send-summary').textContent()).toBe(summary);
@@ -207,6 +214,15 @@ test('change/send-review-dialog: send-from-top-bar-with-general-note-only', asyn
   await note.fill(`${NOTE} And rename it.`);
   await expect(send).toBeDisabled();
   await note.fill(NOTE);
+  await scrollSummaryToEnd(page, dialog);
+  await expect(send).toBeEnabled();
+
+  // Esc still closes it, focus back on the top bar's button; opened again, the saved note is there.
+  await page.keyboard.press('Escape');
+  await expect(dialog).toBeHidden();
+  await expect(button).toBeFocused();
+  await button.click();
+  await expect(note).toHaveValue(NOTE);
   await scrollSummaryToEnd(page, dialog);
   await expect(send).toBeEnabled();
 

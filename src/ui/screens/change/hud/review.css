@@ -123,6 +123,8 @@
 .ag-refusals ul { margin: 0; padding-left: 18px; overflow-wrap: anywhere; }
 .ag-end { display: block; height: 1px; }
 .rv-dialog .btn[hidden], .rv-hint[hidden] { display: none; }
+/* A button that waits keeps focus: aria-disabled, drawn as disabled. */
+.rv-dialog .btn[aria-disabled="true"] { opacity: .55; cursor: not-allowed; }
 
 .hud-bar .agent-run { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; font-size: 12.5px; color: var(--ink-2); }
 .hud-bar .agent-run[hidden] { display: none; }
