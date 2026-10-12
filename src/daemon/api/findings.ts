@@ -7,24 +7,26 @@
 //
 //   PUT    /api/changes/:id/findings/:key/state   { state: 'open' | 'intended' }
 //   POST   /api/changes/:id/findings/:key/fix
-//   POST   /api/changes/:id/approve                [{ checkRemaining: true, snapshotId, files? }]
+//   POST   /api/changes/:id/approve                [{ checkRemaining: true, snapshotId, files, token }]
 //   DELETE /api/changes/:id/approve
-//   GET    /api/changes/:id/approve/remaining  -> { snapshotId, head, files }
+//   GET    /api/changes/:id/approve/remaining  -> { snapshotId, head, files, token }
 //
 // "Check the rest and approve" (ADR-028 amendment, DC-135): with
 // `checkRemaining: true`, one transaction marks every touched tier 1 file
-// without a current mark as Checked, against the snapshot the reviewer saw
-// (`snapshotId`; 409 `snapshot-moved` when a newer one exists), then approves
-// through the unchanged gate. `files`, when given, is the list the confirmation
-// showed; 409 `remaining-changed` when the server would mark other files.
+// without a current mark as Checked, against the content the confirmation
+// showed, then approves through the unchanged gate. The body carries back what
+// GET /approve/remaining answered: `token` binds the snapshot row, its
+// contentHash and the listed files' fingerprints (409 `snapshot-moved` when
+// any of them changed, a recompute at the same head included), and `files` is
+// the list shown (409 `remaining-changed` when the server would mark others).
 
 import type { FastifyInstance } from 'fastify';
 import type { Db } from '../../core/db/index.js';
 import { appendToFixQueue, fixQueueItem, fixQueueRoot } from '../../core/fix-queue/index.js';
-import type { ChangeRecord, SseEvent } from '../../core/model/types.js';
+import type { ChangeRecord, SnapshotRecord, SseEvent } from '../../core/model/types.js';
 import type { Report } from '../../core/report/types.js';
 import type { Fingerprints } from '../../core/model/types.js';
-import { checkRemainingPlan, uncheckedTier1Files } from '../../core/review/index.js';
+import { checkRemainingPlan, checkRemainingToken, uncheckedTier1Files } from '../../core/review/index.js';
 import { resolveFinding, stateTargets, type ResolvedFinding } from '../../core/served/index.js';
 import { HttpError } from '../http/errors.js';
 import { recordReviewActivity } from './activity.js';
@@ -88,11 +90,14 @@ export interface RemainingAnswer {
   head: string;
   /** The touched tier 1 files without a current mark, in `tier1Files` order. */
   files: string[];
+  /** Binds the snapshot's content and the listed files' fingerprints; the confirmation sends it back. */
+  token: string;
 }
 
 interface CheckRemainingInput {
   snapshotId: number;
-  files: string[] | null;
+  files: string[];
+  token: string;
 }
 
 /** The body of POST /approve: null for the plain Approve, the bulk input with `checkRemaining: true`. */
@@ -107,11 +112,14 @@ function parseApproveBody(body: unknown): CheckRemainingInput | null {
     throw new HttpError(400, 'bad-request', 'snapshotId must be a positive integer');
   }
   const files = record['files'];
-  if (files === undefined || files === null) return { snapshotId, files: null };
   if (!Array.isArray(files) || !files.every((path): path is string => typeof path === 'string')) {
-    throw new HttpError(400, 'bad-request', 'files must be a list of paths');
+    throw new HttpError(400, 'bad-request', 'files must be the list of paths the confirmation showed');
   }
-  return { snapshotId, files };
+  const token = record['token'];
+  if (typeof token !== 'string' || !/^[0-9a-f]{64}$/.test(token)) {
+    throw new HttpError(400, 'bad-request', 'token must be the token of GET /approve/remaining');
+  }
+  return { snapshotId, files, token };
 }
 
 const sameList = (a: readonly string[], b: readonly string[]): boolean => a.length === b.length && a.every((path, index) => path === b[index]);
@@ -237,6 +245,9 @@ export function registerFindingsRoutes(http: FastifyInstance, deps: FindingsDeps
     return { answer: { reviewState: 'approved', approvedHead: change.head, approvedAt }, wrote: true };
   };
 
+  const fingerprintsOf = (snapshot: SnapshotRecord): Fingerprints =>
+    snapshot.fingerprints === null ? { files: {}, symbols: {} } : (JSON.parse(snapshot.fingerprints) as Fingerprints);
+
   /** "Check the rest and approve": the marks and the approval in one transaction, every check done again inside it. */
   const checkRemainingAndApprove = (changeId: number, input: CheckRemainingInput): { answer: CheckRemainingAnswer; wrote: boolean } =>
     db.transaction(() => {
@@ -244,13 +255,14 @@ export function registerFindingsRoutes(http: FastifyInstance, deps: FindingsDeps
       if (change === null) throw new HttpError(404, 'not-found', `change ${String(changeId)} not found`);
       notArchived(change);
       const snapshot = approvableSnapshot(change);
-      if (snapshot.id !== input.snapshotId) {
-        throw new HttpError(409, 'snapshot-moved', `the change has a newer snapshot than ${String(input.snapshotId)}; look again before approving`);
-      }
       const report = JSON.parse(snapshot.report) as Report;
-      const fingerprints: Fingerprints = snapshot.fingerprints === null ? { files: {}, symbols: {} } : (JSON.parse(snapshot.fingerprints) as Fingerprints);
+      const fingerprints = fingerprintsOf(snapshot);
+      // The content first: a recompute at the same head replaces the row in place, so the id alone is not enough.
+      if (snapshot.id !== input.snapshotId || checkRemainingToken(snapshot, report, fingerprints, input.files) !== input.token) {
+        throw new HttpError(409, 'snapshot-moved', 'the change was recomputed since the confirmation; look again before approving');
+      }
       const plan = checkRemainingPlan(report, fingerprints, db.review.list(change.id));
-      if (input.files !== null && !sameList(input.files, plan.files)) {
+      if (!sameList(input.files, plan.files)) {
         throw new HttpError(409, 'remaining-changed', 'the files without a mark are not the ones the confirmation listed; look again');
       }
       if (plan.unmarkable.length > 0) throw uncheckedError(plan.unmarkable);
@@ -272,6 +284,8 @@ export function registerFindingsRoutes(http: FastifyInstance, deps: FindingsDeps
       const unchecked = uncheckedTier1Files(report, db.review.list(change.id));
       if (unchecked.length > 0) throw uncheckedError(unchecked);
       const { answer, wrote } = approve(change);
+      // Already approved at this head (a mark went outdated since): the marks are still review activity.
+      if (!wrote && plan.marks.length > 0) recordReviewActivity(db, change, at);
       return { answer: { ...answer, marked: plan.marks.map((mark) => mark.filePath) }, wrote: wrote || plan.marks.length > 0 };
     });
 
@@ -299,7 +313,9 @@ export function registerFindingsRoutes(http: FastifyInstance, deps: FindingsDeps
     const change = changeOf(request.params.id);
     notArchived(change);
     const snapshot = approvableSnapshot(change);
-    return { snapshotId: snapshot.id, head: snapshot.head, files: uncheckedTier1Files(JSON.parse(snapshot.report) as Report, db.review.list(change.id)) };
+    const report = JSON.parse(snapshot.report) as Report;
+    const files = uncheckedTier1Files(report, db.review.list(change.id));
+    return { snapshotId: snapshot.id, head: snapshot.head, files, token: checkRemainingToken(snapshot, report, fingerprintsOf(snapshot), files) };
   });
 
   http.delete<{ Params: IdParams }>('/api/changes/:id/approve', (request): ApprovalAnswer => {

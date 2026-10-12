@@ -3,6 +3,7 @@
 // daemon checks it from the latest snapshot and the stored marks, never from
 // what a client says.
 
+import { createHash } from 'node:crypto';
 import type { Fingerprints, ReviewMark } from '../model/types.js';
 import type { Report } from '../report/types.js';
 import { fileCheckedBy } from './checked.js';
@@ -63,4 +64,25 @@ export function checkRemainingPlan(report: Report, fingerprints: Fingerprints, m
     planned.push({ target: { kind: 'file', id: target.id }, filePath: target.filePath, fingerprint: target.fingerprint });
   }
   return { files, marks: planned, unmarkable };
+}
+
+/**
+ * What the confirmation of "Check the rest and approve" was computed from: the
+ * snapshot row (its id and contentHash, which a recompute at the same head
+ * replaces in place) and the fingerprint each listed file has in it (null when
+ * the file is not markable). A 64-hex digest; equal only for the same content.
+ */
+export function checkRemainingToken(
+  snapshot: { id: number; contentHash: string },
+  report: Report,
+  fingerprints: Fingerprints,
+  files: readonly string[],
+): string {
+  const targets = markableTargets(report, fingerprints);
+  const idByPath = new Map(report.packages.flatMap((pkg) => pkg.files.map((file) => [file.path, file.id] as const)));
+  const listed = files.map((path) => {
+    const id = idByPath.get(path);
+    return [path, id === undefined ? null : (targets.get(targetKey({ kind: 'file', id }))?.fingerprint ?? null)];
+  });
+  return createHash('sha256').update(JSON.stringify([snapshot.id, snapshot.contentHash, listed])).digest('hex');
 }

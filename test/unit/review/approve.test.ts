@@ -2,7 +2,7 @@
 // on the file or on each of its changed symbols; an outdated mark does not count.
 
 import { describe, expect, it } from 'vitest';
-import { checkRemainingPlan, uncheckedTier1Files } from '../../../src/core/review/index.js';
+import { checkRemainingPlan, checkRemainingToken, uncheckedTier1Files } from '../../../src/core/review/index.js';
 import type { Report } from '../../../src/core/report/types.js';
 import { publicMark, sampleFingerprints, sampleReport, storedMark } from './review-helpers.js';
 
@@ -96,5 +96,29 @@ describe('check the rest (ADR-028 amendment)', () => {
 
   it('nothing remaining: an empty plan', () => {
     expect(checkRemainingPlan(sampleReport(), fp, [])).toEqual({ files: [], marks: [], unmarkable: [] });
+  });
+});
+
+describe('check the rest: the confirmation token', () => {
+  const files = ['src/cart/total.ts', 'src/cart/tax.ts'];
+  const snapshot = { id: 4, contentHash: 'h1' };
+  const token = checkRemainingToken(snapshot, sampleReport(), fp, files);
+
+  it('is stable for the same snapshot, content, files and fingerprints', () => {
+    expect(token).toMatch(/^[0-9a-f]{64}$/);
+    expect(checkRemainingToken({ id: 4, contentHash: 'h1' }, sampleReport(), sampleFingerprints(), [...files])).toBe(token);
+  });
+
+  it('changes with the snapshot id, the contentHash, a listed file\'s fingerprint or the list', () => {
+    expect(checkRemainingToken({ id: 5, contentHash: 'h1' }, sampleReport(), fp, files)).not.toBe(token);
+    expect(checkRemainingToken({ id: 4, contentHash: 'h2' }, sampleReport(), fp, files)).not.toBe(token);
+    const moved = sampleFingerprints({ files: { 'f-tax': { before: 'b-tax', after: 'a-tax-2' } } });
+    expect(checkRemainingToken(snapshot, sampleReport(), moved, files)).not.toBe(token);
+    expect(checkRemainingToken(snapshot, sampleReport(), fp, ['src/cart/total.ts'])).not.toBe(token);
+  });
+
+  it('a fingerprint change outside the listed files does not change it', () => {
+    const other = sampleFingerprints({ symbols: { 's-banner': 'sym-banner-2' } });
+    expect(checkRemainingToken(snapshot, sampleReport(), other, files)).toBe(token);
   });
 });
