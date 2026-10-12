@@ -56,6 +56,8 @@ export function openSendDialog(options: SendDialogOptions): Dialog {
   let view: SendDialogView | null = null;
   let read = false;
   let pending = false;
+  /** An "Add to fix queue" request is in flight: a second click must not send another. */
+  let queuing = false;
   /** The token went to the daemon and was refused or lost: Send needs a new preview. */
   let spent = false;
   let closed = false;
@@ -86,7 +88,7 @@ export function openSendDialog(options: SendDialogOptions): Dialog {
     send.textContent = pending ? SENDING : SEND;
     hint.hidden = !offered || read;
     copy.disabled = preview === null;
-    queue.disabled = preview === null || pending;
+    queue.disabled = preview === null || pending || queuing;
   }
 
   function fill(next: AgentPreview): void {
@@ -207,16 +209,19 @@ export function openSendDialog(options: SendDialogOptions): Dialog {
     });
   });
   queue.addEventListener('click', () => {
-    if (preview === null) return;
+    if (preview === null || queuing) return;
+    queuing = true;
     status.textContent = 'Adding to the fix queue…';
-    queue.disabled = true;
+    sync();
     port.queue(preview.summaryHash).then(
       (answer) => {
+        queuing = false;
         if (closed) return;
         status.textContent = answer.ok ? queuedText(answer.value) : `Not added: ${answer.refusal.message}`;
         sync();
       },
       () => {
+        queuing = false;
         if (closed) return;
         status.textContent = 'Not added: the daemon did not answer';
         sync();

@@ -112,6 +112,8 @@ export interface AgentMock {
   readonly queued: string[];
   /** Answers the next write (once) with this status, code and message, whatever it is. */
   failNext: { status: number; code: string; message: string } | null;
+  /** Holds every write until it settles (a slow daemon). */
+  hold: Promise<void> | null;
 }
 
 /** A preview with nothing refused: resume the linked session in the change's working tree. */
@@ -220,7 +222,7 @@ export async function mockApi(page: Page, overrides: Partial<ApiData> = {}): Pro
   const agent = (changeId: number): AgentMock => {
     let mock = agents.get(changeId);
     if (mock === undefined) {
-      mock = { preview: agentPreview(), runs: { running: false, latest: null }, writes: [], queued: [], failNext: null };
+      mock = { preview: agentPreview(), runs: { running: false, latest: null }, writes: [], queued: [], failNext: null, hold: null };
       agents.set(changeId, mock);
     }
     return mock;
@@ -272,6 +274,7 @@ export async function mockApi(page: Page, overrides: Partial<ApiData> = {}): Pro
         const body: unknown = route.request().postData() === null ? null : (route.request().postDataJSON() as unknown);
         const kind = which === 'agent/preview' ? 'preview' : which === 'agent/run' ? 'run' : 'queue';
         mock.writes.push({ route: kind, body });
+        if (mock.hold !== null) await mock.hold;
         if (mock.failNext !== null) {
           const { status, code, message } = mock.failNext;
           mock.failNext = null;

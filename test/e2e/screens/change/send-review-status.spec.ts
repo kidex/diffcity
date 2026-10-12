@@ -96,9 +96,21 @@ test('change/send-review-status: fallback-add-to-fix-queue', async ({ page, cont
   const dialog = await openSendDialog(page);
   await expect(dialog.getByTestId('send-run')).toBeHidden();
 
-  // Add to fix queue: the previewed summary goes in as one item, bound by its hash; a second time it is already there.
-  await dialog.getByTestId('send-queue').click();
+  // Add to fix queue: the previewed summary goes in as one item, bound by its hash. While the request is in flight the
+  // button is disabled, and a second click sends nothing; a second time it is already there.
+  let release = (): void => undefined;
+  api.agent(11).hold = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const queueButton = dialog.getByTestId('send-queue');
+  await queueButton.click();
+  await expect(dialog.getByTestId('send-status')).toHaveText('Adding to the fix queue…');
+  await expect(queueButton).toBeDisabled();
+  await queueButton.dispatchEvent('click');
+  api.agent(11).hold = null;
+  release();
   await expect(dialog.getByTestId('send-status')).toHaveText('Added to the fix queue (1 item waiting for /diffcity-review)');
+  await expect(queueButton).toBeEnabled();
   expect(api.agent(11).writes.filter((write) => write.route === 'queue').map((write) => write.body)).toEqual([{ summaryHash: preview.summaryHash }]);
   await dialog.getByTestId('send-queue').click();
   await expect(dialog.getByTestId('send-status')).toHaveText('Already in the fix queue (1 item waiting for /diffcity-review)');
