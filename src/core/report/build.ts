@@ -46,7 +46,7 @@ import {
 } from '../rules/index.js';
 import type { UserRuleSettings } from '../settings/settings.js';
 import { preparePathFile, prepareUntouchedFile, type PathFile } from '../path/prepare.js';
-import { readRepoSpec, specPathInRepo, specScope, TOO_LARGE_NOTICE, type SpecScope, type SpecSource } from '../spec/index.js';
+import { readRepoSpec, specLocation, specScope, TOO_LARGE_NOTICE, type SpecScope, type SpecSource } from '../spec/index.js';
 import { fileVerdict, tier1Matcher, touchedTier1Files } from '../verdict/index.js';
 import { mapLimit } from './limit.js';
 import type { File, Finding, Package, Report, Status, Step, Symbol, Verdict } from './types.js';
@@ -355,9 +355,12 @@ async function specScopeOf(
 ): Promise<SpecScope | null> {
   if (source.kind === 'absent') return null;
   if (source.kind === 'too-large') return { inSpec: null, notice: TOO_LARGE_NOTICE };
+  const location = await specLocation(source, root);
   return specScope({
     text: source.text,
-    specPath: await specPathInRepo(source, root),
+    specPath: location.path,
+    // Null for `.diffcity/spec.md`: specScope resolves its links from `.diffcity/`.
+    ...(location.linkBase === null ? {} : { linkBase: location.linkBase }),
     files: inputs,
     edges: path.edges ?? new Map(),
     routes: path.routes ?? new Map(),

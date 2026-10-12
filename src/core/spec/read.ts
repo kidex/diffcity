@@ -6,9 +6,9 @@
 // data: nothing in it is executed or followed.
 
 import { open, realpath } from 'node:fs/promises';
-import { isAbsolute, relative, resolve, sep } from 'node:path';
+import { dirname, isAbsolute, relative, resolve, sep } from 'node:path';
 import { GitError, readAfterBytes, sizeAfter, type ResolvedChange } from '../git/index.js';
-import { MAX_SPEC_BYTES, SPEC_PATH } from './scope.js';
+import { MAX_SPEC_BYTES, SPEC_PATH, type LinkBase } from './scope.js';
 
 /** The spec of a build, as read. */
 export type SpecSource =
@@ -68,20 +68,29 @@ export async function readSpecFile(file: string, cwd: string): Promise<SpecSourc
   }
 }
 
-/**
- * The repo-relative path of the spec file, when it is inside the repo at
- * `root` (so it can be a touched file of the change); null otherwise.
- */
-export async function specPathInRepo(source: Extract<SpecSource, { kind: 'text' }>, root: string): Promise<string | null> {
-  if (!isAbsolute(source.path)) return source.path;
+/** Where the spec file sits relative to the repo. */
+export interface SpecLocation {
+  /** Repo-relative path of the spec file when it is inside the repo (so it can be a touched file), else null. */
+  path: string | null;
+  /** The spec's directory and the repo root, which Markdown link targets resolve against; null when unknown. */
+  linkBase: LinkBase | null;
+}
+
+const slashes = (path: string): string => path.split(sep).join('/');
+
+/** Where the spec of `source` sits relative to the repo at `root` (real paths: links are resolved as the files sit on disk). */
+export async function specLocation(source: Extract<SpecSource, { kind: 'text' }>, root: string): Promise<SpecLocation> {
+  // `.diffcity/spec.md`: its own directory under the specScope default.
+  if (!isAbsolute(source.path)) return { path: source.path, linkBase: null };
   let real: string;
   let realRoot: string;
   try {
     [real, realRoot] = await Promise.all([realpath(source.path), realpath(root)]);
   } catch {
-    return null;
+    return { path: null, linkBase: null };
   }
+  const linkBase: LinkBase = { root: slashes(realRoot), dir: slashes(dirname(real)) };
   const inside = relative(realRoot, real);
-  if (inside === '' || inside === '..' || inside.startsWith(`..${sep}`) || isAbsolute(inside)) return null;
-  return inside.split(sep).join('/');
+  if (inside === '' || inside === '..' || inside.startsWith(`..${sep}`) || isAbsolute(inside)) return { path: null, linkBase };
+  return { path: slashes(inside), linkBase };
 }

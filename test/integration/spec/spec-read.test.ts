@@ -6,7 +6,7 @@
 import { execFile } from 'node:child_process';
 import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
 import { devNull, tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { runDiff } from '../../../src/cli/diff.js';
@@ -163,6 +163,17 @@ describe('spec/spec-arg-wins', () => {
     // .diffcity/spec.md alone names `bake`.
     expect(inSpec(await build(repo.dir))).toEqual(BAKE_IN);
     // --spec names `ringUp`.
+    const report = await build(repo.dir, { spec: await readSpecFile(join(dir, 'task.md'), repo.dir) });
+    expect(inSpec(report)).toEqual({ 'src/bakery/oven.ts': false, 'src/bakery/till.ts': true });
+  });
+
+  it('a --spec file resolves Markdown links from its own directory, on disk; .diffcity/spec.md from .diffcity/', async () => {
+    const dir = await scratch();
+    const { repo } = await fixtureRepo('spec/spec-arg-wins', { extra: { '.diffcity/spec.md': 'See [the oven](../src/bakery/oven.ts#L2).\n' } });
+    expect(inSpec(await build(repo.dir))).toEqual(BAKE_IN);
+    // From a directory outside the repo, the target goes back into it.
+    const target = relative(dir, join(repo.dir, 'src/bakery/till.ts')).split(sep).join('/');
+    await writeFile(join(dir, 'task.md'), `See [the till](${target}).\n`, 'utf8');
     const report = await build(repo.dir, { spec: await readSpecFile(join(dir, 'task.md'), repo.dir) });
     expect(inSpec(report)).toEqual({ 'src/bakery/oven.ts': false, 'src/bakery/till.ts': true });
   });

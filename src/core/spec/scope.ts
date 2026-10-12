@@ -1,11 +1,14 @@
 // Spec scope (SPEC.md 5.5, ADR-035): which touched files the spec covers.
 //
 // Roots are the touched symbols and files the spec names: a backticked
-// identifier equal to a touched symbol's base or qualified name, the
-// repo-relative path or the basename of a touched file, or an HTTP route
-// string (`POST /orders/:id/cancel`) equal to a route entry point's
-// registration (the touched symbol that declares the route and its touched
-// handlers passed by name; routeRegistrations in src/core/path). Matching is exact and case-sensitive on those tokens only;
+// identifier equal to a touched symbol's base or qualified name (`cancelOrder`,
+// also written `cancelOrder()` or `cancelOrder(id)`), the repo-relative path of
+// a touched file or its basename when that has a dot (`index.ts`, not `run`),
+// a Markdown link whose target resolves, from the spec file's directory, to a
+// touched file, or an HTTP route string (`POST /orders/:id/cancel`) equal to a
+// route entry point's registration (the touched symbol that declares the
+// route and its touched handlers passed by name; routeRegistrations in
+// src/core/path). Matching is exact and case-sensitive on those tokens only;
 // prose words never match a symbol. A touched file is in the spec when one
 // of its touched symbols is a root or is connected to one through call edges
 // (callers and callees) among touched symbols, the ADR-034 call graph. A
@@ -41,6 +44,12 @@ export interface SpecScopeInput {
   text: string;
   /** Repo-relative path of the spec file when it is inside the repo (it is in the spec when touched), else null. */
   specPath: string | null;
+  /**
+   * Where Markdown link targets resolve: the spec file's directory and the
+   * repo root, both absolute and `/`-separated. Null: links name nothing.
+   * Default: the directory of `specPath` inside the repo, else null.
+   */
+  linkBase?: LinkBase | null | undefined;
   /** Every file of the Report; untouched ones (`same`) stay null. */
   files: readonly ScopeFile[];
   /** The ADR-034 call graph: caller symbol id to its callees. */
@@ -48,6 +57,15 @@ export interface SpecScopeInput {
   /** Touched symbol id to the HTTP routes it registers or handles (routeRegistrations, ADR-034 facts). */
   routes: ReadonlyMap<string, readonly { method: string; path: string }[]>;
 }
+
+/** The spec file's directory and the repo root, absolute, `/`-separated (or any common virtual root). */
+export interface LinkBase {
+  root: string;
+  dir: string;
+}
+
+/** The virtual root a repo-relative spec path is placed under to resolve its links. */
+const VIRTUAL_ROOT = '/repo';
 
 export interface SpecScope {
   /** `inSpec` of every touched file; null when no root matched (nothing is claimed). */
@@ -70,36 +88,86 @@ const TRAILING = /[)\]}>"'*_~.,;:!?]+$/;
 /** `<METHOD> <path>`: an upper-case method word, blanks, then a path starting with `/`. */
 const ROUTE = /(?<![A-Za-z0-9_])([A-Z]+)[ \t]+(\/[^\s`'"<>]*)/g;
 
+/** Punctuation that can end a sentence after a route path; the path is kept with and without it. */
+const ROUTE_TRAILING = /[)\]}>.,;:!?]$/;
+
+/** An inline Markdown link or image: `[text](target)` or `[text](target "title")`, the target without blanks. */
+const LINK = /!?\[([^\]\n]*)\]\(<?([^\s()<>]+)>?(?:[ \t]+(?:"[^"\n]*"|'[^'\n]*'))?\)/g;
+
+/** A backticked call: an identifier or a dotted chain, then parentheses holding anything. */
+const CALL = /^([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*)\(.*\)$/;
+
+/** A URL scheme (`https:`, `mailto:`): such a link names no repo file. */
+const SCHEME = /^[A-Za-z][A-Za-z0-9+.-]*:/;
+
 /** The tokens of a spec, by kind: identifiers come from backticks only. */
 export interface SpecTokens {
-  /** Contents of inline code spans, trimmed. */
+  /** Contents of inline code spans, trimmed; a call `name(...)` also gives `name`. */
   code: Set<string>;
-  /** Words of the whole text (code spans included), as written and with wrapping punctuation stripped. */
+  /** Words of the text outside link targets (code spans included), as written and with wrapping punctuation stripped. */
   words: Set<string>;
-  /** `<METHOD> <path>` strings, with trailing punctuation stripped from the path. */
+  /** Repo-relative paths the Markdown link targets resolve to from the spec's directory; targets that leave the repo are dropped. */
+  links: Set<string>;
+  /** `<METHOD> <path>` strings, the path as written and with each run of its trailing punctuation removed. */
   routes: Set<string>;
 }
 
-export function specTokens(text: string): SpecTokens {
+/**
+ * A link target as a repo-relative path: `#fragment` and `?query` dropped,
+ * resolved from the spec's directory and normalized; null for a URL, an
+ * absolute path or a target outside the repo.
+ */
+function linkTarget(target: string, base: LinkBase): string | null {
+  const bare = target.replace(/[#?].*$/s, '');
+  if (bare === '' || SCHEME.test(bare) || bare.startsWith('/')) return null;
+  let decoded = bare;
+  try {
+    decoded = decodeURIComponent(bare);
+  } catch {
+    // Not percent-encoded as a URL would be: taken as written.
+  }
+  const resolved = posix.relative(base.root, posix.resolve(base.dir, decoded));
+  if (resolved === '' || resolved === '..' || resolved.startsWith('../') || posix.isAbsolute(resolved)) return null;
+  return resolved;
+}
+
+export function specTokens(text: string, linkBase: LinkBase | null = null): SpecTokens {
   const code = new Set<string>();
   for (const match of text.matchAll(CODE_SPAN)) {
     const content = (match[1] ?? '').trim();
-    if (content !== '') code.add(content);
+    if (content === '') continue;
+    code.add(content);
+    const call = CALL.exec(content);
+    if (call?.[1] !== undefined) code.add(call[1]);
   }
+  const links = new Set<string>();
+  // A link counts by its resolved target; its text stays prose, its target is no word.
+  const prose = text.replace(LINK, (_whole, label: string, target: string) => {
+    const resolved = linkBase === null ? null : linkTarget(target, linkBase);
+    if (resolved !== null) links.add(resolved);
+    return ` ${label} `;
+  });
   const words = new Set<string>();
-  // Backticks and Markdown link brackets end a word: `src/a.ts`, [a](src/a.ts).
-  for (const raw of text.split(/[\s`]+|\]\(/)) {
+  // Backticks end a word: `src/a.ts`.
+  for (const raw of prose.split(/[\s`]+/)) {
     if (raw === '') continue;
     words.add(raw);
     const stripped = raw.replace(LEADING, '').replace(TRAILING, '');
     if (stripped !== '') words.add(stripped);
   }
   const routes = new Set<string>();
-  for (const match of text.matchAll(ROUTE)) {
-    const path = (match[2] ?? '').replace(/[)\]}>.,;:!?]+$/, '');
-    routes.add(`${match[1] ?? ''} ${path === '' ? '/' : path}`);
+  for (const match of prose.matchAll(ROUTE)) {
+    const method = match[1] ?? '';
+    // As written, then one trailing punctuation mark less at a time: `/files/:name?` and
+    // `/orders/[id]` end in what is also punctuation, and still match before a full stop.
+    let path = match[2] ?? '';
+    routes.add(`${method} ${path}`);
+    while (ROUTE_TRAILING.test(path)) {
+      path = path.slice(0, -1);
+      routes.add(`${method} ${path === '' ? '/' : path}`);
+    }
   }
-  return { code, words, routes };
+  return { code, words, links, routes };
 }
 
 /**
@@ -107,7 +175,13 @@ export function specTokens(text: string): SpecTokens {
  * NO_ROOT_NOTICE when the spec names nothing touched.
  */
 export function specScope(input: SpecScopeInput): SpecScope {
-  const tokens = specTokens(input.text);
+  const linkBase =
+    input.linkBase !== undefined
+      ? input.linkBase
+      : input.specPath === null
+        ? null
+        : { root: VIRTUAL_ROOT, dir: posix.join(VIRTUAL_ROOT, posix.dirname(input.specPath)) };
+  const tokens = specTokens(input.text, linkBase);
   const touchedFiles = input.files.filter((file) => touched(file.status));
 
   const roots = new Set<string>();
@@ -118,8 +192,9 @@ export function specScope(input: SpecScopeInput): SpecScope {
     for (const symbol of symbols) touchedSymbols.set(symbol.id, file.path);
     // The spec file itself is in the spec, but naming itself is no root.
     if (file.path === input.specPath) continue;
-    // A file named by its path or basename roots its touched symbols, and is in the spec even without any.
-    if (tokens.words.has(file.path) || tokens.words.has(posix.basename(file.path))) {
+    // A file named by its path, its basename (with a dot) or a link roots its touched symbols, and is in the spec even without any.
+    const base = posix.basename(file.path);
+    if (tokens.words.has(file.path) || tokens.links.has(file.path) || (base.includes('.') && tokens.words.has(base))) {
       rootFiles.add(file.path);
       for (const symbol of symbols) roots.add(symbol.id);
     }

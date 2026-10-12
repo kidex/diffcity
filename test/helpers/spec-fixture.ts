@@ -16,7 +16,7 @@ import { preparePathFile, prepareUntouchedFile, type PathFile } from '../../src/
 import { assembleReport, type ReportFileInput } from '../../src/core/report/build.js';
 import type { Finding, Report } from '../../src/core/report/types.js';
 import type { RuleRun } from '../../src/core/rules/index.js';
-import { specScope, type SpecScope } from '../../src/core/spec/index.js';
+import { specScope, type LinkBase, type SpecScope } from '../../src/core/spec/index.js';
 import { tier1Matcher } from '../../src/core/verdict/index.js';
 
 const fixtures = fileURLToPath(new URL('../fixtures/spec/', import.meta.url));
@@ -49,6 +49,8 @@ export interface SpecCaseOptions {
   text?: string;
   /** Repo-relative path of the spec file. Default `.diffcity/spec.md`. */
   specPath?: string | null;
+  /** Where link targets resolve; default: from the directory of `specPath`. */
+  linkBase?: LinkBase | null;
   /** Findings that count for the verdicts, as rule findings do. */
   findings?: Finding[];
 }
@@ -79,6 +81,7 @@ export async function specCase(name: string, options: SpecCaseOptions = {}): Pro
   const scope = specScope({
     text: options.text ?? specFixtureFile(name, 'spec.md'),
     specPath: options.specPath === undefined ? '.diffcity/spec.md' : options.specPath,
+    ...(options.linkBase === undefined ? {} : { linkBase: options.linkBase }),
     files: inputs,
     edges: path.edges,
     routes: path.routes,
