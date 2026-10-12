@@ -8,6 +8,7 @@ import './review.css';
 import { h } from '../../../shared/dom.js';
 import type { CardData, TipData } from '../model/hud.js';
 import { ruleChips } from '../model/hud.js';
+import { SEND_TO_AGENT } from '../model/agent.js';
 import type { ProgressView } from '../model/review.js';
 import type { Filters } from '../model/view.js';
 import type { FleetPort } from '../ports.js';
@@ -32,8 +33,11 @@ export interface HudOptions {
   /** Also show the breadcrumb (repo, branch against base, commits and time): for a screen without the SPA shell. */
   crumb: boolean;
   fleet?: FleetPort | undefined;
-  /** The screen has a ReviewPort: the summary button is drawn and `onSummary` opens the dialog. */
-  review?: { onSummary(trigger: HTMLElement): void } | undefined;
+  /**
+   * The screen has a ReviewPort: the summary button is drawn and `onSummary` opens the dialog. With `onSend`
+   * (an AgentPort too) "Send to agent" is drawn beside it and opens the send dialog directly.
+   */
+  review?: { onSummary(trigger: HTMLElement): void; onSend?: ((trigger: HTMLElement) => void) | undefined } | undefined;
   /** The screen has an ApprovalPort: Approve's element, drawn among the bar's actions. */
   approve?: HTMLElement | undefined;
   /** The screen has an AgentPort: the agent run status, drawn in the bar. */
@@ -86,6 +90,23 @@ export function createHud(options: HudOptions): Hud {
     },
     'Review summary',
   );
+  const sendButton =
+    options.review?.onSend === undefined
+      ? undefined
+      : h(
+          'button',
+          {
+            type: 'button',
+            class: 'btn',
+            'aria-haspopup': 'dialog',
+            'data-testid': 'send-to-agent',
+            title: 'Send the review to the agent: the exact command is shown before anything runs',
+            onclick: (event: Event) => {
+              if (event.currentTarget instanceof HTMLElement) options.review?.onSend?.(event.currentTarget);
+            },
+          },
+          SEND_TO_AGENT,
+        );
   let reviewReady = false;
   let shown: { report: Report; filters: Filters } | null = null;
   const toast = h('div', { class: 'toast', role: 'status', 'data-testid': 'toast' });
@@ -103,7 +124,7 @@ export function createHud(options: HudOptions): Hud {
 
   /** Only with a review state: before it, and without a port, the bar has none of these nodes. */
   const extras = (): BarExtras => ({
-    ...(options.review !== undefined && reviewReady ? { progress, summary: summaryButton } : {}),
+    ...(options.review !== undefined && reviewReady ? { progress, summary: summaryButton, send: sendButton } : {}),
     approve: options.approve,
     agent: options.agent,
   });

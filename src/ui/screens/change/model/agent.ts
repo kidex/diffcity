@@ -15,6 +15,11 @@ export const ADD_TO_QUEUE = 'Add to fix queue';
 export const PERMISSION_DEFAULT = 'The agent runs with your Claude Code permission settings for this project';
 export const SCROLL_TO_SEND = 'Read the summary to its end to send it';
 export const REFUSED = 'The agent cannot be sent this review:';
+export const SEND_TO_AGENT = 'Send to agent';
+export const NOTE_UNSAVED = 'Save the note to send it: the summary below is what the agent gets';
+export const NOTE_SAVING = 'Saving the note…';
+export const NOTE_SAVED = 'Note saved; the summary below now holds it';
+export const NOTE_NOT_SAVED = 'The note was not saved';
 export const PREVIEW_FAILED = 'The daemon did not answer. Try again once it is back.';
 export const RUN_FAILED = 'The daemon did not answer, so the agent may not have started. Check the run status before sending again.';
 

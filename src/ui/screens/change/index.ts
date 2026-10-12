@@ -11,8 +11,8 @@
 // tooltip, selection card, Fleet card, and the reading panel at its right
 // (panel/): tabs, stop cards and the file view, and, with a FindingsPort, the
 // finding cards' actions; with a SessionsPort, the Session tab; with an
-// AgentPort, "Send review to agent" in the review summary and the agent run
-// status in the top bar.
+// AgentPort, "Send to agent" in the top bar and in the review summary, and the
+// agent run status in the top bar.
 
 import './change.css';
 
@@ -250,6 +250,12 @@ export function mountChange(element: HTMLElement, options: ChangeScreenOptions):
               onSummary: (trigger) => {
                 reviewUi.openSummary(trigger);
               },
+              onSend:
+                options.agent === undefined
+                  ? undefined
+                  : (trigger) => {
+                      reviewUi.openSend(trigger);
+                    },
             },
       approve: approve?.root,
       agent: agentRun?.root,
