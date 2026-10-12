@@ -288,3 +288,38 @@ describe('spec tokens', () => {
     expect([...tokens.routes]).toEqual(['PUT /x/:id']);
   });
 });
+
+describe('spec tokens stay linear on adversarial specs', () => {
+  const size = 256 * 1024;
+  const base = { root: '/r', dir: '/r/.diffcity' };
+  it.each([
+    ['one line of [', '['.repeat(size)],
+    ['[a repeated', '[a'.repeat(size / 2)],
+    [']( repeated', ']('.repeat(size / 2)],
+    ['[a]( repeated', '[a]('.repeat(size / 4)],
+    ['[a](x repeated', '[a](x'.repeat(size / 5)],
+    ['a word of dots before a letter', `${'.'.repeat(size - 1)}a`],
+    ['a route path of punctuation', `GET /${'.'.repeat(size - 5)}`],
+    ['a route path of punctuation before a letter', `GET /${'.'.repeat(size - 6)}a`],
+    ['one long upper-case word', 'A'.repeat(size)],
+    ['backticks', '`a'.repeat(size / 2)],
+    ['an open call', `\`f(${'('.repeat(size - 3)}\``],
+  ])('%s: 256 KiB under 200 ms', (_name, text) => {
+    const start = performance.now();
+    specTokens(text, base);
+    expect(performance.now() - start).toBeLessThan(200);
+  });
+});
+
+describe('spec scope stays linear on adversarial specs', () => {
+  it('route strings of punctuation and repeated routes against a registered route: under 200 ms', () => {
+    const files = [{ path: 'src/api/files.ts', status: 'mod' as const, symbols: [{ id: 'src/api/files.ts#readFile', name: 'readFile', status: 'mod' as const }] }];
+    const routes = new Map([['src/api/files.ts#readFile', [{ method: 'GET', path: '/files/:name?' }]]]);
+    for (const text of [`GET /files/:name${'?'.repeat(256 * 1024 - 15)}`, 'GET /files/:name?. '.repeat(256 * 1024 / 19)]) {
+      const start = performance.now();
+      const scope = specScope({ text, specPath: '.diffcity/spec.md', files, edges: new Map(), routes });
+      expect(performance.now() - start).toBeLessThan(200);
+      expect(scope.inSpec?.get('src/api/files.ts')).toBe(true);
+    }
+  });
+});

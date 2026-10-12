@@ -82,17 +82,23 @@ const baseName = (name: string): string => name.slice(name.lastIndexOf('.') + 1)
 const CODE_SPAN = /(?<!`)`([^`\n]+)`(?!`)/g;
 
 /** Punctuation that wraps a path in prose or Markdown, stripped from either end of a word. */
-const LEADING = /^[([{<"'*_~]+/;
-const TRAILING = /[)\]}>"'*_~.,;:!?]+$/;
+// Trimmed by hand, not with a `[...]+$` regex: that one rescans from every
+// position of a long word and is quadratic on a 256 KiB run of dots.
+const LEADING = new Set('([{<"\'*_~');
+const TRAILING = new Set(')]}>"\'*_~.,;:!?');
 
 /** `<METHOD> <path>`: an upper-case method word, blanks, then a path starting with `/`. */
 const ROUTE = /(?<![A-Za-z0-9_])([A-Z]+)[ \t]+(\/[^\s`'"<>]*)/g;
 
-/** Punctuation that can end a sentence after a route path; the path is kept with and without it. */
-const ROUTE_TRAILING = /[)\]}>.,;:!?]$/;
+/** Punctuation that can end a sentence after a route path. */
+const ROUTE_TRAILING = new Set(')]}>.,;:!?');
 
-/** An inline Markdown link or image: `[text](target)` or `[text](target "title")`, the target without blanks. */
-const LINK = /!?\[([^\]\n]*)\]\(<?([^\s()<>]+)>?(?:[ \t]+(?:"[^"\n]*"|'[^'\n]*'))?\)/g;
+/**
+ * An inline Markdown link or image: `[text](target)` or `[text](target "title")`,
+ * the target without blanks. The text holds no `[`, so a line of `[` is linear
+ * (a nested `[![img](a)](b)` keeps only the inner link).
+ */
+const LINK = /!?\[([^[\]\n]*)\]\(<?([^\s()<>]+)>?(?:[ \t]+(?:"[^"\n]*"|'[^'\n]*'))?\)/g;
 
 /** A backticked call: an identifier or a dotted chain, then parentheses holding anything. */
 const CALL = /^([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*)\(.*\)$/;
@@ -108,8 +114,41 @@ export interface SpecTokens {
   words: Set<string>;
   /** Repo-relative paths the Markdown link targets resolve to from the spec's directory; targets that leave the repo are dropped. */
   links: Set<string>;
-  /** `<METHOD> <path>` strings, the path as written and with each run of its trailing punctuation removed. */
+  /** `<METHOD> <path>` strings as written. */
   routes: Set<string>;
+}
+
+/** `text` without the characters of `set` at its start (`from: 'start'`) or its end. */
+function trim(text: string, set: ReadonlySet<string>, from: 'start' | 'end'): string {
+  if (from === 'start') {
+    let start = 0;
+    while (start < text.length && set.has(text.charAt(start))) start++;
+    return text.slice(start);
+  }
+  let end = text.length;
+  while (end > 0 && set.has(text.charAt(end - 1))) end--;
+  return text.slice(0, end);
+}
+
+/** A route key with the path's trailing punctuation removed: written and registered forms meet on it. */
+function routeKey(method: string, path: string): string {
+  const stripped = trim(path, ROUTE_TRAILING, 'end');
+  return `${method} ${stripped === '' ? '/' : stripped}`;
+}
+
+/**
+ * Whether the spec names the route `<method> <path>`: a written route equal to
+ * it, or equal to it followed by sentence punctuation only (`GET /orders/[id].`).
+ * `/files/:name?` and `/orders/[id]` end in what is also punctuation, so they
+ * are matched as written, never only stripped.
+ */
+function namesRoute(byKey: ReadonlyMap<string, readonly string[]>, method: string, path: string): boolean {
+  const written = `${method} ${path}`;
+  for (const candidate of byKey.get(routeKey(method, path)) ?? []) {
+    if (candidate === written) return true;
+    if (candidate.startsWith(written) && trim(candidate.slice(written.length), ROUTE_TRAILING, 'end') === '') return true;
+  }
+  return false;
 }
 
 /**
@@ -152,20 +191,12 @@ export function specTokens(text: string, linkBase: LinkBase | null = null): Spec
   for (const raw of prose.split(/[\s`]+/)) {
     if (raw === '') continue;
     words.add(raw);
-    const stripped = raw.replace(LEADING, '').replace(TRAILING, '');
+    const stripped = trim(trim(raw, LEADING, 'start'), TRAILING, 'end');
     if (stripped !== '') words.add(stripped);
   }
   const routes = new Set<string>();
   for (const match of prose.matchAll(ROUTE)) {
-    const method = match[1] ?? '';
-    // As written, then one trailing punctuation mark less at a time: `/files/:name?` and
-    // `/orders/[id]` end in what is also punctuation, and still match before a full stop.
-    let path = match[2] ?? '';
-    routes.add(`${method} ${path}`);
-    while (ROUTE_TRAILING.test(path)) {
-      path = path.slice(0, -1);
-      routes.add(`${method} ${path === '' ? '/' : path}`);
-    }
+    routes.add(`${match[1] ?? ''} ${match[2] ?? ''}`);
   }
   return { code, words, links, routes };
 }
@@ -182,6 +213,15 @@ export function specScope(input: SpecScopeInput): SpecScope {
         ? null
         : { root: VIRTUAL_ROOT, dir: posix.join(VIRTUAL_ROOT, posix.dirname(input.specPath)) };
   const tokens = specTokens(input.text, linkBase);
+  // Written routes by their stripped key, so a registration is checked against a few candidates only.
+  const routesByKey = new Map<string, string[]>();
+  for (const written of tokens.routes) {
+    const space = written.indexOf(' ');
+    const key = routeKey(written.slice(0, space), written.slice(space + 1));
+    const list = routesByKey.get(key);
+    if (list === undefined) routesByKey.set(key, [written]);
+    else list.push(written);
+  }
   const touchedFiles = input.files.filter((file) => touched(file.status));
 
   const roots = new Set<string>();
@@ -201,7 +241,7 @@ export function specScope(input: SpecScopeInput): SpecScope {
     for (const symbol of symbols) {
       if (tokens.code.has(symbol.name) || tokens.code.has(baseName(symbol.name))) roots.add(symbol.id);
       for (const route of input.routes.get(symbol.id) ?? []) {
-        if (tokens.routes.has(`${route.method} ${route.path}`)) roots.add(symbol.id);
+        if (namesRoute(routesByKey, route.method, route.path)) roots.add(symbol.id);
       }
     }
   }
