@@ -73,6 +73,8 @@ export default {
 
 A task spec in `.diffcity/spec.md` (or the file given with `--spec`, at most 256 KiB) marks the touched files outside the task. A file is in the spec when the spec names one of its touched symbols in backticks (`` `cancelOrder` `` or `` `OrderService.cancel` ``), names the file by its repo-relative path or basename, or names a route it registers or handles (`` `POST /orders/:id/cancel` ``), or when its touched symbols are linked to one of those through calls among touched symbols. The other touched files get the `spec` verdict, Outside the spec. Names are matched exactly and case-sensitively; a spec that names nothing touched marks nothing, and says so.
 
+A backticked call counts as the name it calls: `` `cancelOrder()` `` and `` `cancelOrder(id)` `` name `cancelOrder`. A basename only counts when it has a dot (`index.ts`, not `run`); an extensionless file is named by its repo-relative path. A Markdown link names the file its target points to, resolved from the spec file's directory (`.diffcity/` for `.diffcity/spec.md`), so `[cart](../src/cart.ts#L10)` names `src/cart.ts`; a `#fragment` or `?query` is ignored, and a target outside the repo names nothing. A route string matches its registration as written, so `` `GET /orders/[id]` `` and `` `GET /files/:name?` `` work too.
+
 ## Development
 
 ```sh
