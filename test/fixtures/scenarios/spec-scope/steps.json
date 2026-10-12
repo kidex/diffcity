@@ -1,0 +1,20 @@
+{
+  "repo": "shopfront-cancel",
+  "base": "main",
+  "branch": "feature/cancel-order",
+  "now": "2026-10-09T08:00:00.000Z",
+  "commits": [
+    {
+      "message": "docs: spec for cancelling an order",
+      "files": "steps/01-spec"
+    },
+    {
+      "message": "feat: cancel endpoint refunds the order",
+      "files": "steps/02-cancel"
+    },
+    {
+      "message": "feat: free delivery in the banner",
+      "files": "steps/03-banner"
+    }
+  ]
+}

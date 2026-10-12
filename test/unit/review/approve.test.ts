@@ -2,7 +2,7 @@
 // on the file or on each of its changed symbols; an outdated mark does not count.
 
 import { describe, expect, it } from 'vitest';
-import { uncheckedTier1Files } from '../../../src/core/review/index.js';
+import { checkRemainingPlan, checkRemainingToken, uncheckedTier1Files } from '../../../src/core/review/index.js';
 import type { Report } from '../../../src/core/report/types.js';
 import { publicMark, sampleFingerprints, sampleReport, storedMark } from './review-helpers.js';
 
@@ -46,5 +46,79 @@ describe('approve gate', () => {
     const report = tier1Report();
     report.summary.tier1Files = ['src/auth/session.ts'];
     expect(uncheckedTier1Files(report, [])).toEqual(['src/auth/session.ts']);
+  });
+});
+
+describe('check the rest (ADR-028 amendment)', () => {
+  /** total.ts and tax.ts both tier 1. */
+  function twoTier1(): Report {
+    const report = sampleReport();
+    return { ...report, summary: { ...report.summary, tier1Files: ['src/cart/total.ts', 'src/cart/tax.ts'] } };
+  }
+
+  it('plans a Checked file mark, with the current fingerprint, for each tier 1 file without a current mark', () => {
+    const plan = checkRemainingPlan(twoTier1(), fp, []);
+    expect(plan).toEqual({
+      files: ['src/cart/total.ts', 'src/cart/tax.ts'],
+      marks: [
+        { target: { kind: 'file', id: 'f-total' }, filePath: 'src/cart/total.ts', fingerprint: 'b-total|a-total' },
+        { target: { kind: 'file', id: 'f-tax' }, filePath: 'src/cart/tax.ts', fingerprint: 'b-tax|a-tax' },
+      ],
+      unmarkable: [],
+    });
+  });
+
+  it('leaves files that already count as checked: a current file mark, or marks on every changed symbol', () => {
+    const fileMark = [publicMark(storedMark(fp, 'file', 'f-tax', { mark: 'rewrite', note: null }))];
+    expect(checkRemainingPlan(twoTier1(), fp, fileMark).files).toEqual(['src/cart/total.ts']);
+    const symbols = [publicMark(storedMark(fp, 'symbol', 's-total')), publicMark(storedMark(fp, 'symbol', 's-round'))];
+    expect(checkRemainingPlan(twoTier1(), fp, symbols).marks.map((m) => m.target.id)).toEqual(['f-tax']);
+  });
+
+  it('an outdated mark is replaced; a partial symbol review still gets the file mark', () => {
+    const marks = [
+      publicMark(storedMark(fp, 'file', 'f-total', { state: 'outdated', outdatedAt: '2026-09-02T00:00:00.000Z' })),
+      publicMark(storedMark(fp, 'symbol', 's-rate', { state: 'outdated', outdatedAt: '2026-09-02T00:00:00.000Z' })),
+    ];
+    expect(checkRemainingPlan(twoTier1(), fp, marks).marks.map((m) => m.target.id)).toEqual(['f-total', 'f-tax']);
+  });
+
+  it('a tier 1 path that is not a markable file (missing from the Report or without a fingerprint) is unmarkable', () => {
+    const report = twoTier1();
+    report.summary.tier1Files = ['src/auth/session.ts', 'src/cart/tax.ts', 'src/cart/total.ts'];
+    const noTax = sampleFingerprints();
+    delete noTax.files['f-tax'];
+    const plan = checkRemainingPlan(report, noTax, []);
+    expect(plan.files).toEqual(['src/auth/session.ts', 'src/cart/tax.ts', 'src/cart/total.ts']);
+    expect(plan.marks.map((m) => m.target.id)).toEqual(['f-total']);
+    expect(plan.unmarkable).toEqual(['src/auth/session.ts', 'src/cart/tax.ts']);
+  });
+
+  it('nothing remaining: an empty plan', () => {
+    expect(checkRemainingPlan(sampleReport(), fp, [])).toEqual({ files: [], marks: [], unmarkable: [] });
+  });
+});
+
+describe('check the rest: the confirmation token', () => {
+  const files = ['src/cart/total.ts', 'src/cart/tax.ts'];
+  const snapshot = { id: 4, contentHash: 'h1' };
+  const token = checkRemainingToken(snapshot, sampleReport(), fp, files);
+
+  it('is stable for the same snapshot, content, files and fingerprints', () => {
+    expect(token).toMatch(/^[0-9a-f]{64}$/);
+    expect(checkRemainingToken({ id: 4, contentHash: 'h1' }, sampleReport(), sampleFingerprints(), [...files])).toBe(token);
+  });
+
+  it('changes with the snapshot id, the contentHash, a listed file\'s fingerprint or the list', () => {
+    expect(checkRemainingToken({ id: 5, contentHash: 'h1' }, sampleReport(), fp, files)).not.toBe(token);
+    expect(checkRemainingToken({ id: 4, contentHash: 'h2' }, sampleReport(), fp, files)).not.toBe(token);
+    const moved = sampleFingerprints({ files: { 'f-tax': { before: 'b-tax', after: 'a-tax-2' } } });
+    expect(checkRemainingToken(snapshot, sampleReport(), moved, files)).not.toBe(token);
+    expect(checkRemainingToken(snapshot, sampleReport(), fp, ['src/cart/total.ts'])).not.toBe(token);
+  });
+
+  it('a fingerprint change outside the listed files does not change it', () => {
+    const other = sampleFingerprints({ symbols: { 's-banner': 'sym-banner-2' } });
+    expect(checkRemainingToken(snapshot, sampleReport(), other, files)).toBe(token);
   });
 });

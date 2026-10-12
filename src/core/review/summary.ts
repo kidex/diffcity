@@ -6,6 +6,8 @@
 //   ### <file path>
 //   - `<symbol name>`, lines <start>–<end>: <note>
 //   - Whole file: <note>
+//   - Rewrite `<symbol name>`, lines <start>–<end>     (a mark with no note)
+//   - Rewrite this file
 //
 // Notes are inserted as text. Every line after the first of a bullet note is
 // indented under its bullet; the general note is a blockquote, one `> ` per
@@ -68,26 +70,27 @@ interface Entry {
 function entriesOf(input: SummaryInput): Entry[] {
   const current = new Map<string, ReviewMark>();
   for (const mark of input.marks) {
-    if (mark.state === 'current' && mark.mark === 'rewrite' && mark.note !== null) {
+    if (mark.state === 'current' && mark.mark === 'rewrite') {
       current.set(`${mark.targetKind}:${mark.targetId}`, mark);
     }
   }
   const range = (mark: ReviewMark): string => (mark.lines === null ? '' : `lines ${String(mark.lines.start)}–${String(mark.lines.end)}`);
+  const withRange = (label: string, mark: ReviewMark): string => (range(mark) === '' ? label : `${label}, ${range(mark)}`);
+  /** A noted mark is "label: note"; a mark with no note (or a blank one) asks for the rewrite itself. */
+  const entryText = (mark: ReviewMark, noted: string, bare: string): string =>
+    mark.note === null || mark.note.trim() === '' ? `- ${withRange(bare, mark)}\n` : bulletText(withRange(noted, mark), mark.note);
   const entries: Entry[] = [];
   for (const pkg of input.report.packages) {
     for (const file of pkg.files) {
       const filePath = oneLine(file.path);
       for (const symbol of file.symbols) {
         const mark = current.get(`symbol:${symbol.id}`);
-        if (mark?.note == null) continue;
+        if (mark === undefined) continue;
         const name = `\`${oneLine(symbol.name).replaceAll('`', "'")}\``;
-        entries.push({ filePath, text: bulletText(range(mark) === '' ? name : `${name}, ${range(mark)}`, mark.note) });
+        entries.push({ filePath, text: entryText(mark, name, `Rewrite ${name}`) });
       }
       const fileMark = current.get(`file:${file.id}`);
-      if (fileMark?.note != null) {
-        const label = range(fileMark) === '' ? 'Whole file' : `Whole file, ${range(fileMark)}`;
-        entries.push({ filePath, text: bulletText(label, fileMark.note) });
-      }
+      if (fileMark !== undefined) entries.push({ filePath, text: entryText(fileMark, 'Whole file', 'Rewrite this file') });
     }
   }
   return entries;

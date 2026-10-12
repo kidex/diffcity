@@ -92,6 +92,7 @@ describe('Report types (SPEC.md 4.1)', () => {
       steps: Step[];
       findings: Finding[];
       checks?: RuleCheck[];
+      specNotice?: string;
       summary: {
         files: number;
         byStatus: Record<Status, number>;

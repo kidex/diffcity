@@ -59,8 +59,8 @@ describe('migrations', () => {
     db.close();
     const schema = readSchema(path);
 
-    expect(SCHEMA_VERSION).toBe(4);
-    expect(schema.version).toBe(4);
+    expect(SCHEMA_VERSION).toBe(5);
+    expect(schema.version).toBe(5);
     expect(schema.master.filter((row) => row.type === 'table').map((row) => row.name)).toEqual([
       'change_sessions',
       'changes',

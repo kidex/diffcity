@@ -189,8 +189,46 @@ ALTER TABLE events_v4 RENAME TO events;
 CREATE INDEX events_repo_at ON events(repoId, at);
 `;
 
+/**
+ * Schema v5 (ADR-028 amendment, DC-135): a "Needs rewrite" mark no longer
+ * needs a note; a note, when there is one, is still 1 to 2000 characters.
+ * SQLite cannot alter a CHECK, so `review_marks` is rebuilt once with its
+ * rows, ids, references and index.
+ */
+const V5 = `
+CREATE TABLE review_marks_v5 (
+  id INTEGER PRIMARY KEY,
+  changeId INTEGER NOT NULL REFERENCES changes(id) ON DELETE CASCADE,
+  targetKind TEXT NOT NULL CHECK (targetKind IN ('file','symbol')),
+  targetId TEXT NOT NULL,
+  filePath TEXT NOT NULL,
+  mark TEXT NOT NULL CHECK (mark IN ('checked','good','rewrite')),
+  note TEXT,
+  lineSide TEXT CHECK (lineSide IN ('old','new')),
+  lineStart INTEGER,
+  lineEnd INTEGER,
+  fingerprint TEXT NOT NULL,
+  snapshotId INTEGER REFERENCES snapshots(id) ON DELETE SET NULL,
+  state TEXT NOT NULL DEFAULT 'current' CHECK (state IN ('current','outdated')),
+  outdatedAt TEXT,
+  createdAt TEXT NOT NULL,
+  updatedAt TEXT NOT NULL,
+  UNIQUE (changeId, targetKind, targetId),
+  CHECK (mark <> 'rewrite' OR note IS NULL OR length(note) BETWEEN 1 AND 2000),
+  CHECK ((lineStart IS NULL AND lineEnd IS NULL AND lineSide IS NULL)
+      OR (lineSide IS NOT NULL AND lineStart >= 1 AND lineEnd >= lineStart))
+);
+INSERT INTO review_marks_v5 (id, changeId, targetKind, targetId, filePath, mark, note, lineSide, lineStart, lineEnd,
+                             fingerprint, snapshotId, state, outdatedAt, createdAt, updatedAt)
+  SELECT id, changeId, targetKind, targetId, filePath, mark, note, lineSide, lineStart, lineEnd,
+         fingerprint, snapshotId, state, outdatedAt, createdAt, updatedAt FROM review_marks;
+DROP TABLE review_marks;
+ALTER TABLE review_marks_v5 RENAME TO review_marks;
+CREATE INDEX review_marks_change ON review_marks(changeId, state);
+`;
+
 /** The migrations in order; index i holds the SQL that produces version i + 1. */
-export const MIGRATIONS: readonly string[] = [V1, V2, V3, V4];
+export const MIGRATIONS: readonly string[] = [V1, V2, V3, V4, V5];
 
 /** The schema version this code writes. */
 export const SCHEMA_VERSION = MIGRATIONS.length;

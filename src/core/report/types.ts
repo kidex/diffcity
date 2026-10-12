@@ -12,6 +12,12 @@ export interface Report {
   findings: Finding[];
   /** One per configured rule (phase 4). */
   checks?: RuleCheck[];
+  /**
+   * Why a spec that was found marks nothing (ADR-035): it names no touched
+   * symbol or file, or it is too large to read. Absent otherwise, so a Report
+   * without a spec is unchanged. The Outside the spec tab shows it as is.
+   */
+  specNotice?: string;
   summary: {
     files: number;
     byStatus: Record<Status, number>;

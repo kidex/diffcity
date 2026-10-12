@@ -1,0 +1,302 @@
+{
+  "meta": {
+    "repo": "shopfront-cancel",
+    "base": "main",
+    "head": "feature/cancel-order",
+    "commits": 3,
+    "generatedAt": "2026-10-09T08:00:00.000Z"
+  },
+  "packages": [
+    {
+      "id": ".diffcity",
+      "path": ".diffcity",
+      "tier1": false,
+      "files": [
+        {
+          "id": ".diffcity/spec.md",
+          "path": ".diffcity/spec.md",
+          "language": "other",
+          "status": "add",
+          "verdict": "ok",
+          "inSpec": true,
+          "symbols": []
+        }
+      ]
+    },
+    {
+      "id": "src/api",
+      "path": "src/api",
+      "tier1": false,
+      "files": [
+        {
+          "id": "src/api/routes.ts",
+          "path": "src/api/routes.ts",
+          "language": "typescript",
+          "status": "mod",
+          "verdict": "ok",
+          "inSpec": true,
+          "symbols": [
+            {
+              "id": "src/api/routes.ts#registerRoutes",
+              "name": "registerRoutes",
+              "kind": "function",
+              "status": "mod",
+              "range": {
+                "start": 9,
+                "end": 12
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "src/catalog",
+      "path": "src/catalog",
+      "tier1": false,
+      "files": [
+        {
+          "id": "src/catalog/banner.ts",
+          "path": "src/catalog/banner.ts",
+          "language": "typescript",
+          "status": "mod",
+          "verdict": "spec",
+          "inSpec": false,
+          "symbols": [
+            {
+              "id": "src/catalog/banner.ts#bannerText",
+              "name": "bannerText",
+              "kind": "function",
+              "status": "mod",
+              "range": {
+                "start": 1,
+                "end": 3
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "src/orders",
+      "path": "src/orders",
+      "tier1": false,
+      "files": [
+        {
+          "id": "src/orders/cancel.ts",
+          "path": "src/orders/cancel.ts",
+          "language": "typescript",
+          "status": "add",
+          "verdict": "ok",
+          "inSpec": true,
+          "symbols": [
+            {
+              "id": "src/orders/cancel.ts#cancelOrder",
+              "name": "cancelOrder",
+              "kind": "function",
+              "status": "add",
+              "range": {
+                "start": 3,
+                "end": 5
+              }
+            }
+          ]
+        },
+        {
+          "id": "src/orders/lookup.ts",
+          "path": "src/orders/lookup.ts",
+          "language": "typescript",
+          "status": "same",
+          "verdict": "same",
+          "inSpec": null,
+          "symbols": [
+            {
+              "id": "src/orders/lookup.ts#getOrder",
+              "name": "getOrder",
+              "kind": "function",
+              "status": "same",
+              "range": {
+                "start": 1,
+                "end": 3
+              }
+            }
+          ]
+        },
+        {
+          "id": "src/orders/refund.ts",
+          "path": "src/orders/refund.ts",
+          "language": "typescript",
+          "status": "sig",
+          "verdict": "eyes",
+          "inSpec": true,
+          "symbols": [
+            {
+              "id": "src/orders/refund.ts#refundOrder",
+              "name": "refundOrder",
+              "kind": "function",
+              "status": "sig",
+              "range": {
+                "start": 3,
+                "end": 5
+              },
+              "signatureBefore": "function refundOrder(id: string, cents: number): string",
+              "signatureAfter": "function refundOrder(id: string, cents: number, reason: string): string",
+              "callsites": 1
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "src/shared",
+      "path": "src/shared",
+      "tier1": false,
+      "files": [
+        {
+          "id": "src/shared/money.ts",
+          "path": "src/shared/money.ts",
+          "language": "typescript",
+          "status": "same",
+          "verdict": "same",
+          "inSpec": null,
+          "symbols": [
+            {
+              "id": "src/shared/money.ts#formatCents",
+              "name": "formatCents",
+              "kind": "function",
+              "status": "same",
+              "range": {
+                "start": 1,
+                "end": 3
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "steps": [
+    {
+      "order": 1,
+      "symbolId": "src/api/routes.ts#registerRoutes",
+      "fileId": "src/api/routes.ts",
+      "why": "New endpoint POST /orders/:id/cancel",
+      "diff": [
+        {
+          "kind": "ctx",
+          "text": "export function registerRoutes(router: Router): void {"
+        },
+        {
+          "kind": "ctx",
+          "text": "  router.get('/orders/:id', getOrder);"
+        },
+        {
+          "kind": "add",
+          "text": "  router.post('/orders/:id/cancel', cancelOrder);"
+        },
+        {
+          "kind": "ctx",
+          "text": "}"
+        }
+      ],
+      "section": "path",
+      "entry": "src/api/routes.ts#registerRoutes"
+    },
+    {
+      "order": 2,
+      "symbolId": "src/orders/cancel.ts#cancelOrder",
+      "fileId": "src/orders/cancel.ts",
+      "why": "New function",
+      "diff": [
+        {
+          "kind": "add",
+          "text": "export function cancelOrder(id: string): string {"
+        },
+        {
+          "kind": "add",
+          "text": "  return refundOrder(id, 0, 'cancelled');"
+        },
+        {
+          "kind": "add",
+          "text": "}"
+        }
+      ],
+      "section": "path",
+      "entry": "src/orders/cancel.ts#cancelOrder"
+    },
+    {
+      "order": 3,
+      "symbolId": "src/orders/refund.ts#refundOrder",
+      "fileId": "src/orders/refund.ts",
+      "why": "Signature changed, 1 call site rewritten",
+      "diff": [
+        {
+          "kind": "del",
+          "text": "export function refundOrder(id: string, cents: number): string {"
+        },
+        {
+          "kind": "del",
+          "text": "  return `refund ${formatCents(cents)} for ${id}`;"
+        },
+        {
+          "kind": "add",
+          "text": "export function refundOrder(id: string, cents: number, reason: string): string {"
+        },
+        {
+          "kind": "add",
+          "text": "  return `refund ${formatCents(cents)} for ${id} (${reason})`;"
+        },
+        {
+          "kind": "ctx",
+          "text": "}"
+        }
+      ],
+      "section": "path",
+      "entry": "src/orders/cancel.ts#cancelOrder"
+    },
+    {
+      "order": 4,
+      "symbolId": "src/catalog/banner.ts#bannerText",
+      "fileId": "src/catalog/banner.ts",
+      "why": "Body changed",
+      "diff": [
+        {
+          "kind": "ctx",
+          "text": "export function bannerText(season: string): string {"
+        },
+        {
+          "kind": "del",
+          "text": "  return `Welcome to the ${season} sale`;"
+        },
+        {
+          "kind": "add",
+          "text": "  return `Welcome to the ${season} sale, now with free delivery`;"
+        },
+        {
+          "kind": "ctx",
+          "text": "}"
+        }
+      ],
+      "section": "unconnected"
+    }
+  ],
+  "findings": [],
+  "summary": {
+    "files": 7,
+    "byStatus": {
+      "add": 1,
+      "mod": 2,
+      "sig": 1,
+      "del": 0,
+      "same": 2
+    },
+    "byVerdict": {
+      "eyes": 1,
+      "risky": 0,
+      "spec": 1,
+      "ok": 3,
+      "same": 2
+    },
+    "tier1Files": []
+  }
+}

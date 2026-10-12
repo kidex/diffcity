@@ -7,7 +7,7 @@ import { ConfigError } from '../../src/core/config/index.js';
 import { buildReport } from '../../src/core/report/build.js';
 import type { File, Report, Status, Verdict } from '../../src/core/report/types.js';
 import { ghForbidden, isolateGitConfig } from '../helpers/git-env.js';
-import { fixtureFile, repoFromFixture, type FixtureRepo, type FixtureRepoOptions } from '../helpers/fixture-repo.js';
+import { repoFromFixture, type FixtureRepo, type FixtureRepoOptions } from '../helpers/fixture-repo.js';
 
 isolateGitConfig();
 
@@ -238,24 +238,13 @@ describe('report/deterministic', () => {
   });
 });
 
-describe('spec (phase 1: ADR-010)', () => {
+// Spec scope (SPEC.md 5.5, ADR-035) is tested in test/unit/spec and test/integration/spec.
+describe('spec', () => {
   it('X3 spec/absent: no spec, inSpec is null everywhere', async () => {
     const { repo } = await fixtureRepo('spec/absent');
     const report = await build(repo.dir);
     expect(allFiles(report).length).toBe(2);
     expect(allFiles(report).map((f) => f.inSpec)).toEqual([null, null]);
-    expect(report.summary.byVerdict.spec).toBe(0);
-  });
-
-  it('spec/present-phase1: with .diffcity/spec.md present, inSpec is still null', async () => {
-    const spec = fixtureFile('spec/present-phase1', 'spec.md');
-    const { repo } = await fixtureRepo('spec/present-phase1', { extra: { '.diffcity/spec.md': spec } });
-    const report = await build(repo.dir);
-    expect(allFiles(report).map((f) => [f.path, f.status, f.inSpec])).toEqual([
-      ['src/garden/bed.ts', 'mod', null],
-      ['src/garden/fence.ts', 'same', null],
-      ['src/garden/shed.ts', 'add', null],
-    ]);
     expect(report.summary.byVerdict.spec).toBe(0);
   });
 });

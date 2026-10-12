@@ -46,6 +46,7 @@ import {
 } from '../rules/index.js';
 import type { UserRuleSettings } from '../settings/settings.js';
 import { preparePathFile, prepareUntouchedFile, type PathFile } from '../path/prepare.js';
+import { readRepoSpec, specLocation, specScope, TOO_LARGE_NOTICE, type SpecScope, type SpecSource } from '../spec/index.js';
 import { fileVerdict, tier1Matcher, touchedTier1Files } from '../verdict/index.js';
 import { mapLimit } from './limit.js';
 import type { File, Finding, Package, Report, Status, Step, Symbol, Verdict } from './types.js';
@@ -75,6 +76,11 @@ export interface BuildReportOptions {
    * no user rules.
    */
   userRules?: UserRuleSettings | undefined;
+  /**
+   * The spec from `diffcity diff --spec <file>` (readSpecFile); it takes
+   * precedence over `.diffcity/spec.md`, which is read otherwise (ADR-035).
+   */
+  spec?: SpecSource | undefined;
 }
 
 /** A file ready to be placed in the report, before verdict and grouping. */
@@ -94,10 +100,14 @@ export const READ_BATCH_SIZE = 256;
 /** Root files the execution path reads as data (tsconfig `paths`, package.json `bin`/`main`) up to this size. */
 export const MAX_PATH_CONFIG_BYTES = 1024 * 1024;
 
-/** The execution path of a report: its steps and the call sites of its `sig` symbols (ADR-034). */
+/** The execution path of a report: its steps and the call sites of its `sig` symbols (ADR-034), and what spec scope reads of it (ADR-035). */
 export interface ReportPath {
   steps: Step[];
   callsites: ReadonlyMap<string, number>;
+  /** The call graph: caller symbol id to its callees. */
+  edges?: ReadonlyMap<string, readonly { to: string }[]>;
+  /** Touched symbol id to the HTTP routes it registers or handles (routeRegistrations, ADR-034 facts). */
+  routes?: ReadonlyMap<string, readonly { method: string; path: string }[]>;
 }
 
 /** `File.language` for files diffcity does not parse. */
@@ -137,6 +147,7 @@ export function assembleReport(
   isTier1: (path: string) => boolean,
   path: ReportPath = { steps: [], callsites: new Map() },
   rules: RuleRun | null = null,
+  spec: SpecScope | null = null,
 ): Report {
   // Rule findings are part of the Report and count for the verdict like any open finding (SPEC.md 5.2, ADR-030).
   const findingsOf = new Map<string, Finding[]>();
@@ -157,8 +168,7 @@ export function assembleReport(
       tier1: isTier1(input.path),
       // Imported findings join on each served Report (the findings overlay, ADR-036).
       findings: findingsOf.get(input.path) ?? [],
-      // No spec scope before phase 4 (ADR-010).
-      inSpec: null,
+      inSpec: spec?.inSpec?.get(input.path) ?? null,
     });
     const file: File = {
       id: input.path,
@@ -166,7 +176,8 @@ export function assembleReport(
       language: input.language,
       status: input.status,
       verdict,
-      inSpec: null,
+      // True or false for a touched file when the spec named a root; null otherwise (ADR-035).
+      inSpec: spec?.inSpec?.get(input.path) ?? null,
       symbols: input.symbols.map((symbol) =>
         symbol.status === 'sig' ? { ...symbol, callsites: path.callsites.get(symbol.id) ?? 0 } : symbol,
       ),
@@ -192,6 +203,8 @@ export function assembleReport(
     findings: rules?.findings ?? [],
     // Present only with a configured rule, so a Report without rules is unchanged.
     ...(rules === null || rules.checks.length === 0 ? {} : { checks: rules.checks }),
+    // Present only for a spec that marks nothing, so a Report without a spec is unchanged.
+    ...(spec?.notice === null || spec?.notice === undefined ? {} : { specNotice: spec.notice }),
     summary: {
       files: files.length,
       byStatus,
@@ -326,8 +339,32 @@ async function executionPathOf(
   const files = described.flatMap((entry) => entry.path ?? []);
   if (!files.some((file) => file.status !== 'same')) return { steps: [], callsites: new Map() };
   const [tsconfig, packageJson] = await Promise.all([readTsconfig(), readRootConfig(change, 'package.json')]);
-  const { steps, callsites } = await buildExecutionPath({ files, tsconfig, packageJson, log });
-  return { steps, callsites };
+  const { steps, callsites, edges, routes } = await buildExecutionPath({ files, tsconfig, packageJson, log });
+  return { steps, callsites, edges, routes };
+}
+
+/**
+ * The spec scope of a change (SPEC.md 5.5, ADR-035), over the execution
+ * path's call graph: null without a spec, a notice for a spec too large to read.
+ */
+async function specScopeOf(
+  source: SpecSource,
+  root: string,
+  inputs: readonly ReportFileInput[],
+  path: ReportPath,
+): Promise<SpecScope | null> {
+  if (source.kind === 'absent') return null;
+  if (source.kind === 'too-large') return { inSpec: null, notice: TOO_LARGE_NOTICE };
+  const location = await specLocation(source, root);
+  return specScope({
+    text: source.text,
+    specPath: location.path,
+    // Null for `.diffcity/spec.md`: specScope resolves its links from `.diffcity/`.
+    ...(location.linkBase === null ? {} : { linkBase: location.linkBase }),
+    files: inputs,
+    edges: path.edges ?? new Map(),
+    routes: path.routes ?? new Map(),
+  });
 }
 
 /** The rules of a build: the user's lists, then the repo config's (loaded only for a trusted repo). */
@@ -426,10 +463,12 @@ export async function buildReportWithHead(
     runner: options.runner,
   });
 
-  const [meta, changed, headFiles] = await Promise.all([
+  const [meta, changed, headFiles, spec] = await Promise.all([
     computeMeta(change, options.now),
     changedFiles(change),
     listHeadFiles(change),
+    // `--spec` wins; `.diffcity/spec.md` is not even read then.
+    options.spec ?? readRepoSpec(change),
   ]);
   const touched = new Set(changed.map((file) => file.path));
   const untouched = headFiles.filter((path) => !touched.has(path) && languageForPath(path) !== null);
@@ -456,13 +495,17 @@ export async function buildReportWithHead(
   const described = [...touchedInputs, ...untouchedInputs.filter((input): input is Described => input !== null)];
   // Read at most once, for the execution path and the layers rule alike.
   const readTsconfig = once(() => readRootConfig(change, 'tsconfig.json'));
+  const inputs = described.map((entry) => entry.input);
+  // One pass: the spec scope walks the call graph the execution path built (ADR-035).
+  const path = await executionPathOf(change, described, options.log, readTsconfig);
   const report = assembleReport(
     meta,
-    described.map((entry) => entry.input),
+    inputs,
     isTier1,
-    await executionPathOf(change, described, options.log, readTsconfig),
+    path,
     // checkedAt is the Report's own time: the content hash leaves both out (contentHashOf).
     await ruleRunOf(change, rules, touchedInputs, meta.generatedAt, () => ruleContextOf(rules, headFiles, changed, readTsconfig)),
+    await specScopeOf(spec, root, inputs, path),
   );
   const fingerprints: Fingerprints = { files: {}, symbols: {} };
   for (const entry of described) {

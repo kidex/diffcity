@@ -35,7 +35,7 @@ diffcity stop
 | `diffcity shell-init [zsh\|bash\|fish]` | print the shell hook that registers a repo when you `cd` into it |
 | `diffcity track [<dir>] [--agent]` | register a repo and ask the daemon to collect its changes |
 | `diffcity scan <dir>` | discover and register every repo under a folder |
-| `diffcity diff --json [--compact] [--with-sessions] [--base] [--head]` | semantic diff of the current change; `--compact` leaves out untouched files, `--with-sessions` adds the change's Claude Code sessions from the running daemon |
+| `diffcity diff --json [--compact] [--with-sessions] [--base] [--head] [--spec <file>]` | semantic diff of the current change; `--compact` leaves out untouched files, `--with-sessions` adds the change's Claude Code sessions from the running daemon, `--spec` scopes the change against a task spec instead of `.diffcity/spec.md` |
 | `diffcity import <file> [--open]` | anchor findings (own JSON or SARIF) to symbols of the current change |
 | `diffcity setup-claude [--repo [<dir>]] [--dry-run] [--remove]` | install the `/diffcity-review` command and the Stop hook for Claude Code |
 | `diffcity export html\|puml [--out]` | self-contained export of the current change |
@@ -70,6 +70,10 @@ export default {
   tier1: (defaults) => [...defaults, 'release'],
 };
 ```
+
+A task spec in `.diffcity/spec.md` (or the file given with `--spec`, at most 256 KiB) marks the touched files outside the task. A file is in the spec when the spec names one of its touched symbols in backticks (`` `cancelOrder` `` or `` `OrderService.cancel` ``), names the file by its repo-relative path or basename, or names a route it registers or handles (`` `POST /orders/:id/cancel` ``), or when its touched symbols are linked to one of those through calls among touched symbols. The other touched files get the `spec` verdict, Outside the spec. Names are matched exactly and case-sensitively; a spec that names nothing touched marks nothing, and says so.
+
+A backticked call counts as the name it calls: `` `cancelOrder()` `` and `` `cancelOrder(id)` `` name `cancelOrder`. A basename only counts when it has a dot (`index.ts`, not `run`); an extensionless file is named by its repo-relative path. A Markdown link names the file its target points to, resolved from the spec file's directory (`.diffcity/` for `.diffcity/spec.md`), so `[cart](../src/cart.ts#L10)` names `src/cart.ts`; a `#fragment` or `?query` is ignored, and a target outside the repo names nothing. A route string matches its registration as written, so `` `GET /orders/[id]` `` and `` `GET /files/:name?` `` work too.
 
 ## Development
 

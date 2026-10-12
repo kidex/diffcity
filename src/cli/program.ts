@@ -135,6 +135,7 @@ export function buildProgram(io: CliIo = defaultIo): Command {
     .option('--with-sessions', 'with --json: add the Claude Code sessions of the change, from the running daemon')
     .option('--base <ref>', 'base ref')
     .option('--head <ref>', 'head ref')
+    .option('--spec <file>', 'the task spec to scope the change against, instead of .diffcity/spec.md')
     .action(async (options: DiffCommandOptions) => {
       const { NOW_ENV, runDiff, sessionsFromDaemon, userRulesFor } = await import('./diff.js');
       const cwd = io.cwd?.() ?? process.cwd();

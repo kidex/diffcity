@@ -137,9 +137,12 @@ describe('api/review-put-get-delete', () => {
       expect(answer.status).toBe(404);
       expect(errorCode(answer)).toBe('target-not-found');
     }
+    // A "Needs rewrite" mark with no note is valid (ADR-028 amendment, DC-135); an overlong note is not.
     const noNote = await call(port, 'PUT', url, { body: { snapshotId, target: { kind: 'file', id: 'f-tax' }, mark: 'rewrite' } });
-    expect(noNote.status).toBe(400);
-    expect(errorCode(noNote)).toBe('bad-request');
+    expect(noNote.status).toBe(200);
+    expect((noNote.json() as { mark: ReviewMark }).mark).toMatchObject({ targetId: 'f-tax', mark: 'rewrite', note: null });
+    const tooLong = await call(port, 'PUT', url, { body: { snapshotId, target: { kind: 'file', id: 'f-tax' }, mark: 'rewrite', note: 'x'.repeat(2001) } });
+    expect([tooLong.status, errorCode(tooLong)]).toEqual([400, 'bad-request']);
     expect((await call(port, 'PUT', url, { body: '{ nope' })).status).toBe(400);
     expect((await call(port, 'PUT', reviewPath(changeId, '/note'), { body: { note: 'x'.repeat(4001) } })).status).toBe(400);
     expect((await call(port, 'DELETE', `${url}?kind=package&id=f-tax`)).status).toBe(400);

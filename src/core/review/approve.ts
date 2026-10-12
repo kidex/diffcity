@@ -3,9 +3,12 @@
 // daemon checks it from the latest snapshot and the stored marks, never from
 // what a client says.
 
-import type { ReviewMark } from '../model/types.js';
+import { createHash } from 'node:crypto';
+import type { Fingerprints, ReviewMark } from '../model/types.js';
 import type { Report } from '../report/types.js';
 import { fileCheckedBy } from './checked.js';
+import { markableTargets, targetKey } from './targets.js';
+import type { TargetRef } from './types.js';
 
 /**
  * The touched tier 1 files of `report` (`summary.tier1Files`) that are not
@@ -20,4 +23,66 @@ export function uncheckedTier1Files(report: Report, marks: readonly ReviewMark[]
     // A tier 1 path the Report does not list cannot have been marked.
     return file === undefined || !checked(file);
   });
+}
+
+/** One Checked file mark that "Check the rest and approve" writes. */
+export interface RemainingMark {
+  target: TargetRef;
+  filePath: string;
+  /** The file's fingerprint in the snapshot the marks are written against. */
+  fingerprint: string;
+}
+
+export interface CheckRemainingPlan {
+  /** The touched tier 1 files without a current mark (uncheckedTier1Files), in `tier1Files` order. */
+  files: string[];
+  /** A Checked mark on each of `files` that is a markable file of the snapshot. */
+  marks: RemainingMark[];
+  /** The `files` that cannot be marked: missing from the Report's packages or without a fingerprint. */
+  unmarkable: string[];
+}
+
+/**
+ * What "Check the rest and approve" (ADR-028 amendment) writes: a Checked mark
+ * on every touched tier 1 file of `report` that has no current mark. Files that
+ * already count as checked, by a file mark or by marks on all their changed
+ * symbols, keep their marks and get none.
+ */
+export function checkRemainingPlan(report: Report, fingerprints: Fingerprints, marks: readonly ReviewMark[]): CheckRemainingPlan {
+  const files = uncheckedTier1Files(report, marks);
+  const targets = markableTargets(report, fingerprints);
+  const idByPath = new Map(report.packages.flatMap((pkg) => pkg.files.map((file) => [file.path, file.id] as const)));
+  const planned: RemainingMark[] = [];
+  const unmarkable: string[] = [];
+  for (const path of files) {
+    const id = idByPath.get(path);
+    const target = id === undefined ? undefined : targets.get(targetKey({ kind: 'file', id }));
+    if (target === undefined) {
+      unmarkable.push(path);
+      continue;
+    }
+    planned.push({ target: { kind: 'file', id: target.id }, filePath: target.filePath, fingerprint: target.fingerprint });
+  }
+  return { files, marks: planned, unmarkable };
+}
+
+/**
+ * What the confirmation of "Check the rest and approve" was computed from: the
+ * snapshot row (its id and contentHash, which a recompute at the same head
+ * replaces in place) and the fingerprint each listed file has in it (null when
+ * the file is not markable). A 64-hex digest; equal only for the same content.
+ */
+export function checkRemainingToken(
+  snapshot: { id: number; contentHash: string },
+  report: Report,
+  fingerprints: Fingerprints,
+  files: readonly string[],
+): string {
+  const targets = markableTargets(report, fingerprints);
+  const idByPath = new Map(report.packages.flatMap((pkg) => pkg.files.map((file) => [file.path, file.id] as const)));
+  const listed = files.map((path) => {
+    const id = idByPath.get(path);
+    return [path, id === undefined ? null : (targets.get(targetKey({ kind: 'file', id }))?.fingerprint ?? null)];
+  });
+  return createHash('sha256').update(JSON.stringify([snapshot.id, snapshot.contentHash, listed])).digest('hex');
 }

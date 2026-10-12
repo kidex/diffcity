@@ -160,11 +160,17 @@ export interface OutsideSpec {
   files: PlacedFile[];
   /** False when no file has a spec verdict: the Report has no spec (`inSpec` null everywhere). */
   specKnown: boolean;
+  /** The Report's word on a spec that marks nothing (it names no touched symbol or file, or is too large), shown as is; null without one. */
+  notice: string | null;
 }
 
 export function outsideSpec(report: Report): OutsideSpec {
   const all = placedFiles(report);
-  return { files: all.filter((placed) => placed.file.inSpec === false), specKnown: all.some((placed) => placed.file.inSpec !== null) };
+  return {
+    files: all.filter((placed) => placed.file.inSpec === false),
+    specKnown: all.some((placed) => placed.file.inSpec !== null),
+    notice: report.specNotice ?? null,
+  };
 }
 
 // ---------- symbols ----------

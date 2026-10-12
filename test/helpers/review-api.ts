@@ -6,6 +6,8 @@ import { request } from 'node:http';
 export interface Answer {
   status: number;
   contentType: string;
+  /** The response headers, lower-cased names. */
+  headers: Record<string, string | string[] | undefined>;
   text: string;
   json(): unknown;
 }
@@ -34,6 +36,7 @@ export function call(port: number, method: string, path: string, options: CallOp
         resolve({
           status: res.statusCode ?? 0,
           contentType: res.headers['content-type'] ?? '',
+          headers: res.headers,
           text,
           json: (): unknown => JSON.parse(text),
         });
