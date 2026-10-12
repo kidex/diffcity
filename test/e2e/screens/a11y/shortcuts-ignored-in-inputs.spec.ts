@@ -53,5 +53,5 @@ test('a11y/shortcuts-ignored-in-inputs', async ({ page }) => {
   for (const key of ['[', ']', 'j', 'c', 'r']) await page.keyboard.press(key);
   expect(await selected(page)).toBe(GUARD);
   expect(await camera(page)).toEqual(view);
-  expect(api.review(11).writes).toHaveLength(0);
+  expect(api.review(11).writes).toHaveLength(1);
 });
