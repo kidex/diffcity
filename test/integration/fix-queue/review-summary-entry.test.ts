@@ -49,6 +49,21 @@ describe('review summary to the fix queue', () => {
     expect(await stubs.records()).toEqual([]);
   });
 
+  it('a general note alone, or a "Needs rewrite" mark with no note, is queued; nothing-to-send needs both empty', async () => {
+    const noteOnly = seedChange(test, { name: 'note-only', rewrite: false, note: 'Split the cart module before merging.' });
+    const shownNote = await preview(test, noteOnly.id);
+    const queued = await queue(noteOnly.id, { summaryHash: shownNote.summaryHash });
+    expect(queued.status).toBe(200);
+    expect(queued.json()).toMatchObject({ queued: true, count: 1 });
+    expect(readFixQueue(test.repoDir).map((item) => item.message)).toEqual([shownNote.summary]);
+    expect(shownNote.summary).toContain('> Split the cart module before merging.');
+
+    const bare = seedChange(test, { name: 'bare-rewrite', rewriteNote: null, worktreePath: test.repoDir });
+    const shownBare = await preview(test, bare.id);
+    expect(shownBare.summary).toContain('- Rewrite `total`');
+    expect((await queue(bare.id, { summaryHash: shownBare.summaryHash })).status).toBe(200);
+  });
+
   it('refuses a summary that changed, nothing to send, an archived change, no working tree and a cross-site request', async () => {
     const change = seedChange(test);
     const shown = await preview(test, change.id);

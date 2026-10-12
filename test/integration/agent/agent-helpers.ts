@@ -97,6 +97,8 @@ export interface SeedOptions {
   worktreePath?: string | null;
   name?: string;
   rewrite?: boolean;
+  /** The note of the "Needs rewrite" mark; REWRITE_NOTE by default, null for a mark with no note. */
+  rewriteNote?: string | null;
   note?: string;
   archived?: boolean;
 }
@@ -117,7 +119,7 @@ export function seedChange(test: AgentDaemon, options: SeedOptions = {}): Change
       target: { kind: 'symbol', id: 's-total' },
       filePath: 'src/cart/total.ts',
       mark: 'rewrite',
-      note: REWRITE_NOTE,
+      note: options.rewriteNote === undefined ? REWRITE_NOTE : options.rewriteNote,
       lines: null,
       fingerprint: 'sym-total',
       snapshotId: snapshot?.id ?? null,
