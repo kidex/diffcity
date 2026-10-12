@@ -64,6 +64,8 @@ export const summaryDialog = (page: Page): Locator => page.getByTestId('summary-
 
 /** The mark buttons of the selection card. */
 export const cardButton = (page: Page, name: 'checked' | 'good' | 'rewrite' | 'undo'): Locator => card(page).getByTestId(`mark-${name}`);
+/** "Add note" / "Edit note" of the selection card's bar, shown once the target is marked Needs rewrite (DC-136). */
+export const noteButton = (page: Page): Locator => card(page).getByTestId('mark-note-edit');
 /** The mark buttons of the file view's header. */
 export const viewButton = (page: Page, name: 'checked' | 'good' | 'rewrite' | 'undo'): Locator => fileView(page).getByTestId(`mark-${name}`);
 

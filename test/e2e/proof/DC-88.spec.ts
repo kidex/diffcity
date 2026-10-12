@@ -2,8 +2,8 @@
 // a temporary home, tracks the invented sample-bakery repo whose branch
 // feature/order-notes touches files in three packages, one of them the tier 1
 // src/auth. On screen, through the real review API: a file marked Checked, a
-// floor marked Looks good, a floor marked Needs rewrite with a note (an empty
-// note is refused first, and the line range comes from the diff selection), the
+// floor marked Looks good, a floor marked Needs rewrite at once (the line range
+// from the diff selection) and given a note afterwards (DC-136), the
 // progress in the top bar following every mark, the change moving to "In
 // review" on the first mark, "Hide checked", and the review summary with the
 // general note and Copy. Recorded by `npm run proof -- DC-88`.
@@ -151,27 +151,32 @@ test('DC-88: review marks on a change from the real daemon', async ({ page, proo
 
   await criterion(
     page,
-    '4. W needs a note: an empty one is refused, a range comes from the diff',
+    '4. W marks Needs rewrite at once, with the range from the diff; the note is optional, added after',
     async () => {
       await pick(NOTES);
       const view = page.getByTestId('diff-view');
       await expect(view).toHaveAttribute('data-state', 'text', { timeout: 30_000 });
-      // Pick the first added line of the diff: the range the dialog starts from.
+      // Pick the first added line of the diff: the range the mark takes.
       const added = page.locator('[data-kind="add"]').first();
       await added.getByTestId('diff-new').click();
       await expect(view).toHaveAttribute('data-range', /^new \d+/);
-      await page.getByTestId('file-view').getByTestId('mark-rewrite').click();
+      const fileView = page.getByTestId('file-view');
+      await fileView.getByTestId('mark-rewrite').click();
+      // No dialog, no note asked (DC-135, DC-136).
+      await expect(page.getByTestId('rewrite-dialog')).toHaveCount(0);
+      await expect(fileView.getByTestId('mark-current')).toHaveText('Needs rewrite');
+      await expect(fileView.getByTestId('mark-lines')).toContainText('new line');
+      await expect(page.getByTestId('progress-rewrite')).toHaveText('1 to rewrite');
+      await page.waitForTimeout(HOLD_MS / 2);
+      // The note, optional, from the bar.
+      await fileView.getByTestId('mark-note-edit').click();
       const dialog = page.getByTestId('rewrite-dialog');
       await expect(dialog).toBeVisible();
       await expect(dialog.getByTestId('rewrite-lines-start')).not.toHaveValue('');
-      await dialog.getByTestId('rewrite-save').click();
-      await expect(dialog.getByTestId('rewrite-note-error')).toBeVisible();
-      await page.waitForTimeout(HOLD_MS / 2);
       await dialog.getByTestId('rewrite-note').fill('Trim the text before the length check, and reject an empty note.');
       await dialog.getByTestId('rewrite-save').click();
       await expect(dialog).toBeHidden();
-      await expect(page.getByTestId('file-view').getByTestId('mark-current')).toHaveText('Needs rewrite');
-      await expect(page.getByTestId('file-view').getByTestId('mark-lines')).toContainText('new line');
+      await expect(fileView.getByTestId('mark-note')).toHaveText('Trim the text before the length check, and reject an empty note.');
       await expect(page.getByTestId('progress-rewrite')).toHaveText('1 to rewrite');
     },
     'src/orders/notes.ts: a notch on the floor, a plate on the roof, the lines and the note in the file view',

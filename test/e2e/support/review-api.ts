@@ -67,6 +67,8 @@ export function createReviewMock(seed: ReviewSeed = {}): ReviewMock {
   return mock;
 }
 
+const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null && !Array.isArray(value);
+
 const error = (code: string, message: string): ApiError => ({ error: { code, message } });
 
 /** The targets of `report` the daemon would let a reviewer mark: touched files and every symbol of one. */
@@ -118,7 +120,10 @@ export async function answerReview(route: Route, mock: ReviewMock, report: Repor
 
   const targets = markable(report);
   if (method === 'PUT' && rest === '/marks') {
-    const input = validateMarkInput(body);
+    // A "Needs rewrite" mark needs no note (DC-135): a body without one is checked as any other mark.
+    const noteless = isRecord(body) && body['mark'] === 'rewrite' && (typeof body['note'] !== 'string' || body['note'].trim() === '');
+    const checked = validateMarkInput(noteless && isRecord(body) ? { ...body, mark: 'checked', note: undefined } : body);
+    const input = checked.ok && noteless ? { ok: true as const, value: { ...checked.value, mark: 'rewrite' as const, note: null } } : checked;
     if (!input.ok) return json(error('bad-request', input.message), 400);
     const { target, mark, note, lines, snapshotId } = input.value;
     const known = targets.get(`${target.kind}:${target.id}`);

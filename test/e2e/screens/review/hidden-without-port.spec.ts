@@ -1,6 +1,6 @@
 // e2e/review/hidden-without-port (ADR-002): the change screen mounted without a
 // ReviewPort has no review controls at all: no mark buttons and no keys, no
-// progress, no "Hide checked", no summary. Mounted as the SPA does but with the
+// progress, no "Hide checked", no summary, no "Send to agent". Mounted as the SPA does but with the
 // review routes refused (the daemon has no snapshot for review), the controls
 // stay away too. The standalone page is covered by standalone/no-review-controls.
 
@@ -14,7 +14,7 @@ import { panelReport } from '../../support/panel.js';
 
 test.describe.configure({ timeout: 90_000 });
 
-const NO_REVIEW = '[data-testid^="mark-"], [data-testid="progress"], [data-testid="filter-hide-checked"], [data-testid="review-summary"], [data-testid="card-review"]:not([hidden])';
+const NO_REVIEW = '[data-testid^="mark-"], [data-testid="progress"], [data-testid="filter-hide-checked"], [data-testid="review-summary"], [data-testid="send-to-agent"], [data-testid="card-review"]:not([hidden])';
 
 test('review/hidden-without-port: no snapshot to review, no controls and the keys do nothing', async ({ page }) => {
   // The review routes answer 409 no-snapshot: the port is there, there is nothing to mark.

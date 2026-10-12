@@ -32,10 +32,8 @@ test('review/checked-floor-stops-pulsing', async ({ page }) => {
   await expect.poll(async () => (await effects(page)).pulse[GUARD]?.floors).toEqual([canPlace]);
   expect((await effects(page)).checked[GUARD]).toBeUndefined();
 
-  // Needs rewrite also stops it: the floor has been looked at, and is drawn as a rewrite.
+  // Needs rewrite also stops it, at once and without a note: the floor has been looked at, and is drawn as a rewrite.
   await cardButton(page, 'rewrite').click();
-  await page.getByTestId('rewrite-note').fill('Check the owner in the service.');
-  await page.getByTestId('rewrite-save').click();
   await expect.poll(async () => (await effects(page)).pulse[GUARD]).toBeUndefined();
   expect((await effects(page)).markers.some((marker) => marker.kind === 'notch' && marker.file === GUARD)).toBe(true);
 

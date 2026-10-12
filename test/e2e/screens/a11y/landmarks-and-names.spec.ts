@@ -97,8 +97,9 @@ test('a11y/landmarks-and-names: the city screen (HUD, panel, file view, review c
   await expect(page.locator('canvas').first()).toHaveAttribute('aria-label', /.+/);
   await expectNamed(page, 'header, nav', 1);
 
-  // The dialogs.
+  // The dialogs: the note of a Needs rewrite mark (W marks at once, "Add note" opens it).
   await page.keyboard.press('w');
+  await fileView(page).getByTestId('mark-note-edit').click();
   await expect(rewriteDialog(page)).toBeVisible();
   await expectModalDialog(rewriteDialog(page));
   await expectNamed(page, '[data-testid="rewrite-dialog"]', 3);
@@ -133,6 +134,7 @@ test('a11y/landmarks-and-names: the no-WebGL list and the file view opened from 
   await expectNamed(page, '[data-testid="file-view"]', 3);
 
   await page.keyboard.press('w');
+  await fileView(page).getByTestId('mark-note-edit').click();
   await expect(rewriteDialog(page)).toBeVisible();
   await expectModalDialog(rewriteDialog(page));
   await expectNamed(page, '[data-testid="rewrite-dialog"]', 3);
