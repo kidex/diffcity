@@ -12,6 +12,7 @@ import {
   markTip,
   noteProblem,
   NOTE_MAX,
+  GENERAL_NOTE_MAX,
   OUTDATED_HINT,
   progressView,
   restored,
@@ -22,6 +23,7 @@ import {
   withoutMark,
 } from '../../../src/ui/screens/change/model/review.js';
 import type { ReviewState } from '../../../src/ui/screens/change/ports.js';
+import { GENERAL_NOTE_MAX as CORE_GENERAL_NOTE_MAX, MARK_NOTE_MAX } from '../../../src/core/review/index.js';
 
 const mark = (over: Partial<ReviewMark>): ReviewMark => ({
   targetKind: 'file',
@@ -70,6 +72,11 @@ describe('review-ui', () => {
     expect(noteProblem('x')).toBeNull();
     expect(noteProblem('x'.repeat(NOTE_MAX))).toBeNull();
     expect(noteProblem('x'.repeat(NOTE_MAX + 1))).toMatch(/1 characters too long/);
+  });
+
+  it('review-ui/note-limits-are-the-daemon-s: the UI may not import core values (ADR-022), so its copies are checked here', () => {
+    expect(NOTE_MAX).toBe(MARK_NOTE_MAX);
+    expect(GENERAL_NOTE_MAX).toBe(CORE_GENERAL_NOTE_MAX);
   });
 
   it('review-ui/rewrite-at-once: W keeps the note of a Needs rewrite mark and takes the selected lines, else the mark\'s own', () => {
