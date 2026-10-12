@@ -30,7 +30,7 @@ export interface LiveOptions {
   createEventSource?: (url: string) => EventSource;
 }
 
-const EVENT_NAMES: readonly SseEventName[] = ['hello', 'repo', 'changes', 'snapshot', 'review', 'findings', 'collect', 'sessions'];
+const EVENT_NAMES: readonly SseEventName[] = ['hello', 'repo', 'changes', 'snapshot', 'review', 'findings', 'collect', 'sessions', 'agent-run'];
 
 export const OFFLINE_AFTER_MS = 5_000;
 export const RETRY_MS = 2_000;

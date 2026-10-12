@@ -1,15 +1,16 @@
 // The review summary dialog (ADR-028, SPEC.md section 6): the markdown the
 // daemon wrote from the "Needs rewrite" marks and the general note, shown as
 // plain text (never rendered to HTML: the notes are the reviewer's words and
-// the paths the repo's), a field for the general note, Copy to clipboard, and
-// where sending it to the agent will be (phase 4). Plain DOM.
+// the paths the repo's), a field for the general note, Copy to clipboard, and,
+// with an AgentPort, "Send review to agent" (ADR-029), which opens its own
+// dialog over this one. Plain DOM.
 
 import { h } from '../../../shared/dom.js';
 import type { ReviewController } from './controller.js';
 import { openDialog } from './dialog.js';
 import type { Dialog } from './dialog.js';
 
-export const PHASE_4 = 'Sending it to the agent arrives in phase 4';
+export const SEND_REVIEW = 'Send review to agent';
 export const NO_SUMMARY = 'This change has no snapshot yet, so there is no summary.';
 export const SUMMARY_FAILED = 'The summary could not be loaded.';
 
@@ -41,7 +42,8 @@ export interface SummaryDialog {
   refresh(): void;
 }
 
-export function openSummaryDialog(controller: ReviewController, returnFocus: Element | null, onClose: () => void): SummaryDialog {
+/** `onSend`: with an AgentPort, opens the send dialog from the button it is given; without one there is no such button. */
+export function openSummaryDialog(controller: ReviewController, returnFocus: Element | null, onClose: () => void, onSend?: (trigger: HTMLElement) => void): SummaryDialog {
   const text = h('pre', { class: 'rv-summary', tabindex: 0, 'aria-label': 'Review summary, as markdown', 'data-testid': 'summary-text' });
   const note = h('textarea', { class: 'rv-input', id: 'rv-general', rows: 3, 'data-testid': 'summary-note' });
   note.value = controller.state()?.note ?? '';
@@ -50,6 +52,11 @@ export function openSummaryDialog(controller: ReviewController, returnFocus: Ele
   const saveNote = h('button', { type: 'button', class: 'btn', 'data-testid': 'summary-note-save' }, 'Save note');
   const copy = h('button', { type: 'button', class: 'btn primary', 'data-testid': 'summary-copy' }, 'Copy to clipboard');
   const close = h('button', { type: 'button', class: 'btn', 'data-testid': 'summary-close' }, 'Close');
+  const send =
+    onSend === undefined ? null : h('button', { type: 'button', class: 'btn', 'aria-haspopup': 'dialog', 'data-testid': 'summary-send' }, SEND_REVIEW);
+  send?.addEventListener('click', () => {
+    onSend?.(send);
+  });
   let markdown: string | null = null;
   let request: AbortController | null = null;
   let closed = false;
@@ -102,9 +109,8 @@ export function openSummaryDialog(controller: ReviewController, returnFocus: Ele
       h('label', { class: 'rv-label', for: 'rv-general' }, 'General note'),
       note,
       h('div', { class: 'rv-meta' }, saveNote, noteStatus),
-      h('p', { class: 'rv-phase', 'data-testid': 'summary-phase' }, PHASE_4),
     ],
-    actions: [copyStatus, copy, close],
+    actions: [copyStatus, copy, send, close].filter((node): node is HTMLElement => node !== null),
     initialFocus: copy,
     returnFocus,
     onClose: () => {

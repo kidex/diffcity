@@ -3,7 +3,7 @@
 // ones it has data for in src/ui/app/ from src/ui/data/. The HTML export
 // passes none.
 
-import type { FileDiff, ReviewMark, ReviewMarkValue, ReviewProgress, SessionsResponse } from '../../../core/model/types.js';
+import type { AgentRunsResponse, FileDiff, ReviewMark, ReviewMarkValue, ReviewProgress, SessionsResponse } from '../../../core/model/types.js';
 
 /**
  * What the file view reads to show the diff of one file (ADR-027). Structurally
@@ -149,4 +149,41 @@ export interface SessionsPort {
   load(signal?: AbortSignal): Promise<SessionsResponse | null>;
   /** Calls `listener` when the sessions of this change may have moved; returns the function that stops it. */
   onChange(listener: () => void): () => void;
+}
+
+/** What "Send review to agent" would run (ADR-029), as the daemon previewed it. Structurally `AgentPreview` of src/ui/data/api.ts. */
+export interface AgentPreview {
+  mode: 'resume' | 'new' | null;
+  /** The argv as it would run, the resolved claude binary first; null when it cannot be built. */
+  argv: string[] | null;
+  cwd: string | null;
+  sessionId: string | null;
+  session: { sessionId: string; title: string | null; firstAt: string | null; lastAt: string | null } | null;
+  newSessionReason: string | null;
+  permissionMode: string | null;
+  timeoutMinutes: number;
+  summary: string;
+  summaryHash: string;
+  refusals: FindingRefusal[];
+  /** The confirmation token; null while anything is refused. */
+  token: string | null;
+}
+
+/**
+ * "Send review to agent" (ADR-029). Structurally the port of
+ * src/ui/data/agent-port.ts. Every decision is the daemon's: the command, the
+ * session, the refusals and the run's state. Only a request that got no answer
+ * rejects. Without it (the HTML export, the standalone page) there is no
+ * Send action and no agent run status.
+ */
+export interface AgentPort {
+  preview(): Promise<FindingAnswer<AgentPreview>>;
+  /** Runs what `preview()` showed, bound by its token and summary hash. */
+  run(token: string, summaryHash: string): Promise<FindingAnswer<{ runId: string }>>;
+  /** The fallback: the previewed summary as one fix-queue item for /diffcity-review; nothing runs. */
+  queue(summaryHash: string): Promise<FindingAnswer<{ key: string; queued: boolean; count: number }>>;
+  /** The run in progress or the latest one; null when the daemon will not say (no status). Rejects without an answer. */
+  runs(signal?: AbortSignal): Promise<AgentRunsResponse | null>;
+  /** Calls `listener` when an agent run of this change started or ended, and after a reconnect; returns the function that stops it. */
+  onRun(listener: () => void): () => void;
 }

@@ -97,3 +97,30 @@ export async function markInPage(
     if (!response.ok) throw new Error('mark refused: ' + response.status);
   })()`);
 }
+
+export const sendDialog = (page: Page): Locator => page.getByTestId('send-dialog');
+export const agentRun = (page: Page): Locator => page.getByTestId('agent-run');
+
+/** Opens the review summary, then "Send review to agent" from it; returns the send dialog once the daemon's preview is in. */
+export async function openSendDialog(page: Page): Promise<Locator> {
+  await page.getByTestId('review-summary').click();
+  await expect(summaryDialog(page)).toBeVisible();
+  await summaryDialog(page).getByTestId('summary-send').click();
+  const dialog = sendDialog(page);
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByTestId('send-loading')).toHaveCount(0);
+  return dialog;
+}
+
+/** Scrolls the summary in the send dialog to its end with the mouse wheel, as a reader would. */
+export async function scrollSummaryToEnd(page: Page, dialog: Locator): Promise<void> {
+  const summary = dialog.getByTestId('send-summary');
+  await summary.hover();
+  const atEnd = async (): Promise<boolean> => (await summary.evaluate('(el) => el.scrollTop + el.clientHeight >= el.scrollHeight - 1')) === true;
+  for (let i = 0; i < 12 && !(await atEnd()); i += 1) {
+    await page.mouse.wheel(0, 400);
+    await page.waitForTimeout(60);
+  }
+  // The dialog may scroll too: bring the end line itself into view.
+  await dialog.getByTestId('send-summary-end').scrollIntoViewIfNeeded();
+}

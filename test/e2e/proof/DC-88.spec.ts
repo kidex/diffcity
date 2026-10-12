@@ -207,12 +207,12 @@ test('DC-88: review marks on a change from the real daemon', async ({ page, proo
       await expect(dialog.getByTestId('summary-text')).toContainText('Fix the notes file before anything else.');
       await dialog.getByTestId('summary-copy').click();
       await expect(dialog.getByTestId('summary-copy-status')).toHaveText('Copied');
-      await expect(dialog.getByTestId('summary-phase')).toHaveText('Sending it to the agent arrives in phase 4');
+      await expect(dialog.getByTestId('summary-send')).toHaveText('Send review to agent');
       await page.waitForTimeout(HOLD_MS);
       await page.keyboard.press('Escape');
       await expect(dialog).toBeHidden();
     },
-    'plain text, never rendered; sending it to the agent comes in phase 4',
+    'plain text, never rendered; Send review to agent sits beside Copy (DC-134)',
   );
 
   await hideCaption(page);

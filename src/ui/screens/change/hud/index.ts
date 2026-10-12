@@ -36,6 +36,8 @@ export interface HudOptions {
   review?: { onSummary(trigger: HTMLElement): void } | undefined;
   /** The screen has an ApprovalPort: Approve's element, drawn among the bar's actions. */
   approve?: HTMLElement | undefined;
+  /** The screen has an AgentPort: the agent run status, drawn in the bar. */
+  agent?: HTMLElement | undefined;
   onFilters(filters: Filters): void;
 }
 
@@ -103,6 +105,7 @@ export function createHud(options: HudOptions): Hud {
   const extras = (): BarExtras => ({
     ...(options.review !== undefined && reviewReady ? { progress, summary: summaryButton } : {}),
     approve: options.approve,
+    agent: options.agent,
   });
 
   return {

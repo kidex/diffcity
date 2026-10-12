@@ -140,7 +140,7 @@ const server = createServer((req, res) => {
   if (url.pathname === '/__stub/sse/emit' && req.method === 'POST') {
     const event = url.searchParams.get('event');
     const client = url.searchParams.get('client');
-    if (!event || !/^[a-z]+$/.test(event)) return json(res, 400, { error: { code: 'bad-event', message: String(event) } });
+    if (!event || !/^[a-z]+(?:-[a-z]+)*$/.test(event)) return json(res, 400, { error: { code: 'bad-event', message: String(event) } });
     let raw = '';
     req.setEncoding('utf8');
     req.on('data', (chunk) => (raw += chunk));

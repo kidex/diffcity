@@ -1,7 +1,7 @@
 // e2e/review/summary-dialog-copy (SPEC.md section 6, "Review marks"; ADR-028):
 // the review summary dialog shows the daemon's markdown as plain text (never
 // rendered), a general note that is saved and reaches the summary, Copy to
-// clipboard, and where sending it to the agent will be (phase 4). The dialog is
+// clipboard, and "Send review to agent" beside Copy (ADR-029). The dialog is
 // modal: focus goes in and stays in, Esc closes it and focus goes back.
 
 import { test } from '@playwright/test';
@@ -44,7 +44,7 @@ test('review/summary-dialog-copy', async ({ page, context, baseURL }) => {
   await expect(text.locator('b, img, h2, h3, script')).toHaveCount(0);
   await expect(dialog.locator('img')).toHaveCount(0);
   expect(await page.evaluate('window.pwned === undefined')).toBe(true);
-  await expect(dialog.getByTestId('summary-phase')).toHaveText('Sending it to the agent arrives in phase 4');
+  await expect(dialog.getByTestId('summary-send')).toHaveText('Send review to agent');
 
   // Copy puts exactly the markdown on the clipboard.
   const shown = (await text.textContent()) ?? '';

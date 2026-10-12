@@ -10,7 +10,9 @@
 // or the city, with the HUD around it (hud/): top bar, filters, legend,
 // tooltip, selection card, Fleet card, and the reading panel at its right
 // (panel/): tabs, stop cards and the file view, and, with a FindingsPort, the
-// finding cards' actions; with a SessionsPort, the Session tab.
+// finding cards' actions; with a SessionsPort, the Session tab; with an
+// AgentPort, "Send review to agent" in the review summary and the agent run
+// status in the top bar.
 
 import './change.css';
 
@@ -31,7 +33,10 @@ import type { FindingActions } from './panel/finding-actions.js';
 import { createFindingActions } from './panel/finding-actions.js';
 import type { ApproveControl } from './hud/approve.js';
 import { createApproveControl } from './hud/approve.js';
-import type { ApprovalPort, DiffPort, FindingsPort, FleetPort, ReviewPort, SessionsPort } from './ports.js';
+import type { AgentRunStatus } from './hud/agent-run.js';
+import { createAgentRunStatus } from './hud/agent-run.js';
+import { notesCount } from './model/agent.js';
+import type { AgentPort, ApprovalPort, DiffPort, FindingsPort, FleetPort, ReviewPort, SessionsPort } from './ports.js';
 import type { ReviewController } from './review/controller.js';
 import { createReviewController } from './review/controller.js';
 import type { ReviewUi } from './review/ui.js';
@@ -60,6 +65,8 @@ export interface ChangeScreenOptions {
   approval?: ApprovalPort;
   /** The Claude Code sessions of the change (ADR-038): the panel's Session tab; without it there is no such tab. */
   sessions?: SessionsPort;
+  /** "Send review to agent" and the agent run status (ADR-029); without it the screen has neither. */
+  agent?: AgentPort;
 }
 
 export interface ChangeScreen {
@@ -177,6 +184,7 @@ export function mountChange(element: HTMLElement, options: ChangeScreenOptions):
             hud?.toast(text);
           },
         });
+  const agentRun: AgentRunStatus | null = options.agent === undefined ? null : createAgentRunStatus(options.agent, () => notesCount(controller?.state() ?? null));
   const reviewUi: ReviewUi | null =
     controller === null
       ? null
@@ -185,6 +193,15 @@ export function mountChange(element: HTMLElement, options: ChangeScreenOptions):
           report: () => latest,
           selection: () => selection,
           range: () => panel?.lineRange() ?? null,
+          agent:
+            options.agent === undefined
+              ? undefined
+              : {
+                  port: options.agent,
+                  onSent: () => {
+                    agentRun?.refresh();
+                  },
+                },
         });
   const stopReview = controller?.onChange(syncReview);
   const findingActions: FindingActions | null = options.findings === undefined ? null : createFindingActions(options.findings);
@@ -205,6 +222,7 @@ export function mountChange(element: HTMLElement, options: ChangeScreenOptions):
     hud?.progress(state === null ? null : progressView(state.progress));
     view?.setMarks(marksOf(state));
     reviewUi?.refresh();
+    agentRun?.render();
   }
 
   const message = (testId: string, text: string): HTMLElement => h('p', { class: 'change-empty', role: 'status', 'data-testid': testId }, text);
@@ -234,6 +252,7 @@ export function mountChange(element: HTMLElement, options: ChangeScreenOptions):
               },
             },
       approve: approve?.root,
+      agent: agentRun?.root,
       onFilters(next) {
         filters = next;
         if (latest !== null) hud?.update(latest, filters);
@@ -409,6 +428,7 @@ export function mountChange(element: HTMLElement, options: ChangeScreenOptions):
       controller?.dispose();
       findingActions?.dispose();
       approve?.dispose();
+      agentRun?.dispose();
       dropView();
       element.classList.remove('has-city', 'has-list');
       element.replaceChildren();
