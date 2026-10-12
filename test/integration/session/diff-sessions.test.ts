@@ -21,7 +21,7 @@ cleanupAfterEach();
 const repoRoot = fileURLToPath(new URL('../../../', import.meta.url));
 const SECRET_PROMPT = 'Prompt that must stay out of reports';
 /** Every key a Report may have (`checks` only when rules ran). */
-const REPORT_KEYS = ['checks', 'findings', 'meta', 'packages', 'steps', 'summary'];
+const REPORT_KEYS = ['checks', 'findings', 'meta', 'packages', 'specNotice', 'steps', 'summary'];
 
 const claudes: ClaudeDir[] = [];
 const homes: TempHome[] = [];
@@ -132,7 +132,7 @@ describe('session data stays out of the Report', () => {
     expect(body).not.toContain('Agent report text');
 
     // No key of the Report type can hold a session.
-    expectTypeOf<keyof Report>().toEqualTypeOf<'meta' | 'packages' | 'steps' | 'findings' | 'checks' | 'summary'>();
+    expectTypeOf<keyof Report>().toEqualTypeOf<'meta' | 'packages' | 'steps' | 'findings' | 'checks' | 'specNotice' | 'summary'>();
 
     // The export path (the standalone page, built from a Report alone) and the Report builder import nothing of sessions.
     for (const folder of ['src/ui/standalone', 'src/core/report']) {

@@ -64,8 +64,8 @@ function symbolRows(file: File): [string, Status][] {
 const scenarios = listScenarios();
 
 describe('golden scenarios', () => {
-  it('are exactly the three phase 1 changes, each with a hand-reviewed table', () => {
-    expect(scenarios.map((s) => s.name)).toEqual(['order-discounts', 'report-cli-command', 'session-refresh']);
+  it('are exactly the three phase 1 changes and the spec scope one, each with a hand-reviewed table', () => {
+    expect(scenarios.map((s) => s.name)).toEqual(['order-discounts', 'report-cli-command', 'session-refresh', 'spec-scope']);
     expect(Object.keys(reviewed).sort()).toEqual(scenarios.map((s) => s.name));
   });
 });
@@ -137,6 +137,15 @@ describe.each(scenarios)('scenario $name', (scenario) => {
       files.flatMap((file) => file.symbols.filter((symbol) => symbol.status === 'sig').map((symbol) => [symbol.id, symbol.callsites])),
     );
     expect(sig).toEqual(table.callsites);
+  });
+
+  it('golden/no-spec-unchanged: inSpec matches the hand-reviewed table; without a spec every file is null and there is no notice', () => {
+    const table: ReviewedScenario | undefined = reviewed[scenario.name];
+    if (table === undefined) throw new Error(`no hand-reviewed table for ${scenario.name}`);
+    const files = report.packages.flatMap((pkg) => pkg.files);
+    expect(files.map((file) => [file.path, file.inSpec])).toEqual(table.inSpec ?? files.map((file) => [file.path, null]));
+    // A spec that marks something has no notice either; a scenario without one is byte-identical to its phase 1 golden.
+    expect('specNotice' in report).toBe(false);
   });
 
   it('summary counts match the ones derived from the hand-reviewed table', () => {

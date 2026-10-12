@@ -1,17 +1,20 @@
-// `diffcity diff [--json [--compact] [--with-sessions]] [--base <ref>] [--head <ref>]`
-// (SPEC.md section 3, ADR-011, ADR-037, ADR-038). Builds the Report in-process
+// `diffcity diff [--json [--compact] [--with-sessions]] [--base <ref>] [--head <ref>] [--spec <file>]`
+// (SPEC.md sections 3 and 5.5, ADR-011, ADR-035, ADR-037, ADR-038). Builds the Report in-process
 // through src/core; never starts the daemon. `--compact` is an output filter
 // only. `--with-sessions` asks the running daemon for the Claude Code sessions
 // of the change checked out here and adds them under a `sessions` key next to
 // the Report's own keys; without a daemon it fails. The sessions follow the
 // change checked out in the current directory, whatever --base and --head say. Session data reaches the
 // output through that flag only: the Report itself never carries it.
+// `--spec <file>` reads the task spec from disk (resolved against the current
+// directory) in place of the change's `.diffcity/spec.md`.
 
 import { identifyRepo } from '../core/changes/index.js';
 import { homePaths, resolveHome } from '../core/home.js';
 import type { SessionView } from '../core/model/types.js';
 import { buildReport, type BuildReportOptions } from '../core/report/index.js';
 import { readSettings, ruleSettingsFor, type UserRuleSettings } from '../core/settings/index.js';
+import { readSpecFile, type SpecSource } from '../core/spec/index.js';
 import type { Report, Status, Verdict } from '../core/report/types.js';
 
 export interface DiffCommandOptions {
@@ -22,6 +25,8 @@ export interface DiffCommandOptions {
   head?: string;
   /** With --json: add the sessions of the change from the running daemon (ADR-038). */
   withSessions?: boolean;
+  /** The task spec to scope against, instead of `.diffcity/spec.md` (ADR-035). */
+  spec?: string;
 }
 
 export type SessionsFetch = { ok: true; sessions: SessionView[] } | { ok: false; error: string };
@@ -209,6 +214,15 @@ export async function runDiff(options: DiffCommandOptions, deps: DiffDeps): Prom
     }
     sessions = fetched.sessions;
   }
+  let spec: SpecSource | undefined;
+  if (options.spec !== undefined) {
+    try {
+      spec = await readSpecFile(options.spec, deps.cwd);
+    } catch (error) {
+      deps.io.stderr(`diffcity diff: --spec: ${oneLine(error)}\n`);
+      return 1;
+    }
+  }
   let report: Report;
   try {
     const now = deps.now === undefined ? undefined : parseNow(deps.now);
@@ -218,7 +232,7 @@ export async function runDiff(options: DiffCommandOptions, deps: DiffDeps): Prom
       deps.io.stderr(`diffcity diff: ${message}\n`);
     };
     const userRules = await deps.userRules?.(log);
-    report = await build({ repoDir: deps.cwd, base: options.base, head: options.head, now, trustConfig: true, log, ...(userRules === undefined ? {} : { userRules }) });
+    report = await build({ repoDir: deps.cwd, base: options.base, head: options.head, now, trustConfig: true, log, ...(userRules === undefined ? {} : { userRules }), ...(spec === undefined ? {} : { spec }) });
   } catch (error) {
     deps.io.stderr(`diffcity diff: ${oneLine(error)}\n`);
     return 1;
