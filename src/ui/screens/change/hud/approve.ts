@@ -5,12 +5,24 @@
 // again. Approved shows a badge with the short approved head and Undo
 // approve. A refusal shows the daemon's reason under the button, which goes
 // back to what it was. Text goes in through textContent and attributes only.
+// While touched tier 1 files are unmarked, the button is "Check the rest and
+// approve" (DC-136): it asks the daemon which files those are, lists them in a
+// confirmation (hud/check-rest.ts), and sends that list back; when the daemon
+// says the list went stale (`snapshot-moved`, `remaining-changed`) it asks
+// again and shows the fresh list. Plain Approve is unchanged.
 
 import type { ReviewProgress } from '../../../../core/model/types.js';
 import { h, replaceChildren } from '../../../shared/dom.js';
 import type { ApproveView } from '../model/approve.js';
-import { APPROVE_FAILED, approveView, CANCEL, CONFIRM_APPROVE, UNDO_APPROVE } from '../model/approve.js';
-import type { ApprovalPort, ApprovalResult, FindingAnswer } from '../ports.js';
+import { APPROVE_FAILED, approveView, CANCEL, CHECK_REST_MOVED, CONFIRM_APPROVE, isStaleList, UNDO_APPROVE } from '../model/approve.js';
+import type { ApprovalPort, ApprovalResult, CheckRestResult, FindingAnswer, RemainingFiles } from '../ports.js';
+import type { CheckRestDialog } from './check-rest.js';
+import { openCheckRestDialog } from './check-rest.js';
+
+export interface ApproveHooks {
+  /** "Check the rest and approve" went through: the daemon wrote marks, so the review state is read again. */
+  onMarked?(): void;
+}
 
 export interface ApproveControl {
   /** The control's element; the top bar puts it among its actions. */
@@ -24,15 +36,88 @@ export interface ApproveControl {
 
 type FocusKey = 'approve' | 'approve-confirm' | 'approve-undo';
 
-export function createApproveControl(port: ApprovalPort): ApproveControl {
+export function createApproveControl(port: ApprovalPort, hooks: ApproveHooks = {}): ApproveControl {
   const root = h('span', { class: 'approve', 'data-testid': 'approve-control' });
   let progress: ReviewProgress | null = null;
   let confirming = false;
   let pending: 'approve' | 'undo' | null = null;
   let error: string | null = null;
   let disposed = false;
+  /** "Check the rest and approve": the list is being asked for, or its confirmation is open. */
+  let asking = false;
+  let checking: CheckRestDialog | null = null;
+  let bulkPending = false;
 
-  const view = (): ApproveView => approveView({ status: port.status(), progress, confirming, pending, error });
+  const view = (): ApproveView => approveView({ status: port.status(), progress, confirming, pending, error, checkRest: true });
+
+  /** Asks the daemon for the files to mark and shows them in the confirmation; `notice` says why it is shown again. */
+  async function askRemaining(notice: string | null): Promise<void> {
+    if (asking) return;
+    asking = true;
+    error = null;
+    // With the confirmation open, focus stays in it.
+    render(checking === null ? 'approve' : undefined);
+    let result: FindingAnswer<RemainingFiles> | null;
+    try {
+      result = await port.remaining();
+    } catch {
+      result = null;
+    }
+    asking = false;
+    if (disposed) return;
+    if (result === null || !result.ok) {
+      error = result === null ? APPROVE_FAILED : result.refusal.message;
+      checking?.close();
+      render('approve');
+      return;
+    }
+    if (checking !== null) {
+      checking.show(result.value, notice);
+      return;
+    }
+    // Opened only on the reviewer's click, never again behind their back once closed.
+    if (notice !== null) return;
+    checking = openCheckRestDialog(result.value, {
+      onConfirm: (shown) => void confirmRest(shown),
+      onClose: () => {
+        checking = null;
+        render('approve');
+      },
+    });
+    render();
+  }
+
+  async function confirmRest(shown: RemainingFiles): Promise<void> {
+    if (bulkPending) return;
+    bulkPending = true;
+    checking?.busy(true);
+    let result: FindingAnswer<CheckRestResult> | null;
+    try {
+      result = await port.checkRest(shown);
+    } catch {
+      result = null;
+    }
+    bulkPending = false;
+    if (disposed) return;
+    checking?.busy(false);
+    if (result?.ok === true) {
+      hooks.onMarked?.();
+      const open = checking;
+      checking = null;
+      open?.close();
+      render('approve-undo');
+      return;
+    }
+    if (result !== null && isStaleList(result.refusal.code) && checking !== null) {
+      await askRemaining(CHECK_REST_MOVED);
+      return;
+    }
+    error = result === null ? APPROVE_FAILED : result.refusal.message;
+    const open = checking;
+    checking = null;
+    open?.close();
+    render('approve');
+  }
 
   function button(testId: FocusKey | 'approve-cancel', label: string, primary: boolean, title: string | null, inert: boolean, onClick: () => void): HTMLButtonElement {
     const node = h('button', { type: 'button', class: primary ? 'btn primary' : 'btn', 'data-testid': testId, title }, label);
@@ -77,14 +162,20 @@ export function createApproveControl(port: ApprovalPort): ApproveControl {
     const shown = view();
     root.hidden = shown.kind === 'hidden';
     root.dataset['state'] = shown.kind === 'gate' ? (shown.open ? 'open' : 'closed') : shown.kind;
+    delete root.dataset['bulk'];
     switch (shown.kind) {
       case 'hidden':
         replaceChildren(root);
         break;
       case 'gate':
+        root.dataset['bulk'] = String(shown.bulk);
         replaceChildren(
           root,
-          button('approve', shown.label, true, shown.title, !shown.open, () => {
+          button('approve', asking && shown.bulk ? 'Listing the files…' : shown.label, true, shown.title, !shown.open || asking || checking !== null, () => {
+            if (shown.bulk) {
+              void askRemaining(null);
+              return;
+            }
             confirming = true;
             error = null;
             render('approve-confirm');
@@ -143,6 +234,7 @@ export function createApproveControl(port: ApprovalPort): ApproveControl {
     view,
     dispose() {
       disposed = true;
+      checking?.close();
       stop();
       root.remove();
     },

@@ -205,7 +205,13 @@ export function mountChange(element: HTMLElement, options: ChangeScreenOptions):
         });
   const stopReview = controller?.onChange(syncReview);
   const findingActions: FindingActions | null = options.findings === undefined ? null : createFindingActions(options.findings);
-  const approve: ApproveControl | null = options.approval === undefined ? null : createApproveControl(options.approval);
+  const approve: ApproveControl | null =
+    options.approval === undefined
+      ? null
+      : createApproveControl(options.approval, {
+          // "Check the rest and approve" wrote marks: read them now rather than wait for SSE `review`.
+          onMarked: () => void controller?.refresh(),
+        });
 
   /** Brings the city, the progress, the filters and every mark button in line with the review state. */
   function syncReview(): void {

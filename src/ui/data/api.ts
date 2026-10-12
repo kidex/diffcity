@@ -68,6 +68,21 @@ export interface ApprovalAnswer {
   approvedAt: string | null;
 }
 
+/** `GET /api/changes/:id/approve/remaining` (DC-135): what the confirmation of "Check the rest and approve" lists. */
+export interface RemainingAnswer {
+  snapshotId: number;
+  head: string;
+  /** The touched tier 1 files without a current mark. */
+  files: string[];
+  /** Binds the snapshot's content and the listed files; sent back with the confirmation. */
+  token: string;
+}
+
+/** `POST /api/changes/:id/approve` with `checkRemaining` (DC-135): the approval and the paths it marked Checked. */
+export interface CheckRemainingAnswer extends ApprovalAnswer {
+  marked: string[];
+}
+
 /** One reason the daemon will not run the agent now (ADR-029): its code and the message to show. */
 export interface AgentRefusalView {
   code: string;
@@ -143,6 +158,16 @@ export interface Api {
    * `snapshot-pending`, `no-snapshot` or `archived`, 404 `not-found`, 403.
    */
   approve(changeId: number): Promise<ApprovalAnswer>;
+  /**
+   * The touched tier 1 files without a current mark, for the confirmation of "Check the rest and approve".
+   * Rejects with ApiRequestError: 409 `archived`, `no-snapshot` or `snapshot-pending`, 404 `not-found`, 403 `cross-site`.
+   */
+  approveRemaining(changeId: number): Promise<RemainingAnswer>;
+  /**
+   * "Check the rest and approve", confirmed on `shown` (the answer of approveRemaining, unchanged). Rejects with
+   * ApiRequestError: 409 `snapshot-moved`, `remaining-changed`, `snapshot-pending`, `tier1-unchecked` or `archived`, 400, 404, 403.
+   */
+  approveCheckRemaining(changeId: number, shown: RemainingAnswer): Promise<CheckRemainingAnswer>;
   /** Undoes Approve. Rejects with ApiRequestError: 409 `not-approved` or `archived`, 404 `not-found`, 403. */
   unapprove(changeId: number): Promise<ApprovalAnswer>;
   /**
@@ -262,6 +287,11 @@ export function createApi(base = '', fetchImpl: typeof fetch = (...args) => fetc
     },
     async approve(changeId) {
       return (await (await write('POST', `/changes/${String(changeId)}/approve`)).json()) as ApprovalAnswer;
+    },
+    approveRemaining: (changeId) => get<RemainingAnswer>(`/changes/${String(changeId)}/approve/remaining`),
+    async approveCheckRemaining(changeId, shown) {
+      const body = { checkRemaining: true, snapshotId: shown.snapshotId, files: shown.files, token: shown.token };
+      return (await (await write('POST', `/changes/${String(changeId)}/approve`, body)).json()) as CheckRemainingAnswer;
     },
     async unapprove(changeId) {
       return (await (await write('DELETE', `/changes/${String(changeId)}/approve`)).json()) as ApprovalAnswer;

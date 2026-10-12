@@ -6,7 +6,7 @@
 // when the head moves (ADR-019).
 
 import type { ChangeSummary } from '../../core/model/types.js';
-import type { Api, ApprovalAnswer } from './api.js';
+import type { Api, ApprovalAnswer, CheckRemainingAnswer, RemainingAnswer } from './api.js';
 import type { FindingAnswer } from './findings-port.js';
 import { answer } from './findings-port.js';
 
@@ -22,6 +22,10 @@ export interface ApprovalPort {
   status(): ApprovalStatus | null;
   onChange(listener: () => void): () => void;
   approve(): Promise<FindingAnswer<ApprovalAnswer>>;
+  /** The files "Check the rest and approve" would mark (DC-135). A read: nothing changes. */
+  remaining(): Promise<FindingAnswer<RemainingAnswer>>;
+  /** "Check the rest and approve", confirmed on `shown`, the answer of remaining() sent back unchanged. */
+  checkRest(shown: RemainingAnswer): Promise<FindingAnswer<CheckRemainingAnswer>>;
   unapprove(): Promise<FindingAnswer<ApprovalAnswer>>;
 }
 
@@ -50,10 +54,11 @@ export function createApprovalPort(api: Api, changeId: number, written: () => vo
     for (const listener of [...listeners]) listener();
   };
 
-  const settle = (result: FindingAnswer<ApprovalAnswer>): FindingAnswer<ApprovalAnswer> => {
+  const settle = <T extends ApprovalAnswer>(result: FindingAnswer<T>): FindingAnswer<T> => {
     if (!result.ok) return result;
     answeredAt = result.at;
-    if (current !== null) set({ ...current, ...result.value });
+    const { reviewState, approvedHead, approvedAt } = result.value;
+    if (current !== null) set({ ...current, reviewState, approvedHead, approvedAt });
     written();
     return result;
   };
@@ -65,6 +70,8 @@ export function createApprovalPort(api: Api, changeId: number, written: () => vo
       return () => listeners.delete(listener);
     },
     approve: async () => settle(await answer(api.approve(changeId))),
+    remaining: () => answer(api.approveRemaining(changeId)),
+    checkRest: async (shown) => settle(await answer(api.approveCheckRemaining(changeId, shown))),
     unapprove: async () => settle(await answer(api.unapprove(changeId))),
     show(change, startedAt) {
       if (startedAt < answeredAt) return;
