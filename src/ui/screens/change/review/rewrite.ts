@@ -1,7 +1,9 @@
-// The "Needs rewrite" dialog (ADR-028): a required note of 1 to 2,000
-// characters and an optional line range, prefilled from the line selection of
-// the file view (ADR-027). An empty or too long note is blocked here with a
-// message and nothing is sent; the daemon checks it again. Plain DOM.
+// The note of a "Needs rewrite" mark (ADR-028, amended by DC-135): W marks at
+// once, and this dialog, opened from the mark bar's "Add note", adds or edits
+// an optional note of at most 2,000 characters and an optional line range,
+// prefilled from the line selection of the file view (ADR-027). An empty note
+// saves the mark without one; a too long note is blocked here with a message
+// and nothing is sent; the daemon checks it again. Plain DOM.
 
 import { h } from '../../../shared/dom.js';
 import { NOTE_MAX, noteProblem } from '../model/review.js';
@@ -19,7 +21,8 @@ export interface RewriteOptions {
   /** The line range to start from: the file view's selection, else the mark's own. */
   lines: Lines | null;
   returnFocus: Element | null;
-  onSave(note: string, lines: Lines | undefined): void;
+  /** `note` is undefined when the field is left empty: the mark has no note. */
+  onSave(note: string | undefined, lines: Lines | undefined): void;
   onClose(): void;
 }
 
@@ -39,7 +42,6 @@ export function openRewriteDialog(options: RewriteOptions): Dialog {
     class: 'rv-input',
     id: 'rv-note',
     rows: 5,
-    required: true,
     'aria-describedby': 'rv-note-hint rv-note-error',
     'data-testid': 'rewrite-note',
   });
@@ -93,7 +95,7 @@ export function openRewriteDialog(options: RewriteOptions): Dialog {
     }
     const { lines } = range;
     dialog?.close();
-    options.onSave(note.value, lines);
+    options.onSave(note.value.trim() === '' ? undefined : note.value, lines);
   });
 
   dialog = openDialog({
@@ -101,7 +103,7 @@ export function openRewriteDialog(options: RewriteOptions): Dialog {
     testId: 'rewrite-dialog',
     body: [
       h('p', { class: 'rv-lede', 'data-testid': 'rewrite-target' }, info.filePath),
-      h('label', { class: 'rv-label', for: 'rv-note' }, 'What needs to be rewritten'),
+      h('label', { class: 'rv-label', for: 'rv-note' }, 'What needs to be rewritten (optional)'),
       note,
       h('div', { class: 'rv-meta' }, count),
       noteError,

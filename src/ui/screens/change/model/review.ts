@@ -20,12 +20,14 @@ export const MARK_KEY: Record<ReviewMarkValue, string> = { checked: 'C', good: '
 /** What a tooltip and the file view say about a mark whose target changed after it was made. */
 export const OUTDATED_HINT = 'changed since you checked it';
 
-/** A note of a "Needs rewrite" mark: 1 to 2,000 characters (ADR-028). */
+/** A note of a mark: optional, at most 2,000 characters (ADR-028, amended by DC-135: "Needs rewrite" needs no note). */
 export const NOTE_MAX = 2000;
 
-/** Why `note` cannot be sent, or null when it can. A note of spaces is empty. */
+/** The general note of a change: at most 4,000 characters; the empty string clears it. */
+export const GENERAL_NOTE_MAX = 4000;
+
+/** Why `note` cannot be sent, or null when it can. An empty note is fine: the mark is saved without one. */
 export function noteProblem(note: string): string | null {
-  if (note.trim() === '') return 'Say what needs to be rewritten: a note is required.';
   if (note.length > NOTE_MAX) return `The note is ${String(note.length - NOTE_MAX)} characters too long (at most ${String(NOTE_MAX)}).`;
   return null;
 }
@@ -139,6 +141,17 @@ export function targetFor(report: Report, fileId: string, symbolId: string | nul
     }
   }
   return null;
+}
+
+/**
+ * What W (and the "Needs rewrite" button) saves at once, without a dialog: the
+ * note the target's "Needs rewrite" mark already has, and the line range
+ * selected in this file's diff, else the mark's own. Nothing else is asked.
+ */
+export function rewriteExtras(existing: ReviewMark | undefined, selected: NonNullable<ReviewMark['lines']> | null): { note?: string; lines?: NonNullable<ReviewMark['lines']> } {
+  const note = existing?.mark === 'rewrite' && existing.note !== null && existing.note.trim() !== '' ? existing.note : undefined;
+  const lines = selected ?? existing?.lines ?? null;
+  return { ...(note === undefined ? {} : { note }), ...(lines === null ? {} : { lines }) };
 }
 
 /** The tooltip's line for a mark: the mark, "changed since you checked it" when outdated, and its note. Null for none. */

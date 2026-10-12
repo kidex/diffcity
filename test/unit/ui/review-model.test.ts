@@ -15,6 +15,7 @@ import {
   OUTDATED_HINT,
   progressView,
   restored,
+  rewriteExtras,
   targetFor,
   tipMark,
   withMark,
@@ -63,12 +64,27 @@ describe('review-ui', () => {
     expect(marksOf(null)).toBeUndefined();
   });
 
-  it('review-ui/note-1-to-2000: an empty or blank note and one past 2,000 characters are refused', () => {
-    expect(noteProblem('')).not.toBeNull();
-    expect(noteProblem('   \n ')).not.toBeNull();
+  it('review-ui/note-optional-up-to-2000: an empty or blank note is fine (DC-135), one past 2,000 characters is refused', () => {
+    expect(noteProblem('')).toBeNull();
+    expect(noteProblem('   \n ')).toBeNull();
     expect(noteProblem('x')).toBeNull();
     expect(noteProblem('x'.repeat(NOTE_MAX))).toBeNull();
     expect(noteProblem('x'.repeat(NOTE_MAX + 1))).toMatch(/1 characters too long/);
+  });
+
+  it('review-ui/rewrite-at-once: W keeps the note of a Needs rewrite mark and takes the selected lines, else the mark\'s own', () => {
+    const lines = { side: 'new' as const, start: 3, end: 5 };
+    const selected = { side: 'old' as const, start: 7, end: 7 };
+    // Nothing marked, nothing selected: no note, no lines.
+    expect(rewriteExtras(undefined, null)).toEqual({});
+    expect(rewriteExtras(undefined, selected)).toEqual({ lines: selected });
+    // A Needs rewrite mark keeps its note; its range unless lines are selected now.
+    const rewrite = mark({ mark: 'rewrite', note: 'Split it.', lines });
+    expect(rewriteExtras(rewrite, null)).toEqual({ note: 'Split it.', lines });
+    expect(rewriteExtras(rewrite, selected)).toEqual({ note: 'Split it.', lines: selected });
+    // The note of another mark is not a rewrite note; a blank one is none.
+    expect(rewriteExtras(mark({ mark: 'good', note: 'Fine.' }), null)).toEqual({});
+    expect(rewriteExtras(mark({ mark: 'rewrite', note: '  ' }), null)).toEqual({});
   });
 
   it('review-ui/target: the focused floor, else the file; the whole file on request; untouched and unknown files have none', () => {

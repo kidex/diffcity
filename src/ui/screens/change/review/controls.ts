@@ -1,5 +1,6 @@
 // The mark buttons of one place (the selection card, the file view's header):
-// Checked, Looks good, Needs rewrite and Undo for a target, with what the
+// Checked, Looks good, Needs rewrite and Undo for a target, "Add note" (or
+// "Edit note") once the target is marked Needs rewrite, with what the
 // target is marked now: the mark, its note and line range, and "changed since
 // you checked it" for a mark that went outdated (ADR-028). It draws what it is
 // given and reports clicks; the screen decides what a click does. Text goes in
@@ -13,7 +14,10 @@ import type { TargetInfo } from '../model/review.js';
 
 export interface MarkBarActions {
   onMark(mark: Exclude<ReviewMarkValue, 'rewrite'>): void;
+  /** Needs rewrite, at once: no note is asked. */
   onRewrite(): void;
+  /** Adds or edits the note (and line range) of the target's "Needs rewrite" mark. */
+  onNote(): void;
   onUndo(): void;
   /** The reviewer chose the whole file (true) or the focused floor (false) as the target. */
   onScope(wholeFile: boolean): void;
@@ -56,6 +60,13 @@ export function createMarkBar(actions: MarkBarActions): MarkBar {
       actions.onUndo();
     }),
   );
+  const noteButton = h(
+    'button',
+    { type: 'button', class: 'rv-btn note', 'data-testid': 'mark-note-edit', 'aria-haspopup': 'dialog', onclick: () => { actions.onNote(); } },
+    'Add note',
+  );
+  noteButton.hidden = true;
+  row.append(noteButton);
   const fileScope = h('button', { type: 'button', class: 'rv-scope-btn', 'data-testid': 'mark-scope-file', onclick: () => { actions.onScope(true); } }, 'This file');
   const floorScope = h('button', { type: 'button', class: 'rv-scope-btn', 'data-testid': 'mark-scope-floor', onclick: () => { actions.onScope(false); } });
   const scope = h('div', { class: 'rv-scope', role: 'group', 'aria-label': 'What to mark', 'data-testid': 'mark-scope' }, fileScope, floorScope);
@@ -103,6 +114,9 @@ export function createMarkBar(actions: MarkBarActions): MarkBar {
         button.setAttribute('aria-pressed', key === 'undo' ? 'false' : String(own));
         button.classList.toggle('on', own);
       }
+      // The note is optional: it is offered once the target is marked Needs rewrite.
+      noteButton.hidden = !marked || mark?.mark !== 'rewrite';
+      noteButton.textContent = mark?.note != null && mark.note !== '' ? 'Edit note' : 'Add note';
       status.replaceChildren(...(marked ? describe(mark, inherited) : []));
       // "Not marked" is the default and the buttons say it: it stays for screen readers and tests only.
       status.classList.toggle('rv-sr', mark === undefined && inherited === undefined);
