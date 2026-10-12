@@ -3,7 +3,10 @@
 // argv one item per line, the working tree, the session or why a new one, the
 // permission note, the full summary); Send is enabled and focused only once
 // the summary's end has been in view; any refusal is listed and Send is not
-// offered; the dialog is modal and Esc gives focus back to its opener.
+// offered; the dialog is modal and Esc gives focus back to its opener. From
+// the top bar's "Send to agent" (DC-136) it opens directly, with the general
+// note editable at its top: a saved note is previewed again, and a general
+// note alone is a review that can be sent.
 
 import { test } from '@playwright/test';
 import { agentPreview } from '../../support/mock-api.js';
@@ -160,4 +163,57 @@ test('change/send-review-dialog: esc-returns-focus', async ({ page }) => {
   await page.keyboard.press('Escape');
   await expect(summaryDialog(page)).toBeHidden();
   await expect(page.getByTestId('review-summary')).toBeFocused();
+});
+
+test('change/send-review-dialog: send-from-top-bar-with-general-note-only', async ({ page }) => {
+  // No mark and no note: the daemon has nothing to send.
+  const { api } = await openReview(page, { report, wait: false });
+  const agent = api.agent(11);
+  agent.preview = agentPreview({ token: null, summary: '', summaryHash: 'c'.repeat(64), refusals: [{ code: 'nothing-to-send', message: 'nothing to send: no Needs rewrite mark and no general note' }] });
+  await page.goto('/?scene-debug#/change/11');
+  await page.waitForFunction('window.diffcityScene !== undefined && window.diffcityScene.ready === true');
+
+  // The top bar's button opens the send dialog itself, not the summary.
+  const button = page.getByTestId('send-to-agent');
+  await expect(button).toHaveText('Send to agent');
+  await expect(button).toHaveAttribute('aria-haspopup', 'dialog');
+  await button.click();
+  const dialog = sendDialog(page);
+  await expect(dialog).toBeVisible();
+  await expect(summaryDialog(page)).toHaveCount(0);
+  await expect(dialog.getByTestId('send-refusal')).toHaveText(['nothing to send: no Needs rewrite mark and no general note']);
+  await expect(dialog.getByTestId('send-run')).toBeHidden();
+  const note = dialog.getByTestId('send-note');
+  await expect(note).toHaveValue('');
+  await expect(dialog.getByTestId('send-note-save')).toBeDisabled();
+
+  // A general note, typed: not sent until saved, and the dialog says so.
+  const NOTE = 'Split the discount rules out of the order service before merging.';
+  await note.fill(NOTE);
+  await expect(dialog.getByTestId('send-hint')).toHaveText('Save the note to send it: the summary below is what the agent gets');
+  const summary = `# Review of ${report.meta.head}\n\n> ${NOTE}\n`;
+  agent.preview = agentPreview({ summary, summaryHash: 'b'.repeat(64), token: 'token-2' });
+  await dialog.getByTestId('send-note-save').click();
+  await expect(dialog.getByTestId('send-note-status')).toHaveText('Note saved; the summary below now holds it');
+  expect(api.review(11).writes.map((write) => write.body)).toEqual([{ note: NOTE }]);
+  // Saved, then previewed again: the summary shown is the one the new hash and token stand for.
+  await expect.poll(() => agent.writes.filter((write) => write.route === 'preview').length).toBe(2);
+  expect(await dialog.getByTestId('send-summary').textContent()).toBe(summary);
+  await expect(dialog.getByTestId('send-refusals')).toBeHidden();
+  const send = dialog.getByTestId('send-run');
+  await expect(send).toBeVisible();
+
+  // Edited again without saving: Send closes until the note is saved or put back.
+  await note.fill(`${NOTE} And rename it.`);
+  await expect(send).toBeDisabled();
+  await note.fill(NOTE);
+  await scrollSummaryToEnd(page, dialog);
+  await expect(send).toBeEnabled();
+
+  // Sent with the new preview's token and hash; focus back on the top bar's button.
+  await send.click();
+  await expect(dialog).toBeHidden();
+  expect(agent.writes.filter((write) => write.route === 'run').map((write) => write.body)).toEqual([{ token: 'token-2', summaryHash: 'b'.repeat(64) }]);
+  await expect(button).toBeFocused();
+  await expect(page.getByTestId('agent-run-text')).toHaveText('Agent is working on 1 note');
 });
