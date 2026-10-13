@@ -53,7 +53,7 @@ diffcity shell-init [zsh|bash|fish]                    # print the shell hook; a
 diffcity track [<dir>] [--agent]                       # register the current repo and ask the daemon to collect; --agent marks the change as "agent worked, not reviewed" and links the Claude Code session from the hook JSON on stdin
 diffcity trust [<dir>] [--list] [--remove]             # let the daemon load this repo's diffcity.config.js; --list shows trusted repos, --remove withdraws trust
 diffcity scan <dir>                                    # discover repos (folders with .git) under a folder and register them
-diffcity diff --json [--compact] [--base] [--head]     # semantic diff of the current change, for AI and other tools; --compact leaves out untouched files
+diffcity diff --json [--compact] [--spec <file>] [--with-sessions] [--base] [--head]  # semantic diff of the current change, for AI and other tools; --compact leaves out untouched files; --spec scopes the change against a spec file instead of .diffcity/spec.md; --with-sessions adds the change's Claude Code sessions (needs the daemon)
 diffcity import <findings.json|*.sarif.json> [--open]  # anchor findings to symbols and attach them to the current change; --open opens the change in the UI
 diffcity setup-claude [--repo [<dir>]] [--dry-run] [--remove]  # install the /diffcity-review command and the Stop and SessionEnd hooks for Claude Code (section 7)
 diffcity export html|puml [--out]                      # self-contained export of the current change (phase 5)
@@ -120,6 +120,7 @@ interface Report {
   steps: Step[];            // execution path
   findings: Finding[];
   checks?: RuleCheck[];     // one per configured rule (phase 4)
+  specNotice?: string;      // why a spec that was found marks nothing (5.5); absent otherwise
   summary: { files: number; byStatus: Record<Status, number>; byVerdict: Record<Verdict, number>; tier1Files: string[]; };
 }
 interface Package { id: string; path: string; tier1: boolean; files: File[]; }
@@ -214,7 +215,12 @@ Matching is a case-insensitive substring of the path relative to the repo root, 
 
 ### 5.5 Spec and "Outside the spec"
 
-If `.diffcity/spec.md` exists (or the `--spec` argument is given), touched files with no link to the symbols on paths starting from the spec get `inSpec: false`. Without a spec, `inSpec` stays `null` and the `spec` verdict is disabled. This rule ships in phase 4 with the execution path; until then `inSpec` is always `null` (ADR-010).
+If `.diffcity/spec.md` exists (or the `--spec` argument is given), touched files with no link to the symbols on paths starting from the spec get `inSpec: false`. Without a spec, `inSpec` stays `null` and the `spec` verdict is disabled (ADR-010, ADR-035).
+
+- The spec is read as data from the head tree (the working tree for a Draft), at most 256 KiB; a larger file counts as absent and the Report says so in `specNotice`. `--spec <file>` reads a file from disk instead and takes precedence.
+- Roots are the touched symbols and files the spec names. Only these tokens count, matched exactly and case-sensitively, never prose words: a backticked identifier equal to a symbol's base or qualified name, also written as a call (`cancelOrder()`, `cancelOrder(id)`); a repo-relative path of a touched file, or its basename when the basename contains a dot; the target of a Markdown link, resolved relative to the spec file; an HTTP route string (`POST /orders/:id/cancel`) equal to a route entry point's registration.
+- A touched file is in the spec (`inSpec: true`) when one of its touched symbols is a root or is connected to a root through call edges (callers and callees) among touched symbols, or when the file itself is named. The spec file is in the spec when it is touched. Every other touched file gets `inSpec: false`; untouched files keep `null`.
+- When the spec names no touched symbol or file, every file keeps `inSpec: null`, as without a spec, and `specNotice` says that the spec names no touched symbol or file. Nothing is claimed.
 
 ### 5.6 Findings import
 
