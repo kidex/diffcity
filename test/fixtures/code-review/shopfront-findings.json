@@ -1,0 +1,22 @@
+[
+  {
+    "source": "claude",
+    "file": "src/cart/discount.ts",
+    "line": 3,
+    "severity": "high",
+    "category": "correctness",
+    "title": "Any unknown code is subtracted from the total as a number",
+    "message": "applyDiscount subtracts Number(code) for every code but HALF: a code like 9999 makes the total negative.",
+    "fix": "Return the sum unchanged for an unknown code."
+  },
+  {
+    "source": "claude",
+    "file": "src/cart/total.ts",
+    "line": 4,
+    "severity": "med",
+    "category": "tests",
+    "title": "No test covers a total with a discount code",
+    "message": "total() gained a code parameter, but nothing asserts the discounted total.",
+    "fix": "Add a test for total([500, 500], 'HALF')."
+  }
+]
