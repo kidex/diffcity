@@ -76,7 +76,7 @@ export function createFilterRows(onFilters: (filters: Filters) => void): FilterR
   const ruleList = h('div', { class: 'rule-list' });
   const ruleRow = h('div', { class: 'chips rules', role: 'group', 'aria-label': 'Filter by rule', 'data-testid': 'filter-rules' }, h('span', { class: 'row-label' }, 'Rules'), ruleList);
   ruleRow.hidden = true;
-  const root = h('div', { class: 'hud-filters' }, verdictRow, typeRow, ruleRow);
+  const root = h('div', { class: 'hud-filters', 'data-testid': 'hud-filters' }, verdictRow, typeRow, ruleRow);
 
   return {
     root,

@@ -15,6 +15,7 @@ import type { FleetPort } from '../ports.js';
 import { createSelectionCard } from './card.js';
 import { createFilterRows } from './filters.js';
 import { createFleetCard } from './fleet.js';
+import { createLeftColumn } from './column.js';
 import { createLegend } from './legend.js';
 import { createTooltip } from './tooltip.js';
 import { renderProgress } from './progress.js';
@@ -72,6 +73,9 @@ export function createHud(options: HudOptions): Hud {
     options.onFilters(next);
   });
   const legend = createLegend();
+  // The title, the filters and the legend share one column (DC-139): stacked,
+  // they cannot overlap however short or narrow the city gets.
+  const column = createLeftColumn(h('div', { class: 'hud-title' }, h('h1', null, TITLE), h('p', null, SUBTITLE)), filters.root, legend.root);
   const overlay = h('div', { class: 'hud', 'data-testid': 'hud' });
   const tooltip = createTooltip(overlay);
   const selection = createSelectionCard();
@@ -114,9 +118,8 @@ export function createHud(options: HudOptions): Hud {
   let toastTimer: ReturnType<typeof setTimeout> | undefined;
 
   overlay.append(
-    h('div', { class: 'hud-head' }, h('div', { class: 'hud-title' }, h('h1', null, TITLE), h('p', null, SUBTITLE)), filters.root),
+    column.root,
     h('div', { class: 'hint', 'data-testid': 'hint' }, HINT, h('br'), h('span', { class: 'k' }, 'R'), ' reset view'),
-    legend.root,
     h('div', { class: 'hud-corner' }, selection.root, fleetCard === null ? null : fleetCard.root),
     toast,
     tooltip.root,
@@ -137,6 +140,7 @@ export function createHud(options: HudOptions): Hud {
       renderTopBar(bar, report, crumb, extras());
       filters.update(report, current, reviewReady);
       legend.update(ruleChips(report).length > 0);
+      column.fit();
     },
     cardReviewSlot: selection.reviewSlot,
     toastRoot: toast,
@@ -147,6 +151,7 @@ export function createHud(options: HudOptions): Hud {
       if (shown === null) return;
       renderTopBar(bar, shown.report, crumb, extras());
       filters.update(shown.report, shown.filters, reviewReady);
+      column.fit();
     },
     tip(data, x, y) {
       if (data === null) tooltip.hide();
@@ -166,6 +171,7 @@ export function createHud(options: HudOptions): Hud {
     dispose() {
       clearTimeout(toastTimer);
       fleetCard?.dispose();
+      column.dispose();
       bar.remove();
       overlay.remove();
     },
