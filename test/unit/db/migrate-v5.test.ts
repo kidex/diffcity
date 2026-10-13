@@ -1,10 +1,10 @@
 // Schema v5 (ADR-018 migrations, ADR-028 amendment, DC-135): a v4 database
 // with review marks migrates in place; `review_marks` is rebuilt once with its
 // rows, ids, references and index, and a "Needs rewrite" mark may have no
-// note. A newer database is refused untouched.
+// note.
 
 import { afterEach, describe, expect, it } from 'vitest';
-import { MIGRATIONS, SCHEMA_VERSION, newerVersionMessage, openDb } from '../../../src/core/db/index.js';
+import { MIGRATIONS, SCHEMA_VERSION, openDb } from '../../../src/core/db/index.js';
 import { T0, rawConnection, tempDbPath } from './db-helpers.js';
 
 const cleanups: (() => void)[] = [];
@@ -69,7 +69,6 @@ describe('schema v5', () => {
     const raw = rawConnection(path);
     raw.pragma('foreign_keys = ON');
     expect(raw.pragma('user_version', { simple: true })).toBe(SCHEMA_VERSION);
-    expect(SCHEMA_VERSION).toBe(5);
     expect(raw.prepare('SELECT id FROM review_marks ORDER BY id').all()).toEqual([{ id: 3 }, { id: 7 }, { id: 8 }, { id: 9 }]);
     expect(raw.prepare("SELECT count(*) AS n FROM sqlite_master WHERE name = 'review_marks_v5'").get()).toEqual({ n: 0 });
     const index = raw.prepare<[], { sql: string }>("SELECT sql FROM sqlite_master WHERE name = 'review_marks_change'").get();
@@ -114,18 +113,5 @@ describe('schema v5', () => {
     const before = read();
     openDb(path).close();
     expect(read()).toEqual(before);
-  });
-
-  it('db/v6-refused: user_version 6 is a clear error and the file is left as it was', () => {
-    const { path, remove } = tempDbPath();
-    cleanups.push(remove);
-    const raw = rawConnection(path);
-    raw.pragma('user_version = 6');
-    raw.close();
-    expect(() => openDb(path)).toThrow(new Error(newerVersionMessage(6)));
-    const check = rawConnection(path, { readOnly: true });
-    expect(check.pragma('user_version', { simple: true })).toBe(6);
-    expect(check.prepare("SELECT count(*) AS n FROM sqlite_master WHERE type = 'table'").get()).toEqual({ n: 0 });
-    check.close();
   });
 });

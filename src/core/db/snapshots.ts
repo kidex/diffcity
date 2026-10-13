@@ -4,7 +4,9 @@
 // row is the latest; when it is not (the change returned to an older head), only
 // its computedAt is bumped. The hash covers the Report only, so bytes can change
 // under an identical Report: the row keeps its Report but takes the new
-// fingerprints and merge-base in place (`refreshed`, ADR-028).
+// fingerprints and merge-base in place (`refreshed`, ADR-028). Every put that
+// carries a rules key stores it on the row it lands on, `unchanged` included,
+// so the collector knows which rules the latest Report reflects (ADR-030).
 
 import type { Connection } from './driver.js';
 import type { SnapshotRecord, SnapshotSummary } from '../model/types.js';
@@ -22,10 +24,15 @@ interface SnapshotRow {
   computedAt: string;
   mergeBase: string | null;
   fingerprints: string | null;
+  rulesKey: string | null;
 }
 
-/** A computed snapshot to store; `report` is the serialized Report, stored verbatim. */
-export type SnapshotInput = Omit<SnapshotRecord, 'id'>;
+/**
+ * A computed snapshot to store; `report` is the serialized Report, stored
+ * verbatim. `rulesKey` is the key of the rules it was computed under (ADR-030);
+ * absent, a new row has none and an existing row keeps its own.
+ */
+export type SnapshotInput = Omit<SnapshotRecord, 'id'> & { rulesKey?: string };
 
 /**
  * What put did: `created` a row for a new head, `replaced` the row of the same
@@ -87,6 +94,12 @@ export interface SnapshotStore {
    */
   latestKey(changeId: number): SnapshotKey | null;
   /**
+   * What the collector compares to decide whether the latest snapshot is
+   * current (ADR-030): its head, dirty flag and rules key, null on a row
+   * stored without one (before schema v6). Null while there is none. Reads no Report.
+   */
+  latestComputed(changeId: number): SnapshotComputed | null;
+  /**
    * The touched paths of the latest snapshot of every live change that has one,
    * by the change's `lastEventAt` desc; for search (ADR-017). Reads only the
    * `touched` column, never a report.
@@ -108,6 +121,12 @@ export interface SnapshotKey {
   head: string;
   computedAt: string;
   contentHash: string;
+}
+
+export interface SnapshotComputed {
+  head: string;
+  dirty: boolean;
+  rulesKey: string | null;
 }
 
 /** The touched paths of a live change's latest snapshot. */
@@ -136,25 +155,27 @@ function toRecord(row: SnapshotRow): SnapshotRecord {
 const LATEST = 'WHERE changeId = ? ORDER BY computedAt DESC, id DESC LIMIT 1';
 
 export function createSnapshotStore(db: Connection, warn: (message: string) => void = () => undefined): SnapshotStore {
-  const existingHash = db.prepare<[number, string], { id: number; contentHash: string; fingerprints: string | null; mergeBase: string | null }>(
-    'SELECT id, contentHash, fingerprints, mergeBase FROM snapshots WHERE changeId = ? AND head = ?',
-  );
+  const existingHash = db.prepare<
+    [number, string],
+    { id: number; contentHash: string; fingerprints: string | null; mergeBase: string | null; rulesKey: string | null }
+  >('SELECT id, contentHash, fingerprints, mergeBase, rulesKey FROM snapshots WHERE changeId = ? AND head = ?');
   const latestId = db.prepare<[number], { id: number }>(`SELECT id FROM snapshots ${LATEST}`);
-  const touch = db.prepare<[string, string | null, string | null, number]>(
-    'UPDATE snapshots SET computedAt = ?, mergeBase = COALESCE(?, mergeBase), fingerprints = COALESCE(?, fingerprints) WHERE id = ?',
+  const touch = db.prepare<[string, string | null, string | null, string | null, number]>(
+    `UPDATE snapshots SET computedAt = ?, mergeBase = COALESCE(?, mergeBase), fingerprints = COALESCE(?, fingerprints),
+       rulesKey = COALESCE(?, rulesKey) WHERE id = ?`,
   );
-  const refresh = db.prepare<[string | null, string | null, number]>(
-    'UPDATE snapshots SET mergeBase = COALESCE(?, mergeBase), fingerprints = COALESCE(?, fingerprints) WHERE id = ?',
+  const refresh = db.prepare<[string | null, string | null, string | null, number]>(
+    'UPDATE snapshots SET mergeBase = COALESCE(?, mergeBase), fingerprints = COALESCE(?, fingerprints), rulesKey = COALESCE(?, rulesKey) WHERE id = ?',
   );
   // json_valid runs in SQLite, so a report of several MB is checked without a JS parse.
   const isJson = db.prepare<[string], { valid: number }>('SELECT json_valid(?) AS valid');
-  const insert = db.prepare<[number, string, number, string, string, string, string, string, string | null, string | null]>(
-    `INSERT INTO snapshots (changeId, head, dirty, report, summary, touched, contentHash, computedAt, mergeBase, fingerprints)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  const insert = db.prepare<[number, string, number, string, string, string, string, string, string | null, string | null, string | null]>(
+    `INSERT INTO snapshots (changeId, head, dirty, report, summary, touched, contentHash, computedAt, mergeBase, fingerprints, rulesKey)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   );
-  const replace = db.prepare<[number, string, string, string, string, string, string | null, string | null, number, string]>(
+  const replace = db.prepare<[number, string, string, string, string, string, string | null, string | null, string | null, number, string]>(
     `UPDATE snapshots SET dirty = ?, report = ?, summary = ?, touched = ?, contentHash = ?, computedAt = ?,
-       mergeBase = ?, fingerprints = ?
+       mergeBase = ?, fingerprints = ?, rulesKey = COALESCE(?, rulesKey)
      WHERE changeId = ? AND head = ?`,
   );
   const latestFingerprints = db.prepare<[number], { fingerprints: string | null }>(
@@ -167,6 +188,9 @@ export function createSnapshotStore(db: Connection, warn: (message: string) => v
     `SELECT id, head, dirty, mergeBase, fingerprints FROM snapshots ${LATEST}`,
   );
   const latestKey = db.prepare<[number], SnapshotKey>(`SELECT id, head, computedAt, contentHash FROM snapshots ${LATEST}`);
+  const latestComputed = db.prepare<[number], { head: string; dirty: number; rulesKey: string | null }>(
+    `SELECT head, dirty, rulesKey FROM snapshots ${LATEST}`,
+  );
   const latest = db.prepare<[number], SnapshotRow>(`SELECT * FROM snapshots ${LATEST}`);
   const latestReport = db.prepare<[number], { report: string }>(`SELECT report FROM snapshots ${LATEST}`);
   const liveTouched = db.prepare<[], { repoId: number; changeId: number; touched: string | null }>(
@@ -179,19 +203,23 @@ export function createSnapshotStore(db: Connection, warn: (message: string) => v
 
   const put = (snapshot: SnapshotInput): SnapshotPutResult => {
     const existing = existingHash.get(snapshot.changeId, snapshot.head);
+    const rulesKey = snapshot.rulesKey ?? null;
     if (existing?.contentHash === snapshot.contentHash) {
       if (latestId.get(snapshot.changeId)?.id === existing.id) {
         if (sameFingerprints(existing.fingerprints, snapshot.fingerprints, warn)) {
-          if (snapshot.mergeBase !== null && existing.mergeBase !== snapshot.mergeBase) refresh.run(snapshot.mergeBase, null, existing.id);
+          // Nothing the reader sees moved; only what the row records about its computation may have.
+          const mergeBase = snapshot.mergeBase !== null && existing.mergeBase !== snapshot.mergeBase ? snapshot.mergeBase : null;
+          const key = rulesKey !== null && existing.rulesKey !== rulesKey ? rulesKey : null;
+          if (mergeBase !== null || key !== null) refresh.run(mergeBase, null, key, existing.id);
           return 'unchanged';
         }
-        refresh.run(snapshot.mergeBase, snapshot.fingerprints, existing.id);
+        refresh.run(snapshot.mergeBase, snapshot.fingerprints, rulesKey, existing.id);
         return 'refreshed';
       }
       // The change came back to an older head with identical content (A -> B -> A):
       // computedAt moves, so that row becomes the latest again, and it takes the
       // fingerprints just computed (the bytes may differ under the same Report).
-      touch.run(isoTime(snapshot.computedAt, 'computedAt'), snapshot.mergeBase, snapshot.fingerprints, existing.id);
+      touch.run(isoTime(snapshot.computedAt, 'computedAt'), snapshot.mergeBase, snapshot.fingerprints, rulesKey, existing.id);
       return 'replaced';
     }
     if (isJson.get(snapshot.report)?.valid !== 1) {
@@ -202,10 +230,10 @@ export function createSnapshotStore(db: Connection, warn: (message: string) => v
     const summary = JSON.stringify(snapshot.summary);
     const touched = JSON.stringify(snapshot.touched);
     if (existing === undefined) {
-      insert.run(snapshot.changeId, snapshot.head, dirty, snapshot.report, summary, touched, snapshot.contentHash, computedAt, snapshot.mergeBase, snapshot.fingerprints);
+      insert.run(snapshot.changeId, snapshot.head, dirty, snapshot.report, summary, touched, snapshot.contentHash, computedAt, snapshot.mergeBase, snapshot.fingerprints, rulesKey);
       return 'created';
     }
-    replace.run(dirty, snapshot.report, summary, touched, snapshot.contentHash, computedAt, snapshot.mergeBase, snapshot.fingerprints, snapshot.changeId, snapshot.head);
+    replace.run(dirty, snapshot.report, summary, touched, snapshot.contentHash, computedAt, snapshot.mergeBase, snapshot.fingerprints, rulesKey, snapshot.changeId, snapshot.head);
     return 'replaced';
   };
 
@@ -223,6 +251,10 @@ export function createSnapshotStore(db: Connection, warn: (message: string) => v
     latestKey: (changeId) => {
       const row = latestKey.get(changeId);
       return row === undefined ? null : { id: row.id, head: row.head, computedAt: row.computedAt, contentHash: row.contentHash };
+    },
+    latestComputed: (changeId) => {
+      const row = latestComputed.get(changeId);
+      return row === undefined ? null : { head: row.head, dirty: row.dirty === 1, rulesKey: row.rulesKey };
     },
     fingerprintsOf: (changeId, id) => fingerprintsOf.get(changeId, id)?.fingerprints ?? null,
     latestReport: (changeId) => latestReport.get(changeId)?.report ?? null,

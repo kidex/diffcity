@@ -59,8 +59,8 @@ describe('migrations', () => {
     db.close();
     const schema = readSchema(path);
 
-    expect(SCHEMA_VERSION).toBe(5);
-    expect(schema.version).toBe(5);
+    expect(SCHEMA_VERSION).toBe(6);
+    expect(schema.version).toBe(6);
     expect(schema.master.filter((row) => row.type === 'table').map((row) => row.name)).toEqual([
       'change_sessions',
       'changes',
@@ -121,6 +121,7 @@ describe('migrations', () => {
         'computedAt TEXT NOT NULL',
         'mergeBase TEXT',
         'fingerprints TEXT',
+        'rulesKey TEXT',
       ],
       review_marks: [
         'id INTEGER PK',

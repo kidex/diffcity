@@ -1,6 +1,6 @@
 // Schema v3 (ADR-018 migrations, ADR-036): a v2 database migrates in place,
 // keeps its rows, gains the findings and approval columns. The newer-version
-// refusal is in migrate-v5.test.ts (db/v6-refused).
+// refusal is in migrate-v6.test.ts (db/v7-refused).
 
 import { afterEach, describe, expect, it } from 'vitest';
 import { MIGRATIONS, SCHEMA_VERSION, openDb } from '../../../src/core/db/index.js';
