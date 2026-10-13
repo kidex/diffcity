@@ -113,6 +113,8 @@ button.group-head:hover { background: color-mix(in srgb, var(--panel-2) 70%, tra
 .read .sess-title { margin: 0; font-size: 13.5px; font-weight: 600; color: var(--ink); overflow-wrap: anywhere; min-width: 0; }
 .read .sess-title.untitled { color: var(--ink-2); font-weight: 500; }
 .read .sess-tags { margin-left: auto; display: inline-flex; gap: 6px; align-items: baseline; }
+.read .sess-active { display: inline-flex; align-items: center; gap: 5px; }
+.read .sess-active i { width: 6px; height: 6px; border-radius: 50%; background: var(--add); }
 .read .sess-range { flex: 1 0 100%; margin: 0; color: var(--muted); font-size: 12px; font-family: var(--mono); }
 .read .sess-note { margin: 8px 22px 0; padding: 6px 10px; border-radius: 7px; font-size: 12px; color: var(--mod-text); background: color-mix(in srgb, var(--mod) 12%, transparent); border: 1px solid color-mix(in srgb, var(--mod) 35%, transparent); }
 .read .sess-empty { padding: 10px 22px 0; }
