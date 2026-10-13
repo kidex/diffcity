@@ -15,7 +15,8 @@ export { isRuleTarget, measureNeeds, ruleFindingId, rulesNeedImports, rulesNeedT
 export type { RuleContext, RuleFile, RuleRun, RuleViolation } from './engine.js';
 export { LAYERS_DEFAULT_SEVERITY, beforeFilesOf, checkLayers, layersReason } from './layers.js';
 export type { LayersContext, LayersResult, ListedChange, TsconfigProblem } from './layers.js';
-export { layerModules, moduleOf, wildcardMatch } from './modules.js';
+export { GLOB_MAX_LENGTH, globMatch, globMatcher, wildcardMatch } from './glob.js';
+export { layerModules, moduleOf } from './modules.js';
 export type { LayerModule, LayerModules, ModuleOf } from './modules.js';
 export { EXTENSIONS, createResolver } from './resolve.js';
 export type { Resolution, ResolverOptions, TsconfigPaths } from './resolve.js';

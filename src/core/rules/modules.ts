@@ -4,6 +4,8 @@
 // own module. A file belongs to the module with the longest matching prefix.
 // Pure: no I/O.
 
+import { GLOB_MAX_LENGTH, segmentMatcher } from './glob.js';
+
 /** One entry of `layers`, ready to match. */
 export interface LayerModule {
   /** The entry, normalized: no leading `./`, no trailing `/`. */
@@ -21,35 +23,6 @@ export interface ModuleOf {
 }
 
 export type LayerModules = { ok: true; modules: LayerModule[] } | { ok: false; message: string };
-
-/**
- * Whether one path segment matches a segment pattern where `*` stands for any
- * run of characters other than `/`. Linear, no RegExp: the head and tail
- * literals are checked in place, then each middle literal is found left to
- * right with indexOf; taking the leftmost match is always right when `*` is
- * the only wildcard.
- */
-export function wildcardMatch(pattern: string, value: string): boolean {
-  if (value.includes('/')) return false;
-  const parts = pattern.split('*');
-  if (parts.length === 1) return value === pattern;
-  const head = parts[0] ?? '';
-  const tail = parts[parts.length - 1] ?? '';
-  if (value.length < head.length + tail.length || !value.startsWith(head) || !value.endsWith(tail)) return false;
-  const end = value.length - tail.length;
-  let at = head.length;
-  for (const middle of parts.slice(1, -1)) {
-    if (middle === '') continue;
-    const found = value.indexOf(middle, at);
-    if (found === -1 || found + middle.length > end) return false;
-    at = found + middle.length;
-  }
-  return true;
-}
-
-function segmentMatcher(segment: string): (value: string) => boolean {
-  return (value) => wildcardMatch(segment, value);
-}
 
 /** `entry` without a leading `./` and trailing `/`, or null when it is not a plain repo-relative path. */
 function normalizeEntry(entry: string): string | null {
@@ -93,13 +66,17 @@ function overlap(a: string, b: string): boolean {
 /**
  * The modules of a `layers` value (already checked to be a non-empty array of
  * non-empty arrays of non-empty strings), or the first config error: an entry
- * that is not a repo-relative directory or simple glob, an entry listed twice,
+ * longer than GLOB_MAX_LENGTH, one that is not a repo-relative directory or
+ * simple glob, an entry listed twice,
  * or two entries that overlap without being nested.
  */
 export function layerModules(layers: readonly (readonly string[])[]): LayerModules {
   const modules: LayerModule[] = [];
   for (const [layer, entries] of layers.entries()) {
     for (const entry of entries) {
+      if (entry.length > GLOB_MAX_LENGTH) {
+        return { ok: false, message: `module "${entry.slice(0, 40)}…" must be at most ${String(GLOB_MAX_LENGTH)} characters` };
+      }
       const pattern = normalizeEntry(entry);
       if (pattern === null) {
         return { ok: false, message: `module "${entry}" must be a repo-relative directory, or a glob with "*" inside path segments` };

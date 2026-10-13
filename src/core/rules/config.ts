@@ -4,6 +4,7 @@
 // the engine turns into a RuleCheck with state `error`.
 
 import type { RuleCheck } from '../report/types.js';
+import { GLOB_MAX_LENGTH, globMatcher } from './glob.js';
 import { layerModules } from './modules.js';
 
 export type Severity = 'high' | 'med' | 'low';
@@ -117,6 +118,9 @@ function fieldProblem(kind: RuleKind, entry: Record<string, unknown>): string | 
       if (limits.every((limit) => entry[limit] === undefined)) return 'needs at least one of maxLines, maxBytes, maxSymbolLines';
       for (const list of ['include', 'exclude'] as const) {
         if (entry[list] !== undefined && !isStringArray(entry[list], true)) return `field "${list}" must be an array of non-empty strings`;
+        if (entry[list]?.some((pattern) => pattern.length > GLOB_MAX_LENGTH)) {
+          return `field "${list}" entries must be at most ${String(GLOB_MAX_LENGTH)} characters`;
+        }
       }
       return null;
     }
@@ -179,24 +183,6 @@ export function validateRules(value: unknown): ValidatedEntry[] {
 
 // ---------- include / exclude ----------
 
-function globToRegExp(glob: string): RegExp {
-  let source = '';
-  for (let i = 0; i < glob.length; i++) {
-    const char = glob[i] ?? '';
-    if (char === '*') {
-      if (glob[i + 1] === '*') {
-        i += 1;
-        // `**/` also matches no directory at all.
-        if (glob[i + 1] === '/') {
-          i += 1;
-          source += '(?:.*/)?';
-        } else source += '.*';
-      } else source += '[^/]*';
-    } else source += char.replace(/[.+?^${}()|[\]\\]/g, '\\$&');
-  }
-  return new RegExp(`^${source}$`);
-}
-
 /**
  * Whether a repo-relative path matches one include/exclude entry (ADR-030): a
  * pattern with `*` is a glob over the whole path (`*` within a segment, `**`
@@ -204,8 +190,7 @@ function globToRegExp(glob: string): RegExp {
  */
 export function pathMatcher(pattern: string): (path: string) => boolean {
   if (!pattern.includes('*')) return (path) => path.startsWith(pattern);
-  const regexp = globToRegExp(pattern);
-  return (path) => regexp.test(path);
+  return globMatcher(pattern);
 }
 
 /** A file's scope test from `include` (all files when absent) and `exclude`. */
