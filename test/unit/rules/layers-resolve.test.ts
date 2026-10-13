@@ -99,7 +99,8 @@ describe('wildcardMatch', () => {
     const started = performance.now();
     expect(wildcardMatch(pattern, name)).toBe(false);
     expect(moduleOf(modules([[`pkgs/${pattern}`]]), `pkgs/${name}/x.ts`)).toBeNull();
-    expect(layerModules([[`pkgs/${pattern}`], [`pkgs/${name}`]]).ok).toBe(true);
+    // An entry at the 1,024-character cap (ADR-030), the longest overlap check validation can ask for.
+    expect(layerModules([[`pkgs/${pattern}`], [`pkgs/${name.slice(0, 1019)}`]]).ok).toBe(true);
     expect(performance.now() - started).toBeLessThan(50);
   });
 });

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { globMatch, pathMatcher, scopeOf } from '../../../src/core/rules/index.js';
+import { GLOB_MAX_LENGTH, globMatch, layerModules, moduleOf, pathMatcher, scopeOf, validateRule } from '../../../src/core/rules/index.js';
 
 /**
  * The RegExp the include/exclude globs were built into before DC-126. Kept in
@@ -75,6 +75,54 @@ describe('globMatch', () => {
         if (globMatch(pattern, path) !== regexp.test(path)) expect.fail(`${JSON.stringify(pattern)} against ${JSON.stringify(path)}`);
       }
     }
+  });
+
+  it('agrees with the former RegExp on long patterns that span several 32-bit words', () => {
+    let seed = 7;
+    const next = (bound: number): number => {
+      seed = (seed * 1_103_515_245 + 12_345) % 2_147_483_648;
+      return seed % bound;
+    };
+    const pick = (alphabet: string, length: number): string => Array.from({ length }, () => alphabet[next(alphabet.length)]).join('');
+    for (let round = 0; round < 400; round++) {
+      const pattern = pick('aab/**', 30 + next(80));
+      const regexp = referenceGlob(pattern);
+      for (let sample = 0; sample < 20; sample++) {
+        const path = sample % 2 === 0 ? pick('ab/', next(120)) : pattern.replace(/\*+/g, () => pick('ab/', next(4)));
+        if (globMatch(pattern, path) !== regexp.test(path)) expect.fail(`${JSON.stringify(pattern)} against ${JSON.stringify(path)}`);
+      }
+    }
+  });
+
+  it('lets `**` cross a newline in a path, which the former `.*` did not', () => {
+    expect(globMatch('src/**.ts', 'src/a\nb.ts')).toBe(true);
+    expect(referenceGlob('src/**.ts').test('src/a\nb.ts')).toBe(false);
+    expect(globMatch('src/*.ts', 'src/a\nb.ts')).toBe(true);
+  });
+
+  it('reads a character outside the BMP as two units, like the former RegExp', () => {
+    expect(globMatch('src/\u{1F600}*.ts', 'src/\u{1F600}x.ts')).toBe(true);
+    expect(globMatch('src/?*.ts', 'src/\u{1F600}.ts')).toBe(false);
+    expect(globMatch('src/*\u{1F600}', 'src/a\u{1F600}')).toBe(true);
+  });
+
+  it('stays fast at the 1,024-character cap: many-star patterns against a 10 KB path', () => {
+    const fill = (unit: string, prefix: string): string => prefix + unit.repeat(Math.floor((GLOB_MAX_LENGTH - prefix.length - 1) / unit.length)) + 'b';
+    const segmentStars = fill('*a', 'src/');
+    const crossingStars = fill('**a', '');
+    const segment = fill('*a', '');
+    expect(GLOB_MAX_LENGTH).toBe(1024);
+    for (const pattern of [segmentStars, crossingStars, segment]) expect(pattern.length).toBeLessThanOrEqual(GLOB_MAX_LENGTH);
+    expect(validateRule({ id: 'size', kind: 'file-size', maxLines: 1, include: [segmentStars], exclude: [crossingStars] }, 0).ok).toBe(true);
+    const layers = layerModules([[`pkgs/${segment.slice(5)}`], ['src']]);
+    if (!layers.ok) throw new Error(layers.message);
+    const path = `src/${'a'.repeat(10_240)}`;
+    const name = 'a'.repeat(10_240);
+    const started = performance.now();
+    expect(pathMatcher(segmentStars)(path)).toBe(false);
+    expect(pathMatcher(crossingStars)(path)).toBe(false);
+    expect(moduleOf(layers.modules, `pkgs/${name}/x.ts`)).toBeNull();
+    expect(performance.now() - started).toBeLessThan(50);
   });
 
   it('stays linear: a many-star pattern against a 10 KB path', () => {
