@@ -4,9 +4,10 @@
 // row is the latest; when it is not (the change returned to an older head), only
 // its computedAt is bumped. The hash covers the Report only, so bytes can change
 // under an identical Report: the row keeps its Report but takes the new
-// fingerprints and merge-base in place (`refreshed`, ADR-028). Every put that
-// carries a rules key stores it on the row it lands on, `unchanged` included,
-// so the collector knows which rules the latest Report reflects (ADR-030).
+// fingerprints and merge-base in place (`refreshed`, ADR-028). Every put stores
+// its rules key on the row it lands on, `unchanged` included, so the collector
+// knows which rules the latest Report reflects (ADR-030); a put without one
+// stores none, which the collector reads as "compute again".
 
 import type { Connection } from './driver.js';
 import type { SnapshotRecord, SnapshotSummary } from '../model/types.js';
@@ -30,7 +31,7 @@ interface SnapshotRow {
 /**
  * A computed snapshot to store; `report` is the serialized Report, stored
  * verbatim. `rulesKey` is the key of the rules it was computed under (ADR-030);
- * absent, a new row has none and an existing row keeps its own.
+ * absent, the row it lands on has none, whatever it had before.
  */
 export type SnapshotInput = Omit<SnapshotRecord, 'id'> & { rulesKey?: string };
 
@@ -162,10 +163,10 @@ export function createSnapshotStore(db: Connection, warn: (message: string) => v
   const latestId = db.prepare<[number], { id: number }>(`SELECT id FROM snapshots ${LATEST}`);
   const touch = db.prepare<[string, string | null, string | null, string | null, number]>(
     `UPDATE snapshots SET computedAt = ?, mergeBase = COALESCE(?, mergeBase), fingerprints = COALESCE(?, fingerprints),
-       rulesKey = COALESCE(?, rulesKey) WHERE id = ?`,
+       rulesKey = ? WHERE id = ?`,
   );
   const refresh = db.prepare<[string | null, string | null, string | null, number]>(
-    'UPDATE snapshots SET mergeBase = COALESCE(?, mergeBase), fingerprints = COALESCE(?, fingerprints), rulesKey = COALESCE(?, rulesKey) WHERE id = ?',
+    'UPDATE snapshots SET mergeBase = COALESCE(?, mergeBase), fingerprints = COALESCE(?, fingerprints), rulesKey = ? WHERE id = ?',
   );
   // json_valid runs in SQLite, so a report of several MB is checked without a JS parse.
   const isJson = db.prepare<[string], { valid: number }>('SELECT json_valid(?) AS valid');
@@ -175,7 +176,7 @@ export function createSnapshotStore(db: Connection, warn: (message: string) => v
   );
   const replace = db.prepare<[number, string, string, string, string, string, string | null, string | null, string | null, number, string]>(
     `UPDATE snapshots SET dirty = ?, report = ?, summary = ?, touched = ?, contentHash = ?, computedAt = ?,
-       mergeBase = ?, fingerprints = ?, rulesKey = COALESCE(?, rulesKey)
+       mergeBase = ?, fingerprints = ?, rulesKey = ?
      WHERE changeId = ? AND head = ?`,
   );
   const latestFingerprints = db.prepare<[number], { fingerprints: string | null }>(
@@ -209,8 +210,7 @@ export function createSnapshotStore(db: Connection, warn: (message: string) => v
         if (sameFingerprints(existing.fingerprints, snapshot.fingerprints, warn)) {
           // Nothing the reader sees moved; only what the row records about its computation may have.
           const mergeBase = snapshot.mergeBase !== null && existing.mergeBase !== snapshot.mergeBase ? snapshot.mergeBase : null;
-          const key = rulesKey !== null && existing.rulesKey !== rulesKey ? rulesKey : null;
-          if (mergeBase !== null || key !== null) refresh.run(mergeBase, null, key, existing.id);
+          if (mergeBase !== null || existing.rulesKey !== rulesKey) refresh.run(mergeBase, null, rulesKey, existing.id);
           return 'unchanged';
         }
         refresh.run(snapshot.mergeBase, snapshot.fingerprints, rulesKey, existing.id);

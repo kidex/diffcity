@@ -264,12 +264,27 @@ describe('snapshots: the rules key (ADR-030, DC-121)', () => {
     expect(db.snapshots.latestComputed(change.id)).toEqual({ head: change.head, dirty: false, rulesKey: 'key-4' });
   });
 
-  it('db/snapshot-rules-key-optional: a put without a key stores none on a new row and keeps the stored one otherwise', () => {
-    const input = snapshotInput(change.id, change.head);
-    db.snapshots.put(input);
+  it('db/snapshot-rules-key-absent: a put without a key stores none on every path, so the collector computes it again', () => {
+    const keyless = snapshotInput(change.id, change.head);
+    const input = { ...keyless, rulesKey: 'key-1' };
+    db.snapshots.put(keyless);
     expect(db.snapshots.latestComputed(change.id)?.rulesKey).toBeNull();
-    db.snapshots.put({ ...input, rulesKey: 'key-1' });
+    // unchanged
+    db.snapshots.put(input);
+    expect(db.snapshots.put(keyless)).toBe('unchanged');
+    expect(db.snapshots.latestComputed(change.id)?.rulesKey).toBeNull();
+    // refreshed
+    db.snapshots.put(input);
+    expect(db.snapshots.put({ ...keyless, fingerprints: '{"files":{"a":"x"},"symbols":{}}' })).toBe('refreshed');
+    expect(db.snapshots.latestComputed(change.id)?.rulesKey).toBeNull();
+    // replaced
     db.snapshots.put({ ...input, contentHash: 'hash-2' });
-    expect(db.snapshots.latestComputed(change.id)?.rulesKey).toBe('key-1');
+    expect(db.snapshots.put({ ...keyless, contentHash: 'hash-3' })).toBe('replaced');
+    expect(db.snapshots.latestComputed(change.id)?.rulesKey).toBeNull();
+    // an older head made latest again
+    db.snapshots.put({ ...input, contentHash: 'hash-3' });
+    db.snapshots.put(snapshotInput(change.id, sha(), { rulesKey: 'key-1', computedAt: daysAfter(T0, 1) }));
+    expect(db.snapshots.put({ ...keyless, contentHash: 'hash-3', computedAt: daysAfter(T0, 2) })).toBe('replaced');
+    expect(db.snapshots.latestComputed(change.id)).toEqual({ head: change.head, dirty: false, rulesKey: null });
   });
 });
