@@ -114,9 +114,15 @@ export function createHud(options: HudOptions): Hud {
   let toastTimer: ReturnType<typeof setTimeout> | undefined;
 
   overlay.append(
-    h('div', { class: 'hud-head' }, h('div', { class: 'hud-title' }, h('h1', null, TITLE), h('p', null, SUBTITLE)), filters.root),
+    // The title, the filters and the legend share one column (DC-139): stacked,
+    // they cannot overlap however short or narrow the city gets.
+    h(
+      'div',
+      { class: 'hud-left', 'data-testid': 'hud-left' },
+      h('div', { class: 'hud-head' }, h('div', { class: 'hud-title' }, h('h1', null, TITLE), h('p', null, SUBTITLE)), filters.root),
+      legend.root,
+    ),
     h('div', { class: 'hint', 'data-testid': 'hint' }, HINT, h('br'), h('span', { class: 'k' }, 'R'), ' reset view'),
-    legend.root,
     h('div', { class: 'hud-corner' }, selection.root, fleetCard === null ? null : fleetCard.root),
     toast,
     tooltip.root,
