@@ -12,6 +12,7 @@ import type { RepoSummary } from '../../../src/core/model/types.js';
 import { spawnDaemon } from '../../../src/daemon/client.js';
 import { isProcessAlive, readDaemonInfo } from '../../../src/daemon/files.js';
 import { tempHome, type TempHome } from '../../helpers/config.js';
+import { listenOn } from '../../helpers/port.js';
 import { DAEMON_MAIN_DIST, DaemonTracker } from '../../helpers/daemon.js';
 import { createRepo, type TempRepo } from '../../helpers/repo.js';
 
@@ -146,6 +147,17 @@ describe('diffcity start', () => {
     expect(code).toBe(0);
     parseRepoUrl(stdout);
     expect(opened).toEqual([stdout.trimEnd()]);
+  });
+
+  it('cli/start-port-wildcard: a port held on 0.0.0.0 exits 1 with the port message, as on 127.0.0.1 (DC-117)', async () => {
+    const blocker = await listenOn('0.0.0.0');
+    try {
+      const run = await cli(['start', '--port', String(blocker.port), '--no-open'], shop.dir);
+      expect(run).toEqual({ code: 1, stdout: '', stderr: `port ${String(blocker.port)} is in use; pass --port\n` });
+      expect(await missing(paths.lock)).toBe(true);
+    } finally {
+      await blocker.close();
+    }
   });
 
   it('cli/start-bad-port: an invalid --port exits 1 before anything starts', async () => {

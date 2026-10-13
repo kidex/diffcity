@@ -14,6 +14,7 @@ import { buildHttpServer, HTTP_HOST } from './http/server.js';
 import { createFileLogger, errorMessage, type Logger } from './log.js';
 import type { DaemonContext, DaemonPlugin } from './plugin.js';
 import { daemonPlugins } from './plugins.js';
+import { isPortFree } from './port.js';
 import { createSocketServer } from './socket/server.js';
 import { createSseHub } from './sse.js';
 
@@ -254,10 +255,18 @@ export async function startDaemon(options: StartDaemonOptions = {}): Promise<Sta
     }
     if (await reached('plugins-set-up')) return await abortStart();
     const wanted = await resolvePort(paths, options.port);
-    try {
-      await http.listen({ host: HTTP_HOST, port: wanted });
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== 'EADDRINUSE') throw error;
+    // The CLI's check before the start, again (DC-117): a port taken on a
+    // wildcard after that check does not stop the 127.0.0.1 bind on macOS.
+    let inUse = wanted !== 0 && !(await isPortFree(wanted));
+    if (!inUse) {
+      try {
+        await http.listen({ host: HTTP_HOST, port: wanted });
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'EADDRINUSE') throw error;
+        inUse = true;
+      }
+    }
+    if (inUse) {
       log.error(`port ${String(wanted)} is in use`);
       await http.close();
       await stopPlugins(setUp);

@@ -2,7 +2,6 @@
 // `diffcity up` (SPEC.md section 3, ADR-015). Shared by `up` and `start`.
 // The module stays light: no Fastify, no parser.
 
-import { createServer } from 'node:net';
 import type { HomePaths } from '../core/home.js';
 import type { DaemonInfo } from '../core/model/types.js';
 import { readVersion } from '../core/version.js';
@@ -14,6 +13,9 @@ import {
   startDaemon,
 } from '../daemon/client.js';
 import { isPort, resolvePort, writeState } from '../daemon/files.js';
+import { isPortFree } from '../daemon/port.js';
+
+export { isPortFree } from '../daemon/port.js';
 
 export interface CliStreams {
   stdout: (text: string) => void;
@@ -24,7 +26,7 @@ export interface EnsureDaemonDeps {
   io: CliStreams;
   env: NodeJS.ProcessEnv;
   spawnDaemon?: typeof defaultSpawnDaemon;
-  /** Whether 127.0.0.1:<port> can be bound right now. */
+  /** Whether nothing accepts a connection on <port> at 127.0.0.1 or ::1 (src/daemon/port.ts). */
   isPortFree?: (port: number) => Promise<boolean>;
   /** Defaults to DAEMON_START_TIMEOUT_MS. */
   startTimeoutMs?: number;
@@ -56,21 +58,6 @@ export function parsePort(value: string | undefined): number | undefined | null 
   if (value === undefined) return undefined;
   const port = /^\d+$/.test(value) ? Number(value) : Number.NaN;
   return isPort(port) ? port : null;
-}
-
-/** True unless something already listens on 127.0.0.1:<port>. Other bind errors are left to the daemon. */
-export function isPortFree(port: number): Promise<boolean> {
-  return new Promise((resolve) => {
-    const probe = createServer();
-    probe.once('error', (error: NodeJS.ErrnoException) => {
-      resolve(error.code !== 'EADDRINUSE');
-    });
-    probe.listen(port, '127.0.0.1', () => {
-      probe.close(() => {
-        resolve(true);
-      });
-    });
-  });
 }
 
 /**
