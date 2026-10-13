@@ -1,7 +1,7 @@
 // How Claude Code calls the CLI (ADR-037): `diffcity` when the `diffcity` on
 // the PATH is this very CLI from a global install, otherwise the absolute node
-// binary and the absolute CLI entry, each in double quotes. The Stop hook
-// command and the slash command's allow-list use the same invocation, so the
+// binary and the absolute CLI entry, each in double quotes. The Stop and
+// SessionEnd hook command and the slash command's allow-list use the same invocation, so the
 // allow-list matches the commands the slash command runs.
 //
 // A `node_modules/.bin` copy is not a global install: `npx` and `npm exec`
@@ -101,7 +101,7 @@ export async function chooseCliInvocation(options: ChooseCliOptions): Promise<Cl
   return { ok: true, invocation: { kind: 'absolute', cli: `"${options.nodePath}" "${options.cliEntry}"` } };
 }
 
-/** The Stop hook command for an invocation. */
+/** The Stop and SessionEnd hook command for an invocation; the same for both events. */
 export function hookCommand(cli: string): string {
   return `${cli} track --agent`;
 }

@@ -26,6 +26,29 @@ describe('parseAgentHookInput', () => {
     });
   });
 
+  it('cli/session-end-input: the SessionEnd input (the Stop fields, hook_event_name and reason, as Claude Code 2.1.296 sends it) reads as SessionEnd', () => {
+    const base = { session_id: valid.session_id, transcript_path: valid.transcript_path, cwd: valid.cwd };
+    for (const reason of ['clear', 'resume', 'logout', 'prompt_input_exit', 'other']) {
+      expect(parseAgentHookInput(JSON.stringify({ ...base, hook_event_name: 'SessionEnd', reason, permission_mode: 'default' }))).toEqual({
+        ok: true,
+        input: { sessionId: 'session-0001', transcriptPath: '/work/sample-shop/.transcripts/session-0001.jsonl', cwd: '/work/sample-shop/src', event: 'SessionEnd' },
+      });
+    }
+  });
+
+  it('cli/session-end-unusable-keeps-event: a failure keeps the event it named, and only a plain name', () => {
+    expect(parseAgentHookInput(JSON.stringify({ hook_event_name: 'SessionEnd', cwd: '/work/sample-shop' }))).toEqual({
+      ok: false,
+      error: 'hook input: session_id must be a non-empty string',
+      event: 'SessionEnd',
+    });
+    expect(parseAgentHookInput(JSON.stringify({ ...valid, hook_event_name: 'SessionEnd', transcript_path: 'relative.jsonl' }))).toMatchObject({ ok: false, event: 'SessionEnd' });
+    expect(parseAgentHookInput(JSON.stringify({ ...valid, hook_event_name: 'SessionEnd', cwd: 'relative' }))).toMatchObject({ ok: false, event: 'SessionEnd' });
+    // No event, or one that is not a plain name, gives none.
+    expect(parseAgentHookInput(JSON.stringify({ cwd: '/work/sample-shop' }))).toEqual({ ok: false, error: 'hook input: session_id must be a non-empty string' });
+    expect(parseAgentHookInput(JSON.stringify({ hook_event_name: 'Session End' }))).toEqual({ ok: false, error: 'hook input: session_id must be a non-empty string' });
+  });
+
   it('the event defaults to Stop when hook_event_name is absent or not a plain name', () => {
     expect(DEFAULT_HOOK_EVENT).toBe('Stop');
     const eventOf = (value: unknown): string | undefined => {
@@ -67,6 +90,8 @@ describe('parseAgentHookInput', () => {
     [JSON.stringify({ ...valid, cwd: undefined }), 'hook input: cwd must be an absolute path'],
     [JSON.stringify({ ...valid, cwd: 'src' }), 'hook input: cwd must be an absolute path'],
   ])('rejects %s', (text, error) => {
-    expect(parseAgentHookInput(text)).toEqual({ ok: false, error });
+    // An object that named its event keeps it (here Stop); one that could not be read has none.
+    const named = text.includes('"hook_event_name":"Stop"');
+    expect(parseAgentHookInput(text)).toEqual(named ? { ok: false, error, event: 'Stop' } : { ok: false, error });
   });
 });

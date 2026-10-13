@@ -17,9 +17,12 @@
 // (src/core/session/validate.ts) before anything is read; a refusal is logged
 // with a code and the track goes on without it. A valid session is stored in
 // the repo its cwd is in (the track's repo when its cwd is in none), linked,
-// and read in the session pool (src/daemon/session/tracker.ts). The `sessions`
-// request answers `diff --with-sessions` for the change checked out in a
-// directory.
+// and read in the session pool (src/daemon/session/tracker.ts). A `track
+// --agent` whose session event is SessionEnd (DC-128) only ends that session:
+// the repo must be registered already and is not seen, nothing is collected,
+// the change gets no agent mark, and a session cwd in an unregistered repo is
+// stored in the track's repo. The `sessions` request answers
+// `diff --with-sessions` for the change checked out in a directory.
 //
 // On start, every active repo gets one low-priority collection (ADR-020).
 //
@@ -35,6 +38,7 @@
 import { realpath } from 'node:fs/promises';
 import { availableParallelism } from 'node:os';
 import { changeOfWorktree, identifyRepo, type RepoIdentity, type WorktreeInfo } from '../../core/changes/index.js';
+import { endsSession } from '../../core/changes/hook-input.js';
 import { claudeConfigDir } from '../../core/claude/config-dir.js';
 import { createGhRunner } from '../../core/exec/index.js';
 import { findRepoRoot } from '../../core/git/change.js';
@@ -261,7 +265,29 @@ export function createCollection(options: CollectionPluginOptions = {}): Collect
     await tracker.hook(repoId, session, at);
   }
 
+  /**
+   * A SessionEnd (DC-128): the session of a registered repo is stored or
+   * updated as ended, and nothing else changes. Its cwd's repo is used only
+   * when it is registered, so a session end never registers or collects one.
+   */
+  async function endSession(context: DaemonContext, request: SocketRequestOf<'track'>, session: TrackSession): Promise<SocketSuccessResponses['track']> {
+    const store = need(db, 'database');
+    const identity = await identifyRepo(request.dir);
+    const repo = store.repos.getByGitCommonDir(identity.gitCommonDir);
+    if (repo === null) throw new Error(`${identity.name} is not tracked; a session end registers nothing`);
+    const at = requestTime(request.at, now());
+    later(async () => {
+      const accepted = await acceptSession(context, session, repo.id);
+      if (accepted === null) return;
+      const own = await identifyRepo(accepted.cwd).catch(() => null);
+      const target = own === null ? null : store.repos.getByGitCommonDir(own.gitCommonDir);
+      await need(sessions, 'session tracker').hook(target?.id ?? repo.id, accepted, at);
+    }, context);
+    return { ok: true, repo: { id: repo.id, name: repo.name } };
+  }
+
   async function track(context: DaemonContext, request: SocketRequestOf<'track'>): Promise<SocketSuccessResponses['track']> {
+    if (request.agent && request.session !== undefined && endsSession(request.session.event)) return endSession(context, request, request.session);
     const active = need(collector, 'collector');
     const identity = await identifyRepo(request.dir);
     const at = requestTime(request.at, now());

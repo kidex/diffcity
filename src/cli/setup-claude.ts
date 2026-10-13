@@ -1,6 +1,6 @@
 // `diffcity setup-claude [--repo [<dir>]] [--dry-run] [--remove]` (SPEC.md
 // sections 3 and 7, ADR-037). Installs the `/diffcity-review` command file and the
-// Stop hook in the user's Claude Code configuration (`$CLAUDE_CONFIG_DIR` or
+// Stop and SessionEnd hooks (DC-128) in the user's Claude Code configuration (`$CLAUDE_CONFIG_DIR` or
 // `~/.claude`), or in `<repo>/.claude` with --repo. The work is in
 // src/core/claude; this module picks the target and prints what changed.
 //
@@ -13,6 +13,7 @@ import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   CLAUDE_CODE_CHECKED_VERSION,
+  DIFFCITY_HOOK_EVENTS,
   applyPlan,
   chooseCliInvocation,
   claudeConfigDir,
@@ -20,6 +21,7 @@ import {
   planInstall,
   planRemove,
   type ClaudeTarget,
+  type DiffcityHookEvent,
   type PlannedFile,
   type SetupPlan,
 } from '../core/claude/index.js';
@@ -48,8 +50,13 @@ const defaultCliEntry = (): string => fileURLToPath(new URL('./index.js', import
 
 const messageOf = (error: unknown): string => (error instanceof Error ? error.message : String(error));
 
+/** `the Stop hook`, `the Stop and SessionEnd hooks`. */
+function hooksLabel(events: readonly DiffcityHookEvent[]): string {
+  return `the ${events.join(' and ')} hook${events.length === 1 ? '' : 's'}`;
+}
+
 function describe(file: PlannedFile, dryRun: boolean, remove: boolean): string {
-  const hook = file.hook === undefined ? '' : ` (${file.hook} the Stop hook)`;
+  const hook = file.hook === undefined ? '' : ` (${file.hook} ${hooksLabel(file.events ?? DIFFCITY_HOOK_EVENTS)})`;
   switch (file.action) {
     case 'create':
       return `${dryRun ? 'would create' : 'created'} ${file.path}`;
@@ -60,7 +67,7 @@ function describe(file: PlannedFile, dryRun: boolean, remove: boolean): string {
       return `${dryRun ? 'would delete' : 'deleted'} ${file.path}${hook}`;
     case 'unchanged':
       if (file.kind === 'command') return `unchanged ${file.path}`;
-      return `unchanged ${file.path} (${remove ? 'no diffcity Stop hook' : 'the Stop hook is already there'})`;
+      return `unchanged ${file.path} (${remove ? `no diffcity ${DIFFCITY_HOOK_EVENTS.join(' or ')} hook` : `${hooksLabel(DIFFCITY_HOOK_EVENTS)} are already there`})`;
     case 'absent':
       return `absent ${file.path}`;
     case 'kept':

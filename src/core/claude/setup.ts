@@ -1,6 +1,6 @@
 // `diffcity setup-claude` (ADR-037): plans and applies the two files diffcity
 // owns in a Claude Code configuration, the `/diffcity-review` command file and the
-// Stop hook entry in `settings.json`, plus a one-time backup of that
+// Stop and SessionEnd hook entries in `settings.json` (DC-128), plus a one-time backup of that
 // `settings.json`. Planning reads only; nothing is written when any file is
 // refused, so a refusal leaves both files as they were. Writes go through a
 // temporary file in the same directory and a rename; an existing file that is
@@ -21,10 +21,14 @@ import {
   recordedCli,
 } from './command-file.js';
 import { hookCommand } from './hook-command.js';
-import { addStopHook, removeStopHook } from './settings.js';
+import { DIFFCITY_HOOK_EVENTS, addHooks, removeHooks, type DiffcityHookEvent } from './settings.js';
 
-/** The Claude Code version the command file and the settings format were checked against. */
-export const CLAUDE_CODE_CHECKED_VERSION = '2.1.288';
+/**
+ * The Claude Code version the command file, the settings format and the
+ * SessionEnd hook input (DC-128: the Stop fields plus `hook_event_name:
+ * "SessionEnd"` and `reason`, its matcher field) were checked against.
+ */
+export const CLAUDE_CODE_CHECKED_VERSION = '2.1.296';
 
 /** Suffix of the one-time backup of `settings.json`. */
 export const BACKUP_SUFFIX = '.diffcity-backup';
@@ -63,8 +67,10 @@ export interface PlannedFile {
   action: FileAction;
   /** The new content, for `create` and `update`. */
   text?: string;
-  /** For a changed settings.json: what happened to diffcity's Stop hook. */
+  /** For a changed settings.json: what happened to diffcity's hooks. */
   hook?: 'added' | 'removed' | 'replaced';
+  /** For a changed settings.json: the events whose hooks changed, in DIFFCITY_HOOK_EVENTS order. */
+  events?: DiffcityHookEvent[];
 }
 
 export interface SetupPlan {
@@ -120,11 +126,15 @@ async function backupFor(target: ClaudeTarget, settingsExisted: boolean): Promis
   return { from: target.settingsFile, to: target.backupFile };
 }
 
+/** The events of both edits, in DIFFCITY_HOOK_EVENTS order. */
+const unionOf = (a: readonly DiffcityHookEvent[], b: readonly DiffcityHookEvent[]): DiffcityHookEvent[] =>
+  DIFFCITY_HOOK_EVENTS.filter((event) => a.includes(event) || b.includes(event));
+
 /**
- * What setup would change to install the command file and the Stop hook for
+ * What setup would change to install the command file and the Stop and SessionEnd hooks for
  * invocation `cli`. When diffcity's command file records another invocation
- * (setup ran before from another install), that invocation's hook is removed
- * first, so the old hook does not stay beside the new one.
+ * (setup ran before from another install), that invocation's hooks are removed
+ * first, so the old hooks do not stay beside the new ones.
  */
 export async function planInstall(target: ClaudeTarget, cli: string): Promise<PlanResult> {
   const read = await readBoth(target);
@@ -144,16 +154,17 @@ export async function planInstall(target: ClaudeTarget, cli: string): Promise<Pl
 
   const recorded = read.command === null ? null : recordedCli(read.command);
   let settings = read.settings;
-  let replaced = false;
+  let removedEvents: DiffcityHookEvent[] = [];
   if (recorded !== null && recorded !== cli) {
-    const removal = removeStopHook(settings, [hookCommand(recorded)]);
+    const removal = removeHooks(settings, [hookCommand(recorded)]);
     if (!removal.ok) return { ok: false, reason: `${target.settingsFile} ${removal.reason}; fix it or move it away, nothing was written` };
     if (removal.changed) {
       settings = removal.text;
-      replaced = true;
+      removedEvents = removal.events;
     }
   }
-  const added = addStopHook(settings, command);
+  const replaced = removedEvents.length > 0;
+  const added = addHooks(settings, command);
   if (!added.ok) return { ok: false, reason: `${target.settingsFile} ${added.reason}; fix it or move it away, nothing was written` };
   // The new text: the merge's, or the removal's alone when the new hook was already there.
   const next = added.changed ? added.text : replaced ? settings : null;
@@ -165,6 +176,7 @@ export async function planInstall(target: ClaudeTarget, cli: string): Promise<Pl
       action: read.settings === null ? 'create' : 'update',
       text: next,
       hook: replaced ? 'replaced' : 'added',
+      events: unionOf(removedEvents, added.changed ? added.events : []),
     });
   }
 
@@ -175,7 +187,7 @@ export async function planInstall(target: ClaudeTarget, cli: string): Promise<Pl
 /**
  * What setup would change to remove what diffcity wrote: the command file when
  * it carries the marker, a leftover `commands/code-review.md` when it carries
- * the old marker, and every Stop hook whose command is the one of `cli` or the
+ * the old marker, and every Stop and SessionEnd hook whose command is the one of `cli` or the
  * one recorded in either command file. Removing writes no backup. When the
  * settings are `{}` after that and there is no backup (setup backs up a
  * settings.json that existed, so diffcity created this one), settings.json is
@@ -209,13 +221,13 @@ export async function planRemove(target: ClaudeTarget, cli: string): Promise<Pla
     if (recorded !== null && !commands.includes(hookCommand(recorded))) commands.push(hookCommand(recorded));
   }
 
-  const edit = removeStopHook(read.settings, commands);
+  const edit = removeHooks(read.settings, commands);
   if (!edit.ok) return { ok: false, reason: `${target.settingsFile} ${edit.reason}; fix it or move it away, nothing was written` };
   if (read.settings === null) files.push({ path: target.settingsFile, kind: 'settings', action: 'absent' });
   else if (!edit.changed) files.push({ path: target.settingsFile, kind: 'settings', action: 'unchanged' });
   else if (isEmptyObject(edit.text) && !(await exists(target.backupFile))) {
-    files.push({ path: target.settingsFile, kind: 'settings', action: 'delete', hook: 'removed' });
-  } else files.push({ path: target.settingsFile, kind: 'settings', action: 'update', text: edit.text, hook: 'removed' });
+    files.push({ path: target.settingsFile, kind: 'settings', action: 'delete', hook: 'removed', events: edit.events });
+  } else files.push({ path: target.settingsFile, kind: 'settings', action: 'update', text: edit.text, hook: 'removed', events: edit.events });
 
   const commandsDir = dirname(target.commandFile);
   const deleted = new Set(files.filter((file) => file.kind === 'command' && file.action === 'delete').map((file) => basename(file.path)));

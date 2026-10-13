@@ -92,7 +92,7 @@ describe('setup-claude edge cases (DC-107)', () => {
     expect(await readlink(settingsPath())).toBe(target);
     expect(JSON.parse(await readFile(target, 'utf8'))).toEqual({
       model: 'sample-model',
-      hooks: { Stop: [{ matcher: '', hooks: [{ type: 'command', command: HOOK() }] }] },
+      hooks: { Stop: [{ matcher: '', hooks: [{ type: 'command', command: HOOK() }] }], SessionEnd: [{ matcher: '', hooks: [{ type: 'command', command: HOOK() }] }] },
     });
     expect(await readFile(`${settingsPath()}.diffcity-backup`, 'utf8')).toBe(original);
     // No temporary file next to the target.
@@ -118,7 +118,7 @@ describe('setup-claude edge cases (DC-107)', () => {
     expect(await snapshot(claude)).toEqual(before);
   });
 
-  it('setup/keeps-existing-hooks-and-keys (matchers): Stop entries with other matchers and several hooks stay in order; install then --remove gives the original back', async () => {
+  it('setup/keeps-existing-hooks-and-keys (matchers): Stop and SessionEnd entries with other matchers and several hooks stay in order; install then --remove gives the original back', async () => {
     const existing = {
       model: 'sample-model',
       hooks: {
@@ -128,6 +128,7 @@ describe('setup-claude edge cases (DC-107)', () => {
           { hooks: [{ type: 'command', command: 'sample-chime' }] },
         ],
         SubagentStop: [{ matcher: '', hooks: [{ type: 'command', command: 'sample-sub' }] }],
+        SessionEnd: [{ matcher: 'logout', hooks: [{ type: 'command', command: 'sample-bye', timeout: 3 }] }],
       },
     };
     await mkdir(claude, { recursive: true });
@@ -137,9 +138,13 @@ describe('setup-claude edge cases (DC-107)', () => {
     const installed = JSON.parse(await readFile(settingsPath(), 'utf8')) as typeof existing;
     expect(installed).toEqual({
       ...existing,
-      hooks: { ...existing.hooks, Stop: [...existing.hooks.Stop, { matcher: '', hooks: [{ type: 'command', command: HOOK() }] }] },
+      hooks: {
+        ...existing.hooks,
+        Stop: [...existing.hooks.Stop, { matcher: '', hooks: [{ type: 'command', command: HOOK() }] }],
+        SessionEnd: [...existing.hooks.SessionEnd, { matcher: '', hooks: [{ type: 'command', command: HOOK() }] }],
+      },
     });
-    expect(Object.keys(installed.hooks)).toEqual(['PreToolUse', 'Stop', 'SubagentStop']);
+    expect(Object.keys(installed.hooks)).toEqual(['PreToolUse', 'Stop', 'SubagentStop', 'SessionEnd']);
 
     expect((await setup({ remove: true })).code).toBe(0);
     expect(await readFile(settingsPath(), 'utf8')).toBe(`${JSON.stringify(existing, null, 2)}\n`);

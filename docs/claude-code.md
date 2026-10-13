@@ -1,6 +1,6 @@
 # Claude Code integration
 
-`diffcity setup-claude` connects Claude Code to diffcity with two files: the `/diffcity-review` slash command and a Stop hook. After it, `/diffcity-review` in a Claude Code session reviews the current change and puts the findings on the city, and every finished agent task marks the change as "agent worked, not reviewed".
+`diffcity setup-claude` connects Claude Code to diffcity with two files: the `/diffcity-review` slash command and two hooks, Stop and SessionEnd. After it, `/diffcity-review` in a Claude Code session reviews the current change and puts the findings on the city, every finished agent task marks the change as "agent worked, not reviewed", and a session that ends reads as ended.
 
 ```sh
 diffcity setup-claude                 # the user's Claude Code configuration
@@ -14,8 +14,10 @@ diffcity setup-claude --remove        # remove only what diffcity wrote
 | File | Content |
 |---|---|
 | `<config>/commands/diffcity-review.md` | the `/diffcity-review` command (SPEC.md section 7.1) |
-| `<config>/settings.json` | one Stop hook entry, merged into the existing settings (SPEC.md section 7.2) |
+| `<config>/settings.json` | one Stop hook entry and one SessionEnd hook entry with the same command, merged into the existing settings (SPEC.md section 7.2) |
 | `<config>/settings.json.diffcity-backup` | a copy of `settings.json` from before diffcity first changed it, written once |
+
+An install made before the SessionEnd hook existed has the Stop hook only; running `diffcity setup-claude` again adds the SessionEnd hook and leaves the rest as it is. `--remove` removes both.
 
 `<config>` is `$CLAUDE_CONFIG_DIR` when it is set (it must be an absolute path), `~/.claude` otherwise, or `<repo>/.claude` with `--repo`. setup writes nothing else, and no diffcity settings.
 
@@ -23,7 +25,7 @@ The command prints each file it wrote (or would write), the hook command it chos
 
 ## The hook command
 
-The Stop hook and the slash command call the CLI the same way:
+The Stop and SessionEnd hooks run the same command, and the slash command calls the CLI the same way:
 
 - `diffcity track --agent` when the `diffcity` found on the `PATH` is the CLI running setup from a global install (`npm i -g diffcity`), not a `node_modules/.bin` copy: `PATH` entries ending in `node_modules/.bin` are skipped, and a run under `npx` or `npm exec` (`npm_command=exec`) is never global, because the Claude Code session does not have their `PATH`;
 - otherwise `"<absolute node>" "<absolute dist/cli/index.js>" track --agent`, the node binary and the CLI that ran setup. A path containing `"`, `$`, `` ` ``, `\`, `(`, `)`, `: `, ` #` or a control character is refused: install diffcity globally instead.
@@ -34,14 +36,16 @@ The hook never blocks the agent: on any failure it prints one line on stderr and
 
 ## Sessions
 
-The Stop hook's JSON on stdin carries the session: `session_id`, `transcript_path`, `cwd` and `hook_event_name`. `track --agent` forwards those four fields to the daemon unchanged and reads nothing else. The daemon checks them before it reads any file: the session id is hex digits and dashes, the transcript is a regular file named `<session_id>.jsonl` whose real path lies under `<Claude config dir>/projects` (`CLAUDE_CONFIG_DIR`, else `~/.claude`), and the subagent files it reads are derived from that path, never taken from the message, and never followed through a symbolic link. A refused session is logged with a code only; the agent mark still happens. The daemon resolves the Claude config directory from its own environment, not the hook's: if you set `CLAUDE_CONFIG_DIR`, set it where the daemon starts too (the shell that runs `diffcity up`, or the one whose `track` starts it). Otherwise every session is refused, and `daemon.log` shows `session refused: outside-projects`.
+The hook JSON on stdin carries the session: `session_id`, `transcript_path`, `cwd` and `hook_event_name` (SessionEnd adds a `reason`, which is ignored). `track --agent` forwards those four fields to the daemon unchanged and reads nothing else. The daemon checks them before it reads any file: the session id is hex digits and dashes, the transcript is a regular file named `<session_id>.jsonl` whose real path lies under `<Claude config dir>/projects` (`CLAUDE_CONFIG_DIR`, else `~/.claude`), and the subagent files it reads are derived from that path, never taken from the message, and never followed through a symbolic link. A refused session is logged with a code only; the agent mark still happens. The daemon resolves the Claude config directory from its own environment, not the hook's: if you set `CLAUDE_CONFIG_DIR`, set it where the daemon starts too (the shell that runs `diffcity up`, or the one whose `track` starts it). Otherwise every session is refused, and `daemon.log` shows `session refused: outside-projects`.
+
+`hook_event_name` decides what the hook does. `Stop` (and `SubagentStop`) is a finished task: the daemon collects the repo, marks the change as agent work and reads the session. `SessionEnd` only ends the session: the daemon stores it as ended, so the Session tab no longer shows it as active and its agent runs with no outcome read as `unknown` instead of `running`. It does not collect, does not mark the change and does not register a repo diffcity does not know; `track --agent` prints `session ended in <repo>` for it.
 
 About 1.5 s after the hook, a worker reads the transcript from where the last read stopped, once more if it had grown meanwhile, and again at every later Stop. It keeps a redacted, size-capped digest (prompts, questions, agent runs, activity) and links the session to the change of the working tree it ran in, and to the change of each working tree its subagents worked in. `GET /api/changes/:id/sessions` serves the 20 newest sessions of a change, outside the Report; `diffcity diff --json --with-sessions` adds the same list under a `sessions` key and needs a running daemon. The sessions follow the change checked out in the current directory, whatever `--base` and `--head` say.
 
 ## settings.json
 
-- The file is parsed as JSON. A file that is not JSON, is not an object, or has a `hooks` that is not an object or a `hooks.Stop` that is not an array is refused, never rewritten. A missing or blank file counts as `{}`.
-- `{ "matcher": "", "hooks": [{ "type": "command", "command": "<hook command>" }] }` is appended to `hooks.Stop`, unless a hook with the identical command is already there. When diffcity's command file records another invocation (setup ran before from another install), the hook of that invocation is removed first and setup prints `replaced the Stop hook`. Every other key and hook is kept; the file is written back as two-space JSON.
+- The file is parsed as JSON. A file that is not JSON, is not an object, or has a `hooks` that is not an object or a `hooks.Stop` or `hooks.SessionEnd` that is not an array is refused, never rewritten. A missing or blank file counts as `{}`.
+- `{ "matcher": "", "hooks": [{ "type": "command", "command": "<hook command>" }] }` is appended to `hooks.Stop` and to `hooks.SessionEnd`, unless a hook with the identical command is already there. When diffcity's command file records another invocation (setup ran before from another install), the hook of that invocation is removed from both events first and setup says which hooks it replaced. Every other key and hook is kept; the file is written back as two-space JSON.
 - The new file is written to a temporary file in the same directory and renamed into place, keeping the file's mode. A `settings.json` that is a symbolic link is written at its target, so the link stays. A dangling link (its target does not exist) is replaced by a regular file.
 
 ## The command file
@@ -63,8 +67,8 @@ The command:
 
 ## --remove
 
-`--remove` deletes the command file when it carries the marker, and a leftover `commands/code-review.md` (the command's first name) only when it carries the old marker `<!-- diffcity: code-review v1 -->`; any other `code-review.md` is never touched. It removes every Stop hook whose command is the current hook command or the one recorded in one of those command files. A Stop entry, `hooks.Stop` or `hooks` left empty by that is removed too; every other key and hook stays. `--remove` writes no backup. When `settings.json` is `{}` after that and there is no `settings.json.diffcity-backup`, diffcity created the file (setup backs up a `settings.json` that existed before it), so it is deleted. The `commands/` directory is removed when nothing is left in it; whether diffcity created it cannot be told, so an empty one is always removed.
+`--remove` deletes the command file when it carries the marker, and a leftover `commands/code-review.md` (the command's first name) only when it carries the old marker `<!-- diffcity: code-review v1 -->`; any other `code-review.md` is never touched. It removes every Stop and SessionEnd hook whose command is the current hook command or the one recorded in one of those command files. An entry, `hooks.Stop`, `hooks.SessionEnd` or `hooks` left empty by that is removed too; every other key and hook stays. `--remove` writes no backup. When `settings.json` is `{}` after that and there is no `settings.json.diffcity-backup`, diffcity created the file (setup backs up a `settings.json` that existed before it), so it is deleted. The `commands/` directory is removed when nothing is left in it; whether diffcity created it cannot be told, so an empty one is always removed.
 
 ## Claude Code version
 
-The frontmatter keys, the `allowed-tools` rule syntax and the settings hooks format belong to Claude Code, not to diffcity. The files were checked against Claude Code 2.1.288. The transcript format the session digest reads (records, subagent files, task notifications) belongs to Claude Code too; it was checked against Claude Code 2.1.294 and 2.1.295. A format change gives fewer fields and a count of unreadable lines, never a failed collection.
+The frontmatter keys, the `allowed-tools` rule syntax and the settings hooks format belong to Claude Code, not to diffcity. The files were checked against Claude Code 2.1.296. The transcript format the session digest reads (records, subagent files, task notifications) belongs to Claude Code too; it was checked against Claude Code 2.1.294 and 2.1.295. A format change gives fewer fields and a count of unreadable lines, never a failed collection.
