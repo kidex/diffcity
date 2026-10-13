@@ -39,10 +39,14 @@ export function endsSession(event: string): boolean {
 /** A hook event name as Claude Code writes them (`Stop`, `SubagentStop`, `SessionEnd`). */
 const HOOK_EVENT = /^[A-Za-z]{1,64}$/;
 
-/** `input` is null when stdin carried nothing but whitespace. */
-export type AgentHookInputResult = { ok: true; input: AgentHookInput | null } | { ok: false; error: string };
+/**
+ * `input` is null when stdin carried nothing but whitespace. A failure keeps
+ * `event` when the input was a JSON object naming a plain event, so a
+ * SessionEnd with unusable fields is still known as one (DC-128).
+ */
+export type AgentHookInputResult = { ok: true; input: AgentHookInput | null } | { ok: false; error: string; event?: string };
 
-const fail = (error: string): AgentHookInputResult => ({ ok: false, error });
+const fail = (error: string, event: string | null = null): AgentHookInputResult => (event === null ? { ok: false, error } : { ok: false, error, event });
 
 export function parseAgentHookInput(text: string): AgentHookInputResult {
   if (Buffer.byteLength(text, 'utf8') > MAX_HOOK_INPUT_BYTES) {
@@ -59,11 +63,12 @@ export function parseAgentHookInput(text: string): AgentHookInputResult {
   const fields = value as Record<string, unknown>;
 
   const { session_id: sessionId, transcript_path: transcriptPath, cwd, hook_event_name: eventName } = fields;
-  if (typeof sessionId !== 'string' || sessionId === '') return fail('hook input: session_id must be a non-empty string');
+  const named = typeof eventName === 'string' && HOOK_EVENT.test(eventName) ? eventName : null;
+  if (typeof sessionId !== 'string' || sessionId === '') return fail('hook input: session_id must be a non-empty string', named);
   if (typeof transcriptPath !== 'string' || !isAbsolute(transcriptPath)) {
-    return fail('hook input: transcript_path must be an absolute path');
+    return fail('hook input: transcript_path must be an absolute path', named);
   }
-  if (typeof cwd !== 'string' || !isAbsolute(cwd)) return fail('hook input: cwd must be an absolute path');
-  const event = typeof eventName === 'string' && HOOK_EVENT.test(eventName) ? eventName : DEFAULT_HOOK_EVENT;
+  if (typeof cwd !== 'string' || !isAbsolute(cwd)) return fail('hook input: cwd must be an absolute path', named);
+  const event = named ?? DEFAULT_HOOK_EVENT;
   return { ok: true, input: { sessionId, transcriptPath, cwd, event } };
 }

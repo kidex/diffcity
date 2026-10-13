@@ -21,8 +21,8 @@
 // --agent` whose session event is SessionEnd (DC-128) only ends that session:
 // the repo must be registered already and is not seen, nothing is collected,
 // the change gets no agent mark, and a session cwd in an unregistered repo is
-// stored in the track's repo. The `sessions` request answers `diff --with-sessions` for the change checked out in a
-// directory.
+// stored in the track's repo. The `sessions` request answers
+// `diff --with-sessions` for the change checked out in a directory.
 //
 // On start, every active repo gets one low-priority collection (ADR-020).
 //

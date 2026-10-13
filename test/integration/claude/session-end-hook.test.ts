@@ -156,4 +156,35 @@ describe('the SessionEnd hook through the built CLI', () => {
     const garbled = await runHook(command, outside, { hook_event_name: 'SessionEnd' });
     expect(garbled.code).toBe(0);
   });
+
+  it('cli/session-end-unusable-input: a SessionEnd whose fields cannot be used sends nothing: no repo row, no collection, exit 0 with one line', async () => {
+    const command = `"${process.execPath}" "${CLI_DIST}" track --agent`;
+    const dir = await realpath(repo.dir);
+    // A running daemon that knows another repo only.
+    const other = await createRepo({ name: 'sample-yard', files: { 'src/yard.ts': 'export const yard = 1;\n' } });
+    try {
+      const started = await runHook(`"${process.execPath}" "${CLI_DIST}" track "${await realpath(other.dir)}"`, temp.userHome, {});
+      expect(started).toMatchObject({ code: 0, stdout: 'tracked sample-yard\n' });
+      const info = await readDaemonInfo(homePaths(temp.home));
+      if (info === null) throw new Error('track did not start the daemon');
+      const names = async (): Promise<string[]> => (await getJson<RepoSummary[]>(info.port, '/api/repos')).map((listed) => listed.name);
+      expect(await names()).toEqual(['sample-yard']);
+
+      for (const input of [
+        { hook_event_name: 'SessionEnd', cwd: dir },
+        { hook_event_name: 'SessionEnd', session_id: SESSION, transcript_path: 'relative.jsonl', cwd: dir, reason: 'clear' },
+        { hook_event_name: 'SessionEnd', session_id: SESSION, transcript_path: join(claude, 'projects', 'x', `${SESSION}.jsonl`), cwd: 'relative/dir' },
+      ]) {
+        const run = await runHook(command, dir, input);
+        expect(run.code).toBe(0);
+        expect(run.stdout).toBe('');
+        expect(run.stderr).toMatch(/^diffcity track: ignoring SessionEnd: hook input: \S.*\n$/);
+      }
+      // Long enough for a stray track to register and collect sample-depot.
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+      expect(await names()).toEqual(['sample-yard']);
+    } finally {
+      await other.cleanup();
+    }
+  });
 });

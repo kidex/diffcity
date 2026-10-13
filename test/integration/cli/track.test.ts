@@ -197,6 +197,17 @@ describe('diffcity track --agent with the Claude Code Stop hook on stdin', () =>
     expect(fake.requests).toEqual([trackRequest(sub, true, { ...sessionOf(sub), event: 'SessionEnd' })]);
   });
 
+  it('cli/session-end-unusable-sends-nothing: a SessionEnd it cannot use sends no request; one line on stderr, exit 0', async () => {
+    const fake = await running();
+    const hook = { hook_event_name: 'SessionEnd', cwd: repo.dir };
+    expect(await track(undefined, { agent: true }, { cwd: repo.dir, stdin: pipe(JSON.stringify(hook)) })).toEqual({
+      code: 0,
+      stdout: '',
+      stderr: 'diffcity track: ignoring SessionEnd: hook input: session_id must be a non-empty string\n',
+    });
+    expect(fake.requests).toEqual([]);
+  });
+
   it('an explicit <dir> wins over the hook cwd', async () => {
     const fake = await running();
     expect((await track(repo.dir, { agent: true }, { cwd: temp.root, stdin: pipe(hookJson('/elsewhere')) })).code).toBe(0);

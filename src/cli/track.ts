@@ -43,26 +43,35 @@ const processStdin: TrackStdin = {
   read: (maxBytes) => readStdin(process.stdin, maxBytes),
 };
 
+/** What the hook input gave: the input, or none; `unusableSessionEnd` when it named SessionEnd but could not be used. */
+interface HookRead {
+  input: AgentHookInput | null;
+  unusableSessionEnd: string | null;
+}
+
 /**
- * The Stop hook input, read only for --agent when stdin is not a TTY
- * (SPEC.md section 3). An invalid input is reported and ignored: the agent
- * mark still goes through for the default directory.
+ * The Stop or SessionEnd hook input, read only for --agent when stdin is not
+ * a TTY (SPEC.md section 3). An invalid input is reported and ignored: the
+ * agent mark still goes through for the default directory. An invalid input
+ * that names SessionEnd is not a finished task (DC-128): its error is
+ * returned, and track sends nothing.
  */
-async function readHookInput(stdin: TrackStdin, warn: (message: string) => void): Promise<AgentHookInput | null> {
-  if (stdin.isTTY) return null;
+async function readHookInput(stdin: TrackStdin, warn: (message: string) => void): Promise<HookRead> {
+  if (stdin.isTTY) return { input: null, unusableSessionEnd: null };
   let text: string;
   try {
     text = await stdin.read(MAX_HOOK_INPUT_BYTES);
   } catch (error) {
     warn(`ignoring stdin: ${error instanceof Error ? error.message : String(error)}`);
-    return null;
+    return { input: null, unusableSessionEnd: null };
   }
   const parsed = parseAgentHookInput(text);
   if (!parsed.ok) {
+    if (parsed.event !== undefined && endsSession(parsed.event)) return { input: null, unusableSessionEnd: parsed.error };
     warn(`ignoring stdin: ${parsed.error}`);
-    return null;
+    return { input: null, unusableSessionEnd: null };
   }
-  return parsed.input;
+  return { input: parsed.input, unusableSessionEnd: null };
 }
 
 /**
@@ -91,7 +100,10 @@ export async function runTrack(dirArg: string | undefined, options: TrackCommand
   // and the cwd that replaces the default <dir>. The four fields are forwarded
   // as they came: the daemon validates them before it reads anything, and this
   // module never loads the session parser (ADR-038).
-  const hook = agent ? await readHookInput(deps.stdin ?? processStdin, (message) => { io.stderr(`diffcity track: ${message}\n`); }) : null;
+  const read = agent ? await readHookInput(deps.stdin ?? processStdin, (message) => { io.stderr(`diffcity track: ${message}\n`); }) : null;
+  // A SessionEnd only ends its session; without a usable session there is nothing to send.
+  if (read?.unusableSessionEnd != null) return fail(`ignoring SessionEnd: ${read.unusableSessionEnd}`);
+  const hook = read?.input ?? null;
   const dir = dirArg !== undefined ? resolve(cwd, dirArg) : (hook?.cwd ?? cwd);
 
   // Checked here so a directory outside a repo never starts a daemon.
