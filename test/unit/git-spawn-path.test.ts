@@ -39,6 +39,7 @@ vi.mock('node:child_process', async (importOriginal) => {
 });
 
 const { gitRaw, gitStream } = await import('../../src/core/git/exec.js');
+const { PATH_CACHE_TTL_MS } = await import('../../src/core/exec/resolve.js');
 
 let root = '';
 let savedPath: string | undefined;
@@ -109,9 +110,48 @@ describe.skipIf(process.platform === 'win32')('the git binary', () => {
     expect(spawned).toEqual([join(first, 'git'), join(first, 'git'), join(first, 'git'), join(later, 'git')]);
   });
 
-  it('is plain `git` when no absolute PATH entry has one, so a missing git fails as before', async () => {
-    process.env['PATH'] = ['bin', join(root, 'nowhere')].join(delimiter);
+  it('is found again after a spawn reports it not executable (EACCES)', async () => {
+    const first = await gitDir('first');
+    const later = await gitDir('later');
+    process.env['PATH'] = [first, later].join(delimiter);
     await gitRaw(root, ['rev-parse', 'HEAD']);
-    expect(spawned).toEqual(['git']);
+    await rm(join(first, 'git'));
+    nextError = Object.assign(new Error('spawn git EACCES'), { code: 'EACCES' });
+    await gitRaw(root, ['rev-parse', 'HEAD']).catch(() => undefined);
+    await gitRaw(root, ['rev-parse', 'HEAD']);
+    expect(spawned).toEqual([join(first, 'git'), join(first, 'git'), join(later, 'git')]);
+  });
+
+  it('is looked up again once PATH_CACHE_TTL_MS has passed', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      const first = await gitDir('first');
+      const later = await gitDir('later');
+      process.env['PATH'] = [first, later].join(delimiter);
+      await gitRaw(root, ['rev-parse', 'HEAD']);
+      await rm(join(first, 'git'));
+      vi.setSystemTime(Date.now() + PATH_CACHE_TTL_MS - 1);
+      await gitRaw(root, ['rev-parse', 'HEAD']);
+      vi.setSystemTime(Date.now() + 2);
+      await gitRaw(root, ['rev-parse', 'HEAD']);
+      expect(spawned).toEqual([join(first, 'git'), join(first, 'git'), join(later, 'git')]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('is refused when no absolute PATH entry has one: a relative entry is never searched, nothing is spawned', async () => {
+    // A repo's own bin/git, reachable only through the relative entry.
+    await gitDir('bin');
+    process.env['PATH'] = ['bin', join(root, 'nowhere')].join(delimiter);
+    await expect(gitRaw(root, ['rev-parse', 'HEAD'])).rejects.toMatchObject({ name: 'GitError', code: 'git-failed', message: 'git not found on PATH' });
+    await expect(gitStream(root, ['cat-file', 'blob', 'HEAD:README.md'], () => undefined)).rejects.toMatchObject({ message: 'git not found on PATH' });
+    expect(spawned).toEqual([]);
+
+    // Not remembered: a git installed afterwards is found by the next call.
+    const installed = await gitDir('installed');
+    process.env['PATH'] = ['bin', installed].join(delimiter);
+    await gitRaw(root, ['rev-parse', 'HEAD']);
+    expect(spawned).toEqual([join(installed, 'git')]);
   });
 });
