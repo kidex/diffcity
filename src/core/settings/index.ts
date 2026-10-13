@@ -16,5 +16,5 @@ export {
   toolSettingFor,
   writeSettings,
 } from './settings.js';
-export { rulesKey } from './rules-key.js';
+export { RULES_ENGINE_VERSION, rulesKey } from './rules-key.js';
 export type { ParsedSettings, ToolSetting, RuleSettingsReader, TrustCheck, UserRuleSettings, TrustCheckOptions, UserSettings } from './settings.js';
