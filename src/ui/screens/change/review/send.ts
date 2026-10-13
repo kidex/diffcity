@@ -83,7 +83,7 @@ export function openSendDialog(options: SendDialogOptions): Dialog {
   const noteField = h('textarea', {
     class: 'rv-input',
     id: 'ag-note',
-    rows: 3,
+    rows: 2,
     maxlength: GENERAL_NOTE_MAX,
     'aria-describedby': 'ag-note-status',
     'data-testid': 'send-note',
@@ -126,7 +126,9 @@ export function openSendDialog(options: SendDialogOptions): Dialog {
     send.hidden = !offered;
     // Unsaved note text is not in the summary below: what is sent is only ever what is shown.
     const enabled = offered && view !== null && !dirty && !savingNote && sendEnabled(view, read, pending);
-    send.disabled = !enabled;
+    // aria-disabled, not disabled: Send keeps focus while its request is in flight (the click handler checks everything again).
+    if (enabled) send.removeAttribute('aria-disabled');
+    else send.setAttribute('aria-disabled', 'true');
     send.textContent = pending ? SENDING : SEND;
     hint.textContent = dirty ? NOTE_UNSAVED : SCROLL_TO_SEND;
     hint.hidden = dirty ? false : !offered || read;
@@ -186,7 +188,7 @@ export function openSendDialog(options: SendDialogOptions): Dialog {
       read = true;
       observer?.disconnect();
       sync();
-      if (!send.hidden && !send.disabled) send.focus({ preventScroll: true });
+      if (!send.hidden && send.getAttribute('aria-disabled') !== 'true') send.focus({ preventScroll: true });
     });
     observer.observe(end);
   }
@@ -319,6 +321,7 @@ export function openSendDialog(options: SendDialogOptions): Dialog {
   const dialog: Dialog = openDialog({
     title: SEND_TITLE,
     testId: 'send-dialog',
+    className: 'ag-dialog',
     body: [
       h('p', { class: 'rv-lede' }, 'diffcity runs this command in the change’s working tree, with the summary below on stdin. Nothing runs until you send it.'),
       ...(noteBlock === null ? [] : [noteBlock]),

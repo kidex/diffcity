@@ -237,7 +237,9 @@ test('change/send-review-dialog: send-from-top-bar-with-general-note-only', asyn
 test('change/send-review-dialog: summary-readable-at-laptop-height', async ({ page }) => {
   // A laptop-sized window: the general note at the top of the dialog must not
   // squeeze the summary the reviewer has to read before Send (ADR-029) into a
-  // line or two, nor push it under the dialog's buttons.
+  // line or two, nor push it under the dialog's buttons. The body scrolls
+  // between the title and the button row instead, and the read-to-the-end gate
+  // still works inside it.
   await page.setViewportSize({ width: 1280, height: 800 });
   const { api } = await openReview(page, { report, marks, wait: false });
   const lines = Array.from({ length: 24 }, (_, index) => `- Rewrite step ${String(index + 1)} of the order desk`);
@@ -246,17 +248,35 @@ test('change/send-review-dialog: summary-readable-at-laptop-height', async ({ pa
   await page.goto('/?scene-debug#/change/11');
   await page.waitForFunction('window.diffcityScene !== undefined && window.diffcityScene.ready === true');
 
-  await page.getByTestId('send-to-agent').click();
-  const dialog = sendDialog(page);
-  await expect(dialog.getByTestId('send-note')).toBeVisible();
-  const text = dialog.getByTestId('send-summary');
-  await expect.poll(() => text.textContent()).toBe(summary);
-  const height = await page.evaluate<number>(`document.querySelector('[data-testid="send-summary"]').clientHeight`);
-  const box = await text.boundingBox();
-  const actions = await dialog.getByTestId('send-cancel').locator('..').boundingBox();
-  if (box === null || actions === null) throw new Error('the summary or the action row is not laid out');
-  const geometry = { height, bottom: box.y + box.height, actionsTop: actions.y };
-  // At least five lines of 12px/1.5 text in view, and not under the action row.
-  expect(geometry.height).toBeGreaterThanOrEqual(90);
-  expect(geometry.bottom).toBeLessThanOrEqual(geometry.actionsTop);
+  const geometry = async () => {
+    const dialog = sendDialog(page);
+    const text = dialog.getByTestId('send-summary');
+    // The summary as far as the body has scrolled it into view.
+    await text.scrollIntoViewIfNeeded();
+    const height = await page.evaluate<number>(`document.querySelector('[data-testid="send-summary"]').clientHeight`);
+    const box = await text.boundingBox();
+    const actions = await dialog.getByTestId('send-cancel').locator('..').boundingBox();
+    if (box === null || actions === null) throw new Error('the summary or the action row is not laid out');
+    return { height, bottom: box.y + box.height, actionsTop: actions.y, actionsBottom: actions.y + actions.height, viewport: page.viewportSize()?.height ?? 0 };
+  };
+
+  for (const height of [800, 720]) {
+    await page.setViewportSize({ width: 1280, height });
+    await page.getByTestId('send-to-agent').click();
+    const dialog = sendDialog(page);
+    await expect(dialog.getByTestId('send-note')).toBeVisible();
+    await expect.poll(() => dialog.getByTestId('send-summary').textContent()).toBe(summary);
+    const shown = await geometry();
+    // At least five lines of 12px/1.5 text in view, not under the action row, which stays in the window.
+    expect(shown.height, `summary height at 1280x${String(height)}`).toBeGreaterThanOrEqual(90);
+    expect(shown.bottom).toBeLessThanOrEqual(shown.actionsTop);
+    expect(shown.actionsBottom).toBeLessThanOrEqual(shown.viewport);
+    // Read to its end inside the scrolling body: Send opens.
+    const send = dialog.getByTestId('send-run');
+    await expect(send).toBeDisabled();
+    await scrollSummaryToEnd(page, dialog);
+    await expect(send).toBeEnabled();
+    await page.keyboard.press('Escape');
+    await expect(dialog).toBeHidden();
+  }
 });

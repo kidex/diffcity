@@ -68,6 +68,17 @@
 .rv-dialog:focus { outline: none; }
 .rv-title { margin: 0; font-size: 16px; font-weight: 600; color: var(--ink); overflow-wrap: anywhere; }
 .rv-body { display: flex; flex-direction: column; gap: 8px; min-height: 0; }
+/*
+ * The send dialog is taller than a laptop window: its body scrolls between the
+ * title and the button row, which stay in view, and nothing in it is squeezed.
+ * The summary keeps at least eight lines in view (ADR-029: it is read to its
+ * end before Send), and the general note field stays two lines high.
+ */
+.rv-dialog.ag-dialog { overflow: hidden; }
+.ag-dialog .rv-body { flex: 1 1 auto; overflow: auto; padding-right: 2px; }
+.ag-dialog .rv-body > * { flex-shrink: 0; }
+.ag-dialog .rv-actions { flex-shrink: 0; }
+.ag-summary { min-height: calc(8 * 1.5em + 20px); }
 .rv-lede { margin: 0; font-size: 12.5px; color: var(--muted); font-family: var(--mono); overflow-wrap: anywhere; }
 .rv-label { font-size: 12.5px; font-weight: 500; color: var(--ink); }
 .rv-input {
