@@ -83,4 +83,30 @@ test('review/hide-checked', async ({ page }) => {
     expect(Math.abs(legend.x - filters.x), `${size}: the legend's left edge`).toBeLessThanOrEqual(1);
     expect(legend.y + legend.height, `${size}: the legend inside the city`).toBeLessThanOrEqual(city.y + city.height);
   }
+
+  // DC-139, every filter row at once: a rule finding adds the Rules row under "Hide checked". At 1024x768,
+  // the window of the original bug, the legend still has to be on screen under the filters, not clipped away.
+  const withRule = panelReport();
+  withRule.findings.push({
+    id: 'rule:file-size:5c1e0b77',
+    source: 'rule:file-size',
+    severity: 'med',
+    category: 'architecture',
+    file: CONTROLLER,
+    line: 1,
+    title: 'File is over the size limit',
+    message: 'The controller has more lines than the repo allows.',
+    state: 'open',
+  });
+  await page.setViewportSize({ width: 1024, height: 768 });
+  await page.goto('about:blank');
+  await openReview(page, { report: withRule, marks: marksFromOverlay(withRule, { files: { [GUARD]: 'checked' } }) });
+  await expect(page.getByRole('group', { name: 'Filter by rule' })).toBeVisible();
+  await expect(page.getByTestId('filter-hide-checked')).toBeVisible();
+  const [filters, legend, column] = await Promise.all([page.getByTestId('hud-filters').boundingBox(), page.getByTestId('legend').boundingBox(), page.getByTestId('hud-left').boundingBox()]);
+  if (filters === null || legend === null || column === null) throw new Error('1024x768 with rules: no box for the filters, the legend or the column');
+  const seen = `filters ${JSON.stringify(filters)}, legend ${JSON.stringify(legend)}, column ${JSON.stringify(column)}`;
+  expect(legend.y, `1024x768 with rules, legend under the filters: ${seen}`).toBeGreaterThanOrEqual(filters.y + filters.height);
+  expect(legend.x + legend.width, `1024x768 with rules, legend inside the visible column: ${seen}`).toBeLessThanOrEqual(column.x + column.width);
+  expect(legend.y + legend.height, `1024x768 with rules, legend inside the visible column: ${seen}`).toBeLessThanOrEqual(column.y + column.height);
 });
