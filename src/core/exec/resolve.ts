@@ -18,7 +18,8 @@ interface Cached {
 
 const cache = new Map<string, Cached>();
 
-async function isExecutableFile(path: string): Promise<boolean> {
+/** An executable regular file (a directory, or a file without the x bit, is not). */
+export async function isExecutableFile(path: string): Promise<boolean> {
   try {
     if (!(await stat(path)).isFile()) return false;
     await access(path, constants.X_OK);

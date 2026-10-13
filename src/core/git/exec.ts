@@ -1,9 +1,18 @@
 // Process execution for the git layer. Everything goes through execFile (no
 // shell). Git runs with GIT_OPTIONAL_LOCKS=0 so reading a repo never takes the
 // index lock the user's own git commands need (ADR-012).
+//
+// git is spawned through an absolute path (gitBinary, DC-143). Spawned by its
+// bare name, git costs one failed exec attempt per PATH entry before its own;
+// on macOS those attempts leave a backlog that the next exec of a third-party
+// binary (the CLI's node, gh) pays in one go. A collection of a few hundred
+// files spawns over a thousand gits, and the next `diffcity import` or
+// `gh pr list` then waited up to 30 s.
 
 import { execFile, spawn } from 'node:child_process';
 import { devNull } from 'node:os';
+import { join } from 'node:path';
+import { PATH_CACHE_TTL_MS, absolutePathEntries, isExecutableFile } from '../exec/resolve.js';
 import { GUARDED_CONFIG_PATTERN, configEnv, configOverrides, parseScopedConfig } from './guard.js';
 
 export type GitErrorCode = 'not-a-repo' | 'no-commits' | 'no-base' | 'bad-ref' | 'bad-path' | 'git-failed' | 'output-limit';
@@ -126,6 +135,75 @@ function mayRunFilters(args: readonly string[]): boolean {
   return args.some((arg) => arg.startsWith('--filters') || arg.startsWith('--textconv'));
 }
 
+/** A git lookup of one PATH value: null when no absolute entry has git. */
+interface GitLookup {
+  found: Promise<string | null>;
+  at: number;
+}
+
+/** git found on the PATH, per PATH value, for PATH_CACHE_TTL_MS; one lookup however many calls start at once. */
+const gitPaths = new Map<string, GitLookup>();
+
+/** The message of the GitError git calls reject with when no absolute PATH entry has git. */
+export const GIT_NOT_FOUND_MESSAGE = 'git not found on PATH';
+
+/** Whether `error` says git is not on the PATH: callers pass it on as it is, not as `not-a-repo`. */
+export function isGitNotFound(error: unknown): error is GitError {
+  return error instanceof GitError && error.message === GIT_NOT_FOUND_MESSAGE;
+}
+
+/** Spawn errors after which the remembered git is looked up again. */
+const VANISHED = new Set(['ENOENT', 'EACCES']);
+
+/**
+ * The git to spawn: `<entry>/git` for the first absolute entry of the PATH
+ * that holds an executable git, as a shell would find it (not resolved through
+ * symlinks, so a Homebrew upgrade behind its link keeps working). Relative and
+ * empty entries are skipped: git runs in a repo, whose own ./bin/git must never
+ * stand in for it (as for tools, ADR-032). With none, rejects with a GitError
+ * `git not found on PATH` and spawns nothing: plain `git` would let the spawn
+ * search the relative entries from the repo. Windows spawns plain `git`.
+ * Remembered per PATH value for PATH_CACHE_TTL_MS (a miss is not remembered);
+ * a spawn that reports ENOENT or EACCES forgets it.
+ */
+export async function gitBinary(pathValue: string | undefined = process.env['PATH']): Promise<string> {
+  if (process.platform === 'win32') return 'git';
+  const key = pathValue ?? '';
+  const now = Date.now();
+  let lookup = gitPaths.get(key);
+  if (lookup === undefined || now - lookup.at >= PATH_CACHE_TTL_MS) {
+    const created: GitLookup = {
+      at: now,
+      found: (async () => {
+        for (const dir of absolutePathEntries(pathValue)) {
+          const candidate = join(dir, 'git');
+          if (await isExecutableFile(candidate)) return candidate;
+        }
+        return null;
+      })(),
+    };
+    gitPaths.set(key, created);
+    lookup = created;
+  }
+  const found = await lookup.found;
+  if (found === null) {
+    // Not remembered: a git installed meanwhile is found by the next call.
+    if (gitPaths.get(key) === lookup) gitPaths.delete(key);
+    throw new GitError('git-failed', GIT_NOT_FOUND_MESSAGE);
+  }
+  return found;
+}
+
+/** Forgets the git found for a PATH value once a spawn of `binary` reported it missing or not executable. */
+function forgetGitBinary(binary: string, pathValue: string | undefined): void {
+  const key = pathValue ?? '';
+  const lookup = gitPaths.get(key);
+  // Only the binary that failed: a lookup started since keeps its answer.
+  void lookup?.found.then((current) => {
+    if (current === binary && gitPaths.get(key) === lookup) gitPaths.delete(key);
+  });
+}
+
 function spawnGit(
   cwd: string,
   args: readonly string[],
@@ -133,9 +211,22 @@ function spawnGit(
   input: string | undefined,
   maxOutput: number = GIT_MAX_BUFFER,
 ): Promise<GitResult> {
+  const pathValue = process.env['PATH'];
+  return gitBinary(pathValue).then((binary) => runGit(binary, pathValue, cwd, args, env, input, maxOutput));
+}
+
+function runGit(
+  binary: string,
+  pathValue: string | undefined,
+  cwd: string,
+  args: readonly string[],
+  env: NodeJS.ProcessEnv,
+  input: string | undefined,
+  maxOutput: number,
+): Promise<GitResult> {
   return new Promise((resolve, reject) => {
     const child = execFile(
-      'git',
+      binary,
       [...SAFE_CONFIG, ...args],
       {
         cwd,
@@ -154,6 +245,7 @@ function spawnGit(
           resolve({ stdout, stderr: stderrText, exitCode: error.code });
           return;
         }
+        if (typeof error.code === 'string' && VANISHED.has(error.code)) forgetGitBinary(binary, pathValue);
         const code = error.code === 'ERR_CHILD_PROCESS_STDIO_MAXBUFFER' ? 'output-limit' : 'git-failed';
         reject(new GitError(code, `git ${args.join(' ')} failed: ${error.message}`, { cause: error }));
       },
@@ -203,8 +295,19 @@ export function gitStream(
   onChunk: (chunk: Buffer) => void,
 ): Promise<{ exitCode: number; stderr: string }> {
   if (mayRunFilters(args)) throw new GitError('git-failed', `git ${args.join(' ')} cannot be streamed: it may run a filter driver`);
+  const pathValue = process.env['PATH'];
+  return gitBinary(pathValue).then((binary) => streamGit(binary, pathValue, cwd, args, onChunk));
+}
+
+function streamGit(
+  binary: string,
+  pathValue: string | undefined,
+  cwd: string,
+  args: readonly string[],
+  onChunk: (chunk: Buffer) => void,
+): Promise<{ exitCode: number; stderr: string }> {
   return new Promise((resolve, reject) => {
-    const child = spawn('git', [...SAFE_CONFIG, ...args], { cwd, env: gitEnv(), windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
+    const child = spawn(binary, [...SAFE_CONFIG, ...args], { cwd, env: gitEnv(), windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
     const stderr: Buffer[] = [];
     let stderrSize = 0;
     let failure: Error | null = null;
@@ -224,7 +327,8 @@ export function gitStream(
         child.kill();
       }
     });
-    child.on('error', (error) => {
+    child.on('error', (error: NodeJS.ErrnoException) => {
+      if (typeof error.code === 'string' && VANISHED.has(error.code)) forgetGitBinary(binary, pathValue);
       reject(new GitError('git-failed', `git ${args.join(' ')} failed: ${error.message}`, { cause: error }));
     });
     child.on('close', (code) => {

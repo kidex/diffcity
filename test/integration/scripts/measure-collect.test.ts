@@ -3,7 +3,7 @@
 // it, neither for a repo it measures nor for a directory track refuses.
 
 import { spawn, type ChildProcess } from 'node:child_process';
-import { mkdir, mkdtemp, realpath, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -98,16 +98,22 @@ describe('measure-collect output', () => {
     const scratch = await scratchDir(cleanups);
     scratches.push(scratch);
     const env = await ghStubEnv(root, { ...process.env, HOME: user, TMPDIR: scratch }, []);
-    const run = await runScript([orchard.dir, shed, '--timeout', '60'], env);
+    // --import (DC-143): the findings go to the Draft checked out in the repo; the CLI's output names it and is never printed.
+    const findings = join(root, 'findings.json');
+    await writeFile(
+      findings,
+      JSON.stringify([{ source: 'claude', file: 'src/trees/plum.ts', line: 1, severity: 'low', category: 'style', title: 'Plums are counted by hand', message: 'The count is a literal.' }]),
+    );
+    const run = await runScript([orchard.dir, shed, '--timeout', '60', '--import', findings], env);
     const output = run.stdout + run.stderr;
 
     expect(run.stdout).toMatch(/^measure-collect: 2 repo\(s\), one at a time$/m);
     expect(run.stdout).toMatch(
-      /^repo 1: track answered in \d+ ms; last snapshot at \d+ ms; collect done at \d+ ms; 2 changes, 2 snapshots, \d+ bytes total, largest \d+ bytes$/m,
+      /^repo 1: track answered in \d+ ms; last snapshot at \d+ ms; collect done at \d+ ms; 2 changes, 2 snapshots, \d+ bytes total, largest \d+ bytes; import done in \d+ ms$/m,
     );
     expect(run.stdout).toMatch(/^repo 2: /m);
     // No name, no path: not the repo's, not the refused directory's, not the temp root's.
-    for (const secret of ['sample-orchard', 'sample-garden-shed', orchard.dir, shed, root, user, tmpdir()]) {
+    for (const secret of ['sample-orchard', 'sample-garden-shed', 'plum', orchard.dir, shed, root, user, tmpdir()]) {
       expect(output).not.toContain(secret);
     }
     // The refused directory makes the run fail; the measured repo does not.

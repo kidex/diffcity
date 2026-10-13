@@ -4,7 +4,7 @@
 
 import type { DiffcityConfig } from '../config/index.js';
 import { resolveBase, type ResolvedBase } from './base.js';
-import { GitError, assertNotOption, git, gitRaw, resolveCommit, type CommandRunner } from './exec.js';
+import { GitError, assertNotOption, git, gitRaw, isGitNotFound, resolveCommit, type CommandRunner } from './exec.js';
 
 export interface ResolvedChange {
   /** Absolute path of the repo's working tree root. */
@@ -37,7 +37,8 @@ export async function findRepoRoot(cwd: string): Promise<string> {
   try {
     result = await gitRaw(cwd, ['rev-parse', '--show-toplevel']);
   } catch (error) {
-    // cwd missing or git not installed.
+    // No git on the PATH says so; otherwise cwd is missing.
+    if (isGitNotFound(error)) throw error;
     throw new GitError('not-a-repo', `not a git repository: ${cwd}`, { cause: error });
   }
   const root = result.stdout.toString('utf8').trim();
