@@ -112,15 +112,21 @@ const ms = (value) => `${value.toFixed(0)} ms`;
 
 /**
  * Runs `diffcity import <importFile>` from dist/ in `dir`, as a new process
- * against the daemon of `env`; resolves with its duration and exit code. Its
- * output names the change: never printed.
+ * against the daemon of `env`; resolves with its duration and whether it
+ * exited 0. Past `timeoutMs` it is killed and counts as failed. Its output
+ * names the change: never printed.
  */
 function timeImport(dir, env) {
   const start = performance.now();
   return new Promise((resolveRun) => {
     const child = spawn(process.execPath, [join(dist, 'cli', 'index.js'), 'import', importFile], { cwd: dir, env, stdio: 'ignore' });
-    child.once('error', () => resolveRun({ ms: performance.now() - start, ok: false }));
-    child.once('exit', (code) => resolveRun({ ms: performance.now() - start, ok: code === 0 }));
+    const timer = setTimeout(() => child.kill('SIGKILL'), timeoutMs);
+    const settle = (ok) => {
+      clearTimeout(timer);
+      resolveRun({ ms: performance.now() - start, ok });
+    };
+    child.once('error', () => settle(false));
+    child.once('exit', (code) => settle(code === 0));
   });
 }
 
