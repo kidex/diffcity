@@ -2,6 +2,38 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+Phase 4: execution-order reading and findings.
+
+### Added
+
+- The execution path: entry points (routes, controllers, `main`, package bins, CLI actions, jobs, tests), the steps in the order the code runs, SQL at the end, an Unconnected section, a `why` per step and its inline diff. The call graph covers the touched symbols, with ts-morph for TypeScript and name matching for JavaScript (SPEC 5.4, ADR-034).
+- The reading panel shows the path in sections (Execution path, Migrations, Unconnected), with empty states.
+- Findings: `diffcity import` takes the own format or SARIF, anchors each finding to a symbol, merges duplicates with their list of sources and marks a finding `fixed` when a later import no longer reports it. Findings are an overlay on the served Report; the stored Report does not change (SPEC 5.6, ADR-036).
+- Finding actions in the panel: Ask agent to fix (the fix queue, `.diffcity/fix-queue/`), Mark as intended, Undo, with a live refresh.
+- `diffcity setup-claude` installs the `/diffcity-review` command and the Stop and SessionEnd hooks for Claude Code; `--remove` takes out only what it wrote. `diff --json --compact` leaves out untouched files (SPEC 7, ADR-037).
+- Approve in the top bar, unlocked when every touched tier 1 file has a current mark and checked again by the daemon. "Check the rest and approve" marks the listed tier 1 files and approves after one confirmation.
+- Faster review: Needs rewrite (W) marks at once and the note is optional; a general note alone is a complete review; "Send to agent" in the top bar.
+- Send review to the agent: the dialog shows the exact command and the full summary, and runs only after the summary is read and confirmed. It resumes the change's Claude Code session, off by default per repo (ADR-029).
+- Session context: the Session tab shows each Claude Code session linked to the change, with prompts, questions and answers, the agents that ran, an activity summary and an "active" tag, with secrets redacted. Session data is never part of the Report; `diff --json --with-sessions` adds it on request (ADR-038).
+- Review rules: the file-size rule and the layers rule on the import edges a change adds, as rule findings with X markers and rule chips; a rule that cannot run is shown as not checked, never as passed (ADR-030, ADR-031).
+- Spec scope: a `.diffcity/spec.md` (or `diff --spec <file>`) puts every touched file in or outside the spec; a spec that names no touched symbol or file marks nothing and says so (SPEC 5.5, ADR-035).
+- Every external tool runs through one hardened runner: no shell, an environment allow-list, git guards, timeouts and output caps (ADR-032).
+
+### Changed
+
+- The database schema goes from v2 to v6 (findings, sessions, optional rewrite notes, the rules key of each snapshot). An existing database is migrated on the first daemon start; an older diffcity refuses a newer database.
+- Snapshots are recomputed after a restart when the rules or a trusted repo config changed while the daemon was stopped.
+- Rule globs are matched without regular expressions, and each entry is capped at 1,024 characters.
+- On macOS, a CLI carrying the `com.apple.provenance` attribute starts the daemon through LaunchServices (ADR-039).
+
+### Fixed
+
+- `diffcity start` refuses a port already held on 0.0.0.0, `::` or `::1`.
+- The daemon handles SIGINT and SIGTERM while it is still loading.
+- The palette keeps the result moved to across newer answers; the Vite dev proxy presents the dev page's origin to the daemon.
+
 ## [0.3.0] - 2026-10-04
 
 Phase 3: the change screen.
