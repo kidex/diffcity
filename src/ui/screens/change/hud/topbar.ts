@@ -3,7 +3,7 @@
 // your eyes" badge, the rule-check chips, change-level findings, the Export
 // PlantUML button, which arrives in a later version, with an ApprovalPort,
 // Approve (hud/approve.ts), and with an AgentPort the agent run status
-// (hud/agent-run.ts).
+// (hud/agent-run.ts) and "Send to agent".
 // With `crumb` the bar also carries the mockup's breadcrumb (repo, branch
 // against base, commits and time) for a screen mounted without the SPA shell;
 // inside the SPA the shell already shows it and `crumb` is off.
@@ -62,6 +62,8 @@ export interface BarExtras {
   /** With an AgentPort: the agent run status (ADR-029). */
   agent?: HTMLElement | undefined;
   summary?: HTMLElement | undefined;
+  /** With an AgentPort too: "Send to agent", opening the send dialog directly (DC-136). */
+  send?: HTMLElement | undefined;
   approve?: HTMLElement | undefined;
 }
 
@@ -122,6 +124,7 @@ export function renderTopBar(bar: HTMLElement, report: Report, withCrumb: boolea
       'div',
       { class: 'actions' },
       extras.summary,
+      extras.send,
       disabledButton('Export PlantUML', false, 'export-plantuml'),
       extras.approve,
     ),

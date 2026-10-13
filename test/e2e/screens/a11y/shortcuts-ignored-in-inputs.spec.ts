@@ -4,7 +4,7 @@
 
 import { test } from '@playwright/test';
 import { GUARD } from '../../support/hud.js';
-import { openReview, rewriteDialog, selectFile, summaryDialog } from '../../support/review.js';
+import { noteButton, openReview, rewriteDialog, selectFile, summaryDialog } from '../../support/review.js';
 import { camera, selected, sceneExpect as expect } from '../../support/scene.js';
 
 test.describe.configure({ timeout: 90_000 });
@@ -34,13 +34,15 @@ test('a11y/shortcuts-ignored-in-inputs', async ({ page }) => {
   expect(await selected(page)).toBe(GUARD);
   await page.evaluate(`document.getElementById('probe-field').remove()`);
 
-  // The "Needs rewrite" dialog's textarea.
+  // The note dialog's textarea: W marks Needs rewrite at once (one write), "Add note" opens it.
   await page.keyboard.press('w');
+  await expect.poll(() => api.review(11).writes.length).toBe(1);
+  await noteButton(page).click();
   await expect(rewriteDialog(page)).toBeVisible();
   await page.keyboard.type(KEYS.slice(0, 8).join(''));
   await expect(rewriteDialog(page).getByRole('textbox').first()).toHaveValue(KEYS.slice(0, 8).join(''));
   expect(await selected(page)).toBe(GUARD);
-  expect(api.review(11).writes).toHaveLength(0);
+  expect(api.review(11).writes).toHaveLength(1);
   await page.keyboard.press('Escape');
   await expect(rewriteDialog(page)).toBeHidden();
   expect(await selected(page)).toBe(GUARD);
@@ -51,5 +53,5 @@ test('a11y/shortcuts-ignored-in-inputs', async ({ page }) => {
   for (const key of ['[', ']', 'j', 'c', 'r']) await page.keyboard.press(key);
   expect(await selected(page)).toBe(GUARD);
   expect(await camera(page)).toEqual(view);
-  expect(api.review(11).writes).toHaveLength(0);
+  expect(api.review(11).writes).toHaveLength(1);
 });

@@ -13,6 +13,8 @@ import { h } from '../../../shared/dom.js';
 export interface DialogOptions {
   title: string;
   testId: string;
+  /** A class added to the dialog box, for a dialog with a layout of its own. */
+  className?: string | undefined;
   /** The content between the title and the buttons. */
   body: HTMLElement[];
   /** The buttons, in order; the dialog adds nothing of its own. */
@@ -41,7 +43,7 @@ export function openDialog(options: DialogOptions): Dialog {
   const heading = h('h2', { id: titleId, class: 'rv-title' }, options.title);
   const box = h(
     'div',
-    { class: 'rv-dialog', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': titleId, 'data-testid': options.testId, tabindex: -1 },
+    { class: options.className === undefined ? 'rv-dialog' : `rv-dialog ${options.className}`, role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': titleId, 'data-testid': options.testId, tabindex: -1 },
     heading,
     h('div', { class: 'rv-body' }, options.body),
     h('div', { class: 'rv-actions' }, options.actions),

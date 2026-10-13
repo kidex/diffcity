@@ -122,6 +122,23 @@ export interface ApprovalResult {
 }
 
 /**
+ * The touched tier 1 files without a current mark, as the daemon listed them
+ * for "Check the rest and approve" (ADR-028 amendment, DC-135), with what binds
+ * the confirmation to that list: sent back exactly as it came.
+ */
+export interface RemainingFiles {
+  snapshotId: number;
+  head: string;
+  files: string[];
+  token: string;
+}
+
+/** The daemon's answer to "Check the rest and approve": the approval and the paths it marked Checked. */
+export interface CheckRestResult extends ApprovalResult {
+  marked: string[];
+}
+
+/**
  * Approve and its undo (ADR-036). Structurally the port of
  * src/ui/data/approval-port.ts. The daemon checks the gate; a refusal
  * (`tier1-unchecked`, `snapshot-pending`, `archived`, ...) comes back as one.
@@ -134,6 +151,13 @@ export interface ApprovalPort {
   /** Calls `listener` when status() changed; returns the function that stops it. */
   onChange(listener: () => void): () => void;
   approve(): Promise<FindingAnswer<ApprovalResult>>;
+  /** The files "Check the rest and approve" would mark, for its confirmation. */
+  remaining(): Promise<FindingAnswer<RemainingFiles>>;
+  /**
+   * "Check the rest and approve", confirmed on `shown` (the answer of remaining(), unchanged): the daemon
+   * marks those files Checked and approves in one request, or refuses (`snapshot-moved`, `remaining-changed`, ...).
+   */
+  checkRest(shown: RemainingFiles): Promise<FindingAnswer<CheckRestResult>>;
   /** Undo: back to `in-review`. */
   unapprove(): Promise<FindingAnswer<ApprovalResult>>;
 }

@@ -7,7 +7,7 @@
 import { test } from '@playwright/test';
 import { GUARD, MIGRATION } from '../../support/hud.js';
 import { CAN_PLACE } from '../../support/panel.js';
-import { cardButton, expectProgress, openReview, progress, selectFile } from '../../support/review.js';
+import { expectProgress, openReview, progress, selectFile } from '../../support/review.js';
 import { sceneExpect as expect } from '../../support/scene.js';
 
 test.describe.configure({ timeout: 90_000 });
@@ -36,11 +36,9 @@ test('review/progress-updates', async ({ page }) => {
   await expect(progress(page)).toHaveClass(/\bdone\b/);
   await expect(page.getByTestId('progress-touched')).toHaveText('2 of 11 touched files checked');
 
-  // A rewrite counts as marked, and as a rewrite; undo takes the file out again.
+  // A rewrite (W, no note asked) counts as marked, and as a rewrite; undo takes the file out again.
   await selectFile(page, GUARD, CAN_PLACE);
-  await cardButton(page, 'rewrite').click();
-  await page.getByTestId('rewrite-note').fill('Redo the owner check.');
-  await page.getByTestId('rewrite-save').click();
+  await page.keyboard.press('w');
   await expect(page.getByTestId('progress-rewrite')).toHaveText('1 to rewrite');
   await expectProgress(page, 'Everything that needs your eyes is checked');
   await page.keyboard.press('u');

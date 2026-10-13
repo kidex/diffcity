@@ -47,6 +47,8 @@ export function openSummaryDialog(controller: ReviewController, returnFocus: Ele
   const text = h('pre', { class: 'rv-summary', tabindex: 0, 'aria-label': 'Review summary, as markdown', 'data-testid': 'summary-text' });
   const note = h('textarea', { class: 'rv-input', id: 'rv-general', rows: 3, 'data-testid': 'summary-note' });
   note.value = controller.state()?.note ?? '';
+  /** The note as last saved or loaded: the field follows a note saved elsewhere (the send dialog) unless it holds the reviewer's own edit. */
+  let shownNote = note.value;
   const noteStatus = h('p', { class: 'rv-hint', role: 'status', 'data-testid': 'summary-note-status' });
   const copyStatus = h('span', { class: 'rv-hint', role: 'status', 'data-testid': 'summary-copy-status' });
   const saveNote = h('button', { type: 'button', class: 'btn', 'data-testid': 'summary-note-save' }, 'Save note');
@@ -94,7 +96,10 @@ export function openSummaryDialog(controller: ReviewController, returnFocus: Ele
     noteStatus.textContent = 'Saving…';
     void controller.saveNote(note.value).then((saved) => {
       noteStatus.textContent = saved ? 'Note saved' : 'The note was not saved';
-      if (saved) load();
+      if (saved) {
+        shownNote = note.value;
+        load();
+      }
     });
   });
 
@@ -120,5 +125,15 @@ export function openSummaryDialog(controller: ReviewController, returnFocus: Ele
     },
   });
   load();
-  return { dialog, refresh: load };
+  return {
+    dialog,
+    refresh() {
+      const latest = controller.state()?.note ?? '';
+      if (note.value === shownNote && latest !== shownNote) {
+        note.value = latest;
+        shownNote = latest;
+      }
+      load();
+    },
+  };
 }

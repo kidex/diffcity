@@ -29,6 +29,8 @@
 .rv-btn:disabled { opacity: .45; cursor: not-allowed; }
 .rv-btn.checked.on, .rv-btn.good.on { border-color: var(--add); color: var(--ink); background: color-mix(in srgb, var(--add) 16%, transparent); }
 .rv-btn.rewrite.on { border-color: var(--del); color: var(--ink); background: color-mix(in srgb, var(--del) 16%, transparent); }
+.rv-btn.note { border-style: dashed; }
+.rv-btn[hidden] { display: none; }
 .rv-status { flex: 1 1 100%; font-size: 12px; color: var(--ink-2); display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; overflow-wrap: anywhere; }
 .rv-status:empty { display: none; }
 .rv-mark { font-weight: 600; }
@@ -66,6 +68,17 @@
 .rv-dialog:focus { outline: none; }
 .rv-title { margin: 0; font-size: 16px; font-weight: 600; color: var(--ink); overflow-wrap: anywhere; }
 .rv-body { display: flex; flex-direction: column; gap: 8px; min-height: 0; }
+/*
+ * The send dialog is taller than a laptop window: its body scrolls between the
+ * title and the button row, which stay in view, and nothing in it is squeezed.
+ * The summary keeps at least eight lines in view (ADR-029: it is read to its
+ * end before Send), and the general note field stays two lines high.
+ */
+.rv-dialog.ag-dialog { overflow: hidden; }
+.ag-dialog .rv-body { flex: 1 1 auto; overflow: auto; padding-right: 2px; }
+.ag-dialog .rv-body > * { flex-shrink: 0; }
+.ag-dialog .rv-actions { flex-shrink: 0; }
+.ag-summary { min-height: calc(8 * 1.5em + 20px); }
 .rv-lede { margin: 0; font-size: 12.5px; color: var(--muted); font-family: var(--mono); overflow-wrap: anywhere; }
 .rv-label { font-size: 12.5px; font-weight: 500; color: var(--ink); }
 .rv-input {
@@ -121,6 +134,8 @@
 .ag-refusals ul { margin: 0; padding-left: 18px; overflow-wrap: anywhere; }
 .ag-end { display: block; height: 1px; }
 .rv-dialog .btn[hidden], .rv-hint[hidden] { display: none; }
+/* A button that waits keeps focus: aria-disabled, drawn as disabled. */
+.rv-dialog .btn[aria-disabled="true"] { opacity: .55; cursor: not-allowed; }
 
 .hud-bar .agent-run { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; font-size: 12.5px; color: var(--ink-2); }
 .hud-bar .agent-run[hidden] { display: none; }
@@ -133,3 +148,12 @@
 .agent-run-exit { color: var(--muted); font-family: var(--mono); font-size: 11.5px; }
 .agent-run-log { font-family: var(--mono); font-size: 11.5px; color: var(--muted); max-width: 30ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 @keyframes agent-run-pulse { 50% { opacity: .35; } }
+
+/* ---------- check the rest and approve (DC-136) ---------- */
+.check-rest-files {
+  margin: 0; padding: 8px 12px 8px 28px; max-height: 38vh; overflow: auto; font-size: 12px; line-height: 1.6; color: var(--ink);
+  background: var(--code-bg); border: 1px solid var(--line-soft); border-radius: 8px;
+}
+.check-rest-files[hidden] { display: none; }
+.check-rest-files code { font-family: var(--mono); overflow-wrap: anywhere; }
+.ag-note .rv-meta { flex-wrap: wrap; }

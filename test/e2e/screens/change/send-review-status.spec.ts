@@ -143,7 +143,7 @@ test('change/send-review-status: no status while the daemon refuses the runs rea
 standaloneTest('change/send-review-status: hidden-without-port', async ({ page, standalone }) => {
   await standalone.open(panelReport());
   await expect(page.getByTestId('hud-bar')).toBeVisible();
-  await expect(page.locator('[data-testid="agent-run"], [data-testid="summary-send"], [data-testid="send-dialog"], [data-testid="review-summary"]')).toHaveCount(0);
+  await expect(page.locator('[data-testid="agent-run"], [data-testid="summary-send"], [data-testid="send-dialog"], [data-testid="review-summary"], [data-testid="send-to-agent"]')).toHaveCount(0);
 });
 
 test('change/send-review-status: survives-reload', async ({ page }) => {

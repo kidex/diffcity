@@ -1,12 +1,14 @@
 // The review actions of the change screen (SPEC.md section 6, ADR-028): the
 // mark bars on the selection card and in the file view's header, the keys C G
-// W U on the selected file or focused floor, the "Needs rewrite" dialog and
-// the review summary. The state and the writes are the controller's; this puts
+// W U on the selected file or focused floor (W marks Needs rewrite at once;
+// its note is optional, added from the bar), the note dialog, the review
+// summary and, with an AgentPort, the send dialog, from the summary or straight
+// from the top bar. The state and the writes are the controller's; this puts
 // them in front of the reviewer. Only built when the screen has a ReviewPort.
 
 import type { Report } from '../../../../core/report/types.js';
 import type { ReviewMarkValue } from '../../../../core/model/types.js';
-import { markOf, targetFor } from '../model/review.js';
+import { markOf, rewriteExtras, targetFor } from '../model/review.js';
 import type { TargetInfo } from '../model/review.js';
 import type { LineRange } from '../panel/fileview/view.js';
 import type { ReviewController } from './controller.js';
@@ -36,6 +38,8 @@ export interface ReviewUi {
   /** The review state changed: every bar and the open summary are brought up to date. */
   refresh(): void;
   openSummary(trigger: Element | null): void;
+  /** "Send to agent" in the top bar: the send dialog directly, with the general note editable in it. Does nothing without an AgentPort. */
+  openSend(trigger: Element | null): void;
   dispose(): void;
 }
 
@@ -69,19 +73,29 @@ export function createReviewUi(options: ReviewUiOptions): ReviewUi {
     void controller.mark(info.target, info.filePath, value);
   }
 
-  function askRewrite(info: TargetInfo, fileId: string): void {
-    if (rewrite !== null || summary !== null) return;
-    const existing = markOf(controller.state(), info.target);
-    // The file view's line selection, when it is in this file; else the range the mark already has.
+  /** The file view's line selection, when it is in this file. */
+  function selectedLines(fileId: string): LineRange | null {
     const selected = options.range();
-    const lines = selected !== null && selected.fileId === fileId ? selected.range : (existing?.lines ?? null);
+    return selected !== null && selected.fileId === fileId ? selected.range : null;
+  }
+
+  /** W and "Needs rewrite": the mark at once, no note asked (DC-135); a note it already has and the selected lines are kept. */
+  function markRewrite(info: TargetInfo, fileId: string): void {
+    const extras = rewriteExtras(markOf(controller.state(), info.target), selectedLines(fileId));
+    void controller.mark(info.target, info.filePath, 'rewrite', extras);
+  }
+
+  /** "Add note" / "Edit note": the optional note and line range of the target's "Needs rewrite" mark. */
+  function editNote(info: TargetInfo, fileId: string): void {
+    if (rewrite !== null || summary !== null || send !== null) return;
+    const existing = markOf(controller.state(), info.target);
     rewrite = openRewriteDialog({
       info,
       note: existing?.mark === 'rewrite' ? (existing.note ?? '') : '',
-      lines,
+      lines: selectedLines(fileId) ?? existing?.lines ?? null,
       returnFocus: document.activeElement,
       onSave: (note, range) => {
-        void controller.mark(info.target, info.filePath, 'rewrite', { note, ...(range === undefined ? {} : { lines: range }) });
+        void controller.mark(info.target, info.filePath, 'rewrite', { ...(note === undefined ? {} : { note }), ...(range === undefined ? {} : { lines: range }) });
       },
       onClose: () => {
         rewrite = null;
@@ -102,7 +116,11 @@ export function createReviewUi(options: ReviewUiOptions): ReviewUi {
       },
       onRewrite: () => {
         const info = targetOf(entry.fileId, entry.symbolId);
-        if (info !== null) askRewrite(info, entry.fileId);
+        if (info !== null) markRewrite(info, entry.fileId);
+      },
+      onNote: () => {
+        const info = targetOf(entry.fileId, entry.symbolId);
+        if (info !== null) editNote(info, entry.fileId);
       },
       onUndo: () => {
         const info = targetOf(entry.fileId, entry.symbolId);
@@ -146,6 +164,25 @@ export function createReviewUi(options: ReviewUiOptions): ReviewUi {
     render(slot, entry);
   }
 
+  /** The send dialog, over the summary when opened from it. Every ADR-029 safeguard is the dialog's. */
+  function openSend(opener: Element | null): void {
+    const agent = options.agent;
+    if (agent === undefined || send !== null || controller.state() === null) return;
+    send = openSendDialog({
+      port: agent.port,
+      note: { value: controller.state()?.note ?? '', save: (note) => controller.saveNote(note) },
+      returnFocus: opener,
+      onSent: (runId) => {
+        agent.onSent(runId);
+        // The run status in the top bar takes over: the summary goes too, focus back to the button that opened it.
+        queueMicrotask(() => summary?.dialog.close());
+      },
+      onClose: () => {
+        send = null;
+      },
+    });
+  }
+
   const keys = new AbortController();
   document.addEventListener(
     'keydown',
@@ -160,7 +197,7 @@ export function createReviewUi(options: ReviewUiOptions): ReviewUi {
       event.preventDefault();
       if (key === 'c') mark(info, 'checked');
       else if (key === 'g') mark(info, 'good');
-      else if (key === 'w') askRewrite(info, selected.fileId);
+      else if (key === 'w') markRewrite(info, selected.fileId);
       else undo(info);
     },
     { signal: keys.signal },
@@ -176,32 +213,23 @@ export function createReviewUi(options: ReviewUiOptions): ReviewUi {
       summary?.refresh();
     },
     openSummary(trigger) {
-      if (summary !== null || rewrite !== null) return;
-      const agent = options.agent;
+      if (summary !== null || rewrite !== null || send !== null) return;
       summary = openSummaryDialog(
         controller,
         trigger ?? document.activeElement,
         () => {
           summary = null;
         },
-        agent === undefined
+        options.agent === undefined
           ? undefined
           : (opener) => {
-              if (send !== null) return;
-              send = openSendDialog({
-                port: agent.port,
-                returnFocus: opener,
-                onSent: (runId) => {
-                  agent.onSent(runId);
-                  // The run status in the top bar takes over: both dialogs go, focus back to the summary button.
-                  queueMicrotask(() => summary?.dialog.close());
-                },
-                onClose: () => {
-                  send = null;
-                },
-              });
+              openSend(opener);
             },
       );
+    },
+    openSend(trigger) {
+      if (summary !== null || rewrite !== null) return;
+      openSend(trigger ?? document.activeElement);
     },
     dispose() {
       keys.abort();

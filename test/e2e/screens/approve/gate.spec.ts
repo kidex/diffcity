@@ -1,8 +1,10 @@
 // e2e/approve/gate (DC-116, ADR-036, SPEC.md section 6): Approve in the top bar
-// against the mocked approve route. The button opens only when the daemon's
+// against the mocked approve route. Plain Approve is offered when the daemon's
 // review progress says every touched tier 1 file has a current mark; a click
 // asks to confirm inline, Confirm sends POST, and the bar shows the approved
-// badge with the short head and Undo approve (DELETE). A refusal shows the
+// badge with the short head and Undo approve (DELETE). While tier 1 files are
+// unmarked the button is "Check the rest and approve" (DC-136): a confirmation
+// lists the files the daemon names and the POST sends that list back. A refusal shows the
 // daemon's reason and the button goes back to what it was. Without an
 // ApprovalPort (the standalone page, the HTML export) there is no button.
 
@@ -26,33 +28,79 @@ async function checkFile(page: Page, file: string): Promise<void> {
 
 const bothTier1Checked = () => marksFromOverlay(panelReport(), { files: { [GUARD]: 'checked', [MIGRATION]: 'checked' } });
 
-test('approve/gate/disabled-until-tier1-marked', async ({ page }) => {
+test('approve/gate/check-rest-until-tier1-marked', async ({ page }) => {
   const { api } = await openReview(page);
   const approve = page.getByTestId('approve');
-  await expect(approve).toHaveText('Approve when tier 1 is read');
-  await expect(approve).toHaveAttribute('aria-disabled', 'true');
-  await expect(approve).toHaveAttribute('title', '0 of 2 touched tier 1 files have a current review mark');
-  // Inert: a click and Enter neither confirm nor send.
-  await approve.click({ force: true });
-  await approve.focus();
-  await page.keyboard.press('Enter');
-  await expect(page.getByTestId('approve-confirm')).toHaveCount(0);
+  // Tier 1 files left unmarked: the button offers to check the rest, behind a confirmation (DC-136).
+  await expect(approve).toHaveText('Check the rest and approve');
+  await expect(approve).not.toHaveAttribute('aria-disabled');
+  await expect(approve).toHaveAttribute('title', /^0 of 2 touched tier 1 files have a current review mark/);
+  await expect(page.getByTestId('approve-control')).toHaveAttribute('data-bulk', 'true');
 
-  // One tier 1 file checked: still closed, the count moves with the daemon's progress.
+  // One tier 1 file checked: still the offer, the count moves with the daemon's progress.
   await checkFile(page, GUARD);
-  await expect(approve).toHaveAttribute('title', '1 of 2 touched tier 1 files have a current review mark');
-  await expect(approve).toHaveAttribute('aria-disabled', 'true');
+  await expect(approve).toHaveAttribute('title', /^1 of 2 touched tier 1 files have a current review mark/);
+  await expect(approve).toHaveText('Check the rest and approve');
 
-  // The other one: open.
+  // The other one: plain Approve, unchanged.
   await checkFile(page, MIGRATION);
   await expect(approve).toHaveText('Approve');
   await expect(approve).not.toHaveAttribute('aria-disabled');
   await expect(approve).toHaveAttribute('title', 'All 2 touched tier 1 files have a current review mark');
+  await expect(page.getByTestId('approve-control')).toHaveAttribute('data-bulk', 'false');
 
-  // Undo a mark: closed again.
+  // Undo a mark: the offer again. Nothing was read or sent on the way.
   await cardButton(page, 'undo').click();
-  await expect(approve).toHaveText('Approve when tier 1 is read');
+  await expect(approve).toHaveText('Check the rest and approve');
   expect(api.approval(11).writes).toEqual([]);
+  expect(api.approval(11).remainingReads).toBe(0);
+});
+
+test('approve/gate/check-rest-and-approve-confirm-lists-files', async ({ page }) => {
+  // The guard is checked; the migration is the one tier 1 file left.
+  const { api } = await openReview(page, { marks: marksFromOverlay(panelReport(), { files: { [GUARD]: 'checked' } }) });
+  const approve = page.getByTestId('approve');
+  await expect(approve).toHaveText('Check the rest and approve');
+
+  // A click asks the daemon for the list and shows it in a modal confirmation; nothing is written yet.
+  await approve.click();
+  const dialog = page.getByTestId('check-rest-dialog');
+  await expect(dialog).toBeVisible();
+  await expect(dialog).toHaveAttribute('aria-modal', 'true');
+  await expect(dialog.getByRole('heading')).toHaveText('Check the rest and approve');
+  await expect(dialog.getByTestId('check-rest-file')).toHaveText([MIGRATION]);
+  await expect(dialog.getByTestId('check-rest-lede')).toHaveText(
+    '1 touched tier 1 file has no current mark. Confirming marks it Checked and approves the change at 3f2a9c4.',
+  );
+  await expect(dialog.getByTestId('check-rest-notice')).toBeHidden();
+  const confirm = dialog.getByTestId('check-rest-confirm');
+  await expect(confirm).toHaveText('Check 1 file and approve');
+  await expect(confirm).toBeFocused();
+  expect(api.approval(11).remainingReads).toBe(1);
+  expect(api.approval(11).writes).toEqual([]);
+
+  // Esc (and Cancel) leave everything as it was, focus back on the button.
+  await page.keyboard.press('Escape');
+  await expect(dialog).toHaveCount(0);
+  await expect(approve).toBeFocused();
+  expect(api.approval(11).writes).toEqual([]);
+
+  // Confirm: one POST carrying back exactly what the daemon listed; the file is marked, the change approved.
+  await approve.click();
+  await expect(dialog.getByTestId('check-rest-file')).toHaveText([MIGRATION]);
+  await dialog.getByTestId('check-rest-confirm').click();
+  await expect(dialog).toHaveCount(0);
+  await expect(page.getByTestId('approved-badge')).toHaveText('Approved 3f2a9c4');
+  await expect(page.getByTestId('approve-undo')).toBeFocused();
+  expect(api.approval(11).writes).toEqual(['POST']);
+  const listed = api.approval(11).bodies[0] as { checkRemaining: boolean; snapshotId: number; files: string[]; token: string };
+  expect(listed).toMatchObject({ checkRemaining: true, snapshotId: 1, files: [MIGRATION] });
+  expect(listed.token).toMatch(/^[0-9a-f]{64}$/);
+  expect(api.review(11).marks.find((mark) => mark.targetKind === 'file' && mark.filePath === MIGRATION)).toMatchObject({ mark: 'checked', state: 'current' });
+  // The marks are read again: the progress says every tier 1 file is marked.
+  await selectFile(page, MIGRATION);
+  await card(page).getByTestId('mark-scope-file').click();
+  await expect(card(page).getByTestId('mark-current')).toHaveText('Checked');
 });
 
 test('approve/gate/enabled-then-confirm-then-approved-badge', async ({ page }) => {

@@ -12,6 +12,10 @@ import {
   APPROVE_WAITING,
   approveGate,
   approveView,
+  CHECK_REST,
+  CHECK_REST_MOVED,
+  checkRestView,
+  isStaleList,
   NO_REVIEW_STATE,
 } from "../../../src/ui/screens/change/model/approve.js";
 import type { ApprovalStatus } from "../../../src/ui/screens/change/ports.js";
@@ -136,6 +140,45 @@ describe("topbar-model", () => {
     });
   });
 
+  it("check-rest: offered only while tier 1 files are unmarked, with a review state and nothing in flight", () => {
+    // Without the option (the default), the gate waits as before.
+    expect(approveView({ ...base, progress: tier1(1, 2) })).toMatchObject({ kind: "gate", open: false, bulk: false, label: APPROVE_WAITING });
+    expect(approveView({ ...base, progress: tier1(1, 2), checkRest: true })).toMatchObject({
+      kind: "gate",
+      open: true,
+      bulk: true,
+      label: CHECK_REST,
+      title: expect.stringContaining("1 of 2 touched tier 1 files have a current review mark") as string,
+    });
+    // Everything marked: plain Approve, unchanged.
+    expect(approveView({ ...base, checkRest: true })).toMatchObject({ kind: "gate", open: true, bulk: false, label: APPROVE });
+    // No review state: nothing to check against, closed.
+    expect(approveView({ ...base, progress: null, checkRest: true })).toMatchObject({ kind: "gate", open: false, bulk: false, title: NO_REVIEW_STATE });
+    // Approved: the badge, whatever is left.
+    expect(approveView({ ...base, status: status({ reviewState: "approved", approvedHead: HEAD }), progress: tier1(0, 2), checkRest: true })).toMatchObject({ kind: "approved" });
+    // A refusal keeps its reason on the offer.
+    expect(approveView({ ...base, progress: tier1(0, 2), checkRest: true, error: "no" })).toMatchObject({ bulk: true, error: "no" });
+  });
+
+  it("check-rest-view: lists the daemon's files, says what confirming does, and the stale-list refusals", () => {
+    expect(checkRestView({ head: HEAD, files: ["src/a.ts", "src/b.ts"] })).toEqual({
+      title: CHECK_REST,
+      lede: "2 touched tier 1 files have no current mark. Confirming marks them Checked and approves the change at 3f2a9c4.",
+      files: ["src/a.ts", "src/b.ts"],
+      confirm: "Check 2 files and approve",
+    });
+    expect(checkRestView({ head: HEAD, files: ["src/a.ts"] })).toMatchObject({
+      lede: "1 touched tier 1 file has no current mark. Confirming marks it Checked and approves the change at 3f2a9c4.",
+      confirm: "Check 1 file and approve",
+    });
+    expect(checkRestView({ head: HEAD, files: [] })).toMatchObject({ files: [], confirm: "Approve 3f2a9c4" });
+    expect(isStaleList("snapshot-moved")).toBe(true);
+    expect(isStaleList("remaining-changed")).toBe(true);
+    expect(isStaleList("tier1-unchecked")).toBe(false);
+    expect(isStaleList("snapshot-pending")).toBe(false);
+    expect(CHECK_REST_MOVED).toMatch(/look again/);
+  });
+
   it("approval-port: POST and DELETE the approve route, refusals with their message, stale summaries ignored", async () => {
     const seen: { url: string; method: string | undefined }[] = [];
     let next: Response = new Response(
@@ -223,5 +266,41 @@ describe("topbar-model", () => {
       performance.now(),
     );
     expect(port.status()).toBeNull();
+  });
+
+  it("approval-port: check the rest reads the list, then sends back exactly what it answered with checkRemaining", async () => {
+    const remaining = { snapshotId: 7, head: HEAD, files: ["src/auth/guard.ts"], token: "f".repeat(64) };
+    const seen: { url: string; method: string; body: unknown }[] = [];
+    const answers: Response[] = [
+      new Response(JSON.stringify(remaining), { status: 200 }),
+      new Response(JSON.stringify({ error: { code: "snapshot-moved", message: "look again" } }), { status: 409 }),
+      new Response(JSON.stringify({ reviewState: "approved", approvedHead: HEAD, approvedAt: "2026-05-04T11:19:00.000Z", marked: remaining.files }), { status: 200 }),
+    ];
+    const api = createApi("", (input, init) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+      seen.push({ url, method: init?.method ?? "GET", body: typeof init?.body === "string" ? (JSON.parse(init.body) as unknown) : null });
+      const next = answers.shift();
+      return next === undefined ? Promise.reject(new Error("no answer")) : Promise.resolve(next);
+    });
+    let written = 0;
+    const port = createApprovalPort(api, 11, () => {
+      written += 1;
+    });
+    port.show({ reviewState: "in-review", head: HEAD, approvedHead: null, approvedAt: null, archivedAt: null } as unknown as ChangeSummary, performance.now());
+
+    const listed = await port.remaining();
+    expect(listed).toMatchObject({ ok: true, value: remaining });
+    expect(seen[0]).toEqual({ url: "/api/changes/11/approve/remaining", method: "GET", body: null });
+    expect(written).toBe(0);
+
+    // A stale list is a refusal like any other: the screen asks again.
+    expect(await port.checkRest(remaining)).toEqual({ ok: false, refusal: { code: "snapshot-moved", message: "look again" } });
+    expect(seen[1]).toEqual({ url: "/api/changes/11/approve", method: "POST", body: { checkRemaining: true, snapshotId: 7, files: remaining.files, token: remaining.token } });
+    expect(port.status()?.reviewState).toBe("in-review");
+
+    const done = await port.checkRest(remaining);
+    expect(done).toMatchObject({ ok: true, value: { marked: ["src/auth/guard.ts"] } });
+    expect(port.status()).toEqual(status({ reviewState: "approved", approvedHead: HEAD, approvedAt: "2026-05-04T11:19:00.000Z" }));
+    expect(written).toBe(1);
   });
 });
