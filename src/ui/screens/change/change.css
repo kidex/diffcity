@@ -12,7 +12,7 @@
 .city { position: relative; flex: 1 1 0; min-height: 0; overflow: hidden; }
 .city canvas.scene { position: absolute; inset: 0; width: 100%; height: 100%; display: block; cursor: grab; touch-action: none; }
 .city canvas.scene:active { cursor: grabbing; }
-.city .labels { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+.city .labels { position: absolute; inset: 0; z-index: 1; pointer-events: none; overflow: hidden; }
 
 /* ---------- HUD: top bar (the mockup's .top without the brand and search) ---------- */
 .hud-bar {
@@ -69,22 +69,23 @@
 /* ---------- HUD over the city ---------- */
 .hud { position: absolute; inset: 0; z-index: 2; pointer-events: none; overflow: hidden; container: hud / size; }
 /*
- * The left column: the title and filters at the top, the legend at the bottom
- * (the mockup's left 22px, top and bottom 18px; 4 px of padding keep focus
- * outlines whole). It wraps as a column: when the city is too short for both,
- * the legend moves to a second column, outside the clipped box, instead of
- * running over the filters (DC-139). The 318 px on the right stay clear of the
- * selection card.
+ * The left column (hud/column.ts, DC-139): the title and filters at the top,
+ * the legend at the bottom (the mockup's left 22px, top and bottom 18px),
+ * stacked so they never overlap. The 318 px on the right stay clear of the
+ * selection card. Short of room, the legend folds into a chip and the filter
+ * rows scroll; their 4 px of padding keep focus outlines whole.
  */
 .hud-left {
-  position: absolute; left: 18px; top: 14px; bottom: 14px; right: 314px; padding: 4px; overflow: hidden;
-  display: flex; flex-flow: column wrap; align-content: flex-start; gap: 12px;
+  position: absolute; left: 22px; top: 18px; bottom: 18px; right: 318px;
+  display: flex; flex-direction: column; gap: 12px;
 }
 .hud-left > * { max-width: 100%; }
-.hud-head { display: flex; flex-direction: column; gap: 12px; }
+.hud-head { display: flex; flex-direction: column; gap: 12px; min-height: 0; flex: 0 1 auto; }
+.hud-title { flex: none; }
 .hud-title h1 { margin: 0; font-size: 20px; font-weight: 600; letter-spacing: -.02em; }
 .hud-title p { margin: 4px 0 0; color: var(--muted); font-size: 13px; max-width: 64ch; }
-.hud-filters { display: flex; flex-direction: column; gap: 6px; }
+.hud-filters { display: flex; flex-direction: column; gap: 6px; min-height: 0; }
+.hud-filters.scrolls { overflow: hidden auto; padding: 4px; margin: -4px; scrollbar-width: thin; pointer-events: auto; overscroll-behavior: contain; }
 .hud-filters .chips[hidden] { display: none; }
 .hud .chip {
   pointer-events: auto; background: color-mix(in srgb, var(--bg-deep) 70%, transparent);
@@ -104,10 +105,21 @@
 }
 .hud .hint .k { margin-left: 3px; background: color-mix(in srgb, var(--bg-deep) 60%, transparent); }
 
+.legend-slot { flex: none; margin-top: auto; position: relative; }
 .hud .legend {
-  margin-top: auto; display: flex; gap: 14px; flex-wrap: wrap; color: var(--ink-2); font-size: 12.5px;
+  display: flex; gap: 14px; flex-wrap: wrap; color: var(--ink-2); font-size: 12.5px;
   max-width: calc(100% - 20px);
 }
+.hud .legend-toggle { display: none; }
+.hud-left.legend-folded .legend-toggle { display: inline-flex; }
+.hud-left.legend-folded .legend { display: none; }
+.hud-left.legend-folded.legend-open .legend {
+  display: grid; grid-template-columns: repeat(2, max-content); gap: 6px 16px; position: absolute; left: 0; bottom: calc(100% + 8px); width: max-content;
+  padding: 12px 14px; border-radius: 12px; pointer-events: auto; backdrop-filter: blur(14px);
+  background: color-mix(in srgb, var(--bg-deep) 92%, transparent); border: 1px solid color-mix(in srgb, var(--plot-line) 70%, transparent);
+  box-shadow: 0 20px 50px rgb(0 0 0 / 0.5);
+}
+.hud-left.legend-folded.legend-open .legend .g { display: contents; }
 .hud .legend span { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
 .hud .legend span[hidden] { display: none; }
 .hud .legend i { width: 12px; height: 12px; border-radius: 3px; display: inline-block; background: var(--c); }
@@ -115,14 +127,15 @@
 .hud .legend i.del { background: transparent; border: 1.5px dashed var(--c); }
 .hud .legend i.x { background: transparent; color: var(--del); font: 600 14px/1 var(--mono); width: 12px; height: 12px; text-align: center; }
 .hud .legend .g { display: inline-flex; gap: 12px; padding-right: 12px; margin-right: 2px; border-right: 1px solid var(--line); }
-/* A narrow city: the legend's items flow as one wrapping list; a narrow and short one drops the title's sentence. */
+/* A narrow city: the legend's items flow as one wrapping list and the filter rows tighten. */
 @container hud (max-width: 760px) {
   .hud .legend { gap: 3px 12px; }
   .hud .legend .g { display: contents; }
+  .hud-filters, .hud .hud-filters .chips { gap: 4px; }
+  .hud .chip { padding: 4px 10px 4px 8px; }
 }
-@container hud (max-width: 760px) and (max-height: 500px) {
-  .hud-title p { display: none; }
-}
+/* Short of room, the title's sentence goes before the legend folds (hud/column.ts). */
+.hud-left.terse .hud-title p { display: none; }
 
 /* tooltip and selection card */
 .hud .tip, .hud .card {
