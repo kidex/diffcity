@@ -15,6 +15,7 @@ import { runUp, UP_START_TIMEOUT_MS } from '../../../src/cli/up.js';
 import { OWNER_WAIT_MS, sendRequest, spawnDaemon } from '../../../src/daemon/client.js';
 import { isProcessAlive, readDaemonInfo, writeDaemonInfo } from '../../../src/daemon/files.js';
 import { tempHome, type TempHome } from '../../helpers/config.js';
+import { canListenOnIpv6, listenOn, type Blocker, type BlockerHost } from '../../helpers/port.js';
 import { CLI_DIST, DAEMON_MAIN_DIST, DaemonTracker, waitFor } from '../../helpers/daemon.js';
 import { expectNoRecorderLeft, IMPORT_RECORDER } from '../../helpers/import-recorder-guard.js';
 
@@ -36,6 +37,18 @@ afterEach(async () => {
 afterAll(expectNoRecorderLeft);
 
 const version = readVersion();
+const ipv6 = await canListenOnIpv6();
+const blockers: Blocker[] = [];
+afterEach(async () => {
+  for (const blocker of blockers.splice(0)) await blocker.close();
+});
+
+/** A port another process holds on a wildcard address (DC-117). */
+async function heldOn(host: BlockerHost): Promise<number> {
+  const blocker = await listenOn(host);
+  blockers.push(blocker);
+  return blocker.port;
+}
 
 async function up(args: string[]): Promise<{ code: number | null; stdout: string; stderr: string }> {
   const run = daemons.cli(['up', ...args], temp.env, temp.userHome);
@@ -204,6 +217,14 @@ describe('diffcity up', () => {
     for (const file of [paths.daemonJson, paths.lock, paths.socket]) expect(await missing(file)).toBe(true);
   });
 
+  // DC-117: macOS lets 127.0.0.1 be bound on a port held on a wildcard.
+  it.each<BlockerHost>(ipv6 ? ['0.0.0.0', '::'] : ['0.0.0.0'])('a port held on %s exits 1 with the message, leaving nothing behind', async (host) => {
+    const port = await heldOn(host);
+    const result = await up(['--port', String(port), '--no-open']);
+    expect(result).toEqual({ code: 1, stdout: '', stderr: `port ${String(port)} is in use; pass --port\n` });
+    for (const file of [paths.daemonJson, paths.lock, paths.state]) expect(await missing(file)).toBe(true);
+  });
+
   it('--foreground on a busy port exits 1 with the message', async () => {
     const port = portOf(await listening());
     const result = await up(['--foreground', '--port', String(port), '--no-open']);
@@ -298,5 +319,17 @@ describe('runUp in-process', () => {
     );
     expect(code).toBe(1);
     expect(out.err).toEqual([`port ${String(port)} is in use; pass --port\n`]);
+  });
+
+  it('a port taken on 0.0.0.0 between the check and the daemon start: the daemon gives the port message', async () => {
+    const port = await heldOn('0.0.0.0');
+    const out = io();
+    const code = await runUp(
+      { port: String(port), open: false },
+      { io: out.io, env: temp.env, spawnDaemon: spawnFromDist, isPortFree: () => Promise.resolve(true) },
+    );
+    expect(code).toBe(1);
+    expect(out.err).toEqual([`port ${String(port)} is in use; pass --port\n`]);
+    for (const file of [paths.daemonJson, paths.lock]) expect(await missing(file)).toBe(true);
   });
 });
