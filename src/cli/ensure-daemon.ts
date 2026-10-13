@@ -26,7 +26,7 @@ export interface EnsureDaemonDeps {
   io: CliStreams;
   env: NodeJS.ProcessEnv;
   spawnDaemon?: typeof defaultSpawnDaemon;
-  /** Whether nothing listens on <port> at 127.0.0.1, 0.0.0.0 or :: (src/daemon/port.ts). */
+  /** Whether nothing accepts a connection on <port> at 127.0.0.1 or ::1 (src/daemon/port.ts). */
   isPortFree?: (port: number) => Promise<boolean>;
   /** Defaults to DAEMON_START_TIMEOUT_MS. */
   startTimeoutMs?: number;
