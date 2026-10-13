@@ -4,7 +4,7 @@
 // own module. A file belongs to the module with the longest matching prefix.
 // Pure: no I/O.
 
-import { segmentMatcher } from './glob.js';
+import { GLOB_MAX_LENGTH, segmentMatcher } from './glob.js';
 
 /** One entry of `layers`, ready to match. */
 export interface LayerModule {
@@ -66,13 +66,17 @@ function overlap(a: string, b: string): boolean {
 /**
  * The modules of a `layers` value (already checked to be a non-empty array of
  * non-empty arrays of non-empty strings), or the first config error: an entry
- * that is not a repo-relative directory or simple glob, an entry listed twice,
+ * longer than GLOB_MAX_LENGTH, one that is not a repo-relative directory or
+ * simple glob, an entry listed twice,
  * or two entries that overlap without being nested.
  */
 export function layerModules(layers: readonly (readonly string[])[]): LayerModules {
   const modules: LayerModule[] = [];
   for (const [layer, entries] of layers.entries()) {
     for (const entry of entries) {
+      if (entry.length > GLOB_MAX_LENGTH) {
+        return { ok: false, message: `module "${entry.slice(0, 40)}…" must be at most ${String(GLOB_MAX_LENGTH)} characters` };
+      }
       const pattern = normalizeEntry(entry);
       if (pattern === null) {
         return { ok: false, message: `module "${entry}" must be a repo-relative directory, or a glob with "*" inside path segments` };

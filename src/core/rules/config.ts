@@ -4,7 +4,7 @@
 // the engine turns into a RuleCheck with state `error`.
 
 import type { RuleCheck } from '../report/types.js';
-import { globMatcher } from './glob.js';
+import { GLOB_MAX_LENGTH, globMatcher } from './glob.js';
 import { layerModules } from './modules.js';
 
 export type Severity = 'high' | 'med' | 'low';
@@ -118,6 +118,9 @@ function fieldProblem(kind: RuleKind, entry: Record<string, unknown>): string | 
       if (limits.every((limit) => entry[limit] === undefined)) return 'needs at least one of maxLines, maxBytes, maxSymbolLines';
       for (const list of ['include', 'exclude'] as const) {
         if (entry[list] !== undefined && !isStringArray(entry[list], true)) return `field "${list}" must be an array of non-empty strings`;
+        if (entry[list]?.some((pattern) => pattern.length > GLOB_MAX_LENGTH)) {
+          return `field "${list}" entries must be at most ${String(GLOB_MAX_LENGTH)} characters`;
+        }
       }
       return null;
     }
