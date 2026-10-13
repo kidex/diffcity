@@ -5,13 +5,19 @@
 // the daemon's own stats carry: top bar counters, verdict and type filter rows
 // with their counts, the legend, roof labels with verdict tags, the tooltip,
 // the selection card, the panel tabs and the file view with the real diff.
+// golden/reading-path-real-steps (DC-140): on the same daemon, the Execution
+// order tab shows each scenario's hand-reviewed path
+// (test/integration/golden-review.ts) section by section, every stop with its
+// `why` and, where the step has one, its inline diff.
 
 import type { Page } from '@playwright/test';
 import type { FileDiff } from '../../../src/core/model/types.js';
-import type { Report } from '../../../src/core/report/types.js';
-import { GOLDEN, getJson, stubEnv, trackScenario, type TrackedChange } from '../support/change-daemon.js';
+import type { Report, Step } from '../../../src/core/report/types.js';
+import { reviewed, type ReviewedStep } from '../../integration/golden-review.js';
+import { GOLDEN, getJson, stubEnv, trackScenario, type GoldenName, type TrackedChange } from '../support/change-daemon.js';
 import { expect, test } from '../support/proof.js';
 import { hovered, project, sceneExpect, waitForCityAttribute, waitReady } from '../support/scene.js';
+import { stopSection, stopSections } from '../support/panel.js';
 
 const VERDICTS = [
   ['eyes', 'Needs your eyes'],
@@ -46,6 +52,7 @@ test('change/golden-three-scenarios', async ({ proof, page }) => {
       await labelsAndTooltip(page, tracked, report);
       await selectionAndFileView(page, proof.baseURL, tracked, report);
       await panelTabs(page, report);
+      await test.step(`golden/reading-path-real-steps: ${name}`, () => readingPath(page, name, report));
     });
   }
 });
@@ -80,10 +87,11 @@ async function topBar(page: Page, tracked: TrackedChange, report: Report): Promi
   await expect(page.getByTestId('eyes-badge')).toHaveText(`${String(stats.filesByVerdict.eyes)} files need your eyes before merge`);
   await expect(page.getByTestId('progress-attention')).toHaveText(`0 of ${String(stats.filesByVerdict.eyes)} files that need your eyes checked`);
   await expect(page.getByTestId('progress-touched')).toHaveText(`0 of ${String(stats.touchedFiles)} touched files checked`);
-  // The review controls are present with a daemon; export is a disabled placeholder, Approve stays closed until tier 1 is marked.
+  // The review controls are present with a daemon; export is a disabled placeholder. While touched tier 1 files
+  // are unmarked, Approve is "Check the rest and approve" (DC-135).
   await expect(page.getByRole('button', { name: 'Review summary' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Export PlantUML' })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Approve when tier 1 is read' })).toBeVisible();
+  await expect(page.getByRole('button', { name: report.summary.tier1Files.length > 0 ? 'Check the rest and approve' : 'Approve', exact: true })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'What the agent built' })).toBeVisible();
   await expect(page.getByTestId('hint')).toContainText('Drag to orbit, scroll to zoom');
 }
@@ -205,4 +213,50 @@ async function panelTabs(page: Page, report: Report): Promise<void> {
   await expect(panel.getByTestId('panel-summary')).toHaveText(
     stops > 0 ? `${count}, ${onPath ? 'in the order the code runs' : 'in reading order'}` : 'No execution path',
   );
+}
+
+const SECTION_LABELS: Record<ReviewedStep[0], [label: string, note: string]> = {
+  path: ['Execution path', 'From each entry point, in the order the code runs'],
+  migration: ['Migrations', 'Touched SQL migrations, read after the execution path'],
+  unconnected: ['Unconnected', 'Touched symbols no entry point reaches'],
+};
+
+/** The name a stop card shows: the symbol id after `#`. */
+const symbolName = (symbolId: string): string => symbolId.slice(symbolId.indexOf('#') + 1);
+
+async function readingPath(page: Page, name: GoldenName, report: Report): Promise<void> {
+  const expected = reviewed[name]?.path;
+  if (expected === undefined) throw new Error(`no reviewed path for ${name}`);
+  // The daemon's steps are the reviewed ones, in order: section, symbol and why.
+  const ordered = [...report.steps].sort((a, b) => a.order - b.order);
+  expect(ordered.map((one) => [one.section ?? 'path', one.symbolId, one.why])).toEqual(expected.map(([section, symbolId, , why]) => [section, symbolId, why]));
+
+  await page.getByTestId('tab-order').click();
+  const sections = [...new Set(expected.map(([section]) => section))];
+  await expect(stopSections(page)).toHaveCount(sections.length);
+  await expect(stopSections(page).getByTestId('section-label')).toHaveText(sections.map((section) => SECTION_LABELS[section][0]));
+  await expect(stopSections(page).getByTestId('section-note')).toHaveText(sections.map((section) => SECTION_LABELS[section][1]));
+  for (const section of sections) {
+    const rows = expected.filter(([id]) => id === section);
+    const cards = stopSection(page, section).getByTestId('stop-card');
+    await expect(cards).toHaveCount(rows.length);
+    await expect(stopSection(page, section).getByTestId('section-count')).toHaveText(String(rows.length));
+    await expect(cards.getByTestId('stop-symbol')).toHaveText(rows.map(([, symbolId]) => symbolName(symbolId)));
+    await expect(cards.getByTestId('stop-why')).toHaveText(rows.map(([, , , why]) => why));
+    const symbols = await Promise.all((await cards.all()).map((card) => card.getAttribute('data-symbol')));
+    expect(symbols).toEqual(rows.map(([, symbolId]) => symbolId));
+  }
+  // The inline diff: a card shows the step's own lines when the step has any, and no code block otherwise.
+  const withDiff = ordered.filter((one) => one.diff.length > 0);
+  expect(withDiff.length, `${name}: steps with an inline diff`).toBeGreaterThan(0);
+  await expect(page.getByTestId('reading-panel').getByTestId('step-diff')).toHaveCount(withDiff.length);
+  for (const one of withDiff) await expectInlineDiff(page, one);
+}
+
+async function expectInlineDiff(page: Page, one: Step): Promise<void> {
+  const block = page.locator(`[data-testid="stop-card"][data-symbol="${one.symbolId}"]`).getByTestId('step-diff');
+  await expect(block).toHaveCount(1);
+  await expect(block.locator('.l')).toHaveCount(one.diff.length);
+  const changed = one.diff.find((line) => line.kind !== 'ctx' && line.text.trim() !== '');
+  if (changed !== undefined) await expect(block).toContainText(changed.text.trim());
 }
