@@ -25,7 +25,7 @@ export type { EventInput, EventStore } from './events.js';
 export type { MarkWrite, ReviewStore } from './review.js';
 export type { SessionDigestWrite, SessionLink, SessionRecord, SessionSighting, SessionStore } from './sessions.js';
 export type { RepoInput, RepoRuntime, RepoRuntimeLookup, RepoStore } from './repos.js';
-export type { LiveTouched, SnapshotInput, SnapshotKey, SnapshotMeta, SnapshotPutResult, SnapshotStore } from './snapshots.js';
+export type { LiveTouched, SnapshotComputed, SnapshotInput, SnapshotKey, SnapshotMeta, SnapshotPutResult, SnapshotStore } from './snapshots.js';
 export type { DbPragmas } from './open.js';
 export { BUSY_TIMEOUT_MS } from './open.js';
 export { MIGRATIONS, SCHEMA_VERSION, newerVersionMessage } from './migrations.js';

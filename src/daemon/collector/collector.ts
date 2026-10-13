@@ -54,7 +54,7 @@ import {
   type WorktreeInfo,
 } from '../../core/changes/index.js';
 import { CONFIG_FILE_NAME, loadConfig } from '../../core/config/index.js';
-import { CONFIG_NOT_TRUSTED_NOTE, type RuleSettingsReader, type TrustCheck, type UserRuleSettings } from '../../core/settings/index.js';
+import { CONFIG_NOT_TRUSTED_NOTE, rulesKey as rulesKeyOf, type RuleSettingsReader, type TrustCheck, type UserRuleSettings } from '../../core/settings/index.js';
 import type { Db } from '../../core/db/index.js';
 import { defaultRunner, GitError, resolveBase, type CommandRunner, type ResolvedBase } from '../../core/git/index.js';
 import type {
@@ -174,10 +174,11 @@ interface ConfigState {
   /** The user's rule lists for the repo, passed to the snapshot jobs. */
   rules: UserRuleSettings;
   /**
-   * Everything a snapshot's rules depend on besides the content: trust, the
-   * config's mtime (only for a trusted repo, whose config runs) and the user
-   * rules. A change whose snapshot was computed under another key is computed
-   * again (ADR-030).
+   * The hash of everything a snapshot's rules depend on besides the content:
+   * trust, the config's mtime (only for a trusted repo, whose config runs) and
+   * the user rules. Stored with each snapshot; a change whose latest snapshot
+   * was stored under another key, or none, is computed again, also after a
+   * restart (ADR-030, DC-121).
    */
   rulesKey: string;
 }
@@ -193,12 +194,6 @@ export function createCollector(options: CollectorOptions): Collector {
   const notes = new Map<number, RepoNote[]>();
   const prCache = new Map<number, { prs: GhPullRequest[] | null; at: number }>();
   const worktreesSeen = new Map<number, WorktreeInfo[]>();
-  /**
-   * The rules key each change's latest snapshot was computed under, in this
-   * daemon. A change seen for the first time takes the current key: its stored
-   * snapshot is assumed current, as a restart recomputes nothing by itself.
-   */
-  const rulesKeys = new Map<number, string>();
   const wanted = new Map<number, Wanted>();
   const inFlight = new Map<number, number>();
   const runs = new Set<Promise<CollectOutcome>>();
@@ -241,8 +236,7 @@ export function createCollector(options: CollectorOptions): Collector {
     if (next.length === 0) notes.delete(repo.id);
     else notes.set(repo.id, next);
     if (JSON.stringify(next) !== JSON.stringify(previous)) broadcast({ event: 'repo', data: { repoId: repo.id } });
-    const rulesKey = JSON.stringify([trusted, trusted ? stamp : null, rules]);
-    return { trusted, stamp, rules, rulesKey };
+    return { trusted, stamp, rules, rulesKey: rulesKeyOf(trusted, stamp, rules) };
   }
 
   /** The repo base (L5), cached by name; its commit is resolved on every collection. */
@@ -292,11 +286,10 @@ export function createCollector(options: CollectorOptions): Collector {
 
   function needsSnapshot(change: ChangeRecord, scope: Wanted, rulesKey: string): boolean {
     if (!change.headAvailable) return false;
-    const seen = rulesKeys.get(change.id);
-    if (seen === undefined) rulesKeys.set(change.id, rulesKey);
-    else if (seen !== rulesKey) return true;
-    const latest = db.snapshots.latest(change.id);
+    const latest = db.snapshots.latestComputed(change.id);
     if (latest === null || latest.head !== change.head || latest.dirty !== change.dirty) return true;
+    // Other rules than the stored snapshot's, or a snapshot stored before keys were (ADR-030).
+    if (latest.rulesKey !== rulesKey) return true;
     if (!change.dirty) return false;
     return scope.full || (change.worktreePath !== null && scope.worktrees.has(change.worktreePath));
   }
@@ -325,7 +318,6 @@ export function createCollector(options: CollectorOptions): Collector {
   ): Promise<boolean> {
     const input = await snapshotInput(repo, change, repoBase, config);
     const computed = await snapshots.submit(`${String(repo.id)}:${String(change.id)}`, priority, input);
-    rulesKeys.set(change.id, config.rulesKey);
     for (const note of computed.notes ?? []) log.info(`snapshot of ${change.ref}: ${note}`);
     if (closing) return false;
     const at = now();
@@ -342,6 +334,7 @@ export function createCollector(options: CollectorOptions): Collector {
         computedAt: iso,
         mergeBase: computed.mergeBase,
         fingerprints: computed.fingerprintsJson,
+        rulesKey: config.rulesKey,
       });
       if (stored === 'unchanged') return { result: stored, listMoved: false };
       // Same transaction as the put: no reader sees a new snapshot with stale current marks (ADR-028).

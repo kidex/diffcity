@@ -227,8 +227,18 @@ ALTER TABLE review_marks_v5 RENAME TO review_marks;
 CREATE INDEX review_marks_change ON review_marks(changeId, state);
 `;
 
+/**
+ * Schema v6 (ADR-030, DC-121): the rules key a snapshot was computed under, a
+ * hash of what its rules depend on besides the content (trust, the repo
+ * config's mtime, the user's rules). Nullable: a row written before v6 has no
+ * key, and the collector computes it again once.
+ */
+const V6 = `
+ALTER TABLE snapshots ADD COLUMN rulesKey TEXT;
+`;
+
 /** The migrations in order; index i holds the SQL that produces version i + 1. */
-export const MIGRATIONS: readonly string[] = [V1, V2, V3, V4, V5];
+export const MIGRATIONS: readonly string[] = [V1, V2, V3, V4, V5, V6];
 
 /** The schema version this code writes. */
 export const SCHEMA_VERSION = MIGRATIONS.length;
