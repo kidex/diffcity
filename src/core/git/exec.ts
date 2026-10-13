@@ -144,6 +144,14 @@ interface GitLookup {
 /** git found on the PATH, per PATH value, for PATH_CACHE_TTL_MS; one lookup however many calls start at once. */
 const gitPaths = new Map<string, GitLookup>();
 
+/** The message of the GitError git calls reject with when no absolute PATH entry has git. */
+export const GIT_NOT_FOUND_MESSAGE = 'git not found on PATH';
+
+/** Whether `error` says git is not on the PATH: callers pass it on as it is, not as `not-a-repo`. */
+export function isGitNotFound(error: unknown): error is GitError {
+  return error instanceof GitError && error.message === GIT_NOT_FOUND_MESSAGE;
+}
+
 /** Spawn errors after which the remembered git is looked up again. */
 const VANISHED = new Set(['ENOENT', 'EACCES']);
 
@@ -181,7 +189,7 @@ export async function gitBinary(pathValue: string | undefined = process.env['PAT
   if (found === null) {
     // Not remembered: a git installed meanwhile is found by the next call.
     if (gitPaths.get(key) === lookup) gitPaths.delete(key);
-    throw new GitError('git-failed', 'git not found on PATH');
+    throw new GitError('git-failed', GIT_NOT_FOUND_MESSAGE);
   }
   return found;
 }

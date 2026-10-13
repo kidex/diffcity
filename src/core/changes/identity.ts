@@ -4,7 +4,7 @@
 
 import { realpath } from 'node:fs/promises';
 import { basename } from 'node:path';
-import { GitError, gitRaw, splitNul } from '../git/exec.js';
+import { GitError, gitRaw, isGitNotFound, splitNul } from '../git/exec.js';
 import type { RepoIdentity } from './types.js';
 
 export const BARE_REPO_MESSAGE = 'bare repositories are not supported';
@@ -65,7 +65,8 @@ export async function identifyRepo(dir: string): Promise<RepoIdentity> {
   try {
     probe = await gitRaw(dir, ['rev-parse', '--path-format=absolute', '--is-bare-repository', '--git-common-dir']);
   } catch (error) {
-    // dir missing or git not installed.
+    // No git on the PATH says so; otherwise dir is missing.
+    if (isGitNotFound(error)) throw error;
     throw notARepo(dir, error);
   }
   if (probe.exitCode !== 0) throw notARepo(dir);
