@@ -157,6 +157,21 @@ describe('the SessionEnd hook through the built CLI', () => {
     expect(garbled.code).toBe(0);
   });
 
+  it('cli/session-end-unusable-no-daemon: in a repo with no daemon running, a SessionEnd it cannot use exits 0 and starts no daemon', async () => {
+    const command = `"${process.execPath}" "${CLI_DIST}" track --agent`;
+    const dir = await realpath(repo.dir);
+    for (const input of [
+      { hook_event_name: 'SessionEnd', cwd: dir, reason: 'prompt_input_exit' },
+      { hook_event_name: 'SessionEnd', session_id: SESSION, transcript_path: 'relative.jsonl', cwd: dir, reason: 'logout' },
+    ]) {
+      const run = await runHook(command, dir, input);
+      expect(run.code).toBe(0);
+      expect(run.stdout).toBe('');
+      expect(run.stderr).toMatch(/^diffcity track: ignoring SessionEnd: hook input: \S.*\n$/);
+    }
+    expect(await readDaemonInfo(homePaths(temp.home))).toBeNull();
+  });
+
   it('cli/session-end-unusable-input: a SessionEnd whose fields cannot be used sends nothing: no repo row, no collection, exit 0 with one line', async () => {
     const command = `"${process.execPath}" "${CLI_DIST}" track --agent`;
     const dir = await realpath(repo.dir);
