@@ -29,6 +29,8 @@ export interface TestDaemon {
   events(): SseRecord[];
   /** Waits until no repo is collecting. */
   idle(timeoutMs?: number): Promise<void>;
+  /** Shuts the daemon down now, as `diffcity stop` would; the cleanup then skips it. */
+  stop(): Promise<void>;
 }
 
 const cleanups: (() => Promise<void>)[] = [];
@@ -105,10 +107,18 @@ export interface TestDaemonOptions {
   plugins?: (collection: Collection) => DaemonPlugin[];
   /** The daemon's logger; a discarding one when absent. */
   log?: Logger;
+  /**
+   * The DIFFCITY_HOME to start in, to start a daemon again on the database and
+   * settings a stopped one left; removed at cleanup, after this daemon stops.
+   * A new temporary home when absent.
+   */
+  home?: TempHome;
 }
 
 export async function startTestDaemon(options: CollectionPluginOptions = {}, extra: TestDaemonOptions = {}): Promise<TestDaemon> {
-  const home = await tempHome();
+  const owned = extra.home === undefined;
+  const home = extra.home ?? (await tempHome());
+  if (!owned) cleanups.push(() => home.cleanup());
   const collection = createCollection({ runner: 'inline', poolSize: 2, ...options });
   const result = await startDaemon({
     env: home.env,
@@ -119,10 +129,17 @@ export async function startTestDaemon(options: CollectionPluginOptions = {}, ext
   if (result.status !== 'started') throw new Error(`daemon did not start: ${result.status}`);
   const { daemon } = result;
   const sse = await recordSse(daemon.info.port);
+  let stopped: Promise<void> | null = null;
+  const stop = (): Promise<void> => {
+    stopped ??= (async () => {
+      sse.close();
+      await daemon.shutdown('test cleanup');
+    })();
+    return stopped;
+  };
   cleanups.push(async () => {
-    sse.close();
-    await daemon.shutdown('test cleanup');
-    await home.cleanup();
+    await stop();
+    if (owned) await home.cleanup();
   });
   const testDaemon: TestDaemon = {
     daemon,
@@ -132,6 +149,7 @@ export async function startTestDaemon(options: CollectionPluginOptions = {}, ext
       sendRequest(daemon.info.socket, { v: 1, type: 'track', dir, agent, at }),
     register: (dirs) => sendRequest(daemon.info.socket, { v: 1, type: 'register', dirs }),
     events: () => [...sse.events],
+    stop,
     idle: async (timeoutMs = 30_000) => {
       // Let a collection scheduled after a socket response start first.
       await new Promise((resolve) => setTimeout(resolve, 20));
