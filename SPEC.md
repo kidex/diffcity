@@ -76,6 +76,7 @@ Integrate (phase 5) has no CLI command: merge, push and PR run only from the cha
 | You `cd` into a folder with `.git` (`chpwd`/`PROMPT_COMMAND` hook) | `diffcity track` registers the repo if missing and asks the daemon to collect; costs under 50 ms, the rest is asynchronous |
 | The daemon is running | watches `.git/refs`, `.git/HEAD` and the working tree of active repos (chokidar, or recursive `fs.watch` for working trees on macOS; ADR-020); on change it recomputes only the affected change, with a 2 s debounce |
 | Claude Code finishes a task (Stop hook) | `diffcity track --agent` marks the change as "agent worked, not reviewed" |
+| A Claude Code session ends (SessionEnd hook) | `diffcity track --agent` marks that session as ended; the change is left as it is |
 | `/diffcity-review` from the editor | findings land on the current change and update its verdicts |
 | Every 15 min, per active repo | `gh pr list --json` (if `gh` is installed and authenticated) refreshes open PRs |
 
@@ -311,17 +312,20 @@ Then run `diffcity import .diffcity/findings.json --open`.
 
 The fix queue directory is renamed to `.diffcity/fix-queue.taking` before it is applied, so an item the daemon queues meanwhile lands in a new `.diffcity/fix-queue` and is neither lost nor applied twice; `.diffcity/fix-queue.taking` is an own directory like the queue (3a). The queue was a single file `.diffcity/fix-queue.json` before DC-112; nothing shipped with it, so neither the daemon nor the command reads a leftover one, and it is a normal file now. `diff --json --compact` is the Report without untouched files and without the packages left with none; `meta`, `steps`, `findings`, `checks` and `summary` are unchanged, and without `--json` the flag has no effect. `--open` opens the change after the import because the user asked for the review (ADR-001).
 
-### 7.2 Stop hook (`.claude/settings.json`)
+### 7.2 Stop and SessionEnd hooks (`.claude/settings.json`)
 
 ```json
-{ "hooks": { "Stop": [ { "matcher": "", "hooks": [ { "type": "command", "command": "diffcity track --agent" } ] } ] } }
+{ "hooks": {
+  "Stop":       [ { "matcher": "", "hooks": [ { "type": "command", "command": "diffcity track --agent" } ] } ],
+  "SessionEnd": [ { "matcher": "", "hooks": [ { "type": "command", "command": "diffcity track --agent" } ] } ]
+} }
 ```
 
-`diffcity setup-claude` adds this entry under `hooks.Stop` unless a hook with the identical command is there, keeps every other key and hook, refuses a `settings.json` it cannot parse, writes through a temporary file and a rename, and keeps a one-time backup `settings.json.diffcity-backup`. The command is `diffcity track --agent` for a global install, otherwise `"<absolute node>" "<absolute dist/cli/index.js>" track --agent`; setup prints the one it chose.
+`diffcity setup-claude` adds this entry under `hooks.Stop` and under `hooks.SessionEnd`, each unless a hook with the identical command is there, keeps every other key and hook, refuses a `settings.json` it cannot parse, writes through a temporary file and a rename, and keeps a one-time backup `settings.json.diffcity-backup`. The command is `diffcity track --agent` for a global install, otherwise `"<absolute node>" "<absolute dist/cli/index.js>" track --agent`; setup prints the one it chose. An install that has only the Stop hook gets the SessionEnd hook by running `setup-claude` again; `--remove` removes both.
 
 The hook does not open the browser; the UI updates live over SSE. It never blocks the agent: on any failure (no daemon can start, a directory outside a repo, a refusal) it prints one line on stderr and exits 0.
 
-Claude Code passes the hook JSON (`session_id`, `transcript_path`, `cwd`, `hook_event_name`) on stdin, and `track --agent` forwards it to the daemon, so the command stays the same. The daemon reads the transcript only if it lies under the Claude Code projects directory and is named after `session_id`. It stores only a redacted, size-capped digest, never the transcript.
+Claude Code passes the hook JSON (`session_id`, `transcript_path`, `cwd`, `hook_event_name`; SessionEnd adds `reason`, which is ignored) on stdin, and `track --agent` forwards it to the daemon, so the command stays the same for both events. `hook_event_name` decides what happens: `Stop` is a finished task (the change is collected and marked "agent worked, not reviewed", and the session is read); `SessionEnd` only ends the session (it reads as no longer active, and its agent runs with no outcome as `unknown`), with no collection, no agent mark and no registration of an unknown repo. The daemon reads the transcript only if it lies under the Claude Code projects directory and is named after `session_id`. It stores only a redacted, size-capped digest, never the transcript.
 
 ### 7.3 Send review to the agent
 
