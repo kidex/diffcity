@@ -2,7 +2,7 @@
 // Measures collection on real repos for the phase report (SPEC.md section 9).
 //
 //   npm run build:node
-//   node scripts/measure-collect.mjs <repo> [<repo> ...] [--timeout <seconds>] [--settings <file>]
+//   node scripts/measure-collect.mjs <repo> [<repo> ...] [--timeout <seconds>] [--settings <file>] [--import <file>]
 //
 // Starts a daemon from dist/ in a fresh temporary DIFFCITY_HOME (the real
 // ~/.config/diffcity is never touched; no repo is trusted, so no repo config
@@ -12,9 +12,14 @@
 // - the time from the `track` request to the last `snapshot` SSE event of the
 //   collection, and to the collection's `done` event;
 // - the number of live changes and of snapshots, and the size in bytes of the
-//   snapshots (the Report JSON served by /api/changes/:id/report).
+//   snapshots (the Report JSON served by /api/changes/:id/report);
+// - with `--import`, the time of `diffcity import <file>` run from dist/ in the
+//   repo as a new process right after the collection, and whether it succeeded
+//   (the first import after a collection, DC-143).
 // Repos are printed by index only, never by name or path, so the output can go
 // into the phase report as it is. gh, git and HOME are the user's own.
+//
+// A large synthetic change to measure on: scripts/gen-synthetic-change.mjs.
 
 import { spawn } from 'node:child_process';
 import { copyFile, mkdir, mkdtemp, readFile, rm } from 'node:fs/promises';
@@ -30,17 +35,22 @@ const { sendRequest } = await import(pathToFileURL(join(dist, 'daemon', 'client.
 
 function usage(message) {
   if (message) process.stderr.write(`measure-collect: ${message}\n`);
-  process.stderr.write('usage: node scripts/measure-collect.mjs <repo> [<repo> ...] [--timeout <seconds>] [--settings <file>]\n');
+  process.stderr.write('usage: node scripts/measure-collect.mjs <repo> [<repo> ...] [--timeout <seconds>] [--settings <file>] [--import <file>]\n');
   process.exit(2);
 }
 
 const args = process.argv.slice(2);
 let timeoutMs = 300_000;
 let settingsFile = null;
+let importFile = null;
 const repos = [];
 for (let i = 0; i < args.length; i++) {
   const arg = args[i];
-  if (arg === '--timeout') {
+  if (arg === '--import') {
+    const file = args[++i];
+    if (file === undefined) usage('--import needs a findings file');
+    importFile = resolve(file);
+  } else if (arg === '--timeout') {
     const seconds = Number(args[++i]);
     if (!Number.isFinite(seconds) || seconds <= 0) usage('--timeout needs a number of seconds');
     timeoutMs = seconds * 1000;
@@ -99,6 +109,20 @@ async function getJson(port, path) {
 }
 
 const ms = (value) => `${value.toFixed(0)} ms`;
+
+/**
+ * Runs `diffcity import <importFile>` from dist/ in `dir`, as a new process
+ * against the daemon of `env`; resolves with its duration and exit code. Its
+ * output names the change: never printed.
+ */
+function timeImport(dir, env) {
+  const start = performance.now();
+  return new Promise((resolveRun) => {
+    const child = spawn(process.execPath, [join(dist, 'cli', 'index.js'), 'import', importFile], { cwd: dir, env, stdio: 'ignore' });
+    child.once('error', () => resolveRun({ ms: performance.now() - start, ok: false }));
+    child.once('exit', (code) => resolveRun({ ms: performance.now() - start, ok: code === 0 }));
+  });
+}
 
 const home = await mkdtemp(join(tmpdir(), 'dc-measure-'));
 const paths = homePaths(join(home, 'home'));
@@ -209,6 +233,9 @@ try {
       exitCode = 1;
       continue;
     }
+    // Right after the collection, before anything else runs.
+    const imported = importFile === null ? null : await timeImport(dir, env);
+    if (imported !== null && !imported.ok) exitCode = 1;
 
     const detail = await getJson(info.port, `/api/repos/${String(repoId)}`);
     const sizes = [];
@@ -222,7 +249,9 @@ try {
     const lastSnapshot = entry.lastSnapshot === null ? 'no snapshot event' : ms(entry.lastSnapshot - t0);
     process.stdout.write(
       `${label}: track answered in ${ms(answered)}; last snapshot at ${lastSnapshot}; collect done at ${ms(outcome.at - t0)}; ` +
-        `${String(detail.changes.length)} changes, ${String(sizes.length)} snapshots, ${String(total)} bytes total, largest ${String(largest)} bytes\n`,
+        `${String(detail.changes.length)} changes, ${String(sizes.length)} snapshots, ${String(total)} bytes total, largest ${String(largest)} bytes` +
+        (imported === null ? '' : `; import ${imported.ok ? 'done' : 'failed'} in ${ms(imported.ms)}`) +
+        '\n',
     );
   }
 } catch (error) {
