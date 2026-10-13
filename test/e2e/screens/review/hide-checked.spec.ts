@@ -8,9 +8,9 @@ import { test, type Page } from '@playwright/test';
 import { floorIndex } from '../../support/effects.js';
 import { CONTROLLER, GUARD, MIGRATION, SERVICE } from '../../support/hud.js';
 import { panelReport, sym } from '../../support/panel.js';
-import { openReview } from '../../support/review.js';
+import { openReview, selectFile } from '../../support/review.js';
 import { marksFromOverlay } from '../../support/review-api.js';
-import { sceneExpect as expect } from '../../support/scene.js';
+import { camera, sceneExpect as expect, waitForCityAttribute } from '../../support/scene.js';
 
 test.describe.configure({ timeout: 90_000 });
 
@@ -137,6 +137,50 @@ test('review/hide-checked', async ({ page }) => {
   await expect(legendBox).toBeVisible();
   await page.mouse.click(500, 30);
   await expect(legendBox).toBeHidden();
+  // Tabbing out of the popover closes it.
+  await toggle.click();
+  await expect(legendBox).toBeFocused();
+  await page.keyboard.press('Tab');
+  await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+  await expect(legendBox).toBeHidden();
+  // Esc with the popover open closes the popover only: the city keeps its selection.
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await selectFile(page, GUARD);
+  await page.setViewportSize({ width: 1024, height: 600 });
+  await toggle.click();
+  await expect(legendBox).toBeFocused();
+  await page.keyboard.press('Escape');
+  await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+  await expect(page.getByTestId('city')).toHaveAttribute('data-selected', GUARD);
+  // The window grows with the popover open and focused: the legend unfolds and focus goes to the first filter chip.
+  await toggle.click();
+  await expect(legendBox).toBeFocused();
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await expect(page.getByTestId('hud-filters').getByRole('button').first()).toBeFocused();
+  await expect(toggle).toBeHidden();
+  await page.setViewportSize({ width: 1024, height: 600 });
+  await page.keyboard.press('Escape');
+  await waitForCityAttribute(page, 'data-selected', '');
+
+  // A drag on the scroll box beside the chips still orbits the city.
+  // The column measures again on the next resize observation: wait for the scroll box.
+  const empty = await (await page.waitForFunction(`(() => {
+    const box = document.querySelector('[data-testid="hud-filters"]');
+    if (box === null || !box.classList.contains('scrolls')) return null;
+    const r = box.getBoundingClientRect();
+    for (let y = r.top + 6; y < r.bottom - 6; y += 4) {
+      const x = r.left + box.clientWidth - 12;
+      const hit = document.elementFromPoint(x, y);
+      if (hit !== null && box.contains(hit) && hit.closest('button') === null) return { x, y };
+    }
+    return null;
+  })()`, null, { timeout: 10_000 })).jsonValue() as { x: number; y: number };
+  const before = await camera(page);
+  await page.mouse.move(empty.x, empty.y);
+  await page.mouse.down();
+  await page.mouse.move(empty.x - 80, empty.y + 10, { steps: 8 });
+  await page.mouse.up();
+  await expect.poll(async () => (await camera(page)).theta).not.toBeCloseTo(before.theta, 3);
 
   // Every filter chip, "Hide checked" and the Rules row included, can be scrolled into view and clicked:
   // the rows scroll inside the column instead of running under the city's bottom edge.
