@@ -6,7 +6,7 @@
 
 import { stat } from 'node:fs/promises';
 import { PassThrough } from 'node:stream';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { homePaths, type HomePaths } from '../../../src/core/home.js';
 import { startDaemon } from '../../../src/daemon/daemon.js';
 import { createStreamLogger } from '../../../src/daemon/log.js';
@@ -47,9 +47,8 @@ async function freePort(): Promise<number> {
 
 const quietLog = () => createStreamLogger(new PassThrough());
 
-/** The sockets and timers the process holds; a probe must leave none behind. */
-const openHandles = (): number =>
-  process.getActiveResourcesInfo().filter((name) => name === 'TCPSocketWrap' || name === 'Timeout').length;
+/** The TCP sockets the process holds; a probe must leave none behind. */
+const openSockets = (): number => process.getActiveResourcesInfo().filter((name) => name === 'TCPSocketWrap').length;
 
 const holders: { name: string; host: BlockerHost; ipv6Only?: boolean; skip?: boolean }[] = [
   { name: '127.0.0.1', host: '127.0.0.1' },
@@ -75,14 +74,30 @@ describe('isPortFree', () => {
     });
   }
 
-  it('the probe leaves no socket and no timer behind, connected or refused', async () => {
-    const before = openHandles();
+  it('the probe leaves no socket behind, connected or refused', async () => {
     const held = await hold('127.0.0.1');
+    const refused = await freePort();
+    const before = openSockets();
     expect(await connectProbe(held, '127.0.0.1')).toBe('connected');
-    expect(await connectProbe(await freePort(), '127.0.0.1')).toBe('ECONNREFUSED');
-    // A deadline of 0 ms: whichever path wins, the socket and the timer go.
+    expect(await connectProbe(refused, '127.0.0.1')).toBe('ECONNREFUSED');
+    // A deadline of 0 ms: whichever path wins, the socket goes.
     for (let i = 0; i < 5; i++) await connectProbe(held, '127.0.0.1', 0);
-    await expect.poll(openHandles, { timeout: 2000 }).toBe(before);
+    await expect.poll(openSockets, { timeout: 2000 }).toBe(before);
+  });
+
+  it('the probe clears its deadline timer, connected or refused', async () => {
+    const held = await hold('127.0.0.1');
+    const refused = await freePort();
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      expect(vi.getTimerCount()).toBe(0);
+      expect(await connectProbe(held, '127.0.0.1')).toBe('connected');
+      expect(vi.getTimerCount()).toBe(0);
+      expect(await connectProbe(refused, '127.0.0.1')).toBe('ECONNREFUSED');
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('only a connection proves the port in use; the probes stop at the first one', async () => {
