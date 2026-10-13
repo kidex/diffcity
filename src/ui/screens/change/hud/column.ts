@@ -5,7 +5,7 @@
 // "Legend" chip that opens it as a popover (Esc or a click elsewhere closes it,
 // focus goes back to the chip). When the city is too short even for the filter
 // rows, they scroll inside the column, so every chip stays reachable; a drag
-// or a wheel on the scroll box beside the chips still reaches the city.
+// on the scroll box beside the chips still reaches the city, the wheel scrolls it.
 
 import { h } from '../../../shared/dom.js';
 
@@ -15,6 +15,9 @@ export interface LeftColumn {
   fit(): void;
   dispose(): void;
 }
+
+/** The strip at the scroll box's right edge left to its scrollbar, overlay ones included. */
+export const SCROLLBAR_ZONE = 14;
 
 let ids = 0;
 
@@ -96,25 +99,25 @@ export function createLeftColumn(title: HTMLElement, filters: HTMLElement, legen
     close(false);
   });
 
-  // The scroll box takes the pointer for its scrollbar; a press, a move or a
-  // wheel on it beside the chips goes on to the city's canvas, as it would
-  // through the HUD anywhere else.
+  // The scroll box takes the pointer for its scrollbar, and the wheel over it
+  // scrolls it, chip or gap alike. A press or a move on it beside the chips goes
+  // on to the city's canvas, as it would through the HUD anywhere else, so a
+  // drag there still orbits. Not within SCROLLBAR_ZONE of the right edge: an
+  // overlay scrollbar (macOS) draws its thumb inside the client width.
   const canvas = (): HTMLElement | null => root.closest('.city')?.querySelector<HTMLElement>('canvas.scene') ?? null;
-  const besideChips = (event: MouseEvent): boolean =>
-    filters.classList.contains('scrolls') &&
-    event.target instanceof Element &&
-    event.target.closest('button') === null &&
-    // Not on the scrollbar, which sits right of the client area.
-    event.clientX < filters.getBoundingClientRect().left + filters.clientLeft + filters.clientWidth;
-  const forward = (event: PointerEvent | WheelEvent): void => {
+  const besideChips = (event: PointerEvent): boolean => {
+    if (!filters.classList.contains('scrolls') || !(event.target instanceof Element) || event.target.closest('button') !== null) return false;
+    const box = filters.getBoundingClientRect();
+    return event.clientX < Math.min(box.right - SCROLLBAR_ZONE, box.left + filters.clientLeft + filters.clientWidth);
+  };
+  const forward = (event: PointerEvent): void => {
     const target = canvas();
     if (target === null || !besideChips(event)) return;
     event.preventDefault();
-    target.dispatchEvent(event instanceof WheelEvent ? new WheelEvent(event.type, event) : new PointerEvent(event.type, event));
+    target.dispatchEvent(new PointerEvent(event.type, event));
   };
   filters.addEventListener('pointerdown', forward);
   filters.addEventListener('pointermove', forward);
-  filters.addEventListener('wheel', forward, { passive: false });
 
   const observer = new ResizeObserver(() => {
     fit();
