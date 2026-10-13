@@ -230,6 +230,15 @@ test('session/tab-cards/active-tag', async ({ page }, testInfo) => {
   await expect(tag).toHaveText('active');
   await expect(cards(page).first().locator('.sess-tags > .tag')).toHaveText(['here', 'active']);
   await expect(cards(page).nth(1).getByTestId('session-active')).toHaveCount(0);
+  // The dot leads the tag, yet the word "active" sits on the line of "here" (the tags align on their baseline).
+  const textTops = await page.evaluate<number[]>(`[...document.querySelectorAll('[data-testid="session-card"]')[0].querySelectorAll('.sess-tags > .tag')].map((tag) => {
+    const text = [...tag.childNodes].find((node) => node.nodeType === Node.TEXT_NODE && node.textContent.trim() !== '');
+    const range = document.createRange();
+    range.selectNodeContents(text);
+    return range.getBoundingClientRect().top;
+  })`);
+  expect(textTops).toHaveLength(2);
+  expect(Math.abs((textTops[1] ?? Number.NaN) - (textTops[0] ?? Number.NaN))).toBeLessThanOrEqual(1);
 
   // A SessionEnd for the first one: SSE `sessions` brings `active: false` and the tag goes.
   const first = sessions[11]?.sessions[0];
