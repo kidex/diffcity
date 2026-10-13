@@ -1,7 +1,8 @@
 // e2e/review/hide-checked (SPEC.md section 6, "Filters"; ADR-028): the "Hide
 // checked" chip hides the files and floors with a current mark, combines with
 // the verdict row with AND, leaves outdated marks visible, and "Show
-// everything" turns it off.
+// everything" turns it off. The filter rows, the chip with them, never run
+// into the legend in the city's bottom left corner (DC-139).
 
 import { test, type Page } from '@playwright/test';
 import { floorIndex } from '../../support/effects.js';
@@ -69,4 +70,17 @@ test('review/hide-checked', async ({ page }) => {
   await expect.poll(async () => (await paint(page)).dimmed).toEqual([GUARD]);
   await chip.click();
   await expect.poll(async () => (await paint(page)).dimmed).toEqual([]);
+
+  // DC-139: the legend sits below the filter rows, inside the city, at a small, a medium and the default window.
+  for (const viewport of [{ width: 1024, height: 768 }, { width: 1280, height: 800 }, { width: 1440, height: 900 }]) {
+    await page.setViewportSize(viewport);
+    const size = `${String(viewport.width)}x${String(viewport.height)}`;
+    const [filters, legend, city] = await Promise.all([page.getByTestId('hud-filters').boundingBox(), page.getByTestId('legend').boundingBox(), page.getByTestId('city').boundingBox()]);
+    if (filters === null || legend === null || city === null) throw new Error(`${size}: no box for the filters, the legend or the city`);
+    const apart = legend.y >= filters.y + filters.height || legend.x >= filters.x + filters.width || legend.x + legend.width <= filters.x || legend.y + legend.height <= filters.y;
+    expect(apart, `${size}: filters ${JSON.stringify(filters)}, legend ${JSON.stringify(legend)}`).toBe(true);
+    // In view: under the filters in the same column, not pushed out of the city.
+    expect(Math.abs(legend.x - filters.x), `${size}: the legend's left edge`).toBeLessThanOrEqual(1);
+    expect(legend.y + legend.height, `${size}: the legend inside the city`).toBeLessThanOrEqual(city.y + city.height);
+  }
 });
