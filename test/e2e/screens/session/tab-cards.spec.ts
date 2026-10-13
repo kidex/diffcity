@@ -4,7 +4,8 @@
 // session, newest first, with its prompts, questions and the agents that ran;
 // an agent row expands to its report and activity with Enter or Space; an
 // edited file the Report has selects its building; `here` marks the runs that
-// worked in this change's working tree; session text is inert; an unreadable
+// worked in this change's working tree; "active" marks a session that has not
+// ended (DC-138); session text is inert; an unreadable
 // session shows only that it could not be read; a stale one keeps its data
 // under an "out of date" note.
 
@@ -212,6 +213,32 @@ test('session/tab-cards/hostile-text-inert', async ({ page }) => {
   expect(await page.evaluate('window.__pwned')).toBeUndefined();
 });
 
+test('session/tab-cards/active-tag', async ({ page }, testInfo) => {
+  const sessions: Record<number, SessionsResponse> = { 11: fixtures.sessionsTwo() };
+  const ended = sessions[11]?.sessions[1];
+  if (ended === undefined) throw new Error('fixture session missing');
+  ended.active = false;
+  await page.emulateMedia({ reducedMotion: 'reduce', colorScheme: 'dark' });
+  await mockApi(page, { reports: { 11: panelReport() }, sessions });
+  await tagClient(page, testInfo.testId);
+  await page.goto('/?scene-debug#/change/11');
+  await waitReady(page);
+  await expect(page.getByTestId('daemon')).toHaveAttribute('data-state', 'connected');
+  await sessionTab(page).click();
+  // Shown while the session is active, beside "here"; absent once it ended.
+  const tag = cards(page).first().getByTestId('session-active');
+  await expect(tag).toHaveText('active');
+  await expect(cards(page).first().locator('.sess-tags > .tag')).toHaveText(['here', 'active']);
+  await expect(cards(page).nth(1).getByTestId('session-active')).toHaveCount(0);
+
+  // A SessionEnd for the first one: SSE `sessions` brings `active: false` and the tag goes.
+  const first = sessions[11]?.sessions[0];
+  if (first === undefined) throw new Error('fixture session missing');
+  first.active = false;
+  expect(await emitSse(page, testInfo.testId, 'sessions', { changeId: 11 })).toBeGreaterThan(0);
+  await expect(page.getByTestId('session-active')).toHaveCount(0);
+});
+
 test('session/tab-cards/parse-error-state', async ({ page }) => {
   await openSessions(page, fixtures.sessionsParseError());
   await expect(cards(page)).toHaveCount(1);
@@ -227,8 +254,6 @@ test('session/tab-cards/stale-note', async ({ page }) => {
   const stale = cards(page).nth(1);
   await expect(stale).toHaveAttribute('data-state', 'stale');
   await expect(stale.getByTestId('session-note')).toHaveText('Out of date — the latest update could not be read; showing the last good copy.');
-  // No "active" tag until a session can end (DC-128).
-  await expect(page.getByTestId('session-active')).toHaveCount(0);
   // The data is still shown.
   await expect(stale.getByTestId('session-prompt')).toHaveText('Write the migration for the discount column.');
   await expect(stale.getByTestId('edited-file')).toHaveText('db/migrations/20260921_order_discounts.sql');

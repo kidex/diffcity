@@ -69,6 +69,18 @@ describe('session-model/cards-order-and-status', () => {
     expect(sessionTab({ sessions: twenty, total: 20 }, report([]), 'UTC').shown).toBeNull();
   });
 
+  it('marks a card active only when the daemon says the session is active', () => {
+    const response = two();
+    const [first, second] = response.sessions;
+    if (first === undefined || second === undefined) throw new Error('fixture sessions missing');
+    second.active = false;
+    // A view without the field (an older daemon) is not marked active.
+    delete (first as Partial<SessionView>).active;
+    const ended = sessionTab(response, report([GUARD]), 'UTC');
+    expect(ended.cards.filter((card) => card.active)).toHaveLength(0);
+    expect(sessionTab(two(), report([GUARD]), 'UTC').cards.map((card) => card.active)).toEqual([true, true]);
+  });
+
   it('shows the tab only with sessions', () => {
     expect(hasSessions(null)).toBe(false);
     expect(hasSessions({ sessions: [], total: 0 })).toBe(false);
