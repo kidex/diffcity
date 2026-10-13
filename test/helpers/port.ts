@@ -1,10 +1,10 @@
 // Listeners held by "another process" for the port checks (DC-117): on
-// 127.0.0.1, on the IPv4 wildcard and on the IPv6 wildcard. Every port is an
+// 127.0.0.1, on ::1, on the IPv4 wildcard and on the IPv6 wildcard. Every port is an
 // ephemeral one picked by the system.
 
 import { createServer, type Server } from 'node:net';
 
-export type BlockerHost = '127.0.0.1' | '0.0.0.0' | '::';
+export type BlockerHost = '127.0.0.1' | '0.0.0.0' | '::' | '::1';
 
 export interface Blocker {
   port: number;

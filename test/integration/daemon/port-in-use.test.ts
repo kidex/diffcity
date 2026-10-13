@@ -1,7 +1,8 @@
-// The port check before a start (DC-117): a port held on 127.0.0.1, on 0.0.0.0
-// or on :: is in use, in the CLI's pre-start check and in the daemon's own
+// The port check before a start (DC-117): a port held on 127.0.0.1, ::1,
+// 0.0.0.0 or :: is in use, in the CLI's pre-start check and in the daemon's own
 // check before it binds 127.0.0.1. macOS lets a second process bind
-// 127.0.0.1 on a port held on a wildcard, so the bind alone does not tell.
+// 127.0.0.1 on a port held on a wildcard, so the bind alone does not tell; the
+// check connects to loopback instead and never binds.
 
 import { stat } from 'node:fs/promises';
 import { PassThrough } from 'node:stream';
@@ -9,7 +10,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { homePaths, type HomePaths } from '../../../src/core/home.js';
 import { startDaemon } from '../../../src/daemon/daemon.js';
 import { createStreamLogger } from '../../../src/daemon/log.js';
-import { isPortFree, PROBE_HOSTS, type ProbeBind } from '../../../src/daemon/port.js';
+import { connectProbe, isPortFree, PROBE_HOSTS, type ProbeConnect } from '../../../src/daemon/port.js';
 import { tempHome, type TempHome } from '../../helpers/config.js';
 import { canListenOnIpv6, listenOn, type Blocker, type BlockerHost } from '../../helpers/port.js';
 
@@ -34,38 +35,37 @@ async function hold(host: BlockerHost, ipv6Only = false): Promise<number> {
   return blocker.port;
 }
 
-/** A port that was free on every probed address a moment ago. */
+/** A port that was free on every probed address a moment ago; a few tries at most. */
 async function freePort(): Promise<number> {
-  for (;;) {
+  for (let attempt = 0; attempt < 10; attempt++) {
     const blocker = await listenOn('127.0.0.1');
     await blocker.close();
     if (await isPortFree(blocker.port)) return blocker.port;
   }
+  throw new Error('no free port in 10 tries');
 }
 
 const quietLog = () => createStreamLogger(new PassThrough());
+
+/** The sockets and timers the process holds; a probe must leave none behind. */
+const openHandles = (): number =>
+  process.getActiveResourcesInfo().filter((name) => name === 'TCPSocketWrap' || name === 'Timeout').length;
 
 const holders: { name: string; host: BlockerHost; ipv6Only?: boolean; skip?: boolean }[] = [
   { name: '127.0.0.1', host: '127.0.0.1' },
   { name: '0.0.0.0', host: '0.0.0.0' },
   { name: ':: (dual stack)', host: '::', skip: !ipv6 },
   { name: ':: (IPv6 only)', host: '::', ipv6Only: true, skip: !ipv6 },
+  { name: '::1', host: '::1', skip: !ipv6 },
 ];
 
 describe('isPortFree', () => {
-  it('probes 127.0.0.1, then the IPv4 and IPv6 wildcards', () => {
-    expect(PROBE_HOSTS).toEqual(['127.0.0.1', '0.0.0.0', '::']);
+  it('connects to 127.0.0.1, then ::1, and never binds', () => {
+    expect(PROBE_HOSTS).toEqual(['127.0.0.1', '::1']);
   });
 
-  it('a free port is free, and the probe leaves no socket behind', async () => {
-    const port = await freePort();
-    expect(await isPortFree(port)).toBe(true);
-    // Every probe socket is closed: the port can be held on each address again.
-    for (const host of ['127.0.0.1', '0.0.0.0'] as const) {
-      const blocker = await listenOn(host, port);
-      await blocker.close();
-    }
-    if (ipv6) await (await listenOn('::', port, true)).close();
+  it('a free port is free', async () => {
+    expect(await isPortFree(await freePort())).toBe(true);
   });
 
   for (const holder of holders) {
@@ -75,38 +75,42 @@ describe('isPortFree', () => {
     });
   }
 
-  it('a port held on 0.0.0.0 is in use even though 127.0.0.1 can be bound (the macOS case)', async () => {
-    const port = await hold('0.0.0.0');
-    const calls: string[] = [];
-    const bind: ProbeBind = (probePort, host) => {
-      calls.push(host);
-      return Promise.resolve(host === '0.0.0.0' && probePort === port ? 'EADDRINUSE' : null);
-    };
-    expect(await isPortFree(port, bind)).toBe(false);
-    expect(calls).toEqual(['127.0.0.1', '0.0.0.0']);
+  it('the probe leaves no socket and no timer behind, connected or refused', async () => {
+    const before = openHandles();
+    const held = await hold('127.0.0.1');
+    expect(await connectProbe(held, '127.0.0.1')).toBe('connected');
+    expect(await connectProbe(await freePort(), '127.0.0.1')).toBe('ECONNREFUSED');
+    // A deadline of 0 ms: whichever path wins, the socket and the timer go.
+    for (let i = 0; i < 5; i++) await connectProbe(held, '127.0.0.1', 0);
+    await expect.poll(openHandles, { timeout: 2000 }).toBe(before);
   });
 
-  it('a host without IPv6 does not fail the check: EAFNOSUPPORT and EADDRNOTAVAIL on :: mean not in use', async () => {
-    for (const code of ['EAFNOSUPPORT', 'EADDRNOTAVAIL']) {
-      const bind: ProbeBind = (_port, host) => Promise.resolve(host === '::' ? code : null);
-      expect(await isPortFree(4321, bind)).toBe(true);
+  it('only a connection proves the port in use; the probes stop at the first one', async () => {
+    const calls: string[] = [];
+    const probe: ProbeConnect = (_port, host) => {
+      calls.push(host);
+      return Promise.resolve('connected');
+    };
+    expect(await isPortFree(4321, probe)).toBe(false);
+    expect(calls).toEqual(['127.0.0.1']);
+
+    for (const busy of PROBE_HOSTS) {
+      const only: ProbeConnect = (_port, host) => Promise.resolve(host === busy ? 'connected' : 'ECONNREFUSED');
+      expect(await isPortFree(4321, only)).toBe(false);
     }
   });
 
-  it('other bind errors are left to the daemon', async () => {
-    const bind: ProbeBind = () => Promise.resolve('EACCES');
-    expect(await isPortFree(80, bind)).toBe(true);
-  });
-
-  it('EADDRINUSE on any probed address means in use', async () => {
-    for (const busy of PROBE_HOSTS) {
-      const bind: ProbeBind = (_port, host) => Promise.resolve(host === busy ? 'EADDRINUSE' : null);
-      expect(await isPortFree(4321, bind)).toBe(false);
+  it('refused, a host without IPv6, an unreachable network or a timeout is not proven in use', async () => {
+    for (const result of ['ECONNREFUSED', 'EADDRNOTAVAIL', 'EAFNOSUPPORT', 'ENETUNREACH', 'timeout']) {
+      const probe: ProbeConnect = (_port, host) => Promise.resolve(host === '::1' ? result : 'ECONNREFUSED');
+      expect(await isPortFree(4321, probe)).toBe(true);
+      const both: ProbeConnect = () => Promise.resolve(result);
+      expect(await isPortFree(4321, both)).toBe(true);
     }
   });
 });
 
-describe('startDaemon on a port held on a wildcard', () => {
+describe('startDaemon on a port held on another loopback or wildcard address', () => {
   for (const holder of holders.filter((entry) => entry.host !== '127.0.0.1')) {
     it.skipIf(holder.skip === true)(`a port held on ${holder.name} reports port-in-use and leaves nothing behind`, async () => {
       const port = await hold(holder.host, holder.ipv6Only);
