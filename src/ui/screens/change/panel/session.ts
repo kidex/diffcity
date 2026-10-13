@@ -219,7 +219,10 @@ function sessionCard(card: SessionCard, actions: TabActions, state: SessionBodyS
         'span',
         { class: 'sess-tags' },
         card.here ? h('span', { class: 'tag add', 'data-testid': 'session-here', title: 'Ran in this change’s working tree' }, 'here') : null,
-        // No "active" tag yet: `active` stays true until the SessionEnd hook of DC-128 can turn it false.
+        // `active` comes from the daemon (false once SessionEnd arrived, DC-128); a view without it shows no tag.
+        card.active
+          ? h('span', { class: 'tag add sess-active', 'data-testid': 'session-active', title: 'Claude Code has not reported this session ended' }, h('i', { 'aria-hidden': 'true' }), 'active')
+          : null,
       ),
       card.range === '' ? null : h('p', { class: 'sess-range', 'data-testid': 'session-range' }, card.range),
     ),
