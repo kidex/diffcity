@@ -21,6 +21,7 @@
 
 import { realpath } from 'node:fs/promises';
 import { changeOfWorktree, type WorktreeInfo } from '../../core/changes/index.js';
+import { endsSession } from '../../core/changes/hook-input.js';
 import type { Db } from '../../core/db/index.js';
 import type { SseEvent } from '../../core/model/types.js';
 import type { SessionJob } from '../../core/session/job.js';
@@ -173,7 +174,7 @@ export function createSessionTracker(options: SessionTrackerOptions): SessionTra
       const state = states.get(row.id) ?? { timer: null, running: false, again: false, checkGrowth: false, active: true, repoId };
       states.set(row.id, state);
       state.repoId = repoId;
-      state.active = session.event !== 'SessionEnd';
+      state.active = !endsSession(session.event);
       state.checkGrowth = true;
       schedule(row.id, state);
     },

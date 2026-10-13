@@ -135,7 +135,7 @@ describe('the SessionEnd hook through the built CLI', () => {
     expect(running.digest?.runs.map((run) => [run.agentId, run.status])).toEqual([['bgcount', 'running']]);
 
     const end = await runHook(hooks.SessionEnd ?? '', dir, { ...base, hook_event_name: 'SessionEnd', reason: 'prompt_input_exit' });
-    expect(end).toEqual({ code: 0, stdout: 'tracked sample-depot\n', stderr: '' });
+    expect(end).toEqual({ code: 0, stdout: 'session ended in sample-depot\n', stderr: '' });
     const ended = await waitFor(async () => {
       const current = await sessionOf(info.port);
       return current?.active === false ? current : undefined;

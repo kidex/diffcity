@@ -24,6 +24,18 @@ export interface AgentHookInput {
 /** The event of a hook input that names none. */
 export const DEFAULT_HOOK_EVENT = 'Stop';
 
+/** The event of a session that ended: it only ends the session (DC-128). */
+export const SESSION_END_EVENT = 'SessionEnd';
+
+/**
+ * True for a hook that only ends its session: the session reads as no longer
+ * active, and nothing else happens (no agent mark, no collection, the repo is
+ * not seen). Every other event (`Stop`, `SubagentStop`) is a finished task.
+ */
+export function endsSession(event: string): boolean {
+  return event === SESSION_END_EVENT;
+}
+
 /** A hook event name as Claude Code writes them (`Stop`, `SubagentStop`, `SessionEnd`). */
 const HOOK_EVENT = /^[A-Za-z]{1,64}$/;
 

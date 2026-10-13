@@ -189,6 +189,14 @@ describe('diffcity track --agent with the Claude Code Stop hook on stdin', () =>
     ]);
   });
 
+  it('cli/session-end-says-ended: a SessionEnd goes to the daemon with its event and prints that the session ended', async () => {
+    const fake = await running();
+    const sub = join(repo.dir, 'src');
+    const hook = { session_id: 'session-0001', transcript_path: '/work/transcripts/session-0001.jsonl', cwd: sub, hook_event_name: 'SessionEnd', reason: 'clear' };
+    expect(await track(undefined, { agent: true }, { stdin: pipe(JSON.stringify(hook)) })).toEqual({ code: 0, stdout: 'session ended in sample-shop\n', stderr: '' });
+    expect(fake.requests).toEqual([trackRequest(sub, true, { ...sessionOf(sub), event: 'SessionEnd' })]);
+  });
+
   it('an explicit <dir> wins over the hook cwd', async () => {
     const fake = await running();
     expect((await track(repo.dir, { agent: true }, { cwd: temp.root, stdin: pipe(hookJson('/elsewhere')) })).code).toBe(0);

@@ -6,7 +6,7 @@
 
 import { resolve } from 'node:path';
 import { identifyRepo } from '../core/changes/identity.js';
-import { MAX_HOOK_INPUT_BYTES, parseAgentHookInput, type AgentHookInput } from '../core/changes/hook-input.js';
+import { MAX_HOOK_INPUT_BYTES, endsSession, parseAgentHookInput, type AgentHookInput } from '../core/changes/hook-input.js';
 import { ensureHome, homePaths, resolveHome } from '../core/home.js';
 import type { SocketRequest, TrackSession } from '../core/model/types.js';
 import { requestWithAutostart, type SpawnDaemonOptions, type SpawnedDaemon } from '../daemon/client.js';
@@ -127,6 +127,7 @@ export async function runTrack(dirArg: string | undefined, options: TrackCommand
   if (!result.ok) return fail(result.error);
   const { response } = result;
   if (!response.ok) return fail(response.error);
-  io.stdout(`tracked ${response.repo.name}\n`);
+  // A SessionEnd only ended the session in the daemon (DC-128): no agent mark, no collection.
+  io.stdout(hook !== null && endsSession(hook.event) ? `session ended in ${response.repo.name}\n` : `tracked ${response.repo.name}\n`);
   return 0;
 }
