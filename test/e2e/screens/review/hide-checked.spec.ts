@@ -82,6 +82,9 @@ test('review/hide-checked', async ({ page }) => {
     // In view: under the filters in the same column, not pushed out of the city.
     expect(Math.abs(legend.x - filters.x), `${size}: the legend's left edge`).toBeLessThanOrEqual(1);
     expect(legend.y + legend.height, `${size}: the legend inside the city`).toBeLessThanOrEqual(city.y + city.height);
+    await expect(page.getByTestId('legend-toggle'), `${size}: the legend is not folded`).toBeHidden();
+    // The default window keeps the mockup's place: 22 px from the left, 18 px above the city's bottom edge.
+    if (viewport.width === 1440) expect([Math.round(legend.x - city.x), Math.round(city.y + city.height - legend.y - legend.height)]).toEqual([22, 18]);
   }
 
   // DC-139, every filter row at once: a rule finding adds the Rules row under "Hide checked". At 1024x768,
@@ -109,4 +112,53 @@ test('review/hide-checked', async ({ page }) => {
   expect(legend.y, `1024x768 with rules, legend under the filters: ${seen}`).toBeGreaterThanOrEqual(filters.y + filters.height);
   expect(legend.x + legend.width, `1024x768 with rules, legend inside the visible column: ${seen}`).toBeLessThanOrEqual(column.x + column.width);
   expect(legend.y + legend.height, `1024x768 with rules, legend inside the visible column: ${seen}`).toBeLessThanOrEqual(column.y + column.height);
+
+  // DC-139, 1024x600: too short for the legend under every row. It folds into a "Legend" chip whose popover
+  // holds the whole legend; Esc closes it and gives focus back to the chip, a click elsewhere closes it too.
+  await page.setViewportSize({ width: 1024, height: 600 });
+  const toggle = page.getByTestId('legend-toggle');
+  const legendBox = page.getByTestId('legend');
+  await expect(toggle).toBeVisible();
+  await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+  await expect(legendBox).toBeHidden();
+  await toggle.click();
+  await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+  await expect(page.getByRole('dialog', { name: 'Legend' })).toBeVisible();
+  await expect(legendBox).toBeFocused();
+  for (const label of ['needs your eyes', 'removed', 'untouched', 'rule violation']) await expect(legendBox).toContainText(label);
+  const [pop, chipBox] = await Promise.all([legendBox.boundingBox(), toggle.boundingBox()]);
+  if (pop === null || chipBox === null) throw new Error('1024x600: no box for the popover or the chip');
+  expect(pop.y + pop.height, '1024x600: the popover opens above the chip').toBeLessThanOrEqual(chipBox.y);
+  await page.keyboard.press('Escape');
+  await expect(legendBox).toBeHidden();
+  await expect(toggle).toBeFocused();
+  await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+  await page.keyboard.press('Enter');
+  await expect(legendBox).toBeVisible();
+  await page.mouse.click(500, 30);
+  await expect(legendBox).toBeHidden();
+
+  // Every filter chip, "Hide checked" and the Rules row included, can be scrolled into view and clicked:
+  // the rows scroll inside the column instead of running under the city's bottom edge.
+  const city600 = await page.getByTestId('city').boundingBox();
+  if (city600 === null) throw new Error('1024x600: no box for the city');
+  const chips = page.getByTestId('hud-filters').getByRole('button');
+  const count = await chips.count();
+  expect(count).toBeGreaterThanOrEqual(12);
+  for (let i = 0; i < count; i += 1) {
+    const chip = chips.nth(i);
+    await chip.scrollIntoViewIfNeeded();
+    await expect(chip).toBeInViewport();
+    const box = await chip.boundingBox();
+    if (box === null) throw new Error(`1024x600: no box for filter chip ${String(i)}`);
+    expect(box.y + box.height, `1024x600: filter chip ${String(i)} above the city's bottom edge`).toBeLessThanOrEqual(city600.y + city600.height);
+    await chip.click({ trial: true });
+  }
+  const rule = page.getByRole('group', { name: 'Filter by rule' }).getByRole('button').first();
+  await rule.focus();
+  await expect(rule).toBeInViewport();
+  await page.keyboard.press('Enter');
+  await expect(rule).toHaveAttribute('aria-pressed', 'true');
+  await page.getByTestId('filter-hide-checked').click();
+  await expect(page.getByTestId('filter-hide-checked')).toHaveAttribute('aria-pressed', 'true');
 });
