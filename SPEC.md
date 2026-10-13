@@ -55,7 +55,7 @@ diffcity trust [<dir>] [--list] [--remove]             # let the daemon load thi
 diffcity scan <dir>                                    # discover repos (folders with .git) under a folder and register them
 diffcity diff --json [--compact] [--base] [--head]     # semantic diff of the current change, for AI and other tools; --compact leaves out untouched files
 diffcity import <findings.json|*.sarif.json> [--open]  # anchor findings to symbols and attach them to the current change; --open opens the change in the UI
-diffcity setup-claude [--repo [<dir>]] [--dry-run] [--remove]  # install the /diffcity-review command and the Stop hook for Claude Code (section 7)
+diffcity setup-claude [--repo [<dir>]] [--dry-run] [--remove]  # install the /diffcity-review command and the Stop and SessionEnd hooks for Claude Code (section 7)
 diffcity export html|puml [--out]                      # self-contained export of the current change (phase 5)
 diffcity status                                        # repos ordered by urgency (unreviewed changes, stale audit)
 diffcity audit [--stale] [<repo>]                      # full audit (deps, semgrep, gitleaks, AI on tier 1)
