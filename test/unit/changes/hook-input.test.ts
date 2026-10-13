@@ -26,6 +26,16 @@ describe('parseAgentHookInput', () => {
     });
   });
 
+  it('cli/session-end-input: the SessionEnd input (the Stop fields, hook_event_name and reason, as Claude Code 2.1.296 sends it) reads as SessionEnd', () => {
+    const base = { session_id: valid.session_id, transcript_path: valid.transcript_path, cwd: valid.cwd };
+    for (const reason of ['clear', 'resume', 'logout', 'prompt_input_exit', 'other']) {
+      expect(parseAgentHookInput(JSON.stringify({ ...base, hook_event_name: 'SessionEnd', reason, permission_mode: 'default' }))).toEqual({
+        ok: true,
+        input: { sessionId: 'session-0001', transcriptPath: '/work/sample-shop/.transcripts/session-0001.jsonl', cwd: '/work/sample-shop/src', event: 'SessionEnd' },
+      });
+    }
+  });
+
   it('the event defaults to Stop when hook_event_name is absent or not a plain name', () => {
     expect(DEFAULT_HOOK_EVENT).toBe('Stop');
     const eventOf = (value: unknown): string | undefined => {

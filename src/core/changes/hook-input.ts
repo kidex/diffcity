@@ -1,8 +1,9 @@
-// The Claude Code Stop hook JSON that `track --agent` reads from stdin when
-// stdin is not a TTY (SPEC.md section 3, ADR-001). It carries the session
-// (`session_id`, `transcript_path`), the `cwd` that replaces the default
-// directory and `hook_event_name`; it is at most 64 KB. Other fields of the
-// hook payload are ignored. `track` forwards these four to the daemon, which
+// The Claude Code Stop or SessionEnd hook JSON that `track --agent` reads from
+// stdin when stdin is not a TTY (SPEC.md section 3, ADR-001, DC-128). It
+// carries the session (`session_id`, `transcript_path`), the `cwd` that
+// replaces the default directory and `hook_event_name`; it is at most 64 KB.
+// Other fields of the hook payload (SessionEnd's `reason` among them) are
+// ignored. `track` forwards these four to the daemon, which
 // validates them again before it reads anything (ADR-038).
 
 import { isAbsolute } from 'node:path';

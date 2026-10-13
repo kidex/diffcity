@@ -1,24 +1,33 @@
-// The Stop hook entry in a Claude Code `settings.json` (SPEC.md section 7.2,
-// ADR-037), as data-only JSON edits. Adding puts
-// `{ "matcher": "", "hooks": [{ "type": "command", "command": <hook> }] }` at
-// the end of `hooks.Stop` unless a hook with the identical command is already
-// there. Removing takes out every hook with the identical command, then the
-// Stop entries it left empty, then `Stop` and `hooks` when they end up empty
-// (an empty `Stop` or `hooks` means the same to Claude Code as none). Every
-// other key and hook is kept as parsed. A file that is not JSON, or whose
-// `hooks` / `hooks.Stop` has another type, is refused and never rewritten.
+// diffcity's hook entries in a Claude Code `settings.json` (SPEC.md section
+// 7.2, ADR-037, DC-128), as data-only JSON edits. The same entry
+// `{ "matcher": "", "hooks": [{ "type": "command", "command": <hook> }] }` goes
+// under `hooks.Stop` (a task finished) and `hooks.SessionEnd` (the session
+// ended, so the daemon reads it as no longer active). Adding puts it at the
+// end of each event's list unless a hook with the identical command is
+// already there. Removing takes out every hook with the identical command
+// under those two events, then the entries it left empty, then the event and
+// `hooks` when they end up empty (an empty list or `hooks` means the same to
+// Claude Code as none). Every other key, event and hook is kept as parsed. A
+// file that is not JSON, or whose `hooks` / `hooks.Stop` / `hooks.SessionEnd`
+// has another type, is refused and never rewritten.
+
+/** The events diffcity hooks, in the order they are added. */
+export const DIFFCITY_HOOK_EVENTS = ['Stop', 'SessionEnd'] as const;
+
+export type DiffcityHookEvent = (typeof DIFFCITY_HOOK_EVENTS)[number];
 
 export type SettingsEdit =
   | { ok: true; changed: false }
-  | { ok: true; changed: true; text: string }
+  /** `events`: the events whose hooks were added or removed, in DIFFCITY_HOOK_EVENTS order. */
+  | { ok: true; changed: true; text: string; events: DiffcityHookEvent[] }
   | { ok: false; reason: string };
 
 type JsonObject = Record<string, unknown>;
 
 const isObject = (value: unknown): value is JsonObject => typeof value === 'object' && value !== null && !Array.isArray(value);
 
-/** The Stop hook entry diffcity adds. */
-export function stopHookEntry(command: string): JsonObject {
+/** The hook entry diffcity adds under each event. */
+export function hookEntry(command: string): JsonObject {
   return { matcher: '', hooks: [{ type: 'command', command }] };
 }
 
@@ -33,8 +42,10 @@ function parse(text: string | null): { ok: true; settings: JsonObject } | { ok: 
   }
   if (!isObject(value)) return { ok: false, reason: 'is not a JSON object' };
   if (value.hooks !== undefined && !isObject(value.hooks)) return { ok: false, reason: '"hooks" is not an object' };
-  if (isObject(value.hooks) && value.hooks.Stop !== undefined && !Array.isArray(value.hooks.Stop)) {
-    return { ok: false, reason: '"hooks.Stop" is not an array' };
+  if (isObject(value.hooks)) {
+    for (const event of DIFFCITY_HOOK_EVENTS) {
+      if (value.hooks[event] !== undefined && !Array.isArray(value.hooks[event])) return { ok: false, reason: `"hooks.${event}" is not an array` };
+    }
   }
   return { ok: true, settings: value };
 }
@@ -45,60 +56,70 @@ function isHookWith(hook: unknown, commands: ReadonlySet<string>): boolean {
   return isObject(hook) && hook.type === 'command' && typeof hook.command === 'string' && commands.has(hook.command);
 }
 
-/** The hooks of a Stop entry, when it has a list of them. */
+/** The hooks of an entry, when it has a list of them. */
 const entryHooks = (entry: unknown): unknown[] | null => (isObject(entry) && Array.isArray(entry.hooks) ? entry.hooks : null);
 
-/** True when `text` holds a Stop hook with the identical `command`. */
-export function hasStopHook(text: string | null, command: string): boolean {
-  const parsed = parse(text);
-  if (!parsed.ok) return false;
-  const hooks = parsed.settings.hooks;
-  const stop = isObject(hooks) && Array.isArray(hooks.Stop) ? hooks.Stop : [];
+/** The entries of `event`; parse() has checked the type. */
+const entriesOf = (hooks: unknown, event: DiffcityHookEvent): unknown[] => (isObject(hooks) && Array.isArray(hooks[event]) ? (hooks[event] as unknown[]) : []);
+
+function holds(settings: JsonObject, event: DiffcityHookEvent, command: string): boolean {
   const wanted = new Set([command]);
-  return stop.some((entry) => entryHooks(entry)?.some((hook) => isHookWith(hook, wanted)) === true);
+  return entriesOf(settings.hooks, event).some((entry) => entryHooks(entry)?.some((hook) => isHookWith(hook, wanted)) === true);
 }
 
-/** Adds the Stop hook for `command` to `text` (null for a missing file). */
-export function addStopHook(text: string | null, command: string): SettingsEdit {
+/** True when `text` holds a hook of `event` with the identical `command`. */
+export function hasHook(text: string | null, event: DiffcityHookEvent, command: string): boolean {
+  const parsed = parse(text);
+  return parsed.ok && holds(parsed.settings, event, command);
+}
+
+/** Adds the hook for `command` under every event that lacks it, in `text` (null for a missing file). */
+export function addHooks(text: string | null, command: string): SettingsEdit {
   const parsed = parse(text);
   if (!parsed.ok) return parsed;
-  if (hasStopHook(text, command)) return { ok: true, changed: false };
   const { settings } = parsed;
+  const missing = DIFFCITY_HOOK_EVENTS.filter((event) => !holds(settings, event, command));
+  if (missing.length === 0) return { ok: true, changed: false };
   const hooks = isObject(settings.hooks) ? settings.hooks : {};
-  const stop: unknown[] = Array.isArray(hooks.Stop) ? (hooks.Stop as unknown[]) : [];
-  hooks.Stop = [...stop, stopHookEntry(command)];
+  for (const event of missing) hooks[event] = [...entriesOf(hooks, event), hookEntry(command)];
   settings.hooks = hooks;
-  return { ok: true, changed: true, text: serialize(settings) };
+  return { ok: true, changed: true, text: serialize(settings), events: missing };
 }
 
-/** Removes every Stop hook whose command is one of `commands`. */
-export function removeStopHook(text: string | null, commands: readonly string[]): SettingsEdit {
+/** Removes every hook of diffcity's events whose command is one of `commands`. */
+export function removeHooks(text: string | null, commands: readonly string[]): SettingsEdit {
   if (text === null) return { ok: true, changed: false };
   const parsed = parse(text);
   if (!parsed.ok) return parsed;
   const { settings } = parsed;
   const hooks = settings.hooks;
-  if (!isObject(hooks) || !Array.isArray(hooks.Stop)) return { ok: true, changed: false };
+  if (!isObject(hooks)) return { ok: true, changed: false };
   const wanted = new Set(commands);
-  let removed = false;
-  const stop: unknown[] = [];
-  for (const entry of hooks.Stop) {
-    const list = entryHooks(entry);
-    if (list === null || !isObject(entry)) {
-      stop.push(entry);
-      continue;
+  const events: DiffcityHookEvent[] = [];
+  for (const event of DIFFCITY_HOOK_EVENTS) {
+    if (!Array.isArray(hooks[event])) continue;
+    let removed = false;
+    const kept: unknown[] = [];
+    for (const entry of hooks[event] as unknown[]) {
+      const list = entryHooks(entry);
+      if (list === null || !isObject(entry)) {
+        kept.push(entry);
+        continue;
+      }
+      const left = list.filter((hook) => !isHookWith(hook, wanted));
+      if (left.length === list.length) {
+        kept.push(entry);
+        continue;
+      }
+      removed = true;
+      if (left.length > 0) kept.push({ ...entry, hooks: left });
     }
-    const kept = list.filter((hook) => !isHookWith(hook, wanted));
-    if (kept.length === list.length) {
-      stop.push(entry);
-      continue;
-    }
-    removed = true;
-    if (kept.length > 0) stop.push({ ...entry, hooks: kept });
+    if (!removed) continue;
+    events.push(event);
+    if (kept.length > 0) hooks[event] = kept;
+    else Reflect.deleteProperty(hooks, event);
   }
-  if (!removed) return { ok: true, changed: false };
-  if (stop.length > 0) hooks.Stop = stop;
-  else Reflect.deleteProperty(hooks, 'Stop');
+  if (events.length === 0) return { ok: true, changed: false };
   if (Object.keys(hooks).length === 0) Reflect.deleteProperty(settings, 'hooks');
-  return { ok: true, changed: true, text: serialize(settings) };
+  return { ok: true, changed: true, text: serialize(settings), events };
 }

@@ -1,5 +1,5 @@
 // Claude Code integration (SPEC.md section 7, ADR-037): the `/diffcity-review`
-// command file, the Stop hook entry in settings.json and the invocation both
+// command file, the Stop and SessionEnd hook entries in settings.json and the invocation both
 // use. Plain file and JSON code: no parser, no report, no daemon.
 
 export { CLAUDE_CONFIG_DIR_ENV, claudeConfigDir } from './config-dir.js';
@@ -18,7 +18,7 @@ export {
   slashCommands,
 } from './command-file.js';
 export { GLOBAL_CLI, chooseCliInvocation, hookCommand, isLocalBin, type ChooseCliOptions, type CliInvocation, type CliInvocationResult } from './hook-command.js';
-export { addStopHook, hasStopHook, removeStopHook, stopHookEntry, type SettingsEdit } from './settings.js';
+export { DIFFCITY_HOOK_EVENTS, addHooks, hasHook, hookEntry, removeHooks, type DiffcityHookEvent, type SettingsEdit } from './settings.js';
 export {
   BACKUP_SUFFIX,
   CLAUDE_CODE_CHECKED_VERSION,

@@ -161,7 +161,7 @@ export function buildProgram(io: CliIo = defaultIo): Command {
 
   program
     .command('setup-claude')
-    .description('install the /diffcity-review command and the Stop hook for Claude Code')
+    .description('install the /diffcity-review command and the Stop and SessionEnd hooks for Claude Code')
     .option('--repo [dir]', "write to the repo's .claude/ instead of the user's Claude Code configuration")
     .option('--dry-run', 'print what would change, write nothing')
     .option('--remove', 'remove only what diffcity wrote')
